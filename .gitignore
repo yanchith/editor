@@ -1,0 +1,8 @@
+# Build directory
+/build
+
+# macOS things
+.DS_Store
+
+# RemedyBG
+*.rdbg
