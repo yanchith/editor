@@ -1,9 +1,9 @@
 Platform :: struct {
-    vm_page_size:        s64;
-    vm_reserve:          (size: s64) -> *void;
-    vm_release:          (pointer: *void, size: s64);
-    vm_commit:           (pointer: *void, size: s64);
-    vm_decommit:         (pointer: *void, size: s64);
+    page_size:           s64;
+    mem_reserve:         (size: s64) -> *void;
+    mem_release:         (pointer: *void, size: s64);
+    mem_commit:          (pointer: *void, size: s64);
+    mem_decommit:        (pointer: *void, size: s64);
 
     read_file:           (path: string) -> success: bool, data: string;
     write_file:          (path: string, data: string) -> succes: bool;
