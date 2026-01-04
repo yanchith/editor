@@ -25,7 +25,8 @@ f64 :: float64;
 
 #import "Basic";
 
-Math :: #import "Math";
+Math  :: #import "Math";
+Arena :: #import "Arena";
 
 Vector2 :: Math.Vector2;
 
