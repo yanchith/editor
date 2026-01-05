@@ -29,6 +29,21 @@ main :: () {
         Simp.set_render_target(window, .LEFT_HANDED);
 
         platform: Editor.Platform;
+        #if OS == .WINDOWS {
+            W :: #import "Windows";
+
+            info: W.SYSTEM_INFO;
+            W.GetSystemInfo(*info);
+
+            platform.page_size = info.dwPageSize;
+            platform.mem_reserve  = (size: s64) -> *void { return W.VirtualAlloc(null, cast(u64, size), W.MEM_RESERVE, W.PAGE_READWRITE); };
+            platform.mem_release  = (pointer: *void, size: s64) { W.VirtualFree(pointer, 0, W.MEM_RELEASE); }
+            platform.mem_commit   = (pointer: *void, size: s64) -> bool { result := W.VirtualAlloc(pointer, cast(u64, size), W.MEM_COMMIT, W.PAGE_READWRITE); return result != null; }
+            platform.mem_decommit = (pointer: *void, size: s64) { W.VirtualFree(pointer, cast(u64, size), W.MEM_DECOMMIT); };
+        } else #if OS_IS_UNIX {
+            // TODO(jt): Unix Operating System.
+        }
+
         // TODO(jt): Set up platform.
 
         editor: Editor.Editor;
