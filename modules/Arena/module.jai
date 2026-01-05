@@ -28,7 +28,7 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
         case .RESIZE; {
             // TODO(jt): Try growing/shrinking in-place with arena_maybe_modify_last_push
             if requested_size <= old_size {
-                return old_size;
+                return old_memory;
             }
 
             arena := cast(*Arena, allocator_data);
@@ -67,9 +67,9 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
 
         case .IS_THIS_YOURS; {
             arena := cast(*Arena, allocator_data);
-            result := old_memory >= arena.memory_start && old_memory < arena.memory_start + arena.committed_size;
+            result := old_memory >= arena.memory_start && old_memory < arena.memory_start + arena.committed;
 
-            return cast(*void, result);
+            return cast(*void, cast(s64, result));
         }
         // TODO(jt): Support IS_THIS_YOURS. It should not be that hard.
         assert(false, "IS_THIS_YOURS is not supported by arena_allocator_proc yet\n");
@@ -100,7 +100,7 @@ Arena_Procs :: struct {
 
 Arena :: struct {
     // Things given by the caller. At least procs must be manually set.
-    procs: Arena_Procs = UNINIT_PROCS;
+    procs: Arena_Procs;
     reserve_size := ARENA_DEFAULT_RESERVE_SIZE; // How much memory we reserve, aligned to page size. Can't get more.
     commit_size  := ARENA_DEFAULT_COMMIT_SIZE;  // The minimal size that is committed, aligned to page size.
     keep_size    := ARENA_DEFAULT_KEEP_SIZE;    // The minimal size that is not decommitted once it has been committed, aligned to page size.
@@ -113,7 +113,7 @@ Arena :: struct {
 }
 
 arena_init :: (arena: *Arena) {
-    assert(popcount(arena.procs.page_size) == 1, "page_size must be a power of two");
+    assert(popcount(arena.procs.page_size) == 1, "page_size must be a power of two, but is %", arena.procs.page_size);
     // TODO(jt): Should we assert some more things here?
 
     arena.reserve_size = align(arena.reserve_size, arena.procs.page_size);
@@ -149,6 +149,12 @@ arena_release :: (arena: *Arena) {
 
 arena_get_mark :: (arena: Arena) -> Arena_Mark {
     return { arena.allocated };
+}
+
+arena_push :: (arena: *Arena, value: $T) -> *T {
+    // TODO(jt): @Correctness JAI seems to have no way of getting type alignment... Could be problematic
+    // for GPUs and SIMD, if we use allocators. For now, we just align to 16 and call it a day.
+    return inline arena_push(arena, size_of(T));
 }
 
 arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
@@ -254,9 +260,3 @@ is_aligned :: inline (pointer: *void, alignment: s64) -> bool {
 } else {
     debug_assert :: (#discard arg: bool, #discard message := "", #discard args: .. Any, #discard loc := #caller_location) #expand {}
 }
-
-UNINIT_PROCS    :: Arena_Procs.{ 0, uninit_reserve, uninit_release, uninit_commit, uninit_decommit };
-uninit_reserve  :: (size: s64) -> *void { assert(false, "Memory procs must be set before use"); return null; }
-uninit_release  :: (pointer: *void, size: s64) { assert(false, "Memory procs must be set before use"); }
-uninit_commit   :: (pointer: *void, size: s64) -> bool { assert(false, "Memory procs must be set before use"); return false; }
-uninit_decommit :: (pointer: *void, size: s64) { assert(false, "Memory procs must be set before use"); }
