@@ -54,9 +54,8 @@ init :: (editor: *Editor, platform: Platform) {
 update_and_render :: (editor: *Editor, platform: Platform, input: Input, render_lists: *Render_Lists) -> bool {
     arena_reset(*editor.frame_arena);
 
-    foozle: [8000] u8;
-    foozle_pointer := arena_push(*editor.frame_arena, foozle);
-    foozle_pointer.*[0] = 42;
+    foozle := arena_push(*editor.frame_arena, [8000] u8);
+    foozle.*[0] = 42;
 
     return false;
 }
