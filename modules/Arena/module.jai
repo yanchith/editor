@@ -5,10 +5,10 @@
 #import "Bit_Operations"; // For popcount
 
 // This arena aims to be simple and minimal. It only does virtual memory reserve, and then
-// commits/decommits on the go. You can set a high water mark to prevent releasing all memory back
-// to the OS.
+// commits/decommits on the go. You tweak the minimal amount of retained memory to prevent releasing
+// all memory back to the OS only to allocate it again.
 //
-// The following may be added eventually, if they are actually needed, and we still have complexity budget left:
+// The following may be added eventually, if they are actually needed:
 //
 // - Block chaining and releasing blocks. We'd only need this if we can't use virtual memory or decommit doesn't work for some reason.
 // - User-given first block.
@@ -67,13 +67,10 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
 
         case .IS_THIS_YOURS; {
             arena := cast(*Arena, allocator_data);
-            result := old_memory >= arena.memory_start && old_memory < arena.memory_start + arena.committed;
+            result := old_memory >= arena.memory_start && old_memory < arena.memory_start + arena.allocated;
 
             return cast(*void, cast(s64, result));
         }
-        // TODO(jt): Support IS_THIS_YOURS. It should not be that hard.
-        assert(false, "IS_THIS_YOURS is not supported by arena_allocator_proc yet\n");
-        return null;
 
         case .CAPS; {
             if old_memory {
@@ -116,9 +113,9 @@ arena_init :: (arena: *Arena) {
     assert(popcount(arena.procs.page_size) == 1, "page_size must be a power of two, but is %", arena.procs.page_size);
     // TODO(jt): Should we assert some more things here?
 
-    arena.reserve_size = align(arena.reserve_size, arena.procs.page_size);
-    arena.commit_size  = align(arena.commit_size, arena.procs.page_size);
-    arena.keep_size    = align(arena.keep_size, arena.procs.page_size);
+    arena.reserve_size = align(max(1, arena.reserve_size), arena.procs.page_size);
+    arena.commit_size  = align(max(1, arena.commit_size), arena.procs.page_size);
+    arena.keep_size    = align(max(1, arena.keep_size), arena.procs.page_size);
 
     start := arena.procs.mem_reserve(arena.reserve_size);
     debug_assert(is_aligned(start, arena.procs.page_size));
@@ -133,6 +130,7 @@ arena_init :: (arena: *Arena) {
     arena.committed = 0;
 }
 
+// Release all the memory back to the OS. You don't have to do it your program is going to end anyway.
 arena_release :: (arena: *Arena) {
     if !arena.memory_start {
         return;
@@ -151,10 +149,17 @@ arena_get_mark :: (arena: Arena) -> Arena_Mark {
     return { arena.allocated };
 }
 
-arena_push :: (arena: *Arena, value: $T) -> *T {
-    // TODO(jt): @Correctness JAI seems to have no way of getting type alignment... Could be problematic
-    // for GPUs and SIMD, if we use allocators. For now, we just align to 16 and call it a day.
-    return inline arena_push(arena, size_of(T));
+arena_push :: (arena: *Arena, $T: Type) -> *T {
+    result := arena_push(arena, size_of(T), align_of(T));
+
+    initializer :: initializer_of(T);
+    #if initializer {
+        initializer(result);
+    } else {
+        memset(result, 0, size_of(T));
+    }
+
+    return result;
 }
 
 arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
@@ -232,6 +237,15 @@ ArenaAutoPop :: (arena: *Arena) #expand {
 #scope_module
 
 CAPS_VERSION_STRING :: "modules/Arena";
+
+// TODO(jt): @Cleanup Provided by shwa from the Secret Beta discord, but hopefully the language
+// gives us a way of doing it without a run directive and we can remove?
+align_of :: ($T: Type) -> s64 #expand {
+    return #run -> s64 {
+        info := type_info(struct { p: u8; t: T; });
+        return info.members[1].offset_in_bytes;
+    };
+}
 
 align :: inline (address: s64, alignment: s64) -> s64 {
     debug_assert(popcount(alignment) == 1, "alignment must be a power of two");
