@@ -1,8 +1,7 @@
 #module_parameters () (DEBUG_ASSERT := true);
 
-// TODO(jt): @Cleanup We could copy over the few things we use from these.
+// TODO(jt): @Cleanup We could copy over the few things we use.
 #import "Basic";          // For assert
-#import "Bit_Operations"; // For popcount
 
 // This arena aims to be simple and minimal. It only does virtual memory reserve, and then
 // commits/decommits on the go. You tweak the minimal amount of retained memory to prevent releasing
@@ -110,7 +109,7 @@ Arena :: struct {
 }
 
 arena_init :: (arena: *Arena) {
-    assert(popcount(arena.procs.page_size) == 1, "page_size must be a power of two, but is %", arena.procs.page_size);
+    assert(arena.procs.page_size > 0 && is_power_of_two(arena.procs.page_size));
     // TODO(jt): Should we assert some more things here?
 
     arena.reserve_size = align(max(1, arena.reserve_size), arena.procs.page_size);
@@ -265,6 +264,10 @@ is_aligned :: inline (address: s64, alignment: s64) -> bool {
 
 is_aligned :: inline (pointer: *void, alignment: s64) -> bool {
     return is_aligned(cast(s64, pointer), alignment);
+}
+
+is_power_of_two :: inline (value: s64) -> bool {
+    return value & (value - 1) == 0;
 }
 
 #if DEBUG_ASSERT {
