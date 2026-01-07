@@ -35,18 +35,33 @@
 //
 
 Font :: struct {
-    line_height: f32;
+    info: stbtt_fontinfo;
+    glyph_cache: Glyph_Cache;
 }
 
-Glyph :: struct {
+Glyph_Info :: struct {
     advance: f32;
 }
 
+// TODO(jt): Make this into a LRU cache for rasterized glyphs of various sizes.
 Glyph_Cache :: struct {
     arena: Arena;
 }
 
-// TODO(jt): context.allocator vs Temporary_Storage vs explicit arena.
+make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
+    info: stbtt_fontinfo;
+    stbtt_InitFont(*info, ttf_buffer.data, stbtt_GetFontOffsetForIndex(ttf_buffer.data, 0));
+
+    glyph_cache: Glyph_Cache;
+    glyph_cache.arena = arena;
+
+    return { info, glyph_cache };
+}
+
 layout_text :: (font: *Font, font_size: f32, text: string) -> [..] Render_Rect {
 
 }
+
+#scope_file
+
+#import "stb_truetype";
