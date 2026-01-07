@@ -1,22 +1,10 @@
 //
 // This file was auto-generated using the following command:
 //
-// jai generate.jai - -compile
+// jai generate.jai
 //
 
 
-
-STBTT_MACSTYLE_DONTCARE :: 0;
-STBTT_MACSTYLE_BOLD :: 1;
-STBTT_MACSTYLE_ITALIC :: 2;
-STBTT_MACSTYLE_UNDERSCORE :: 4;
-STBTT_MACSTYLE_NONE :: 8;
-
-STBTT_MAX_OVERSAMPLE :: 8;
-
-STBTT_RASTERIZER_VERSION :: 2;
-
-STBTT__OVER_MASK :: STBTT_MAX_OVERSAMPLE-1;
 
 // private structure
 stbtt__buf :: struct {
