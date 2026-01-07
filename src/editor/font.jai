@@ -39,11 +39,21 @@ Font :: struct {
     glyph_cache: Glyph_Cache;
 }
 
-Glyph_Info :: struct {
+Glyph_Metrics :: struct {
     advance: f32;
 }
 
-// TODO(jt): Make this into a LRU cache for rasterized glyphs of various sizes.
+Glyph :: struct {
+    width: u16;
+    height: u16;
+
+    // XXX: Store both metrics and image in here? I think we need some sort of (1D) size classes for
+    // the images, so that we can reuse evicted slots... something like 1x1, 2x2, 4x4, 8x8, 16x16,
+    // 32x32, ... but 1D, so we have less size-classes. And then we have to figure out what to do
+    // about the big ones. Hopefully not a general-purpose freelist.
+}
+
+// TODO(jt): Make this into a LRU cache for rasterized glyphs and their metrics of various sizes.
 Glyph_Cache :: struct {
     arena: Arena;
 }
