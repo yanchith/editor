@@ -1,31 +1,35 @@
-// The source of stb_truetype.h had to have a very minor modification so that Bindings_Generator
-// could pick up the functions defined there. Look for NOTE(jt) or #modification inside
-// stb_truetype.h.
+//
+// This generate.jai is slightly cleaned up and modified, but is essentially the same template as
+// the ones that ship with the compiler. I removed the AT_COMPILE_TIME flags (we always want to run
+// this at compile time for now). I also removed platforms we don't care about.
+//
+// Usage:
+//
+// jai generate.jai [- [-x64] [-arm64] [-compile] [-debug]]
+//
+//
+// The source of stb_truetype.h has very minor modifications, so that Bindings_Generator can pick up
+// the functions defined there. Look for NOTE(jt) or #modification inside stb_truetype.h.
+//
 
-AT_COMPILE_TIME :: true; // Can also be false, but that is less convenient. I didn't strip the runtime version for now.
+#import "Compiler";
+
+#import "Basic";
+#import "File";
+
+BG        :: #import "Bindings_Generator";
+Build_Cpp :: #import "BuildCpp";
 
 SOURCE_PATH :: "source";
 LIB_BASE_NAME :: "stb_truetype";
 
-#if AT_COMPILE_TIME {
-    #run,stallable {
-        set_build_options_dc({ do_output = false });
-        options := get_build_options();
-        args := options.compile_time_command_line;
-        if !generate_bindings(args, options.minimum_os_version) {
-            compiler_set_workspace_status(.FAILED);
-        }
+#run {
+    options := get_build_options();
+    if !generate_bindings(options.compile_time_command_line, options.minimum_os_version) {
+        compiler_set_workspace_status(.FAILED);
     }
-} else {
-    #import "System";
-    #import "String";
 
-    main :: () {
-        set_working_directory(path_strip_filename(get_path_of_running_executable()));
-        if !generate_bindings(get_command_line_arguments(), #run get_build_options().minimum_os_version) {
-            exit(1);
-        }
-    }
+    set_build_options_dc({ do_output = false });
 }
 
 generate_bindings :: (args: [] string, minimum_os_version: type_of(Build_Options.minimum_os_version)) -> bool {
@@ -42,22 +46,16 @@ generate_bindings :: (args: [] string, minimum_os_version: type_of(Build_Options
 
     lib_directory: string;
     if os_target == {
-        case .WINDOWS;
-            lib_directory = "windows";
-        case .LINUX;
-            lib_directory = "linux";
-        case .MACOS;
-            lib_directory = "macos";
-        case;
-            assert(false);
+        case .WINDOWS; lib_directory = "windows";
+        case .LINUX;   lib_directory = "linux";
+        case .MACOS;   lib_directory = "macos";
+        case;          assert(false);
     }
 
     source_file := tprint("%/stb_truetype.c", SOURCE_PATH);
 
     if compile {
-        print("ASDFASDFASDFADFS");
-
-        lib_path    := tprint("%/%", lib_directory, LIB_BASE_NAME);
+        lib_path := tprint("%/%", lib_directory, LIB_BASE_NAME);
 
         make_directory_if_it_does_not_exist(lib_directory, recursive = true);
 
@@ -69,7 +67,7 @@ generate_bindings :: (args: [] string, minimum_os_version: type_of(Build_Options
             extra: [..] string;
 
             if os_target != .WINDOWS {
-                array_add(*extra, "-fPIC");
+                array_add(*extra, "-fPIC"); // TODO(jt): Audit. What is this? I just copied it over from the beta.
             }
 
             success &&= Build_Cpp.build_cpp_dynamic_lib(lib_path, source_file, target = os_target, debug = compile_debug, extra = extra);
@@ -87,7 +85,7 @@ generate_bindings :: (args: [] string, minimum_os_version: type_of(Build_Options
 
     array_add(*options.library_search_paths, lib_directory);
     array_add(*options.libraries, { filename = LIB_BASE_NAME });
-    array_add(*options.source_files, tprint("%/stb_truetype.c", SOURCE_PATH));
+    array_add(*options.source_files, source_file);
     array_add(*options.typedef_prefixes_to_unwrap, "stbtt_");
 
     options.generate_library_declarations = false;
@@ -114,16 +112,3 @@ FOOTER_TEMPLATE :: #string END
 }
 
 END
-
-#import "Basic";
-#import "Compiler";
-#import "File";
-
-BG        :: #import "Bindings_Generator";
-Build_Cpp :: #import "BuildCpp";
-
-#if OS == .WINDOWS {
-    #import "Windows";
-} else {
-    #import "POSIX";
-}
