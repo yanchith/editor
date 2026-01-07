@@ -247,7 +247,7 @@ align_of :: ($T: Type) -> s64 #expand {
 }
 
 align :: inline (address: s64, alignment: s64) -> s64 {
-    debug_assert(popcount(alignment) == 1, "alignment must be a power of two");
+    debug_assert(alignment > 0 && is_power_of_two(alignment));
     mask := alignment - 1;
     return (address + mask) & ~mask;
 }
@@ -257,7 +257,7 @@ align :: inline (pointer: *void, alignment: s64) -> *void {
 }
 
 is_aligned :: inline (address: s64, alignment: s64) -> bool {
-    debug_assert(popcount(alignment) == 1, "alignment must be a power of two");
+    debug_assert(alignment > 0 && is_power_of_two(alignment));
     mask := alignment - 1;
     return address == address & ~mask;
 }
