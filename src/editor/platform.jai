@@ -5,8 +5,8 @@ Platform :: struct {
     mem_commit:          (pointer: *void, size: s64) -> bool;
     mem_decommit:        (pointer: *void, size: s64);
 
-    read_file:           (path: string) -> success: bool, data: string;
-    write_file:          (path: string, data: string) -> succes: bool;
+    read_file:           (path: string) -> success: bool, data: [] u8;
+    write_file:          (path: string, data: [] u8) -> succes: bool;
     delete_file:         (path: string) -> success: bool;
     copy_file:           (source_path: string, dest_path: string) -> success: bool;
 
