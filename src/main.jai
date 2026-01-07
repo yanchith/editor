@@ -1,6 +1,7 @@
 #import "Basic";
 
 String :: #import "String";
+File   :: #import "File";
 Window :: #import "Window_Creation";
 Input  :: #import "Input";
 Simp   :: #import "Simp";
@@ -36,10 +37,28 @@ main :: () {
             W.GetSystemInfo(*info);
 
             platform.page_size = info.dwPageSize;
-            platform.mem_reserve  = (size: s64) -> *void { return W.VirtualAlloc(null, cast(u64, size), W.MEM_RESERVE, W.PAGE_READWRITE); };
-            platform.mem_release  = (pointer: *void, size: s64) { W.VirtualFree(pointer, 0, W.MEM_RELEASE); }
-            platform.mem_commit   = (pointer: *void, size: s64) -> bool { result := W.VirtualAlloc(pointer, cast(u64, size), W.MEM_COMMIT, W.PAGE_READWRITE); return result != null; }
-            platform.mem_decommit = (pointer: *void, size: s64) { W.VirtualFree(pointer, cast(u64, size), W.MEM_DECOMMIT); };
+            platform.mem_reserve = (size: s64) -> *void {
+                return W.VirtualAlloc(null, cast(u64, size), W.MEM_RESERVE, W.PAGE_READWRITE);
+            };
+            platform.mem_release = (pointer: *void, size: s64) {
+                W.VirtualFree(pointer, 0, W.MEM_RELEASE);
+            }
+            platform.mem_commit = (pointer: *void, size: s64) -> bool {
+                result := W.VirtualAlloc(pointer, cast(u64, size), W.MEM_COMMIT, W.PAGE_READWRITE);
+                return result != null;
+            }
+            platform.mem_decommit = (pointer: *void, size: s64) {
+                W.VirtualFree(pointer, cast(u64, size), W.MEM_DECOMMIT);
+            };
+
+            platform.read_file = (path: string) -> success: bool, data: [] u8 {
+                // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
+                // will start respecting context.allocator eventually, so we pass in temp there as well.
+                absolute_path := File.get_absolute_path(path,, temp);
+                data, success := File.read_entire_file(absolute_path);
+
+                return success, cast([] u8, data);
+            }
         } else #if OS_IS_UNIX {
             // TODO(jt): Unix Operating System.
         }
