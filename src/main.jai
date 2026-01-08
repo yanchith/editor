@@ -1,3 +1,6 @@
+f32 :: float32;
+f64 :: float64;
+
 #import "Basic";
 
 String :: #import "String";
@@ -18,7 +21,20 @@ main :: () {
 
     push_context editor_context {
         #if OS == .MACOS {
-            // TODO(jt): Set working directory to executable path if we do not see our data.
+            System         :: #import "System";
+            File_Utilities :: #import "File_Utilities";
+
+            see_data := true;
+            see_data &&= File_Utilities.is_directory("data/fonts");
+
+            if !see_data {
+                exe_file := System.get_path_of_running_executable();
+                exe_dir  := String.path_strip_filename(exe_file);
+
+                log("We are on macOS and we don't see our data. Attempting to set working directory to the executable path: %", exe_dir);
+
+                set_working_directory(exe_dir);
+            }
         }
 
         time_last_frame_start := time_program_start;
@@ -50,20 +66,39 @@ main :: () {
             platform.mem_decommit = (pointer: *void, size: s64) {
                 W.VirtualFree(pointer, cast(u64, size), W.MEM_DECOMMIT);
             };
-
-            platform.read_file = (path: string) -> success: bool, data: [] u8 {
-                // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
-                // will start respecting context.allocator eventually, so we pass in temp there as well.
-                absolute_path := File.get_absolute_path(path,, temp);
-                data, success := File.read_entire_file(absolute_path);
-
-                return success, cast([] u8, data);
-            }
         } else #if OS_IS_UNIX {
-            // TODO(jt): Unix Operating System.
+            P :: #import "POSIX";
+
+            platform.page_size = P.sysconf(P._SC_PAGE_SIZE);
+            platform.mem_reserve = (size: s64) -> *void {
+                result := P.mmap(null, cast(u64, size), P.PROT_NONE, P.MAP_PRIVATE | P.MAP_ANONYMOUS, 0, 0);
+                if result == P.MAP_FAILED {
+                    result = null;
+                }
+
+                return result;
+            }
+            platform.mem_release = (pointer: *void, size: s64) {
+                P.munmap(pointer, cast(u64, size));
+            }
+            platform.mem_commit = (pointer: *void, size: s64) -> bool {
+                result := P.mprotect(pointer, cast(u64, size), P.PROT_READ | P.PROT_WRITE);
+                return result == 0;
+            }
+            platform.mem_decommit = (pointer: *void, size: s64) {
+                P.madvise(pointer, cast(u64, size), P.MADV_DONTNEED);
+                P.mprotect(pointer, cast(u64, size), P.PROT_NONE);
+            }
         }
 
-        // TODO(jt): Set up platform.
+        platform.read_file = (path: string) -> success: bool, data: [] u8 {
+            // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
+            // will start respecting context.allocator eventually, so we pass in temp there as well.
+            absolute_path := File.get_absolute_path(path,, temp);
+            data, success := File.read_entire_file(absolute_path);
+
+            return success, cast([] u8, data);
+        }
 
         editor: Editor.Editor;
         Editor.init(*editor, platform);
@@ -83,6 +118,36 @@ main :: () {
 
             render_lists: Editor.Render_Lists;
             render_lists.buffer.allocator = temp;
+
+            Input.update_window_events();
+            for Input.get_window_resizes() {
+                Simp.update_window(it.window);
+
+                if it.window == window {
+                    input.window_size = { it.width, it.height };
+                }
+            }
+
+            for Input.events_this_frame {
+                if it.type == {
+                    case .QUIT; {
+                        should_run = false;
+                    }
+
+                    case .KEYBOARD; {
+                        #if OS == .WINDOWS {
+                            if it.alt_pressed && it.key_code == .F4 {
+                                should_run = false;
+                            }
+                        }
+                    }
+                }
+            }
+
+            mouse_x, mouse_y, success := Window.get_mouse_pointer_position();
+            if success {
+                input.mouse_position = .{ cast(f32, mouse_x), cast(f32, mouse_y) };
+            }
 
             wants_quit := Editor.update_and_render(*editor, platform, input, *render_lists);
             if wants_quit {
