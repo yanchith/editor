@@ -102,9 +102,58 @@ rect_max :: inline (r: Rect) -> Vector2 {
     return { x, y };
 }
 
+// TODO(jt): Add rect_width and rect_height that do check for flip.
+
+// TODO(jt): @Speed If we use this a lot and it generates bad code, we can try and do the inplace
+// version as an overload.
 rect_fixup :: (r: Rect) -> Rect {
     p0 := rect_min(r);
     p1 := rect_max(r);
 
     return make_rect(p0, p1);
+}
+
+//
+// Integer rects
+//
+
+IRect :: struct {
+    // Points are not necessarily ordered. See irect_min, irect_max, irect_fixup.
+    x0: s32;
+    y0: s32;
+
+    x1: s32;
+    y1: s32;
+
+    #overlay (x0) p0: IVector2;
+    #overlay (x1) p1: IVector2;
+}
+
+make_irect :: inline (p0: IVector2, p1: IVector2) -> IRect {
+    return { p0.x, p0.y, p1.x, p1.y };
+}
+
+irect_min :: inline (r: IRect) -> IVector2 {
+    x := ifx x0 < x1 then x0 else x1;
+    y := ifx y0 < y1 then y0 else y1;
+
+    return { x, y };
+}
+
+irect_max :: inline (r: IRect) -> IVector2 {
+    x := ifx x0 > x1 then x0 else x1;
+    y := ifx y0 > y1 then y0 else y1;
+
+    return { x, y };
+}
+
+// TODO(jt): Add irect_width and irect_height that do check for flip.
+
+// TODO(jt): @Speed If we use this a lot and it generates bad code, we can try and do the inplace
+// version as an overload.
+irect_fixup :: (r: IRect) -> IRect {
+    p0 := irect_min(r);
+    p1 := irect_max(r);
+
+    return make_irect(p0, p1);
 }
