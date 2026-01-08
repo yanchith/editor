@@ -17,6 +17,10 @@ ARENA_DEFAULT_RESERVE_SIZE: s64 : 256 << 20;
 ARENA_DEFAULT_COMMIT_SIZE:  s64 :  64 << 10;
 ARENA_DEFAULT_KEEP_SIZE:    s64 :  32 << 20;
 
+arena_allocator :: (arena: *Arena) -> Allocator {
+    return { arena_allocator_proc, arena };
+}
+
 // TODO(jt): Should we be caring about alignment? Our old Rust arena certainly does care, but maybe
 // there is no underlying/hardware reason to care and it was all just LLVM crap?
 arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64, old_memory: *void, allocator_data: *void) -> *void {
