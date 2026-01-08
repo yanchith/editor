@@ -20,7 +20,7 @@
 //
 // - [ ] basic layout
 // - [ ] kerning
-// - [ ] ligatures
+// - [ ] ligatures?
 //
 // Nonfeatures:
 //
@@ -30,7 +30,10 @@
 // - vertical fonts
 //
 
+FONT_ATLAS_ALIGNMENT :: 16;
+
 GLYPH_CACHE_SIZE :: 32;
+FONT_PIXEL_HEIGHT: f32 = 12;
 
 // TODO(jt): Turn this into a LRU cache for rasterized glyphs and their metrics of various sizes.
 // However, if we use proportional fonts, we can't easily compute the cell size for a rasterized
@@ -39,7 +42,15 @@ GLYPH_CACHE_SIZE :: 32;
 // over in our nicely regular monospace world.
 Font :: struct {
     arena: Arena;
-    font_vmetrics: Font_VMetrics;
+    arena_mark: Arena_Mark;
+
+
+    atlas: *u8;
+    atlas_width: u16;
+    atlas_height: u16;
+
+    vmetrics: Font_VMetrics;
+    scale: f32;
 
     info: stbtt_fontinfo;
 }
@@ -55,14 +66,27 @@ Glyph_HMetrics :: struct {
     left_side_bearing: s32;
 }
 
-// The caller has to keep ttf_buffer alive. Easiest way is to put it in the arena.
+// The caller has to keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
 make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
+    INITIAL_WIDTH  :: 1024;
+    INITIAL_HEIGHT :: 1024;
+
+    arena_mark := arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
+
     info: stbtt_fontinfo;
     stbtt_InitFont(*info, ttf_buffer.data, stbtt_GetFontOffsetForIndex(ttf_buffer.data, 0));
 
     result: Font;
     result.arena = arena;
-    result.font_vmetrics = get_font_vmetrics(info);
+    result.arena_mark = arena_mark;
+
+    result.atlas = arena_push(*arena, INITIAL_WIDTH * INITIAL_HEIGHT, FONT_ATLAS_ALIGNMENT);
+    result.atlas_width  = INITIAL_WIDTH;
+    result.atlas_height = INITIAL_HEIGHT;
+
+    result.vmetrics = get_font_vmetrics(info);
+    result.scale = get_font_scale_for_pixel_height(info, FONT_PIXEL_HEIGHT);
+
     result.info = info;
 
     return result;
@@ -91,10 +115,10 @@ make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
 //
 // So we start with monospace, and nuke the cache on font size change.
 //
-// UPDATE: After watching Casey's refterm cache video, I think we could adapt his farsi (ligature?
-// ... we should verify if ligature widths have to be a multiple of the single-length character
-// widths) code to support proportional fonts... by splitting the rasterized glyph into multiple
-// slots in the atlas.
+// UPDATE: After watching Casey's refterm cache video
+// (https://youtu.be/cGoQ3ceKX6g?si=aWlLDyDyHTFjrfMc), I think we could adapt his farsi (ligature?)
+// code to support proportional fonts... by splitting the rasterized glyph into multiple slots in
+// the atlas.
 //
 // UPDATE: To support ligatures, the input has to be the entire ligature... (multiple codepoints).
 
@@ -111,7 +135,16 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Rend
     // starting state and return some end state, so that this can be called incrementally.
 
     for :Unicode.utf8_iter text {
-        print("C: % % %\n", it, get_glyph_index(font.info, it), get_codepoint_hmetrics(font.info, it));
+        gi := get_glyph_index(font.info, it);
+
+        gbox := get_glyph_bitmap_box(font.info, gi, font.scale);
+        gw   := gbox.x1 - gbox.x0;
+        gh   := gbox.y1 - gbox.y0;
+
+        print("%", gbox);
+
+        rasterize_glyph(font.info, gi, font.atlas, gw, gh, font.atlas_width, font.scale);
+        print("C: % % %\n", it, gi, get_glyph_hmetrics(font.info, gi));
     }
 
     return result;
@@ -125,20 +158,28 @@ get_font_vmetrics :: (info: stbtt_fontinfo) -> Font_VMetrics {
     return result;
 }
 
+get_font_scale_for_pixel_height :: (info: stbtt_fontinfo, pixel_height: f32) -> f32 {
+    return stbtt_ScaleForPixelHeight(*info, pixel_height);
+}
+
 get_glyph_index :: (info: stbtt_fontinfo, codepoint: u32) -> s32 {
     return stbtt_FindGlyphIndex(*info, cast,no_check(s32, codepoint));
 }
 
-get_codepoint_hmetrics :: (info: stbtt_fontinfo, codepoint: u32) -> Glyph_HMetrics {
+get_glyph_hmetrics :: (info: stbtt_fontinfo, index: s32) -> Glyph_HMetrics {
     result: Glyph_HMetrics = ---;
-    stbtt_GetCodepointHMetrics(*info, cast,no_check(s32, codepoint), *result.advance, *result.left_side_bearing);
+    stbtt_GetGlyphHMetrics(*info, index, *result.advance, *result.left_side_bearing);
     return result;
 }
 
-get_glyph_hmetrics :: (info: stbtt_fontinfo, glyph_index: s32) -> Glyph_HMetrics {
-    result: Glyph_HMetrics = ---;
-    stbtt_GetGlyphHMetrics(*info, glyph_index, *result.advance, *result.left_side_bearing);
+get_glyph_bitmap_box :: (info: stbtt_fontinfo, index: s32, scale: f32) -> IRect {
+    result: IRect = ---;
+    stbtt_GetGlyphBitmapBox(*info, index, scale, scale, *result.x0, *result.y0, *result.x1, *result.y1);
     return result;
+}
+
+rasterize_glyph :: (info: stbtt_fontinfo, index: s32, out: *u8, out_width: s32, out_height: s32, out_stride: s32, scale: f32) {
+    stbtt_MakeGlyphBitmap(*info, out, out_width, out_height, out_stride, scale, scale, index);
 }
 
 #import "stb_truetype";
