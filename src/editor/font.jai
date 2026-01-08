@@ -68,11 +68,36 @@ make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
     return result;
 }
 
-// XXX: So how and when do we generate the atlas? We could either generate the entire font, but eh?
-// What happens when new characters enter the buffer that are not in the atlas? What does refterm
-// do here?
+// XXX: About the font atlas....
+//
+// Q: So how and when do we generate the atlas? We could either generate the entire font, but isn't
+// that too large? What happens when new characters enter the buffer that are not in the atlas?
+// What does refterm do here?
+//
+// A: So refterm is monospace. Its glyph cache is a regular grid. It LRU-recycles cells of that grid
+// as necessary, and the grid is large enough to fit the entire screen full of pixels, even if the
+// entire screen is filled with entirely unique glyphs. (I assume the entire cache is flushed when
+// font size changes.)
+//
+// The state of each grid cell is then tracked. It can be either unused, or
+// rasterized-and-uploaded. The GPU uploads happen by subregions (or it just sends the bounding
+// box).
+//
+// Now this is all quite elegant for monospace, but is there a way to adapt this for proportional
+// fonts? I guess we'd have to start maintaining an atlas allocator or something. The good part is
+// that we can still send incremental patches to the GPU, but we now waste more space, and
+// allocation/deallocation is no longer just about LRU, but maybe we want to start thinking about
+// freeing the most space, etc.
+//
+// So we start with monospace, and nuke the cache on font size change.
 
-layout_text :: (font: *Font, font_size: f32, text: string) -> [..] Render_Rect {
+// This function does it all. Starts at the top of the screen (which we should fast means of
+// finding), and keeps processing text until we leave the screen. Processing means doing layout
+// based on metrics, but also ensuring the glyph is in the cache, and maintaining a list of patches
+// to the texture on the GPU.
+//
+// XXX: Should we do it all in a single pass? What does refterm do here?
+layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Render_Rect {
     result: [..] Render_Rect;
 
     // XXX: HERE Do the layout... In a single-pass way? Also we should probably take in some
