@@ -90,6 +90,13 @@ make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
 // freeing the most space, etc.
 //
 // So we start with monospace, and nuke the cache on font size change.
+//
+// UPDATE: After watching Casey's refterm cache video, I think we could adapt his farsi (ligature?
+// ... we should verify if ligature widths have to be a multiple of the single-length character
+// widths) code to support proportional fonts... by splitting the rasterized glyph into multiple
+// slots in the atlas.
+//
+// UPDATE: To support ligatures, the input has to be the entire ligature... (multiple codepoints).
 
 // This function does it all. Starts at the top of the screen (which we should fast means of
 // finding), and keeps processing text until we leave the screen. Processing means doing layout
