@@ -67,5 +67,34 @@ main :: () {
         return { info.dwPageSize, mem_reserve, mem_release, mem_commit, mem_decommit };
     }
 } else #if OS_IS_UNIX {
+    make_procs :: () -> Arena_Procs {
+        P :: #import "POSIX";
 
+        mem_reserve :: (size: s64) -> *void {
+            result := P.mmap(null, cast(u64, size), P.PROT_NONE, P.MAP_PRIVATE | P.MAP_ANONYMOUS, 0, 0);
+            if result == P.MAP_FAILED {
+                result = null;
+            }
+
+            return result;
+        }
+
+        mem_release :: (pointer: *void, size: s64) {
+            P.munmap(pointer, cast(u64, size));
+        }
+
+        mem_commit :: (pointer: *void, size: s64) -> bool {
+            result := P.mprotect(pointer, cast(u64, size), P.PROT_READ | P.PROT_WRITE);
+            return result == 0;
+        }
+
+        mem_decommit :: (pointer: *void, size: s64) {
+            P.madvise(pointer, cast(u64, size), P.MADV_DONTNEED);
+            P.mprotect(pointer, cast(u64, size), P.PROT_NONE);
+        }
+
+        page_size := P.sysconf(P._SC_PAGE_SIZE);
+
+        return { page_size, mem_reserve, mem_release, mem_commit, mem_decommit };
+    }
 }
