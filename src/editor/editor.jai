@@ -65,7 +65,7 @@ init :: (editor: *Editor, platform: Platform) {
     xxx_foozle := arena_push(*editor.perm_arena, [8000] u8);
     xxx_foozle.*[0] = 42;
 
-    layout_text(*editor.fonts[0], 20, "Hello");
+    layout_and_draw_text(*editor.fonts[0], 20, "Hello");
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, input: Input, render_lists: *Render_Lists) -> bool {
