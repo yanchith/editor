@@ -26,7 +26,8 @@ f64 :: float64;
 #import "Basic";
 #import "Arena";
 
-Math  :: #import "Math";
+Math    :: #import "Math";
+Unicode :: #import "Unicode";
 
 Vector2 :: Math.Vector2;
 Vector4 :: Math.Vector4;
@@ -50,18 +51,21 @@ init :: (editor: *Editor, platform: Platform) {
     editor.fonts.allocator = { arena_allocator_proc, *editor.perm_arena };
 
     {
-        success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, temp);
+        arena: Arena;
+        arena.procs = procs;
+
+        success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(*arena));
         assert(success);
 
-        font_arena: Arena;
-        font_arena.procs = procs;
-        default_font : Font = make_font(font_arena, ttf_buffer);
+        default_font : Font = make_font(arena, ttf_buffer);
 
         array_add(*editor.fonts, default_font);
     }
 
     xxx_foozle := arena_push(*editor.perm_arena, [8000] u8);
     xxx_foozle.*[0] = 42;
+
+    layout_text(*editor.fonts[0], 20, "Hello");
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, input: Input, render_lists: *Render_Lists) -> bool {
