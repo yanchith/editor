@@ -1,0 +1,12 @@
+modules/Hash_Table
+
+// You need to pay attention to 'success' because if it's false,
+// the return value will be uninitialized.
+
+Not uninitialized anymore, just default.
+
+//
+// End of deprecated routines.
+//
+
+There is no deprecated routine anymore.
