@@ -25,6 +25,7 @@ f64 :: float64;
 
 #import "Basic";
 #import "Arena";
+#import "Table";
 
 Math    :: #import "Math";
 Unicode :: #import "Unicode";
