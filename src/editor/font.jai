@@ -34,11 +34,6 @@ FONT_ATLAS_ALIGNMENT :: 16;
 
 FONT_PIXEL_HEIGHT: f32 = 12;
 
-// TODO(jt): Turn this into a LRU cache for rasterized glyphs and their metrics of various sizes.
-// However, if we use proportional fonts, we can't easily compute the cell size for a rasterized
-// glyph, so we'd have to support multiple size classes at once. Even if we stick to monospace
-// fonts, the user can change the size, but in this case at least we could drop the cache and start
-// over in our nicely regular monospace world.
 Font :: struct {
     arena: Arena;
     arena_mark: Arena_Mark;
@@ -122,36 +117,6 @@ make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
 
     return font;
 }
-
-// XXX: About the font atlas....
-//
-// Q: So how and when do we generate the atlas? We could either generate the entire font, but isn't
-// that too large? What happens when new characters enter the buffer that are not in the atlas?
-// What does refterm do here?
-//
-// A: So refterm is monospace. Its glyph cache is a regular grid. It LRU-recycles cells of that grid
-// as necessary, and the grid is large enough to fit the entire screen full of pixels, even if the
-// entire screen is filled with entirely unique glyphs. (I assume the entire cache is flushed when
-// font size changes.)
-//
-// The state of each grid cell is then tracked. It can be either unused, or
-// rasterized-and-uploaded. The GPU uploads happen by subregions (or it just sends the bounding
-// box).
-//
-// Now this is all quite elegant for monospace, but is there a way to adapt this for proportional
-// fonts? I guess we'd have to start maintaining an atlas allocator or something. The good part is
-// that we can still send incremental patches to the GPU, but we now waste more space, and
-// allocation/deallocation is no longer just about LRU, but maybe we want to start thinking about
-// freeing the most space, etc.
-//
-// So we start with monospace, and nuke the cache on font size change.
-//
-// UPDATE: After watching Casey's refterm cache video
-// (https://youtu.be/cGoQ3ceKX6g?si=aWlLDyDyHTFjrfMc), I think we could adapt his farsi (ligature?)
-// code to support proportional fonts... by splitting the rasterized glyph into multiple slots in
-// the atlas.
-//
-// UPDATE: To support ligatures, the input has to be the entire ligature... (multiple codepoints).
 
 start_frame :: (font: *Font) {
     font.glyph_cache_stamp += 1;
