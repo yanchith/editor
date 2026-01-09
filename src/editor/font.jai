@@ -32,7 +32,6 @@
 
 FONT_ATLAS_ALIGNMENT :: 16;
 
-GLYPH_CACHE_SIZE :: 32;
 FONT_PIXEL_HEIGHT: f32 = 12;
 
 // TODO(jt): Turn this into a LRU cache for rasterized glyphs and their metrics of various sizes.
@@ -44,15 +43,17 @@ Font :: struct {
     arena: Arena;
     arena_mark: Arena_Mark;
 
-
-    atlas: *u8;
-    atlas_width: u16;
-    atlas_height: u16;
-
-    vmetrics: Font_VMetrics;
-    scale: f32;
-
     info: stbtt_fontinfo;
+
+    font_vmetrics: Font_VMetrics;
+    font_bounding_box: IRect;
+    font_scale: f32;
+
+    // Glyph cache stuff...
+    glyph_atlas: *u8;
+    glyph_atlas_width: s32;
+    glyph_atlas_height: s32;
+    glyph_table: [] Glyph_Table_Entry;
 }
 
 Font_VMetrics :: struct {
@@ -66,30 +67,61 @@ Glyph_HMetrics :: struct {
     left_side_bearing: s32;
 }
 
+Glyph_Table_Entry :: struct {
+    hit_count: u64;
+    prev: s32;
+    next: s32;
+
+    atlas_x: u16;
+    atlas_y: u16;
+
+    state: Glyph_Table_Entry_State;
+
+    // TODO(jt): @Memory Get rid of padding if we can?
+}
+
+Glyph_Table_Entry_State :: enum u8 {
+    EMPTY      :: 0;
+    OCCUPIED   :: 1;
+}
+
 // The caller has to keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
 make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
-    INITIAL_WIDTH  :: 1024;
-    INITIAL_HEIGHT :: 1024;
+    ATLAS_WIDTH_IN_CELLS  :: 64;
+    ATLAS_HEIGHT_IN_CELLS :: 64;
 
     arena_mark := arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
 
     info: stbtt_fontinfo;
     stbtt_InitFont(*info, ttf_buffer.data, stbtt_GetFontOffsetForIndex(ttf_buffer.data, 0));
 
-    result: Font;
-    result.arena = arena;
-    result.arena_mark = arena_mark;
+    font: Font;
+    font.arena      = arena;
+    font.arena_mark = arena_mark;
 
-    result.atlas = arena_push(*arena, INITIAL_WIDTH * INITIAL_HEIGHT, FONT_ATLAS_ALIGNMENT);
-    result.atlas_width  = INITIAL_WIDTH;
-    result.atlas_height = INITIAL_HEIGHT;
+    font.info = info;
 
-    result.vmetrics = get_font_vmetrics(info);
-    result.scale = get_font_scale_for_pixel_height(info, FONT_PIXEL_HEIGHT);
+    font.font_vmetrics     = get_font_vmetrics(info);
+    font.font_bounding_box = get_font_bounding_box(info);
+    font.font_scale        = get_font_scale_for_pixel_height(info, FONT_PIXEL_HEIGHT);
 
-    result.info = info;
+    max_glyph_width  := font.font_bounding_box.x1 - font.font_bounding_box.x0;
+    max_glyph_height := font.font_bounding_box.y1 - font.font_bounding_box.y0;
 
-    return result;
+    atlas_width  := ATLAS_WIDTH_IN_CELLS * max_glyph_width;
+    atlas_height := ATLAS_HEIGHT_IN_CELLS * max_glyph_height;
+    table_size   := atlas_width * atlas_height;
+
+    assert(is_power_of_two(table_size));
+
+    font.glyph_atlas        = arena_push(*arena, atlas_width * atlas_height, FONT_ATLAS_ALIGNMENT);
+    font.glyph_atlas_width  = atlas_width;
+    font.glyph_atlas_height = atlas_height;
+    font.glyph_table        = NewArray(table_size, Glyph_Table_Entry,, arena_allocator(*font.arena));
+
+    link_initial_glyph_table(font.glyph_table);
+
+    return font;
 }
 
 // XXX: About the font atlas....
@@ -135,16 +167,33 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Rend
     // starting state and return some end state, so that this can be called incrementally.
 
     for :Unicode.utf8_iter text {
-        gi := get_glyph_index(font.info, it);
+        glyph_index := get_glyph_index(font.info, it);
 
-        gbox := get_glyph_bitmap_box(font.info, gi, font.scale);
-        gw   := gbox.x1 - gbox.x0;
-        gh   := gbox.y1 - gbox.y0;
+        glyph_metrics := get_glyph_hmetrics(font.info, glyph_index);
+        glyph_box     := get_glyph_bitmap_box(font.info, glyph_index, font.font_scale);
 
-        print("%", gbox);
+        glyph_width  := glyph_box.x1 - glyph_box.x0;
+        glyph_height := glyph_box.y1 - glyph_box.y0;
 
-        rasterize_glyph(font.info, gi, font.atlas, gw, gh, font.atlas_width, font.scale);
-        print("C: % % %\n", it, gi, get_glyph_hmetrics(font.info, gi));
+
+        glyph_cache_x: u16;
+        glyph_cache_y: u16;
+        entry := table_find_pointer(*font.glyph_cache_table, glyph_index);
+        if entry {
+            glyph_cache_x = entry.x;
+            glyph_cache_y = entry.y;
+        } else {
+            rasterize_glyph(
+                font.info,
+                glyph_index,
+                font.glyph_cache_atlas,
+                glyph_width,
+                glyph_height,
+                font.glyph_cache_atlas_width,
+                font.font_scale,
+            );
+        }
+
     }
 
     return result;
@@ -152,9 +201,24 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Rend
 
 #scope_file
 
+link_initial_glyph_table :: (glyph_table: [] Glyph_Table_Entry) {
+    for * font.glyph_table {
+        it.prev = it_index - 1;
+        it.next = it_index + 1;
+    }
+    font.glyph_table[0].prev = -1;
+    font.glyph_table[font.glyph_table.count - 1].next = -1;
+}
+
 get_font_vmetrics :: (info: stbtt_fontinfo) -> Font_VMetrics {
     result: Font_VMetrics = ---;
     stbtt_GetFontVMetrics(*info, *result.ascent, *result.descent, *result.line_gap);
+    return result;
+}
+
+get_font_bounding_box :: (info: stbtt_fontinfo) -> IRect {
+    result: IRect = ---;
+    stbtt_GetFontBoundingBox(*info, *result.x0, *result.y0, *result.x1, *result.y1);
     return result;
 }
 
@@ -182,4 +246,8 @@ rasterize_glyph :: (info: stbtt_fontinfo, index: s32, out: *u8, out_width: s32, 
     stbtt_MakeGlyphBitmap(*info, out, out_width, out_height, out_stride, scale, scale, index);
 }
 
-#import "stb_truetype";
+is_power_of_two :: inline (value: s64) -> bool {
+    return value & (value - 1) == 0;
+}
+
+#import "stb_truetype"; // Move to scope exported scope, since the info field is visible anyway?
