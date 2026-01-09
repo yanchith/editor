@@ -48,7 +48,7 @@ init :: (editor: *Editor, platform: Platform) {
     procs := make_arena_procs(platform);
     editor.perm_arena.procs = procs;
 
-    editor.fonts.allocator = { arena_allocator_proc, *editor.perm_arena };
+    editor.fonts.allocator = arena_allocator(*editor.perm_arena);
 
     {
         arena: Arena;
