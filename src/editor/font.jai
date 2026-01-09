@@ -57,9 +57,11 @@ Font :: struct {
     glyph_atlas_width: s32;
     glyph_atlas_height: s32;
     glyph_entries: [] Glyph_Entry;
-    glyph_entries_lru_index: s32;
-    glyph_table: Table(s32, s32); // TODO(jt): @Speed @Memory Remove this hash table and do hashing over glyph_entries directly.
-    glyph_cache_stamp: u64;       // Assumed to never overflow.
+    glyph_entries_head: s32;
+    glyph_entries_tail: s32;
+    // TODO(jt): @Speed @Memory Remove this hash table and do hashing over glyph_entries directly. We'll have to make the size of power of two, etc.
+    glyph_table: Table(s32, s32);
+    glyph_cache_stamp: u32;       // This can overflow. We only ever compare it for equality to detect same-frame evictions.
 }
 
 Font_VMetrics :: struct {
@@ -74,12 +76,11 @@ Glyph_HMetrics :: struct {
 }
 
 Glyph_Entry :: struct {
-    stamp: u64;
+    stamp: u32;
     prev: s32;
     next: s32;
 
-    // TODO(jt): Remove codepoint so we get rid of padding?
-    codepoint: u32; // Just here for validation?
+    glyph_index: s32; // So that we can remove it from the hash table.
 }
 
 // The caller has to keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
@@ -107,17 +108,17 @@ make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
 
     atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width;
     atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height;
-    table_size   := atlas_width * atlas_height;
+    table_size   := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
 
-    assert(is_power_of_two(table_size));
-
-    font.glyph_atlas        = arena_push(*arena, atlas_width * atlas_height, FONT_ATLAS_ALIGNMENT);
+    font.glyph_atlas        = arena_push(*font.arena, atlas_width * atlas_height, FONT_ATLAS_ALIGNMENT);
     font.glyph_atlas_width  = atlas_width;
     font.glyph_atlas_height = atlas_height;
     font.glyph_entries      = NewArray(table_size, Glyph_Entry,, arena_allocator(*font.arena));
-    font.glyph_entries_lru_index = 0;
+    font.glyph_table.allocator = arena_allocator(*font.arena);
 
-    link_initial_glyph_entries(font.glyph_entries);
+    table_ensure_space(*font.glyph_table, table_size);
+
+    link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 
     return font;
 }
@@ -152,19 +153,14 @@ make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
 //
 // UPDATE: To support ligatures, the input has to be the entire ligature... (multiple codepoints).
 
-// This function does it all. Starts at the top of the screen (which we should fast means of
-// finding), and keeps processing text until we leave the screen. Processing means doing layout
-// based on metrics, but also ensuring the glyph is in the cache, and maintaining a list of patches
-// to the texture on the GPU.
-//
-// XXX: Should we do it all in a single pass? What does refterm do here?
-layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Render_Rect {
-    result: [..] Render_Rect;
-
+start_frame :: (font: *Font) {
     font.glyph_cache_stamp += 1;
+}
 
-    // XXX: HERE Do the layout... In a single-pass way? Also we should probably take in some
-    // starting state and return some end state, so that this can be called incrementally.
+layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Render_Rect, cache_hits: s64, cache_misses: s64 {
+    result: [..] Render_Rect;
+    cache_hits: s64;
+    cache_misses: s64;
 
     for :Unicode.utf8_iter text {
         glyph_index := get_glyph_index(font.info, it);
@@ -175,35 +171,48 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Rend
         glyph_width  := glyph_box.x1 - glyph_box.x0;
         glyph_height := glyph_box.y1 - glyph_box.y0;
 
+        glyph_cell_x_in_atlas: s32;
+        glyph_cell_y_in_atlas: s32;
 
-        glyph_atlas_x: s32;
-        glyph_atlas_y: s32;
-        entry_index := table_find_pointer(*font.glyph_table, glyph_index);
-        if entry_location {
+        entry_index_pointer := table_find_pointer(*font.glyph_table, glyph_index);
+        if entry_index_pointer {
+            cache_hits += 1;
+
+            entry_index := entry_index_pointer.*;
             entry := *font.glyph_entries[entry_index];
-            assert(entry.codepoint == it);
+            assert(entry.glyph_index == glyph_index);
 
             // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
-            glyph_atlas_x = entry_index % font.glyph_atlas_width;
-            glyph_atlas_y = entry_index / font.glyph_atlas_height;
+            glyph_cell_x_in_atlas = entry_index % font.glyph_atlas_width;
+            glyph_cell_y_in_atlas = entry_index / font.glyph_atlas_height;
 
-            entry.stamp = glyph_cache_stamp;
+            entry.stamp = font.glyph_cache_stamp;
 
-            update_lru_list(font.flyph_enries, entry_index);
+            move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
         } else {
-            entry := *font.glyph_entries[font.glyph_entries_lru_index];
-            assert(entry.stamp < font.glyph_cache_stamp); // We would be evicting something we need this frame. Could do pipeline flush instead.
+            cache_misses += 1;
 
-            entry.stamp = glyph_cache_stamp;
-            entry.codepoint = it;
+            entry_index := font.glyph_entries_head;
+            entry := *font.glyph_entries[entry_index];
+
+            // We can't overwrite an entry we wrote to this frame. We would be evicting something we
+            // need this frame. If we really want to handle this case, we could flusb our rendering
+            // here and continue where we left of, but better to just have a larger cache. Also, we
+            // don't need to assert and can just log an error and overwrite.
+            assert(entry.stamp != font.glyph_cache_stamp);
+
+            table_remove(*font.glyph_table, entry.glyph_index);
+
+            entry.stamp = font.glyph_cache_stamp;
+            entry.glyph_index = glyph_index;
 
             // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
-            glyph_atlas_x = entry_index % font.glyph_atlas_width;
-            glyph_atlas_y = entry_index / font.glyph_atlas_height;
+            glyph_cell_x_in_atlas = entry_index % font.glyph_atlas_width;
+            glyph_cell_y_in_atlas = entry_index / font.glyph_atlas_height;
 
-            update_lru_list(font.glyph_entries, font.glyph_entries_lru_index);
+            move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, font.glyph_entries_head);
 
-            out := font.glyph_atlas + font.glyph_atlas_width * glyph_atlas_y * font.max_glyph_height + glyph_atlas_x * font.max_glyph_width;
+            out := font.glyph_atlas + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height + glyph_cell_x_in_atlas * font.max_glyph_width;
             // TODO(jt): This does not clear previous cell to zero, which we maybe should?
             rasterize_glyph(
                 font.info,
@@ -211,24 +220,48 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Rend
                 out,
                 glyph_width,
                 glyph_height,
-                font.glyph_cache_atlas_width,
+                font.glyph_atlas_width,
                 font.font_scale,
             );
         }
     }
 
-    return result;
+    return result, cache_hits, cache_misses;
 }
 
 #scope_file
 
-link_initial_glyph_entries :: (glyph_entries: [] Glyph_Entry) {
-    for * glyph_entries {
-        it.prev = it_index - 1;
-        it.next = it_index + 1;
+link_initial_glyph_entries :: (entries: [] Glyph_Entry, head_index: *s32, tail_index: *s32) {
+    for * entries {
+        it.prev = cast(s32, it_index - 1);
+        it.next = cast(s32, it_index + 1);
     }
-    glyph_entries[0].prev = -1;
-    glyph_entries[glyph_entries.count - 1].next = -1;
+    entries[0].prev = -1;
+    entries[entries.count - 1].next = -1;
+
+    head_index.* = 0;
+    tail_index.* = cast(s32, entries.count - 1);
+}
+
+move_back_glyph_entry :: (entries: [] Glyph_Entry, head_index: *s32, tail_index: *s32, index: s32) {
+    entry := *entries[index];
+
+    if head_index.* == index {
+        head_index.* = entry.next;
+    }
+
+    if entry.prev >= 0 {
+        entries[entry.prev].next = entry.next;
+    }
+
+    if entry.next >= 0 {
+        entries[entry.next].prev = entry.prev;
+    }
+
+    entry.prev = tail_index.*;
+    entry.next = -1;
+
+    entries[tail_index.*].next = index;
 }
 
 get_font_vmetrics :: (info: stbtt_fontinfo) -> Font_VMetrics {
@@ -265,10 +298,6 @@ get_glyph_bitmap_box :: (info: stbtt_fontinfo, index: s32, scale: f32) -> IRect 
 
 rasterize_glyph :: (info: stbtt_fontinfo, index: s32, out: *u8, out_width: s32, out_height: s32, out_stride: s32, scale: f32) {
     stbtt_MakeGlyphBitmap(*info, out, out_width, out_height, out_stride, scale, scale, index);
-}
-
-is_power_of_two :: inline (value: s64) -> bool {
-    return value & (value - 1) == 0;
 }
 
 #import "stb_truetype"; // Move to scope exported scope, since the info field is visible anyway?
