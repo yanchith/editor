@@ -49,11 +49,17 @@ Font :: struct {
     font_bounding_box: IRect;
     font_scale: f32;
 
+    max_glyph_width: s32;
+    max_glyph_height: s32;
+
     // Glyph cache stuff...
     glyph_atlas: *u8;
     glyph_atlas_width: s32;
     glyph_atlas_height: s32;
-    glyph_table: [] Glyph_Table_Entry;
+    glyph_entries: [] Glyph_Entry;
+    glyph_entries_lru_index: s32;
+    glyph_table: Table(s32, s32); // TODO(jt): @Speed @Memory Remove this hash table and do hashing over glyph_entries directly.
+    glyph_cache_stamp: u64;       // Assumed to never overflow.
 }
 
 Font_VMetrics :: struct {
@@ -67,22 +73,13 @@ Glyph_HMetrics :: struct {
     left_side_bearing: s32;
 }
 
-Glyph_Table_Entry :: struct {
-    hit_count: u64;
+Glyph_Entry :: struct {
+    stamp: u64;
     prev: s32;
     next: s32;
 
-    atlas_x: u16;
-    atlas_y: u16;
-
-    state: Glyph_Table_Entry_State;
-
-    // TODO(jt): @Memory Get rid of padding if we can?
-}
-
-Glyph_Table_Entry_State :: enum u8 {
-    EMPTY      :: 0;
-    OCCUPIED   :: 1;
+    // TODO(jt): Remove codepoint so we get rid of padding?
+    codepoint: u32; // Just here for validation?
 }
 
 // The caller has to keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
@@ -105,11 +102,11 @@ make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
     font.font_bounding_box = get_font_bounding_box(info);
     font.font_scale        = get_font_scale_for_pixel_height(info, FONT_PIXEL_HEIGHT);
 
-    max_glyph_width  := font.font_bounding_box.x1 - font.font_bounding_box.x0;
-    max_glyph_height := font.font_bounding_box.y1 - font.font_bounding_box.y0;
+    font.max_glyph_width  = font.font_bounding_box.x1 - font.font_bounding_box.x0;
+    font.max_glyph_height = font.font_bounding_box.y1 - font.font_bounding_box.y0;
 
-    atlas_width  := ATLAS_WIDTH_IN_CELLS * max_glyph_width;
-    atlas_height := ATLAS_HEIGHT_IN_CELLS * max_glyph_height;
+    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width;
+    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height;
     table_size   := atlas_width * atlas_height;
 
     assert(is_power_of_two(table_size));
@@ -117,9 +114,10 @@ make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
     font.glyph_atlas        = arena_push(*arena, atlas_width * atlas_height, FONT_ATLAS_ALIGNMENT);
     font.glyph_atlas_width  = atlas_width;
     font.glyph_atlas_height = atlas_height;
-    font.glyph_table        = NewArray(table_size, Glyph_Table_Entry,, arena_allocator(*font.arena));
+    font.glyph_entries      = NewArray(table_size, Glyph_Entry,, arena_allocator(*font.arena));
+    font.glyph_entries_lru_index = 0;
 
-    link_initial_glyph_table(font.glyph_table);
+    link_initial_glyph_entries(font.glyph_entries);
 
     return font;
 }
@@ -163,6 +161,8 @@ make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
 layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Render_Rect {
     result: [..] Render_Rect;
 
+    font.glyph_cache_stamp += 1;
+
     // XXX: HERE Do the layout... In a single-pass way? Also we should probably take in some
     // starting state and return some end state, so that this can be called incrementally.
 
@@ -176,24 +176,45 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Rend
         glyph_height := glyph_box.y1 - glyph_box.y0;
 
 
-        glyph_cache_x: u16;
-        glyph_cache_y: u16;
-        entry := table_find_pointer(*font.glyph_cache_table, glyph_index);
-        if entry {
-            glyph_cache_x = entry.x;
-            glyph_cache_y = entry.y;
+        glyph_atlas_x: s32;
+        glyph_atlas_y: s32;
+        entry_index := table_find_pointer(*font.glyph_table, glyph_index);
+        if entry_location {
+            entry := *font.glyph_entries[entry_index];
+            assert(entry.codepoint == it);
+
+            // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
+            glyph_atlas_x = entry_index % font.glyph_atlas_width;
+            glyph_atlas_y = entry_index / font.glyph_atlas_height;
+
+            entry.stamp = glyph_cache_stamp;
+
+            update_lru_list(font.flyph_enries, entry_index);
         } else {
+            entry := *font.glyph_entries[font.glyph_entries_lru_index];
+            assert(entry.stamp < font.glyph_cache_stamp); // We would be evicting something we need this frame. Could do pipeline flush instead.
+
+            entry.stamp = glyph_cache_stamp;
+            entry.codepoint = it;
+
+            // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
+            glyph_atlas_x = entry_index % font.glyph_atlas_width;
+            glyph_atlas_y = entry_index / font.glyph_atlas_height;
+
+            update_lru_list(font.glyph_entries, font.glyph_entries_lru_index);
+
+            out := font.glyph_atlas + font.glyph_atlas_width * glyph_atlas_y * font.max_glyph_height + glyph_atlas_x * font.max_glyph_width;
+            // TODO(jt): This does not clear previous cell to zero, which we maybe should?
             rasterize_glyph(
                 font.info,
                 glyph_index,
-                font.glyph_cache_atlas,
+                out,
                 glyph_width,
                 glyph_height,
                 font.glyph_cache_atlas_width,
                 font.font_scale,
             );
         }
-
     }
 
     return result;
@@ -201,13 +222,13 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Rend
 
 #scope_file
 
-link_initial_glyph_table :: (glyph_table: [] Glyph_Table_Entry) {
-    for * font.glyph_table {
+link_initial_glyph_entries :: (glyph_entries: [] Glyph_Entry) {
+    for * glyph_entries {
         it.prev = it_index - 1;
         it.next = it_index + 1;
     }
-    font.glyph_table[0].prev = -1;
-    font.glyph_table[font.glyph_table.count - 1].next = -1;
+    glyph_entries[0].prev = -1;
+    glyph_entries[glyph_entries.count - 1].next = -1;
 }
 
 get_font_vmetrics :: (info: stbtt_fontinfo) -> Font_VMetrics {
