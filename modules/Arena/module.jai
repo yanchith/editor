@@ -166,6 +166,9 @@ arena_push :: (arena: *Arena, $T: Type) -> *T {
 }
 
 arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
+    assert(size > 0);
+    assert(alignment > 0 && is_power_of_two(alignment));
+
     if !arena.memory_start {
         arena_init(arena);
     }

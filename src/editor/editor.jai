@@ -25,7 +25,7 @@ f64 :: float64;
 
 #import "Basic";
 #import "Arena";
-#import "Table";
+#import "Hash_Table";
 
 Math    :: #import "Math";
 Unicode :: #import "Unicode";
@@ -66,7 +66,8 @@ init :: (editor: *Editor, platform: Platform) {
     xxx_foozle := arena_push(*editor.perm_arena, [8000] u8);
     xxx_foozle.*[0] = 42;
 
-    layout_and_draw_text(*editor.fonts[0], 20, "Hello");
+    start_frame(*editor.fonts[0]);
+    layout_and_draw_text(*editor.fonts[0], 20, TEXT);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, input: Input, render_lists: *Render_Lists) -> bool {
@@ -84,3 +85,7 @@ make_arena_procs :: (platform: Platform) -> Arena_Procs {
         platform.mem_decommit,
     };
 }
+
+TEXT :: #string DONE
+But I must explain to you how all this mistaken idea of denouncing pleasure and praising pain was born and I will give you a complete account of the system, and expound the actual teachings of the great explorer of the truth, the master-builder of human happiness.
+DONE
