@@ -1,24 +1,9 @@
-// XXX: HERE Do this next!
-//
-// For character rasterization and metrics extraction, try using stb_truetype. If it fails, try
+// XXX: For character rasterization and metrics extraction, try using stb_truetype. If it fails, try
 // using freetype.
-//
-// If we do software rendering, we don't really care about having a pre-rasterized font atlas, and
-// can just stamp our glyphs out of a font cache. This is appealing, but I am not sure if it will be
-// fast enough.
-//
-// However, if we do GPU rendering, we definitely have to have either a texture array, or an atlas -
-// either way something we must prepare, in which case we'll have to have a glyph cache to atlas
-// packer.
-//
-// The glyph cache (and the atlas, if we do that) could just grow indefinitely as we keep requesting
-// new characters at new sizes to draw. The grows of font atlases could be somewhat controlled
-// byrasterizing the entire unicode range of that character.
-//
 //
 // TODO(jt): Features:
 //
-// - [ ] basic layout
+// - [ ] Basic text layout
 // - [ ] kerning
 // - [ ] ligatures?
 //
@@ -35,7 +20,7 @@ FONT_ATLAS_ALIGNMENT :: 16;
 FONT_PIXEL_HEIGHT: f32 = 12;
 
 Font :: struct {
-    arena: Arena;
+    arena: *Arena;
     arena_mark: Arena_Mark;
 
     info: stbtt_fontinfo;
@@ -44,8 +29,8 @@ Font :: struct {
     font_bounding_box: IRect;
     font_scale: f32;
 
-    max_glyph_width: s32;
-    max_glyph_height: s32;
+    max_glyph_width_in_pixels: s32;
+    max_glyph_height_in_pixels: s32;
 
     // Glyph cache stuff...
     glyph_atlas: *u8;
@@ -56,16 +41,20 @@ Font :: struct {
     glyph_entries_tail: s32;
     // TODO(jt): @Speed @Memory Remove this hash table and do hashing over glyph_entries directly. We'll have to make the size of power of two, etc.
     glyph_table: Table(s32, s32);
-    glyph_cache_stamp: u32;       // This can overflow. We only ever compare it for equality to detect same-frame evictions.
+    // This can overflow after about 200 days (if we rendered 60 frames every second), but we only
+    // ever compare it for equality to detect same-frame evictions.
+    glyph_cache_stamp: u32;
 }
 
 Font_VMetrics :: struct {
+    // XXX: What units is this? Is this the font 64ths?
     ascent: s32;
     descent: s32;
     line_gap: s32;
 }
 
 Glyph_HMetrics :: struct {
+    // XXX: What units is this? Is this the font 64ths?
     advance: s32;
     left_side_bearing: s32;
 }
@@ -78,8 +67,8 @@ Glyph_Entry :: struct {
     glyph_index: s32; // So that we can remove it from the hash table.
 }
 
-// The caller has to keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
-make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
+// The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
+make_font :: (arena: *Arena, ttf_buffer: [] u8) -> Font {
     ATLAS_WIDTH_IN_CELLS  :: 64;
     ATLAS_HEIGHT_IN_CELLS :: 64;
 
@@ -98,18 +87,18 @@ make_font :: (arena: Arena, ttf_buffer: [] u8) -> Font {
     font.font_bounding_box = get_font_bounding_box(info);
     font.font_scale        = get_font_scale_for_pixel_height(info, FONT_PIXEL_HEIGHT);
 
-    font.max_glyph_width  = font.font_bounding_box.x1 - font.font_bounding_box.x0;
-    font.max_glyph_height = font.font_bounding_box.y1 - font.font_bounding_box.y0;
+    font.max_glyph_width_in_pixels  = cast(s32, ceil(font.font_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0)));
+    font.max_glyph_height_in_pixels = cast(s32, ceil(font.font_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0)));
 
-    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width;
-    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height;
+    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_pixels;
+    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_pixels;
     table_size   := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
 
-    font.glyph_atlas        = arena_push(*font.arena, atlas_width * atlas_height, FONT_ATLAS_ALIGNMENT);
+    font.glyph_atlas        = arena_push(font.arena, atlas_width * atlas_height, FONT_ATLAS_ALIGNMENT);
     font.glyph_atlas_width  = atlas_width;
     font.glyph_atlas_height = atlas_height;
-    font.glyph_entries      = NewArray(table_size, Glyph_Entry,, arena_allocator(*font.arena));
-    font.glyph_table.allocator = arena_allocator(*font.arena);
+    font.glyph_entries      = NewArray(table_size, Glyph_Entry,, arena_allocator(font.arena));
+    font.glyph_table.allocator = arena_allocator(font.arena);
 
     table_ensure_space(*font.glyph_table, table_size);
 
@@ -122,8 +111,7 @@ start_frame :: (font: *Font) {
     font.glyph_cache_stamp += 1;
 }
 
-layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Render_Rect, cache_hits: s64, cache_misses: s64 {
-    result: [..] Render_Rect;
+layout_and_draw_text :: (font: *Font, font_size: f32, text: string, render_rects: *[..] Render_Rect) -> cache_hits: s64, cache_misses: s64 {
     cache_hits: s64;
     cache_misses: s64;
 
@@ -175,9 +163,10 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Rend
             glyph_cell_x_in_atlas = entry_index % font.glyph_atlas_width;
             glyph_cell_y_in_atlas = entry_index / font.glyph_atlas_height;
 
-            move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, font.glyph_entries_head);
+            move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
+            assert(font.glyph_entries_tail == entry_index);
 
-            out := font.glyph_atlas + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height + glyph_cell_x_in_atlas * font.max_glyph_width;
+            out := font.glyph_atlas + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels + glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels;
             // TODO(jt): This does not clear previous cell to zero, which we maybe should?
             rasterize_glyph(
                 font.info,
@@ -188,10 +177,13 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string) -> [..] Rend
                 font.glyph_atlas_width,
                 font.font_scale,
             );
+
+            // XXX: HERE This should not cause the table to reallocate, but it does.
+            table_add(*font.glyph_table, glyph_index, entry_index);
         }
     }
 
-    return result, cache_hits, cache_misses;
+    return cache_hits, cache_misses;
 }
 
 #scope_file
@@ -209,24 +201,25 @@ link_initial_glyph_entries :: (entries: [] Glyph_Entry, head_index: *s32, tail_i
 }
 
 move_back_glyph_entry :: (entries: [] Glyph_Entry, head_index: *s32, tail_index: *s32, index: s32) {
+    if tail_index.* == index {
+        // The entry already is at the tail.
+        return;
+    }
+
     entry := *entries[index];
 
     if head_index.* == index {
         head_index.* = entry.next;
     }
 
-    if entry.prev >= 0 {
-        entries[entry.prev].next = entry.next;
-    }
-
-    if entry.next >= 0 {
-        entries[entry.next].prev = entry.prev;
-    }
+    if entry.prev >= 0  entries[entry.prev].next = entry.next;
+    if entry.next >= 0  entries[entry.next].prev = entry.prev;
 
     entry.prev = tail_index.*;
     entry.next = -1;
 
     entries[tail_index.*].next = index;
+    tail_index.* = index;
 }
 
 get_font_vmetrics :: (info: stbtt_fontinfo) -> Font_VMetrics {
