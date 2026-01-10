@@ -1,13 +1,10 @@
 /*
 
-XXX: HERE Stuff to do:
+XXX: Stuff to do:
 
 - [X] Implement Arena, or use Flat_Pool.
-- [ ] Load Font
-- [ ] Rasterize Font
-- [ ] Display Font
-- [ ] Kerning
-- [ ] Ligatures
+- [ ] Display text on screen
+- [ ] Font Kerning
 
 - [ ] Load file/Save file
 - [ ] Basic file navigation
@@ -32,6 +29,7 @@ Unicode :: #import "Unicode";
 
 Vector2 :: Math.Vector2;
 Vector4 :: Math.Vector4;
+ceil    :: Math.ceil;
 
 #load "math.jai";
 #load "platform.jai";
@@ -40,37 +38,34 @@ Vector4 :: Math.Vector4;
 #load "font.jai";
 
 Editor :: struct {
-    perm_arena:  Arena;
+    perm_arena: *Arena;
 
     fonts: [..] Font;
 }
 
 init :: (editor: *Editor, platform: Platform) {
-    procs := make_arena_procs(platform);
-    editor.perm_arena.procs = procs;
+    arena_procs := make_arena_procs(platform);
+    editor.perm_arena = arena_allocate(arena_procs);
 
-    editor.fonts.allocator = arena_allocator(*editor.perm_arena);
+    editor.fonts.allocator = arena_allocator(editor.perm_arena);
 
     {
-        arena: Arena;
-        arena.procs = procs;
+        arena := arena_allocate(arena_procs);
 
-        success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(*arena));
+        success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(arena));
         assert(success);
 
-        default_font : Font = make_font(arena, ttf_buffer);
+        default_font: Font = make_font(arena, ttf_buffer);
 
         array_add(*editor.fonts, default_font);
     }
 
-    xxx_foozle := arena_push(*editor.perm_arena, [8000] u8);
-    xxx_foozle.*[0] = 42;
-
-    start_frame(*editor.fonts[0]);
-    layout_and_draw_text(*editor.fonts[0], 20, TEXT);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, input: Input, render_lists: *Render_Lists) -> bool {
+    start_frame(*editor.fonts[0]);
+    hits, misses := layout_and_draw_text(*editor.fonts[0], 20, TEXT, *render_lists.buffer);
+
     return false;
 }
 
