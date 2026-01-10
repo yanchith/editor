@@ -99,17 +99,41 @@ Arena_Procs :: struct {
 }
 
 Arena :: struct {
-    // Things given by the caller. At least procs must be manually set.
+    // Things given by the caller before arena_init or new_arena. At least procs must be manually set. Don't change them after init.
     procs: Arena_Procs;
     reserve_size := ARENA_DEFAULT_RESERVE_SIZE; // How much memory we reserve, aligned to page size. Can't get more.
     commit_size  := ARENA_DEFAULT_COMMIT_SIZE;  // The minimal size that is committed, aligned to page size.
     keep_size    := ARENA_DEFAULT_KEEP_SIZE;    // The minimal size that is not decommitted once it has been committed, aligned to page size.
+
+    // Internal stuff...
 
     memory_start: *void;
     memory_end:   *void;
 
     allocated: s64;
     committed: s64;
+}
+
+// Allocate a new arena in its own memory and returns pointer to itself. This is useful, if you want
+// to store the handle to the arena close to where it's being used instead of keeping it alive by
+// storing it on the stack above the code that uses it, but you don't have to use it this way.
+//
+// This routine tweaks the arena's keep_size so that it never overwrites its own data.
+arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZE, commit_size := ARENA_DEFAULT_COMMIT_SIZE, keep_size := ARENA_DEFAULT_KEEP_SIZE) -> *Arena {
+    arena: Arena;
+    arena.procs = procs;
+
+    // Aligning happens in arena_init.
+    arena.reserve_size = reserve_size;
+    arena.commit_size  = commit_size;
+    arena.keep_size    = max(size_of(Arena), keep_size);
+
+    arena_init(*arena);
+
+    pointer := arena_push(*arena, Arena);
+    pointer.* = arena;
+
+    return pointer;
 }
 
 arena_init :: (arena: *Arena) {
