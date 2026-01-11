@@ -7,7 +7,7 @@ String :: #import "String";
 File   :: #import "File";
 Window :: #import "Window_Creation";
 Input  :: #import "Input";
-Simp   :: #import "Simp";
+Simp   :: #import "Simp"; // TODO(jt): Make our own simple renderer on Vulkan and Metal? SGPU? WGPU? Something.
 Editor :: #import,file "editor/editor.jai";
 
 main :: () {
@@ -100,8 +100,29 @@ main :: () {
             return success, cast([] u8, data);
         }
 
+        renderer: Editor.Renderer;
+        renderer_textures: Table(s32, Simp.Texture);
+        renderer.create_texture_r8unorm = (texture_id: Texture_ID, widht: s32, height: s32, data: [] u8) {
+            bitmap: Simp.Bitmap;
+            Simp.bitmap_alloc(*bitmap, width, height, .R8,, temp);
+            bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // Don't have to free, because it is in temp.
+
+            assert(bitmap.data.count == data.count);
+            memcpy(bitmap.data, data, data.count);
+
+            texture: Simp.Texture;
+            Simp.texture_load_from_bitmap(*texture, *bitmap);
+            // XXX: Continue HERE
+        }
+        renderer.update_texture_regions_r8unorm = (texture_id: Texture_ID, regions: IRect, data: [] u8) {
+
+        }
+        renderer.draw_rects = (render_rects: [] Render_Rect) {
+
+        }
+
         editor: Editor.Editor;
-        Editor.init(*editor, platform);
+        Editor.init(*editor, platform, renderer);
 
         should_run := true;
         while should_run {
@@ -115,9 +136,6 @@ main :: () {
 
             input: Editor.Input;
             // TODO(jt): Fill in input.
-
-            render_lists: Editor.Render_Lists;
-            render_lists.buffer.allocator = temp;
 
             Input.update_window_events();
             for Input.get_window_resizes() {
@@ -149,13 +167,16 @@ main :: () {
                 input.mouse_position = .{ cast(f32, mouse_x), cast(f32, mouse_y) };
             }
 
-            wants_quit := Editor.update_and_render(*editor, platform, input, *render_lists);
+            // Simp.update_window(window); // XXX: Should be unnecessary, because it is already updated earlier? (also in Diagrams).
+            Simp.clear_render_target(0, 0, 0, 1);
+
+            wants_quit := Editor.update_and_render(*editor, platform, renderer, input);
             if wants_quit {
                 should_run = false;
             }
 
-            Simp.update_window(window);
-            Simp.clear_render_target(0, 0, 0, 1);
+            Simp.swap_buffers(window);
+
         }
     }
 }
