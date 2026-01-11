@@ -84,7 +84,10 @@ Rect :: struct {
     #overlay (x1) p1: Vector2;
 }
 
-make_rect :: inline (p0: Vector2, p1: Vector2) -> Rect {
+rect_from_point_and_size :: inline (x0: s32, y0: s32, width: s32, height: s32) -> Rect {
+    p0 := Vector2.{ x0, y0 };
+    p1 := Vector2.{ x0 + width, y0 + height};
+
     return { p0.x, p0.y, p1.x, p1.y };
 }
 
@@ -129,7 +132,10 @@ IRect :: struct {
     #overlay (x1) p1: IVector2;
 }
 
-make_irect :: inline (p0: IVector2, p1: IVector2) -> IRect {
+irect_from_point_and_size :: inline (x0: s32, y0: s32, width: s32, height: s32) -> IRect {
+    p0 := IVector2.{ x0, y0 };
+    p1 := IVector2.{ x0 + width, y0 + height};
+
     return { p0.x, p0.y, p1.x, p1.y };
 }
 

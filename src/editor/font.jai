@@ -107,13 +107,14 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8) -> Font {
     return font;
 }
 
-start_frame :: (font: *Font) {
-    font.glyph_cache_stamp += 1;
-}
-
-layout_and_draw_text :: (font: *Font, font_size: f32, text: string, render_rects: *[..] Render_Rect) -> cache_hits: s64, cache_misses: s64 {
+layout_and_draw_text :: (font: *Font, font_size: f32, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, is_new_frame := false) -> cache_hits: s64, cache_misses: s64 {
     cache_hits: s64;
     cache_misses: s64;
+
+    // TODO(jt): @Cleanup Consider having the user update the stamp manually?
+    if is_new_frame {
+        font.glyph_cache_stamp += 1;
+    }
 
     for :Unicode.utf8_iter text {
         glyph_index := get_glyph_index(font.info, it);
@@ -178,8 +179,12 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string, render_rects
                 font.font_scale,
             );
 
-            // XXX: HERE This should not cause the table to reallocate, but it does.
             table_add(*font.glyph_table, glyph_index, entry_index);
+
+            array_add(update_regions, irect_from_point_and_size(glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels,
+                                                                glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels,
+                                                                glyph_width,
+                                                                glyph_height));
         }
     }
 
