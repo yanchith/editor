@@ -43,7 +43,7 @@ Editor :: struct {
     fonts: [..] Font;
 }
 
-init :: (editor: *Editor, platform: Platform) {
+init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     arena_procs := make_arena_procs(platform);
     editor.perm_arena = arena_allocate(arena_procs);
 
@@ -62,9 +62,15 @@ init :: (editor: *Editor, platform: Platform) {
 
 }
 
-update_and_render :: (editor: *Editor, platform: Platform, input: Input, render_lists: *Render_Lists) -> bool {
-    start_frame(*editor.fonts[0]);
-    hits, misses := layout_and_draw_text(*editor.fonts[0], 20, TEXT, *render_lists.buffer);
+update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> bool {
+    render_rects: [..] Render_Rect;
+    render_rects.allocator = temp;
+    update_regions: [..] IRect;
+    update_regions.allocator = temp;
+
+    hits, misses := layout_and_draw_text(*editor.fonts[0], 20, TEXT, *render_rects, *update_regions, is_new_frame = true);
+
+    log("XXX % %", hits, misses);
 
     return false;
 }
