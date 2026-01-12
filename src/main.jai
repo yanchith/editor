@@ -212,7 +212,6 @@ main :: () {
                 input.mouse_position = .{ cast(f32, mouse_x), cast(f32, mouse_y) };
             }
 
-            // Simp.update_window(window); // XXX: Should be unnecessary, because it is already updated earlier? (also in Diagrams).
             Simp.clear_render_target(1, 1, 1, 1);
 
             wants_quit := Editor.update_and_render(*editor, platform, renderer, input);
