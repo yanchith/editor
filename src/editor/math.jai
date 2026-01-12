@@ -84,7 +84,7 @@ Rect :: struct {
     #overlay (x1) p1: Vector2;
 }
 
-rect_from_point_and_size :: inline (x0: s32, y0: s32, width: s32, height: s32) -> Rect {
+rect_from_point_and_size :: inline (x0: f32, y0: f32, width: f32, height: f32) -> Rect {
     p0 := Vector2.{ x0, y0 };
     p1 := Vector2.{ x0 + width, y0 + height};
 
