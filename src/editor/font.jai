@@ -95,7 +95,7 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_pixels;
     table_size   := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
 
-    font.glyph_atlas        = NewArray(atlas_width * atlas_height, u8, initialized=false,, arena_allocator(font.arena));
+    font.glyph_atlas        = NewArray(atlas_width * atlas_height, u8,, arena_allocator(font.arena));
     font.glyph_atlas_width  = atlas_width;
     font.glyph_atlas_height = atlas_height;
     font.glyph_entries      = NewArray(table_size, Glyph_Entry,, arena_allocator(font.arena));

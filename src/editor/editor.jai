@@ -72,7 +72,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
         editor.font.glyph_atlas_height,
         editor.font.glyph_atlas,
     );
-
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> bool {
@@ -81,15 +80,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions: [..] IRect;
     update_regions.allocator = temp;
 
-    text := gap_buffer_get_contiguous_view(editor.gb, 0, editor.gb.buffer.count - editor.gb.gap_count);
-
-    // XXX: Remove old call once gap buffer fully works.
-    // hits, misses := layout_and_draw_text(*editor.font, TEXT, *render_rects, *update_regions, is_new_frame = true);
-    hits, misses := layout_and_draw_text(*editor.font, text, *render_rects, *update_regions, is_new_frame = true);
+    text := gap_buffer_make_contiguous_view(editor.gb, 0, editor.gb.count);
+    hits, misses := layout_and_draw_text(*editor.font, cast(string, text), *render_rects, *update_regions, is_new_frame = true);
 
     renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
     renderer.draw_rects(render_rects);
-
 
     return false;
 }
