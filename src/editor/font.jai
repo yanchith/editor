@@ -1,9 +1,6 @@
-// XXX: For character rasterization and metrics extraction, try using stb_truetype. If it fails, try
-// using freetype.
-//
 // TODO(jt): Features:
 //
-// - [ ] Basic text layout
+// - [~] Basic text layout (in progress, might change)
 // - [ ] kerning
 // - [ ] ligatures?
 //
@@ -111,7 +108,7 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     return font;
 }
 
-layout_and_draw_text :: (font: *Font, font_size: f32, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, is_new_frame := false) -> cache_hits: s64, cache_misses: s64 {
+layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, is_new_frame := false) -> cache_hits: s64, cache_misses: s64 {
     cache_hits: s64;
     cache_misses: s64;
 
