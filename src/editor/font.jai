@@ -15,13 +15,13 @@
 // - vertical fonts
 //
 
-FONT_ATLAS_ALIGNMENT :: 16;
-
-FONT_PIXEL_HEIGHT: f32 = 12;
+FONT_PIXEL_HEIGHT: f32 = 75;
 
 Font :: struct {
     arena: *Arena;
     arena_mark: Arena_Mark;
+
+    texture_id: Texture_ID;
 
     info: stbtt_fontinfo;
 
@@ -33,7 +33,7 @@ Font :: struct {
     max_glyph_height_in_pixels: s32;
 
     // Glyph cache stuff...
-    glyph_atlas: *u8;
+    glyph_atlas: [] u8;
     glyph_atlas_width: s32;
     glyph_atlas_height: s32;
     glyph_entries: [] Glyph_Entry;
@@ -47,14 +47,16 @@ Font :: struct {
 }
 
 Font_VMetrics :: struct {
-    // XXX: What units is this? Is this the font 64ths?
+    // TODO(jt): In internal font units. If we are going to keep scaling this, maybe we should do it
+    // only once and cache?
     ascent: s32;
     descent: s32;
     line_gap: s32;
 }
 
 Glyph_HMetrics :: struct {
-    // XXX: What units is this? Is this the font 64ths?
+    // TODO(jt): In internal font units. If we are going to keep scaling this, maybe we should do it
+    // only once and cache?
     advance: s32;
     left_side_bearing: s32;
 }
@@ -68,7 +70,7 @@ Glyph_Entry :: struct {
 }
 
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
-make_font :: (arena: *Arena, ttf_buffer: [] u8) -> Font {
+make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font {
     ATLAS_WIDTH_IN_CELLS  :: 64;
     ATLAS_HEIGHT_IN_CELLS :: 64;
 
@@ -80,6 +82,8 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8) -> Font {
     font: Font;
     font.arena      = arena;
     font.arena_mark = arena_mark;
+
+    font.texture_id = texture_id;
 
     font.info = info;
 
@@ -94,7 +98,7 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8) -> Font {
     atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_pixels;
     table_size   := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
 
-    font.glyph_atlas        = arena_push(font.arena, atlas_width * atlas_height, FONT_ATLAS_ALIGNMENT);
+    font.glyph_atlas        = NewArray(atlas_width * atlas_height, u8, initialized=false,, arena_allocator(font.arena));
     font.glyph_atlas_width  = atlas_width;
     font.glyph_atlas_height = atlas_height;
     font.glyph_entries      = NewArray(table_size, Glyph_Entry,, arena_allocator(font.arena));
@@ -116,18 +120,23 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string, render_rects
         font.glyph_cache_stamp += 1;
     }
 
+    cursor_x: f32 = 0;
+    cursor_y: f32 = font.font_scale * font.font_vmetrics.ascent;
+
     for :Unicode.utf8_iter text {
         glyph_index := get_glyph_index(font.info, it);
 
         glyph_metrics := get_glyph_hmetrics(font.info, glyph_index);
-        glyph_box     := get_glyph_bitmap_box(font.info, glyph_index, font.font_scale);
 
-        glyph_width  := glyph_box.x1 - glyph_box.x0;
-        glyph_height := glyph_box.y1 - glyph_box.y0;
+        // Alredy scaled from internal font unites to pixels.
+        glyph_bitmap_box    := get_glyph_bitmap_box(font.info, glyph_index, font.font_scale);
+        glyph_bitmap_width  := glyph_bitmap_box.x1 - glyph_bitmap_box.x0;
+        glyph_bitmap_height := glyph_bitmap_box.y1 - glyph_bitmap_box.y0;
 
         glyph_cell_x_in_atlas: s32;
         glyph_cell_y_in_atlas: s32;
 
+        // TODO(jt): Factor out cache manipulation and just return the cell coordinates.
         entry_index_pointer := table_find_pointer(*font.glyph_table, glyph_index);
         if entry_index_pointer {
             cache_hits += 1;
@@ -167,24 +176,40 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string, render_rects
             move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
             assert(font.glyph_entries_tail == entry_index);
 
-            out := font.glyph_atlas + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels + glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels;
+            out := font.glyph_atlas.data + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels + glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels;
             // TODO(jt): This does not clear previous cell to zero, which we maybe should?
-            rasterize_glyph(
-                font.info,
-                glyph_index,
-                out,
-                glyph_width,
-                glyph_height,
-                font.glyph_atlas_width,
-                font.font_scale,
-            );
+            rasterize_glyph(font.info, glyph_index,
+                            out, glyph_bitmap_width, glyph_bitmap_height,
+                            font.glyph_atlas_width,
+                            font.font_scale);
 
             table_add(*font.glyph_table, glyph_index, entry_index);
 
             array_add(update_regions, irect_from_point_and_size(glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels,
                                                                 glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels,
-                                                                glyph_width,
-                                                                glyph_height));
+                                                                glyph_bitmap_width,
+                                                                glyph_bitmap_height));
+        }
+
+        rr := array_add(render_rects);
+        rr.rect = rect_from_point_and_size(cursor_x + glyph_bitmap_box.x0,
+                                           cursor_y + glyph_bitmap_box.y0,
+                                           cast(f32, glyph_bitmap_width),
+                                           cast(f32, glyph_bitmap_height));
+
+        rr.texture_rect = rect_from_point_and_size(cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels) / font.glyph_atlas_width,
+                                                   cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels) / font.glyph_atlas_height,
+                                                   cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
+                                                   cast(f32, glyph_bitmap_height) / font.glyph_atlas_height);
+        rr.texture_id = font.texture_id;
+        rr.color = { 1, 1, 1, 1 };
+
+        // TODO(jt): Support all kinds of newlines.
+        if it == #char "\n" {
+            cursor_x = 0;
+            cursor_y += font.font_scale * (font.font_vmetrics.line_gap + font.font_vmetrics.ascent - font.font_vmetrics.descent);
+        } else {
+            cursor_x += font.font_scale * glyph_metrics.advance;
         }
     }
 
@@ -250,6 +275,12 @@ get_glyph_index :: (info: stbtt_fontinfo, codepoint: u32) -> s32 {
 get_glyph_hmetrics :: (info: stbtt_fontinfo, index: s32) -> Glyph_HMetrics {
     result: Glyph_HMetrics = ---;
     stbtt_GetGlyphHMetrics(*info, index, *result.advance, *result.left_side_bearing);
+    return result;
+}
+
+get_glyph_box :: (info: stbtt_fontinfo, index: s32) -> IRect {
+    result: IRect = ---;
+    stbtt_GetGlyphBox(*info, index, *result.x0, *result.y0, *result.x1, *result.y1);
     return result;
 }
 
