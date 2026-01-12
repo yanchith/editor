@@ -13,6 +13,7 @@
 //
 
 FONT_PIXEL_HEIGHT: f32 = 75;
+FONT_OVERSAMPLE: s32 : 8; // STBTT_MAX_OVERSAMPLE is 8.
 
 Font :: struct {
     arena: *Arena;
@@ -64,6 +65,12 @@ Glyph_Entry :: struct {
     next: s32;
 
     glyph_index: s32; // So that we can remove it from the hash table.
+
+    // stbtt only gives us subpixel texture coordinate adjustments after we have rasterized with
+    // oversampling, so we store them on the entry. Alternatively, we could have modified the
+    // library and expose functions returning these.
+    oversample_sub_x: float;
+    oversample_sub_y: float;
 }
 
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
@@ -117,6 +124,9 @@ layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_R
         font.glyph_cache_stamp += 1;
     }
 
+    atlas_width_recip := 1.0 / cast(f32, font.glyph_atlas_width);
+    atlas_height_recip := 1.0 / cast(f32, font.glyph_atlas_height);
+
     cursor_x: f32 = 0;
     cursor_y: f32 = font.font_scale * font.font_vmetrics.ascent;
 
@@ -142,6 +152,9 @@ layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_R
             glyph_cell_x_in_atlas: s32;
             glyph_cell_y_in_atlas: s32;
 
+            oversample_sub_x: float;
+            oversample_sub_y: float;
+
             // TODO(jt): Factor out cache manipulation and just return the cell coordinates.
             entry_index_pointer := table_find_pointer(*font.glyph_table, glyph_index);
             if entry_index_pointer {
@@ -154,6 +167,9 @@ layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_R
                 // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
                 glyph_cell_x_in_atlas = entry_index % font.glyph_atlas_width;
                 glyph_cell_y_in_atlas = entry_index / font.glyph_atlas_height;
+
+                oversample_sub_x = entry.oversample_sub_x;
+                oversample_sub_y = entry.oversample_sub_y;
 
                 entry.stamp = font.glyph_cache_stamp;
 
@@ -179,15 +195,24 @@ layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_R
                 glyph_cell_x_in_atlas = entry_index % font.glyph_atlas_width;
                 glyph_cell_y_in_atlas = entry_index / font.glyph_atlas_height;
 
+                out := font.glyph_atlas.data + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels + glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels;
+                // TODO(jt): This does not clear previous cell to zero, which we maybe should?
+                oversample_sub_x, oversample_sub_y = rasterize_glyph(
+                    font.info,
+                    glyph_index,
+                    out,
+                    glyph_bitmap_width,
+                    glyph_bitmap_height,
+                    font.glyph_atlas_width,
+                    font.font_scale,
+                );
+
+                entry.oversample_sub_x = oversample_sub_x;
+                entry.oversample_sub_y = oversample_sub_y;
+
                 move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
                 assert(font.glyph_entries_tail == entry_index);
 
-                out := font.glyph_atlas.data + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels + glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels;
-                // TODO(jt): This does not clear previous cell to zero, which we maybe should?
-                rasterize_glyph(font.info, glyph_index,
-                                out, glyph_bitmap_width, glyph_bitmap_height,
-                                font.glyph_atlas_width,
-                                font.font_scale);
 
                 table_add(*font.glyph_table, glyph_index, entry_index);
 
@@ -210,10 +235,10 @@ layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_R
                 cast(f32, glyph_bitmap_height),
             );
             rr.texture_rect = rect_from_point_and_size(
-                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels) / font.glyph_atlas_width,
-                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels) / font.glyph_atlas_height,
-                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
-                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
+                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels) * atlas_width_recip,//  + oversample_sub_x,
+                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels) * atlas_height_recip,// + oversample_sub_y,
+                cast(f32, glyph_bitmap_width) * atlas_width_recip,// + oversample_sub_x,
+                cast(f32, glyph_bitmap_height) * atlas_height_recip,// + oversample_sub_y,
             );
             rr.texture_id = font.texture_id;
             rr.color = { 1, 1, 1, 1 };
@@ -293,8 +318,12 @@ get_glyph_bitmap_box :: (info: stbtt_fontinfo, index: s32, scale: f32) -> IRect 
     return result;
 }
 
-rasterize_glyph :: (info: stbtt_fontinfo, index: s32, out: *u8, out_width: s32, out_height: s32, out_stride: s32, scale: f32) {
-    stbtt_MakeGlyphBitmap(*info, out, out_width, out_height, out_stride, scale, scale, index);
+rasterize_glyph :: (info: stbtt_fontinfo, index: s32, out: *u8, out_width: s32, out_height: s32, out_stride: s32, scale: f32) -> oversample_sub_x: float, oversample_sub_y: float {
+    sub_x: float;
+    sub_y: float;
+    stbtt_MakeGlyphBitmapSubpixelPrefilter(*info, out, out_width, out_height, out_stride, scale, scale, 0, 0, FONT_OVERSAMPLE, FONT_OVERSAMPLE, *sub_x, *sub_y, index);
+
+    return sub_x, sub_y;
 }
 
 #import "stb_truetype"; // Move to scope exported scope, since the info field is visible anyway?
