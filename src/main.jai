@@ -2,6 +2,7 @@ f32 :: float32;
 f64 :: float64;
 
 #import "Basic";
+#import "Hash_Table";
 
 String :: #import "String";
 File   :: #import "File";
@@ -9,6 +10,12 @@ Window :: #import "Window_Creation";
 Input  :: #import "Input";
 Simp   :: #import "Simp"; // TODO(jt): Make our own simple renderer on Vulkan and Metal? SGPU? WGPU? Something.
 Editor :: #import,file "editor/editor.jai";
+
+IRect :: Editor.IRect;
+
+// TODO(jt): This global is fine for now, but maybe we want to pass userdata through the renderer
+// API that the caller has to pass back?
+renderer_textures: Table(Editor.Texture_ID, Simp.Texture);
 
 main :: () {
     time_program_start := current_time_monotonic();
@@ -101,30 +108,68 @@ main :: () {
         }
 
         renderer: Editor.Renderer;
-        renderer_textures: Table(s32, Simp.Texture);
-        renderer.create_texture_r8unorm = (texture_id: Texture_ID, widht: s32, height: s32, data: [] u8) {
+        renderer.create_texture_r8unorm = (texture_id: Editor.Texture_ID, width: s32, height: s32, data: [] u8) {
             bitmap: Simp.Bitmap;
             Simp.bitmap_alloc(*bitmap, width, height, .R8,, temp);
-            bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // Don't have to free, because it is in temp.
+            bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
+
 
             assert(bitmap.data.count == data.count);
-            memcpy(bitmap.data, data, data.count);
+            memcpy(bitmap.data.data, data.data, data.count);
 
             texture: Simp.Texture;
             Simp.texture_load_from_bitmap(*texture, *bitmap);
-            // XXX: Continue HERE
-        }
-        renderer.update_texture_regions_r8unorm = (texture_id: Texture_ID, regions: IRect, data: [] u8) {
 
+            table_add(*renderer_textures, texture_id, texture);
         }
-        renderer.draw_rects = (render_rects: [] Render_Rect) {
+        renderer.update_texture_regions_r8unorm = (texture_id: Editor.Texture_ID, regions: [] IRect, data: [] u8) {
+            texture := table_find_pointer(*renderer_textures, texture_id);
+            if !texture {
+                log_error("Can't update nonexistent texture: %", texture_id);
+            }
 
+            // TODO(jt): @Correctness @Speed This function re-uploads everything, because Simp does
+            // glTexImage2D. Whatever backend we end up using, we want to limit the upload to just
+            // the subregions. This may also end up being a correctness issue, but at the moment it
+            // is fine.
+
+            bitmap: Simp.Bitmap;
+            Simp.bitmap_alloc(*bitmap, texture.width, texture.height, .R8,, temp);
+            bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
+
+            assert(bitmap.data.count == data.count);
+            memcpy(bitmap.data.data, data.data, data.count);
+
+            Simp.texture_load_from_bitmap(texture, *bitmap);
+        }
+        renderer.draw_rects = (render_rects: [] Editor.Render_Rect) {
+            // TODO(jt): @Speed Realistically, they all point to the same texture, so maybe we want
+            // to shape the API such that there is only one texture binding followed by an instanced
+            // draw command instead of looping and binding per iteration.
+            for render_rects {
+                texture := table_find_pointer(*renderer_textures, it.texture_id);
+                Simp.set_shader_for_images(texture);
+
+                Simp.immediate_quad(
+                    { it.rect.x0, it.rect.y0 },
+                    { it.rect.x0, it.rect.y1 },
+                    { it.rect.x1, it.rect.y1 },
+                    { it.rect.x1, it.rect.y0 },
+                    it.color,
+                    { it.texture_rect.x0, it.texture_rect.y0 },
+                    { it.texture_rect.x0, it.texture_rect.y1 },
+                    { it.texture_rect.x1, it.texture_rect.y1 },
+                    { it.texture_rect.x1, it.texture_rect.y0 },
+                );
+            }
         }
 
         editor: Editor.Editor;
         Editor.init(*editor, platform, renderer);
 
         should_run := true;
+
+        // TODO(jt): Change this to wake up and run only if there are events (but still v-sync the render).
         while should_run {
             reset_temporary_storage();
 
@@ -168,7 +213,7 @@ main :: () {
             }
 
             // Simp.update_window(window); // XXX: Should be unnecessary, because it is already updated earlier? (also in Diagrams).
-            Simp.clear_render_target(0, 0, 0, 1);
+            Simp.clear_render_target(1, 1, 1, 1);
 
             wants_quit := Editor.update_and_render(*editor, platform, renderer, input);
             if wants_quit {
