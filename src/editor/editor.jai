@@ -62,10 +62,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
         array_add(*editor.fonts, default_font);
     }
 
-    renderer.create_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS,
-                                    editor.fonts[0].glyph_atlas_width,
-                                    editor.fonts[0].glyph_atlas_height,
-                                    editor.fonts[0].glyph_atlas);
+    renderer.create_texture_r8unorm(
+        TEXTURE_ID_GLYPH_ATLAS,
+        editor.fonts[0].glyph_atlas_width,
+        editor.fonts[0].glyph_atlas_height,
+        editor.fonts[0].glyph_atlas,
+    );
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> bool {

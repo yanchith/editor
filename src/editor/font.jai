@@ -194,22 +194,30 @@ layout_and_draw_text :: (font: *Font, font_size: f32, text: string, render_rects
 
                 table_add(*font.glyph_table, glyph_index, entry_index);
 
-                array_add(update_regions, irect_from_point_and_size(glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels,
-                                                                    glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels,
-                                                                    glyph_bitmap_width,
-                                                                    glyph_bitmap_height));
+                array_add(
+                    update_regions,
+                    irect_from_point_and_size(
+                        glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels,
+                        glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels,
+                        glyph_bitmap_width,
+                        glyph_bitmap_height,
+                    ),
+                );
             }
 
             rr := array_add(render_rects);
-            rr.rect = rect_from_point_and_size(cursor_x + glyph_bitmap_box.x0,
-                                               cursor_y + glyph_bitmap_box.y0,
-                                               cast(f32, glyph_bitmap_width),
-                                               cast(f32, glyph_bitmap_height));
-
-            rr.texture_rect = rect_from_point_and_size(cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels) / font.glyph_atlas_width,
-                                                       cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels) / font.glyph_atlas_height,
-                                                       cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
-                                                       cast(f32, glyph_bitmap_height) / font.glyph_atlas_height);
+            rr.rect = rect_from_point_and_size(
+                cursor_x + glyph_bitmap_box.x0,
+                cursor_y + glyph_bitmap_box.y0,
+                cast(f32, glyph_bitmap_width),
+                cast(f32, glyph_bitmap_height),
+            );
+            rr.texture_rect = rect_from_point_and_size(
+                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels) / font.glyph_atlas_width,
+                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels) / font.glyph_atlas_height,
+                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
+                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
+            );
             rr.texture_id = font.texture_id;
             rr.color = { 1, 1, 1, 1 };
 
