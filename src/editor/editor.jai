@@ -62,6 +62,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
 
 
     gb_arena := arena_allocate(arena_procs);
+    // TODO(jt): Find easier way of setting the allocator. Currently this is quite nested.
     editor.gb.buffer.allocator = arena_allocator(gb_arena);
 
     gap_buffer_insert(*editor.gb, TEXT);
@@ -79,6 +80,17 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     render_rects.allocator = temp;
     update_regions: [..] IRect;
     update_regions.allocator = temp;
+
+    for input.events {
+        if it.type == .CODEPOINT {
+            // XXX: Handle, enter/space/delete...
+            if it.data.codepoint > 32 && it.data.codepoint < 127 {
+                s := cast(string, NewArray(4, u8,, temp));
+                Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
+                gap_buffer_insert(*editor.gb, s);
+            }
+        }
+    }
 
     text := gap_buffer_make_contiguous_view(editor.gb, 0, editor.gb.count);
     hits, misses := layout_and_draw_text(*editor.font, cast(string, text), *render_rects, *update_regions, is_new_frame = true);
