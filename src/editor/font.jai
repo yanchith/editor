@@ -294,6 +294,9 @@ get_glyph_bitmap_box :: (info: stbtt_fontinfo, index: s32, scale: f32) -> IRect 
 }
 
 rasterize_glyph :: (info: stbtt_fontinfo, index: s32, out: *u8, out_width: s32, out_height: s32, out_stride: s32, scale: f32) {
+    // TODO(jt): @Memory stbtt_MakeGlyphBitmap actually hits STBTT_malloc multiple times (in
+    // stbtt_Rasterize, but also in stbtt_GetGlyphbitmapBox), so we should probably have a way to
+    // set the allocator to temp?
     stbtt_MakeGlyphBitmap(*info, out, out_width, out_height, out_stride, scale, scale, index);
 }
 
