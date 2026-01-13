@@ -164,6 +164,9 @@ main :: () {
             }
         }
 
+        input: Editor.Input;
+        input.window_size = { window_width, window_height };
+
         editor: Editor.Editor;
         Editor.init(*editor, platform, renderer);
 
@@ -179,8 +182,11 @@ main :: () {
             dtime := time_frame_start - time_last_frame_start;
             time_last_frame_start = time_frame_start;
 
-            input: Editor.Input;
-            // TODO(jt): Fill in input.
+            input.time = time_since_program_start;
+            input.dtime = dtime;
+
+            input_events: [..] Editor.Input_Event;
+            input_events.allocator = temp;
 
             Input.update_window_events();
             for Input.get_window_resizes() {
@@ -203,6 +209,61 @@ main :: () {
                                 should_run = false;
                             }
                         }
+
+                        // TODO(jt): Send down repeats.
+                        flags: Editor.Input_Event.Flags;
+                        if it.key_pressed {
+                            flags |= .KEY_PRESSED;
+                        }
+
+                        // The Input module's key_codes mirror ASCII in that range. However, for
+                        // control characters, we use our own enum, because most the rest of the
+                        // codepoint address space is taken up by Unicode.
+                        if it.key_code <= .DELETE {
+                            data: Editor.Input_Event.Data;
+                            data.codepoint = cast(Editor.Codepoint, it.key_code);
+
+                            array_add(*input_events, { .CODEPOINT, flags, data });
+                        } else {
+                            if it.key_code == {
+                                case .CTRL;                    array_add(*input_events, { .KEY, flags, { key = .CTRL} });
+                                case .ALT;                     array_add(*input_events, { .KEY, flags, { key = .ALT } });
+                                case .SHIFT;                   array_add(*input_events, { .KEY, flags, { key = .SHIFT } });
+                                case .META;                    array_add(*input_events, { .KEY, flags, { key = .META } });
+
+                                case .ARROW_UP;                array_add(*input_events, { .KEY, flags, { key = .ARROW_UP } });
+                                case .ARROW_DOWN;              array_add(*input_events, { .KEY, flags, { key = .ARROW_DOWN } });
+                                case .ARROW_LEFT;              array_add(*input_events, { .KEY, flags, { key = .ARROW_LEFT } });
+                                case .ARROW_RIGHT;             array_add(*input_events, { .KEY, flags, { key = .ARROW_RIGHT } });
+
+                                case .PAGE_UP;                 array_add(*input_events, { .KEY, flags, { key = .PAGE_UP } });
+                                case .PAGE_DOWN;               array_add(*input_events, { .KEY, flags, { key = .PAGE_DOWN } });
+
+                                case .HOME;                    array_add(*input_events, { .KEY, flags, { key = .HOME } });
+                                case .END;                     array_add(*input_events, { .KEY, flags, { key = .END } });
+
+                                case .INSERT;                  array_add(*input_events, { .KEY, flags, { key = .INSERT } });
+
+                                case .F1;                      array_add(*input_events, { .KEY, flags, { key = .F1 } });
+                                case .F2;                      array_add(*input_events, { .KEY, flags, { key = .F2 } });
+                                case .F3;                      array_add(*input_events, { .KEY, flags, { key = .F3 } });
+                                case .F4;                      array_add(*input_events, { .KEY, flags, { key = .F4 } });
+                                case .F5;                      array_add(*input_events, { .KEY, flags, { key = .F5 } });
+                                case .F6;                      array_add(*input_events, { .KEY, flags, { key = .F6 } });
+                                case .F7;                      array_add(*input_events, { .KEY, flags, { key = .F7 } });
+                                case .F8;                      array_add(*input_events, { .KEY, flags, { key = .F8 } });
+                                case .F9;                      array_add(*input_events, { .KEY, flags, { key = .F9 } });
+                                case .F10;                     array_add(*input_events, { .KEY, flags, { key = .F10 } });
+                                case .F11;                     array_add(*input_events, { .KEY, flags, { key = .F11 } });
+                                case .F12;                     array_add(*input_events, { .KEY, flags, { key = .F12 } });
+
+                                case .PRINT_SCREEN;            array_add(*input_events, { .KEY, flags, { key = .PRINT_SCREEN } });
+
+                                case .MOUSE_BUTTON_LEFT;       array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_LEFT } });
+                                case .MOUSE_BUTTON_RIGHT;      array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_RIGHT } });
+                                case .MOUSE_BUTTON_MIDDLE;     array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_MIDDLE } });
+                            }
+                        }
                     }
                 }
             }
@@ -211,6 +272,8 @@ main :: () {
             if success {
                 input.mouse_position = .{ cast(f32, mouse_x), cast(f32, mouse_y) };
             }
+
+            input.events = input_events;
 
             Simp.clear_render_target(1, 1, 1, 1);
 
