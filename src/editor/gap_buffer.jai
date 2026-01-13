@@ -2,6 +2,16 @@
 
 GAP_BUFFER_STARTING_COUNT :: 4; // TODO(jt): Intentionally low initially, to test this. Increase eventually!
 
+// TODO(jt): @Speed Gap Buffers potentially have problems:
+//
+// - Multiple cursors would require multiple gaps
+// - We have to move the gap when start editing a new part of the buffer
+// - They still have to reallocate from time to time when the gap is filled.
+//
+// The benefit of gap buffers is relative simplicity, though. Can we come up with something not much
+// more complicated that deals with the problems above? People on the internet talk about ropes,
+// piece tables, piece trees... but maybe just an array of lines could go a long way, especially if
+// we are somewhat smart about line storage (could be pooled and size-classed).
 Gap_Buffer :: struct {
     gap_index: s64;
     gap_count: s64;
