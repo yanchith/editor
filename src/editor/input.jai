@@ -16,83 +16,91 @@ Input :: struct {
     // - modifier keys: ctrl, alt, shift, meta
     // - combined keys: ˇ + s = š (ideally if we didn't have to do the combining?)
     //
-    keyboard_events: [] Keyboard_Event;
+    events: [] Input_Event;
 }
 
-Keyboard_Event :: struct  {
-    type: Keyboard_Event_Type;
-    flags: Keyboard_Event_Flags;
-    data: Keyboard_Event_Data;
-}
+Input_Event :: struct  {
+    type: Type;
+    flags: Flags;
+    data: Data;
 
-#assert size_of(Keyboard_Event) == 8;
-
-Keyboard_Event_Type :: enum u16 {
-    KEY       :: 0;
-    CODEPOINT :: 1;
-}
-
-Keyboard_Event_Flags :: enum_flags u16 {
-    NONE :: 0;
-
-    PRESSED :: 0x01; // Whether the key is right now PRESSED. Absence of this flag means RELEASED.
-    REPEAT  :: 0x02; // Whether the key is a synthetic OS repeat event.
-}
-
-// TODO(jt): This is not a discriminated union (yet?), because currently the tag is the first member
-// and we can't pack Keyboard_Event into 8 bytes because of padding this introduces. Therefore the
-// tag is stored outside.
-Keyboard_Event_Data :: union {
-    key: Key;
-    codepoint: Codepoint;
-
-    Key :: enum u32 {
-        CTRL;
-        ALT;
-        SHIFT;
-        META;
-
-        ARROW_UP;
-        ARROW_DOWN;
-        ARROW_LEFT;
-        ARROW_RIGHT;
-
-        PAGE_UP;
-        PAGE_DOWN;
-
-        HOME;
-        END;
-
-        INSERT;
-        // DELETE is a codepoint.
-
-        F1;
-        F2;
-        F3;
-        F4;
-        F5;
-        F6;
-        F7;
-        F8;
-        F9;
-        F10;
-        F11;
-        F12;
+    Type :: enum u16 {
+        KEY       :: 0;
+        CODEPOINT :: 1;
     }
 
-    // A unicode codepoint.
-    Codepoint :: enum u32 {
-        NULL :: 0;
+    Flags :: enum_flags u16 {
+        NONE :: 0;
 
-        BACKSPACE   :: 8;
-        TAB         :: 9;
-        LINEFEED    :: 10;
-        ENTER       :: 13;
-        ESCAPE      :: 27;
-        SPACEBAR    :: 32;
-
-        // The visible characters live in the interval [33, 126] and have their usual ascii values.
-
-        DELETE :: 127;
+        KEY_PRESSED :: 0x01; // Whether the key is right now pressed. Absence of this flag means released.
+        KEY_REPEAT  :: 0x02; // Whether the key is a synthetic OS repeat event.
     }
+
+
+    // TODO(jt): This is not a discriminated union (yet?), because currently the tag is the first
+    // member and we can't pack Keyboard_Event into 8 bytes because of padding this
+    // introduces. Therefore the tag is stored outside.
+    Data :: union {
+        key: Key;
+        codepoint: Codepoint;
+    }
+}
+
+#assert size_of(Input_Event) == 8;
+
+
+Key :: enum u32 {
+    CTRL;
+    ALT;
+    SHIFT;
+    META;
+
+    ARROW_UP;
+    ARROW_DOWN;
+    ARROW_LEFT;
+    ARROW_RIGHT;
+
+    PAGE_UP;
+    PAGE_DOWN;
+
+    HOME;
+    END;
+
+    INSERT;
+    // DELETE is a codepoint.
+
+    F1;
+    F2;
+    F3;
+    F4;
+    F5;
+    F6;
+    F7;
+    F8;
+    F9;
+    F10;
+    F11;
+    F12;
+
+    PRINT_SCREEN;
+
+    MOUSE_BUTTON_LEFT;
+    MOUSE_BUTTON_RIGHT;
+    MOUSE_BUTTON_MIDDLE;
+}
+
+// A unicode codepoint.
+Codepoint :: enum u32 {
+    NULL :: 0;
+
+    BACKSPACE   :: 8;
+    TAB         :: 9;
+    LINEFEED    :: 10;
+    ENTER       :: 13;
+    ESCAPE      :: 27;
+    SPACEBAR    :: 32;
+
+    // The visible characters live in the interval [33, 126] and have their usual ascii values.
+
+    DELETE :: 127;
 }
