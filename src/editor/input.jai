@@ -95,7 +95,7 @@ Codepoint :: enum u32 {
 
     BACKSPACE   :: 8;
     TAB         :: 9;
-    LINEFEED    :: 10;
+    LINEFEED    :: 10; // TODO(jt): When exactly do we get linefeed? When we paste text? When we press enter, do we get ENTER? What about CR?
     ENTER       :: 13;
     ESCAPE      :: 27;
     SPACEBAR    :: 32;
