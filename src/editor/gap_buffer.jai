@@ -1,17 +1,13 @@
-// XXX: HERE Fix bugs here and then finish implementing the rest.
-
 GAP_BUFFER_STARTING_COUNT :: 4; // TODO(jt): Intentionally low initially, to test this. Increase eventually!
 
-// TODO(jt): @Speed Gap Buffers potentially have problems:
+// TODO(jt): @Speed Gap Buffers have theoretical problems:
 //
 // - Multiple cursors would require multiple gaps
 // - We have to move the gap when start editing a new part of the buffer
 // - They still have to reallocate from time to time when the gap is filled.
 //
-// The benefit of gap buffers is relative simplicity, though. Can we come up with something not much
-// more complicated that deals with the problems above? People on the internet talk about ropes,
-// piece tables, piece trees... but maybe just an array of lines could go a long way, especially if
-// we are somewhat smart about line storage (could be pooled and size-classed).
+// However, maybe these won't ever manifest in practice, because computers are fast? Also, the
+// benefit of gap buffers is their relative simplicity. Let's cross this bridge when we come to it.
 Gap_Buffer :: struct {
     gap_index: s64;
     gap_count: s64;
@@ -28,13 +24,36 @@ gap_buffer_init :: (gb: *Gap_Buffer, count := GAP_BUFFER_STARTING_COUNT) {
     array_reserve(*gb.buffer, count);
 }
 
-gap_buffer_move_gap :: (gb: *Gap_Buffer, index: s64) {
-    // XXX
+gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
+    assert(index >= 0 && index <= gb.count);
+    if gb.gap_index == index {
+        return;
+    }
+
+    if index > gb.gap_index {
+        // We are moving the gap forward, so copy data backward.
+        copy_dest   := gb.buffer.data + gb.gap_index;
+        copy_source := gb.buffer.data + gb.gap_index + gb.gap_count;
+        copy_count  := index - gb.gap_index;
+
+        // TODO(jt): @Correctness Make sure memory is allowed to overlap in JAI's memcpy.
+        memcpy(copy_dest, copy_source, copy_count);
+    } else {
+        // We are moving the gap backward, so copy data forward.
+        copy_dest   := gb.buffer.data + index + gb.gap_count;
+        copy_source := gb.buffer.data + index;
+        copy_count  := gb.gap_index - index;
+
+        // TODO(jt): @Correctness Make sure memory is allowed to overlap in JAI's memcpy.
+        memcpy(copy_dest, copy_source, copy_count);
+    }
+
+    gb.gap_index = index;
 }
 
 // Convenience for text, even if Gap_Buffer only operates on bytes.
 gap_buffer_insert :: (gb: *Gap_Buffer, text: string) {
-    gap_buffer_insert(gb, cast([] u8, text)); // TODO(jt): Inline call, but it screws debug symbols.
+    inline gap_buffer_insert(gb, cast([] u8, text));
 }
 
 gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
@@ -74,15 +93,19 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, count: s64) {
 gap_buffer_delete_backward :: (gb: *Gap_Buffer, count: s64) {
     if gb.gap_index - count >= 0 {
         gb.gap_index -= count;
-        gb.gap_size += count;
+        gb.gap_count += count;
         gb.count -= count;
     }
 }
 
-// TODO(jt): @Speed @Memory Implement gap_buffer_replace :: (gb: *Gap_Buffer, count: s64, text: string) {}
+gap_buffer_replace :: (gb: *Gap_Buffer, count: s64, text: string) {
+    gap_buffer_delete_forward(gb, count);
+    gap_buffer_insert(gb, text);
+}
 
-// Returns either view of original data or allocated in Temporary_Storage, otherwise we'd have to
-// always allocate.
+// Returns either view of original data or new array in Temporary_Storage. Note that if you are
+// making a large view, you are negating the copy-avoidance benefits of the gap buffer, so this
+// should be used to get screen-sized chunks of text, not the entire buffer.
 gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [] u8 {
     assert(count <= gb.count);
     assert(index <= gb.count);
