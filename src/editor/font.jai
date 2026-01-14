@@ -41,6 +41,9 @@ Font :: struct {
     // This can overflow after about 200 days (if we rendered 60 frames every second), but we only
     // ever compare it for equality to detect same-frame evictions.
     glyph_cache_stamp: u32;
+
+    frame_cache_hits: s64;
+    frame_cache_misses: s64;
 }
 
 Font_VMetrics :: struct {
@@ -108,13 +111,13 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     return font;
 }
 
-layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, is_new_frame := false) -> cache_hits: s64, cache_misses: s64 {
-    cache_hits: s64;
-    cache_misses: s64;
-
+layout_and_draw_text_with_font :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, is_new_frame := false) {
     // TODO(jt): @Cleanup Consider having the user update the stamp manually?
     if is_new_frame {
         font.glyph_cache_stamp += 1;
+
+        font.frame_cache_hits = 0;
+        font.frame_cache_misses = 0;
     }
 
     cursor_x: f32 = 0;
@@ -129,7 +132,6 @@ layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_R
             cursor_x = 0;
             cursor_y += font.font_scale * (font.font_vmetrics.line_gap + font.font_vmetrics.ascent - font.font_vmetrics.descent);
         } else {
-
             glyph_index := get_glyph_index(font.info, it);
 
             glyph_metrics := get_glyph_hmetrics(font.info, glyph_index);
@@ -145,7 +147,7 @@ layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_R
             // TODO(jt): Factor out cache manipulation and just return the cell coordinates.
             entry_index_pointer := table_find_pointer(*font.glyph_table, glyph_index);
             if entry_index_pointer {
-                cache_hits += 1;
+                font.frame_cache_hits += 1;
 
                 entry_index := entry_index_pointer.*;
                 entry := *font.glyph_entries[entry_index];
@@ -159,7 +161,7 @@ layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_R
 
                 move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
             } else {
-                cache_misses += 1;
+                font.frame_cache_misses += 1;
 
                 entry_index := font.glyph_entries_head;
                 entry := *font.glyph_entries[entry_index];
@@ -221,8 +223,6 @@ layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_R
             cursor_x += font.font_scale * glyph_metrics.advance;
         }
     }
-
-    return cache_hits, cache_misses;
 }
 
 #scope_file
