@@ -17,6 +17,21 @@ TODO(jt): Stuff to do:
 
 - [ ] Customization and plugins
 
+
+TODO(jt): Decide whether we want to be using context.allocator. The problem is that it is not always
+clear without carefully reading a procedure's code, if that procedure *actively* expects the context
+allocator to be overriden. The alternative is to use an explicit allocator parameter, which is
+slighly more annoying. For now we are using context allocator and we'll see how it goes.
+
+Related problems to the above are:
+
+Q: Should we be using temp or not?
+A: Use it (it is very convenient!), but not for return values, unless it is really clear that that's
+   what's happening (one example being the tprint function).
+
+Q: What if the procedure allocates stuff with multiple different (long-lived) lifetimes?
+A: Pass an allocator for each lifetime. Fortunately, these situations are rare.
+
 */
 
 f32 :: float32;
@@ -139,7 +154,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    text := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.count);
+    text := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.count,, temp);
     layout_and_draw_text_with_font(*editor.font, cast(string, text), *render_rects, *update_regions, is_new_frame = true);
 
     renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
