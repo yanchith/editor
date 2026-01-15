@@ -22,36 +22,40 @@ make_buffer :: (arena: *Arena) -> Buffer {
     buffer.gb.buffer.allocator = arena_allocator(arena);
     buffer.lines.allocator     = arena_allocator(arena);
 
+    // Make sure at least one line exists. Code later just assumes it.
+    array_add(*buffer.lines, { 0 });
+
     return buffer;
 }
 
 insert_to_buffer_at_cursor :: (buffer: *Buffer, text: string) {
-    gb_index := get_gap_buffer_index_for_cursor(buffer);
+    gb_index := get_gap_buffer_index(buffer);
 
-    // XXX: HERE line management!
+    // XXX: Move cursor forward!
+    // XXX: HERE line management! Parse the inserted text for newlines and update buffer.lines appropriately.
 
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     gap_buffer_insert(*buffer.gb, text);
 }
 
 delete_forward_from_buffer_at_cursor :: (buffer: *Buffer) {
-    gb_index := get_gap_buffer_index_for_cursor(buffer);
-
-    // XXX: HERE line management!
+    gb_index := get_gap_buffer_index(buffer);
 
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     // TODO(jt): Handle unicode and delete the entire character, not just the first byte.
-    gap_buffer_delete_forward(*buffer.gb, 1);
+    deleted := gap_buffer_delete_forward(*buffer.gb, 1);
+
+    // XXX: HERE line management! Parse the deleted text for newlines and update buffer.lines appropriately.
 }
 
 delete_backward_from_buffer_at_cursor :: (buffer: *Buffer) {
-    gb_index := get_gap_buffer_index_for_cursor(buffer);
-
-    // XXX: HERE line management!
+    gb_index := get_gap_buffer_index(buffer);
 
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     // TODO(jt): Handle unicode and delete the entire character, not just the last byte.
-    gap_buffer_delete_backward(*buffer.gb, 1);
+    deleted := gap_buffer_delete_backward(*buffer.gb, 1);
+
+    // XXX: HERE line management! Parse the deleted text for newlines and update buffer.lines appropriately.
 }
 
 maybe_move_buffer_cursor :: (buffer: *Buffer, horizontal_move: s64, vertical_move: s64 = 0) {
@@ -61,7 +65,7 @@ maybe_move_buffer_cursor :: (buffer: *Buffer, horizontal_move: s64, vertical_mov
 
 #scope_file
 
-get_gap_buffer_index_for_cursor :: (buffer: Buffer) -> s64 {
+get_gap_buffer_index :: (buffer: Buffer) -> s64 {
     assert(buffer.cursor_y >= 0 && buffer.cursor_y <= buffer.lines.count);
     assert(buffer.cursor_x >= 0 && buffer.cursor_x <= buffer.lines[buffer.cursor_y].char_count);
 
