@@ -1,5 +1,3 @@
-GAP_BUFFER_STARTING_COUNT :: 4; // TODO(jt): Intentionally low initially, to test this. Increase eventually!
-
 // TODO(jt): @Speed Gap Buffers have theoretical problems:
 //
 // - Multiple cursors would require multiple gaps
@@ -9,19 +7,23 @@ GAP_BUFFER_STARTING_COUNT :: 4; // TODO(jt): Intentionally low initially, to tes
 // However, maybe these won't ever manifest in practice, because computers are fast? Also, the
 // benefit of gap buffers is their relative simplicity. Let's cross this bridge when we come to it.
 Gap_Buffer :: struct {
+    count: s64; // Stored here for the caller's convenience. Always buffer.count - gap_count.
+
     gap_index: s64;
     gap_count: s64;
 
-    count: s64; // Stored here for the caller's convenience. Always buffer.count - gap_count.
-
+    // XXX: HERE So... I assumed this will store UTF-8, but that makes all sort of difficulties,
+    // like synchronizing the cursor (which counts in characters) with the gap index here (which
+    // counts in bytes). Should we be using UTF-32 and count in u32s? What do other editors do?
     buffer: [..] u8;
 }
 
-gap_buffer_init :: (gb: *Gap_Buffer, count := GAP_BUFFER_STARTING_COUNT) {
-    gb.gap_index = 0;
-    gb.gap_count = count;
-
-    array_reserve(*gb.buffer, count);
+// You don't have to gap_buffer_init. It only helps you pre-allocate the internal buffer.
+//
+// TODO(jt): initial_gap_count is intentionally low for now to test this. Increase eventually!
+gap_buffer_init :: (gb: *Gap_Buffer, initial_gap_count := 4) {
+    gb.gap_count = initial_gap_count;
+    array_resize(*gb.buffer, initial_gap_count);
 }
 
 gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
@@ -83,30 +85,49 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
     gb.count += bytes.count;
 }
 
-gap_buffer_delete_forward :: (gb: *Gap_Buffer, count: s64) {
-    if gb.gap_index + gb.gap_count + count <= gb.buffer.count {
-        gb.gap_count += count;
-        gb.count -= count;
-    }
+
+// Deletes at the gap, moving forward. Returns array view of deleted bytes.
+gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> [] u8 /* Pointing to the gap in this buffer */ {
+    max_delete_count := gb.buffer.count - gb.gap_index - gb.gap_count; // Everything after the gap.
+    delete_count = min(delete_count, max_delete_count);
+
+    //  Return where the gap started before the deletion.
+    deleted: [] u8;
+    deleted.count = delete_count;
+    deleted.data  = gb.buffer.data + gb.gap_index + gb.gap_count;
+
+    gb.count -= delete_count;
+    gb.gap_count += delete_count;
+
+    return deleted;
 }
 
-gap_buffer_delete_backward :: (gb: *Gap_Buffer, count: s64) {
-    if gb.gap_index - count >= 0 {
-        gb.gap_index -= count;
-        gb.gap_count += count;
-        gb.count -= count;
-    }
+// Deletes at the gap, moving backward. Returns array view of deleted bytes.
+gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> [] u8 /* Pointing to the gap in this buffer */ {
+    max_delete_count := gb.gap_index;
+    delete_count = min(delete_count, max_delete_count);
+
+    gb.count -= delete_count;
+    gb.gap_index -= delete_count;
+    gb.gap_count += delete_count;
+
+    // Return where the gap starts after deletion
+    deleted: [] u8;
+    deleted.count = delete_count;
+    deleted.data  = gb.buffer.data + gb.gap_index;
+
+    return deleted;
 }
 
-gap_buffer_replace :: (gb: *Gap_Buffer, count: s64, text: string) {
-    gap_buffer_delete_forward(gb, count);
-    gap_buffer_insert(gb, text);
+gap_buffer_replace :: (gb: *Gap_Buffer, delete_count: s64, insert_text: string) {
+    gap_buffer_delete_forward(gb, delete_count);
+    gap_buffer_insert(gb, insert_text);
 }
 
-// Returns either view of original data or new array in Temporary_Storage. Note that if you are
+// Returns either view of original data or new array in the context allocator. Note that if you are
 // making a large view, you are negating the copy-avoidance benefits of the gap buffer, so this
 // should be used to get screen-sized chunks of text, not the entire buffer.
-gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [] u8 {
+gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
     assert(count <= gb.count);
     assert(index <= gb.count);
     assert(index + count <= gb.count);
@@ -122,7 +143,7 @@ gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [
     }
 
     // General case: copy the before/after parts into a new array and return that.
-    result := NewArray(count, u8,, temp);
+    result := NewArray(count, u8);
 
     head_data  := gb.buffer.data + index;
     head_count := gb.gap_index - index;
