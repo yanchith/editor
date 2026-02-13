@@ -79,7 +79,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.font   = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS);
     editor.buffer = make_buffer(buffer_arena);
 
-    gap_buffer_insert(*editor.buffer.gb, HELLO_TEXT);
+    buffer_insert_at_cursor(*editor.buffer, HELLO_TEXT);
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -100,10 +100,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.data.key == {
-                        case .ARROW_UP;     maybe_move_buffer_cursor_y(*editor.buffer, -1);
-                        case .ARROW_DOWN;   maybe_move_buffer_cursor_y(*editor.buffer, 1);
-                        case .ARROW_LEFT;   maybe_move_buffer_cursor_x(*editor.buffer, -1);
-                        case .ARROW_RIGHT;  maybe_move_buffer_cursor_x(*editor.buffer, 1);
+                        case .ARROW_UP;     buffer_maybe_move_cursor_y(*editor.buffer, -1);
+                        case .ARROW_DOWN;   buffer_maybe_move_cursor_y(*editor.buffer, 1);
+                        case .ARROW_LEFT;   buffer_maybe_move_cursor_x(*editor.buffer, -1);
+                        case .ARROW_RIGHT;  buffer_maybe_move_cursor_x(*editor.buffer, 1);
 
                         // TODO(jt): Move screen up or down.
                         case .PAGE_UP;
@@ -118,24 +118,24 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .CODEPOINT; {
                     if it.data.codepoint == {
                         case .BACKSPACE; {
-                            delete_backward_from_buffer_at_cursor(*editor.buffer);
+                            buffer_delete_backward_at_cursor(*editor.buffer);
                         }
                         case .DELETE; {
-                            delete_forward_from_buffer_at_cursor(*editor.buffer);
+                            buffer_delete_forward_at_cursor(*editor.buffer);
                         }
 
                         case .TAB; {
                             // TODO(jt): Make indentation configurable.
                             // TODO(jt): Preserve tab-ness in tab-only documents.
-                            insert_to_buffer_at_cursor(*editor.buffer, "    ");
+                            buffer_insert_at_cursor(*editor.buffer, "    ");
                         }
                         case .SPACEBAR; {
-                            insert_to_buffer_at_cursor(*editor.buffer, " ");
+                            buffer_insert_at_cursor(*editor.buffer, " ");
                         }
 
                         case .ENTER; {
                             // TODO(jt): Preserve CRLF in CRLF-only documents.
-                            insert_to_buffer_at_cursor(*editor.buffer, "\n");
+                            buffer_insert_at_cursor(*editor.buffer, "\n");
                         }
 
                         case; {
@@ -152,7 +152,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 s := string.{ 4, cast(*u8, *buf) };
                                 Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
 
-                                insert_to_buffer_at_cursor(*editor.buffer, s);
+                                buffer_insert_at_cursor(*editor.buffer, s);
                             }
                         }
                     }
@@ -162,7 +162,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    text := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.count,, temp);
+    text := gap_buffer_make_contiguous_byte_view(editor.buffer.gb, 0, editor.buffer.gb.count,, temp);
     layout_and_draw_text_with_font(*editor.font, cast(string, text), *render_rects, *update_regions, is_new_frame = true);
 
     renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
