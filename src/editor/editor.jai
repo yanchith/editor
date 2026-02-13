@@ -41,6 +41,7 @@ f64 :: float64;
 #import "Arena";
 #import "Hash_Table";
 
+String  :: #import "String";
 Math    :: #import "Math";
 Unicode :: #import "Unicode";
 
@@ -99,10 +100,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.data.key == {
-                        case .ARROW_UP;     maybe_move_buffer_cursor(*editor.buffer, 0, vertical_move = -1);
-                        case .ARROW_DOWN;   maybe_move_buffer_cursor(*editor.buffer, 0, vertical_move = 1);
-                        case .ARROW_LEFT;   maybe_move_buffer_cursor(*editor.buffer, -1);
-                        case .ARROW_RIGHT;  maybe_move_buffer_cursor(*editor.buffer, 1);
+                        case .ARROW_UP;     maybe_move_buffer_cursor_y(*editor.buffer, -1);
+                        case .ARROW_DOWN;   maybe_move_buffer_cursor_y(*editor.buffer, 1);
+                        case .ARROW_LEFT;   maybe_move_buffer_cursor_x(*editor.buffer, -1);
+                        case .ARROW_RIGHT;  maybe_move_buffer_cursor_x(*editor.buffer, 1);
 
                         // TODO(jt): Move screen up or down.
                         case .PAGE_UP;
@@ -124,6 +125,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         }
 
                         case .TAB; {
+                            // TODO(jt): Make indentation configurable.
+                            // TODO(jt): Preserve tab-ness in tab-only documents.
                             insert_to_buffer_at_cursor(*editor.buffer, "    ");
                         }
                         case .SPACEBAR; {
@@ -141,7 +144,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
                                 // buffer, before inserting into the gap buffer. That includes
                                 // spacebar, enter, linefeed, etc.
-                                s := cast(string, NewArray(4, u8,, temp));
+                                //
+                                // TODO(jt): @Speed This is also a little dumb, because buffer will
+                                // be parsing this back to codepoints for its linedata
+                                // tracking. Clean this up after we know what we are doing.
+                                buf: [4] u8;
+                                s := string.{ 4, cast(*u8, *buf) };
                                 Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
 
                                 insert_to_buffer_at_cursor(*editor.buffer, s);
