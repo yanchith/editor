@@ -1,7 +1,7 @@
 // A gap buffer operating on bytes. The bytes are assumed to be utf8, but this module does not
 // handle Unicode at all. The calling code has to do utf8 parsing and provide proper byte indices.
 //
-// TODO(jt): Rething not handling utf8 in this module. Maybe we can help the caller?
+// TODO(jt): #UnicodeGapBuffer Rething not handling utf8 in this module. Maybe we can help the caller?
 //
 // TODO(jt): @Speed Gap Buffers have (theoretical?) problems with multiple cursors. Maybe we
 // eventually want something more complicated?
@@ -19,6 +19,35 @@ gap_buffer_init :: (gb: *Gap_Buffer, initial_gap_count := 4) {
     // TODO(jt): initial_gap_count is intentionally low for now to test this. Eventually increase to 4kb.
     gb.gap_count = initial_gap_count;
     array_resize(*gb.buffer, initial_gap_count);
+}
+
+// Gets a byte out of the underlying buffer, skipping the gap bytes.
+gap_buffer_get_nongap_byte :: (gb: Gap_Buffer, index: s64) -> u8 {
+    assert(index >= 0 && index < gb.count);
+    if index < gb.gap_index {
+        return gb.buffer[index];
+    } else {
+        return gb.buffer[index + gb.gap_count];
+    }
+}
+
+gap_buffer_get_bytes_after_gap :: (gb: Gap_Buffer) -> [] u8 {
+    view: [] u8;
+    view.count = gb.count - gb.gap_index - gb.gap_count;
+    view.data = gb.buffer.data + gb.gap_index + gb.gap_count;
+
+    // TODO(jt): @CompilerError This autocasts the integer to pointer.
+    // view.data = gb.gap_index + gb.gap_count;
+
+    return view;
+}
+
+gap_buffer_get_bytes_until_gap :: (gb: Gap_Buffer) -> [] u8 {
+    view: [] u8;
+    view.count = gb.gap_index;
+    view.data = gb.buffer.data;
+
+    return view;
 }
 
 gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
@@ -86,7 +115,7 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> [] u8 /* Po
     max_delete_count := gb.buffer.count - gb.gap_index - gb.gap_count; // Everything after the gap.
     delete_count = min(delete_count, max_delete_count);
 
-    //  Return where the gap started before the deletion.
+    // Return where the gap started before the deletion.
     deleted: [] u8;
     deleted.count = delete_count;
     deleted.data  = gb.buffer.data + gb.gap_index + gb.gap_count;
@@ -122,7 +151,7 @@ gap_buffer_replace :: (gb: *Gap_Buffer, delete_count: s64, insert_text: string) 
 // Returns either view of original data or new array in the context allocator. Note that if you are
 // making a large view, you are negating the copy-avoidance benefits of the gap buffer, so this
 // should be used to get screen-sized chunks of text, not the entire buffer.
-gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
+gap_buffer_make_contiguous_byte_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
     assert(count <= gb.count);
     assert(index <= gb.count);
     assert(index + count <= gb.count);
