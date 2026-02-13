@@ -1,27 +1,22 @@
-// TODO(jt): @Speed Gap Buffers have theoretical problems:
+// A gap buffer operating on bytes. The bytes are assumed to be utf8, but this module does not
+// handle Unicode at all. The calling code has to do utf8 parsing and provide proper byte indices.
 //
-// - Multiple cursors would require multiple gaps
-// - We have to move the gap when start editing a new part of the buffer
-// - They still have to reallocate from time to time when the gap is filled.
+// TODO(jt): Rething not handling utf8 in this module. Maybe we can help the caller?
 //
-// However, maybe these won't ever manifest in practice, because computers are fast? Also, the
-// benefit of gap buffers is their relative simplicity. Let's cross this bridge when we come to it.
+// TODO(jt): @Speed Gap Buffers have (theoretical?) problems with multiple cursors. Maybe we
+// eventually want something more complicated?
 Gap_Buffer :: struct {
     count: s64; // Stored here for the caller's convenience. Always buffer.count - gap_count.
 
     gap_index: s64;
     gap_count: s64;
 
-    // XXX: HERE So... I assumed this will store UTF-8, but that makes all sort of difficulties,
-    // like synchronizing the cursor (which counts in characters) with the gap index here (which
-    // counts in bytes). Should we be using UTF-32 and count in u32s? What do other editors do?
     buffer: [..] u8;
 }
 
-// You don't have to gap_buffer_init. It only helps you pre-allocate the internal buffer.
-//
-// TODO(jt): initial_gap_count is intentionally low for now to test this. Increase eventually!
+// You don't have to call gap_buffer_init. It only helps you pre-allocate the internal buffer.
 gap_buffer_init :: (gb: *Gap_Buffer, initial_gap_count := 4) {
+    // TODO(jt): initial_gap_count is intentionally low for now to test this. Eventually increase to 4kb.
     gb.gap_count = initial_gap_count;
     array_resize(*gb.buffer, initial_gap_count);
 }
@@ -53,11 +48,11 @@ gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
     gb.gap_index = index;
 }
 
-// Convenience for text, even if Gap_Buffer only operates on bytes.
 gap_buffer_insert :: (gb: *Gap_Buffer, text: string) {
     inline gap_buffer_insert(gb, cast([] u8, text));
 }
 
+// Inserts at the gap, advancing the gap index.
 gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
     if bytes.count > gb.gap_count {
         new_count   := round_up_grow_size(gb.buffer.count + bytes.count - gb.gap_count);
