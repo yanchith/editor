@@ -25,8 +25,9 @@ make_text_buffer :: (arena: *Arena) -> TextBuffer {
     buffer.gb.buffer.allocator = arena_allocator(arena);
     buffer.lines.allocator     = arena_allocator(arena);
 
-    // XXX: We currently have a implicit newline at the end of the file. Consider making it explicit
-    // (and stripping before save) to stuff here simpler.
+    // TODO(jt): @Cleanup We currently have a implicit newline at the end of the file. Consider
+    // making it explicit-but-undeletable (and adding/stripping it where necessary) to make stuff
+    // here simpler. Look for 'buffer.lines.count - 1' to find code that detects it.
     array_add(*buffer.lines);
 
     assert_valid(buffer);
@@ -95,14 +96,16 @@ text_buffer_delete_forward_at_cursor :: (buffer: *TextBuffer) {
 
         array_ordered_remove_by_index(*buffer.lines, buffer.cursor_y + 1);
 
-        gap_buffer_delete_forward(*buffer.gb, newline_advance);
+        deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
+        assert(newline_advance == deleted.count);
     } else {
         _, codepoint_advance := find_next_utf8_character_boundary(bytes, 0);
         if codepoint_advance {
             buffer.lines[buffer.cursor_y].char_count -= 1;
             buffer.lines[buffer.cursor_y].byte_count -= codepoint_advance;
 
-            gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
+            deleted := gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
+            assert(codepoint_advance == deleted.count);
         }
     }
 
@@ -135,7 +138,8 @@ text_buffer_delete_backward_at_cursor :: (buffer: *TextBuffer) {
         buffer.cursor_x = new_cursor_x;
         buffer.cursor_y -= 1;
 
-        gap_buffer_delete_backward(*buffer.gb, newline_advance);
+        deleted := gap_buffer_delete_backward(*buffer.gb, newline_advance);
+        assert(newline_advance == deleted.count);
     } else {
         _, codepoint_advance := find_previous_utf8_character_boundary(bytes, bytes.count);
         if codepoint_advance {
@@ -144,7 +148,8 @@ text_buffer_delete_backward_at_cursor :: (buffer: *TextBuffer) {
 
             buffer.cursor_x -= 1;
 
-            gap_buffer_delete_backward(*buffer.gb, codepoint_advance);
+            deleted := gap_buffer_delete_backward(*buffer.gb, codepoint_advance);
+            assert(codepoint_advance == deleted.count);
         }
     }
 
