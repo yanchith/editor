@@ -55,16 +55,15 @@ ceil    :: Math.ceil;
 #load "input.jai";
 #load "gap_buffer.jai";
 #load "font.jai";
-#load "buffer.jai";
+#load "text_buffer.jai";
 
 TEXTURE_ID_GLYPH_ATLAS: Texture_ID = 0;
 
 Editor :: struct {
     perm_arena: *Arena;
     font: Font;
-    buffer: Buffer;
+    buffer: TextBuffer;
 }
-
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     arena_procs := make_arena_procs(platform);
@@ -77,9 +76,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     assert(success);
 
     editor.font   = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS);
-    editor.buffer = make_buffer(buffer_arena);
+    editor.buffer = make_text_buffer(buffer_arena);
 
-    buffer_insert_at_cursor(*editor.buffer, HELLO_TEXT);
+    text_buffer_insert_at_cursor(*editor.buffer, HELLO_TEXT);
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -100,10 +99,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.data.key == {
-                        case .ARROW_UP;     buffer_maybe_move_cursor_y(*editor.buffer, -1);
-                        case .ARROW_DOWN;   buffer_maybe_move_cursor_y(*editor.buffer, 1);
-                        case .ARROW_LEFT;   buffer_maybe_move_cursor_x(*editor.buffer, -1);
-                        case .ARROW_RIGHT;  buffer_maybe_move_cursor_x(*editor.buffer, 1);
+                        case .ARROW_UP;     text_buffer_maybe_move_cursor_y(*editor.buffer, -1);
+                        case .ARROW_DOWN;   text_buffer_maybe_move_cursor_y(*editor.buffer, 1);
+                        case .ARROW_LEFT;   text_buffer_maybe_move_cursor_x(*editor.buffer, -1);
+                        case .ARROW_RIGHT;  text_buffer_maybe_move_cursor_x(*editor.buffer, 1);
 
                         // TODO(jt): Move screen up or down.
                         case .PAGE_UP;
@@ -118,24 +117,24 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .CODEPOINT; {
                     if it.data.codepoint == {
                         case .BACKSPACE; {
-                            buffer_delete_backward_at_cursor(*editor.buffer);
+                            text_buffer_delete_backward_at_cursor(*editor.buffer);
                         }
                         case .DELETE; {
-                            buffer_delete_forward_at_cursor(*editor.buffer);
+                            text_buffer_delete_forward_at_cursor(*editor.buffer);
                         }
 
                         case .TAB; {
                             // TODO(jt): Make indentation configurable.
                             // TODO(jt): Preserve tab-ness in tab-only documents.
-                            buffer_insert_at_cursor(*editor.buffer, "    ");
+                            text_buffer_insert_at_cursor(*editor.buffer, "    ");
                         }
                         case .SPACEBAR; {
-                            buffer_insert_at_cursor(*editor.buffer, " ");
+                            text_buffer_insert_at_cursor(*editor.buffer, " ");
                         }
 
                         case .ENTER; {
                             // TODO(jt): Preserve CRLF in CRLF-only documents.
-                            buffer_insert_at_cursor(*editor.buffer, "\n");
+                            text_buffer_insert_at_cursor(*editor.buffer, "\n");
                         }
 
                         case; {
@@ -152,7 +151,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 s := string.{ 4, cast(*u8, *buf) };
                                 Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
 
-                                buffer_insert_at_cursor(*editor.buffer, s);
+                                text_buffer_insert_at_cursor(*editor.buffer, s);
                             }
                         }
                     }
@@ -162,7 +161,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    text := gap_buffer_make_contiguous_byte_view(editor.buffer.gb, 0, editor.buffer.gb.count,, temp);
+    text := gap_buffer_make_contiguous_byte_view(editor.buffer.gb, 0, editor.buffer.gb.occupied_count,, temp);
     layout_and_draw_text_with_font(*editor.font, cast(string, text), *render_rects, *update_regions, is_new_frame = true);
 
     renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
@@ -172,10 +171,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 }
 
 #scope_file
-
-cursor_to_buffer_index :: (buffer: Buffer) -> s64 {
-
-}
 
 make_arena_procs :: (platform: Platform) -> Arena_Procs {
     return {
