@@ -62,7 +62,7 @@ TEXTURE_ID_GLYPH_ATLAS: Texture_ID = 0;
 Editor :: struct {
     perm_arena: *Arena;
     font: Font;
-    buffer: TextBuffer;
+    buffer: Text_Buffer;
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
@@ -161,13 +161,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
+    //
+    // Draw cursor
+    //
     {
-        // XXX: HERE Use glyph advance and font line metrics to compute width and height. For
-        // non-monospace we'll have to lean on layout to tell us where the cursor is.
-        w: f32 = editor.font.max_glyph_width_in_pixels;
-        h: f32 = editor.font.max_glyph_height_in_pixels;
-        x: f32 = editor.buffer.cursor_x * w;
-        y: f32 = editor.buffer.cursor_y * h;
+        line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor.y);
+        line_view := text_buffer_view_between_cursors(editor.buffer, line_start, line_end,, temp);
+
+        horizontal_advance := font_compute_horizontal_advance_on_line(editor.font, line_view, editor.buffer.cursor.x);
+
+        w: f32 = cast(f32, editor.font.max_glyph_width_in_integer_pixels); // XXX: Maybe just use the un-ceiled float version?... or the most precise version we can.
+        h: f32 = editor.font.font_scale * (editor.font.font_vmetrics.ascent - editor.font.font_vmetrics.descent + editor.font.font_vmetrics.line_gap);
+        x: f32 = horizontal_advance;
+        y: f32 = editor.buffer.cursor.y * h;
 
         cursor := array_add(*render_rects);
         cursor.rect = rect_from_point_and_size(x, y, w, h);
@@ -176,8 +182,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         cursor.color = { 0.8, 0, 0.7, 1 };
     }
 
-    text := gap_buffer_make_contiguous_byte_view(editor.buffer.gb, 0, editor.buffer.gb.occupied_count,, temp);
-    layout_and_draw_text_with_font(*editor.font, cast(string, text), *render_rects, *update_regions, is_new_frame = true);
+    //
+    // Layout and draw text
+    //
+    {
+        text := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.occupied_count,, temp);
+        font_layout_and_draw_text(*editor.font, cast(string, text), *render_rects, *update_regions, is_new_frame = true);
+    }
 
     renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
     renderer.draw_rects(render_rects);
