@@ -166,7 +166,7 @@ gap_buffer_replace :: (gb: *Gap_Buffer, delete_count: s64, insert_text: string) 
 // Returns either view of original data or new array in the context allocator. Note that if you are
 // making a large view, you are negating the copy-avoidance benefits of the gap buffer, so this
 // should be used to get screen-sized chunks of text, not the entire buffer.
-gap_buffer_make_contiguous_byte_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
+gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
     assert_valid(gb);
 
     assert(count <= gb.occupied_count);
