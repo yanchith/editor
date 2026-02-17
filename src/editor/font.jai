@@ -26,8 +26,13 @@ Font :: struct {
     font_bounding_box: IRect;
     font_scale: f32;
 
-    max_glyph_width_in_pixels: s32;
-    max_glyph_height_in_pixels: s32;
+    // The integer versions are ceil-ed. This is usually what you want if you talk about positions
+    // in the atlas, but sometimes you want the float versions, if you want positions in the text
+    // buffer.
+    max_glyph_width_in_pixels: f32;
+    max_glyph_height_in_pixels: f32;
+    max_glyph_width_in_integer_pixels: s32;
+    max_glyph_height_in_integer_pixels: s32;
 
     // Glyph cache stuff...
     glyph_atlas: [] u8;
@@ -91,11 +96,13 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     font.font_bounding_box = get_font_bounding_box(info);
     font.font_scale        = get_font_scale_for_pixel_height(info, FONT_PIXEL_HEIGHT);
 
-    font.max_glyph_width_in_pixels  = cast(s32, ceil(font.font_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0)));
-    font.max_glyph_height_in_pixels = cast(s32, ceil(font.font_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0)));
+    font.max_glyph_width_in_pixels  = font.font_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
+    font.max_glyph_height_in_pixels = font.font_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
+    font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
+    font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
 
-    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_pixels;
-    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_pixels;
+    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_integer_pixels;
+    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_integer_pixels;
     table_size   := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
 
     font.glyph_atlas        = NewArray(atlas_width * atlas_height, u8,, arena_allocator(font.arena));
@@ -184,7 +191,7 @@ layout_and_draw_text_with_font :: (font: *Font, text: string, render_rects: *[..
                 move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
                 assert(font.glyph_entries_tail == entry_index);
 
-                out := font.glyph_atlas.data + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels + glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels;
+                out := font.glyph_atlas.data + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_integer_pixels + glyph_cell_x_in_atlas * font.max_glyph_width_in_integer_pixels;
                 // TODO(jt): This does not clear previous cell to zero, which we maybe should?
                 rasterize_glyph(font.info, glyph_index,
                                 out, glyph_bitmap_width, glyph_bitmap_height,
@@ -196,8 +203,8 @@ layout_and_draw_text_with_font :: (font: *Font, text: string, render_rects: *[..
                 array_add(
                     update_regions,
                     irect_from_point_and_size(
-                        glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels,
-                        glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels,
+                        glyph_cell_x_in_atlas * font.max_glyph_width_in_integer_pixels,
+                        glyph_cell_y_in_atlas * font.max_glyph_height_in_integer_pixels,
                         glyph_bitmap_width,
                         glyph_bitmap_height,
                     ),
@@ -212,8 +219,8 @@ layout_and_draw_text_with_font :: (font: *Font, text: string, render_rects: *[..
                 cast(f32, glyph_bitmap_height),
             );
             rr.texture_rect = rect_from_point_and_size(
-                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_pixels) / font.glyph_atlas_width,
-                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_pixels) / font.glyph_atlas_height,
+                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_integer_pixels) / font.glyph_atlas_width,
+                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_integer_pixels) / font.glyph_atlas_height,
                 cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
                 cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
             );
