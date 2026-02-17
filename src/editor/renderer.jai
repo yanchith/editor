@@ -4,7 +4,7 @@ Render_Rect :: struct {
     rect: Rect;
     texture_rect: Rect;
     texture_id: Texture_ID;
-    color := Vector4.{ 1, 1, 1, 1 };
+    color := Vector4.{ 0, 0, 0, 1 };
 }
 
 Renderer :: struct {
