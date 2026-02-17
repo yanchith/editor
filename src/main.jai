@@ -13,9 +13,9 @@ Editor :: #import,file "editor/editor.jai";
 
 IRect :: Editor.IRect;
 
-// TODO(jt): This global is fine for now, but maybe we want to pass userdata through the renderer
-// API that the caller has to pass back?
+// TODO(jt): These globals are fine for now, but maybe we want to pass userdata through the renderer API?
 renderer_textures: Table(Editor.Texture_ID, Simp.Texture);
+renderer_shader: Simp.Shader;
 
 main :: () {
     time_program_start := current_time_monotonic();
@@ -107,6 +107,10 @@ main :: () {
             return success, cast([] u8, data);
         }
 
+
+        renderer_shader.gl_handle = Simp.get_shader_program(SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL);
+        renderer_shader.alpha_blend = true;
+
         renderer: Editor.Renderer;
         renderer.create_texture_r8unorm = (texture_id: Editor.Texture_ID, width: s32, height: s32, data: [] u8) {
             bitmap: Simp.Bitmap;
@@ -145,10 +149,25 @@ main :: () {
         renderer.draw_rects = (render_rects: [] Editor.Render_Rect) {
             // TODO(jt): @Speed Realistically, they all point to the same texture, so maybe we want
             // to shape the API such that there is only one texture binding followed by an instanced
-            // draw command instead of looping and binding per iteration.
+            // draw command instead of looping and binding per iteration. If they for some reason
+            // don't fit into one texture, we'd flush thhe pipeline.
             for render_rects {
                 texture := table_find_pointer(*renderer_textures, it.texture_id);
-                Simp.set_shader_for_images(texture);
+
+                // NOTE(jt): This is where we'd normally call Simp.set_shader_for_images(texture),
+                // but we instead pass in our modified shader, so we have to do a little bit more
+                // work.
+                {
+                    Simp.immediate_flush();
+
+                    target_shader := *renderer_shader;
+                    if context.simp.current_shader != target_shader {
+                        Simp.immediate_set_shader(target_shader);
+                        Simp.set_projection();
+                    }
+
+                    Simp.immediate_set_texture(texture);
+                }
 
                 Simp.immediate_quad(
                     { it.rect.x0, it.rect.y0 },
@@ -359,3 +378,36 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
 
     write_strings(time_prefix, log_level_prefix, source_prefix, message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
 }
+
+// This is a modified version of SHADER_SPRITE_LEFT_HANDED from Simp, so that we can pass in a
+// single-channel texture and have the colors map the way we want.
+SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL :: #string END
+OUT_IN vec2 TexCoords;
+OUT_IN vec4 iterated_color;
+
+#ifdef VERTEX_SHADER
+in vec4 vert_position;
+in vec4 vert_color;
+in vec2 vert_uv0;
+
+uniform mat4 projection;
+
+void main() {
+    TexCoords = vert_uv0.xy;
+    gl_Position = projection * vec4(vert_position.xy, 0.0, 1.0);
+    iterated_color = vert_color;
+}
+#endif
+
+#ifdef FRAGMENT_SHADER
+out vec4 color;
+
+uniform sampler2D diffuse_texture;
+
+void main () {
+    // This is the modified part. The single texture channel will become our alpha. We also got rid
+    // of the discard.
+    color = iterated_color * vec4(1, 1, 1, texture(diffuse_texture, TexCoords));
+}
+#endif
+END
