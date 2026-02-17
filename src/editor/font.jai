@@ -218,7 +218,6 @@ layout_and_draw_text_with_font :: (font: *Font, text: string, render_rects: *[..
                 cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
             );
             rr.texture_id = font.texture_id;
-            rr.color = { 1, 1, 1, 1 };
 
             cursor_x += font.font_scale * glyph_metrics.advance;
         }
