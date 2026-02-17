@@ -276,6 +276,7 @@ get_font_vmetrics :: (info: stbtt_fontinfo) -> Font_VMetrics {
 get_font_bounding_box :: (info: stbtt_fontinfo) -> IRect {
     result: IRect = ---;
     stbtt_GetFontBoundingBox(*info, *result.x0, *result.y0, *result.x1, *result.y1);
+    // log("XXX bbw %", result.x1 - result.x0);
     return result;
 }
 
@@ -290,6 +291,7 @@ get_glyph_index :: (info: stbtt_fontinfo, codepoint: u32) -> s32 {
 get_glyph_hmetrics :: (info: stbtt_fontinfo, index: s32) -> Glyph_HMetrics {
     result: Glyph_HMetrics = ---;
     stbtt_GetGlyphHMetrics(*info, index, *result.advance, *result.left_side_bearing);
+    // log("XXX advance %", result.advance);
     return result;
 }
 
