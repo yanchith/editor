@@ -51,15 +51,22 @@ text_buffer_insert_at_cursor :: (buffer: *Text_Buffer, text: string) {
     while text.count {
         newline, newline_advance := string_starts_with_newline(text);
         if newline {
+            // XXX: HERE @Bug If we insert a anywhere except at the end, this corruprts our metadata.
+            line_end := text_buffer_get_end_cursor_for_line(buffer, buffer.cursor.y);
+
+            char_count_after_cursor := buffer.lines[buffer.cursor.y].char_count - buffer.cursor.x;
+            byte_count_after_cursor := text_buffer_byte_count_between_cursors(buffer, buffer.cursor, line_end);
+
             gap_buffer_insert(*buffer.gb, String.slice(text, 0, newline_advance));
             advance(*text, newline_advance);
 
-            buffer.lines[buffer.cursor.y].char_count += 1;
-            buffer.lines[buffer.cursor.y].byte_count += newline_advance;
+            buffer.lines[buffer.cursor.y].char_count += 1 - char_count_after_cursor;
+            buffer.lines[buffer.cursor.y].byte_count += newline_advance - byte_count_after_cursor;
+
+            array_insert_at(*buffer.lines, { char_count_after_cursor, byte_count_after_cursor }, buffer.cursor.y + 1);
+
             buffer.cursor.y += 1;
             buffer.cursor.x = 0;
-
-            array_insert_at(*buffer.lines, { 0, 0 }, buffer.cursor.y);
 
             continue;
         }
@@ -163,15 +170,48 @@ text_buffer_delete_backward_at_cursor :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
-text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64) -> start: Cursor, end: Cursor {
-    line := buffer.lines[line_index];
-
-    endx := ifx line_index == buffer.lines.count - 1 then line.char_count else line.char_count - 1;
-
+text_buffer_get_start_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cursor {
+    assert(line_index < buffer.lines.count);
     start: Cursor = { 0, line_index };
+
+    return start;
+}
+
+text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cursor {
+    assert(line_index < buffer.lines.count);
+    line := buffer.lines[line_index];
+    endx := ifx line_index == buffer.lines.count - 1 then line.char_count else line.char_count - 1;
     end:   Cursor = { endx, line_index };
 
+    return end;
+}
+
+text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64) -> start: Cursor, end: Cursor {
+    start: Cursor = inline text_buffer_get_start_cursor_for_line(buffer, line_index);
+    end:   Cursor = inline text_buffer_get_end_cursor_for_line(buffer, line_index);
+
     return start, end;
+}
+
+text_buffer_byte_count_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor) -> s64 {
+    assert_cursor_valid(buffer, _start);
+    assert_cursor_valid(buffer, _end);
+
+    start := _start;
+    end   := _end;
+
+    if start.y > end.y {
+        swap(*start, *end);
+    }
+
+    if start.y == end.y && start.x > end.x {
+        swap(*start.x, *end.x);
+    }
+
+    start_index := get_gap_buffer_index_for_cursor(buffer, start);
+    end_index   := get_gap_buffer_index_for_cursor(buffer, end);
+
+    return end_index - start_index;
 }
 
 text_buffer_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
