@@ -162,13 +162,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     {
-        w := editor.font.max_glyph_width_in_pixels;
-        h := editor.font.max_glyph_height_in_pixels;
-        x := editor.buffer.cursor_x * w;
-        y := editor.buffer.cursor_y * h;
+        w: f32 = editor.font.max_glyph_width_in_pixels;
+        h: f32 = editor.font.max_glyph_height_in_pixels;
+        x: f32 = editor.buffer.cursor_x * w;
+        y: f32 = editor.buffer.cursor_y * h;
 
         cursor := array_add(*render_rects);
-        cursor.rect = rect_from_point_and_size(cast(f32, x), cast(f32, y), cast(f32, w), cast(f32, h));
+        cursor.rect = rect_from_point_and_size(x, y, w, h);
         cursor.texture_rect = { 0, 0, 0, 0 };
         cursor.texture_id = TEXTURE_ID_GLYPH_ATLAS;
         cursor.color = { 0.8, 0, 0.7, 1 };
