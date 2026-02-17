@@ -51,11 +51,11 @@ text_buffer_insert_at_cursor :: (buffer: *Text_Buffer, text: string) {
     while text.count {
         newline, newline_advance := string_starts_with_newline(text);
         if newline {
-            // XXX: HERE @Bug If we insert a anywhere except at the end, this corruprts our metadata.
-            line_end := text_buffer_get_end_cursor_for_line(buffer, buffer.cursor.y);
+            line_start := text_buffer_get_start_cursor_for_line(buffer, buffer.cursor.y);
+            bytes_before_cursor := text_buffer_byte_count_between_cursors(buffer, line_start, buffer.cursor);
 
             char_count_after_cursor := buffer.lines[buffer.cursor.y].char_count - buffer.cursor.x;
-            byte_count_after_cursor := text_buffer_byte_count_between_cursors(buffer, buffer.cursor, line_end);
+            byte_count_after_cursor := buffer.lines[buffer.cursor.y].byte_count - bytes_before_cursor;
 
             gap_buffer_insert(*buffer.gb, String.slice(text, 0, newline_advance));
             advance(*text, newline_advance);
