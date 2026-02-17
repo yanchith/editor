@@ -162,6 +162,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     {
+        // XXX: HERE Use glyph advance and font line metrics to compute width and height. For
+        // non-monospace we'll have to lean on layout to tell us where the cursor is.
         w: f32 = editor.font.max_glyph_width_in_pixels;
         h: f32 = editor.font.max_glyph_height_in_pixels;
         x: f32 = editor.buffer.cursor_x * w;
