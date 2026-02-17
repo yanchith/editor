@@ -26,11 +26,6 @@ Font :: struct {
     font_bounding_box: IRect;
     font_scale: f32;
 
-    // The integer versions are ceil-ed. This is usually what you want if you talk about positions
-    // in the atlas, but sometimes you want the float versions, if you want positions in the text
-    // buffer.
-    max_glyph_width_in_pixels: f32;
-    max_glyph_height_in_pixels: f32;
     max_glyph_width_in_integer_pixels: s32;
     max_glyph_height_in_integer_pixels: s32;
 
@@ -96,10 +91,8 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     font.font_bounding_box = get_font_bounding_box(info);
     font.font_scale        = get_font_scale_for_pixel_height(info, FONT_PIXEL_HEIGHT);
 
-    font.max_glyph_width_in_pixels  = font.font_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
-    font.max_glyph_height_in_pixels = font.font_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
-    font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
-    font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
+    font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.font_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0)));
+    font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.font_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0)));
 
     atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_integer_pixels;
     atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_integer_pixels;
@@ -118,7 +111,7 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     return font;
 }
 
-layout_and_draw_text_with_font :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, is_new_frame := false) {
+font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, is_new_frame := false) {
     // TODO(jt): @Cleanup Consider having the user update the stamp manually?
     if is_new_frame {
         font.glyph_cache_stamp += 1;
@@ -139,8 +132,7 @@ layout_and_draw_text_with_font :: (font: *Font, text: string, render_rects: *[..
             cursor_x = 0;
             cursor_y += font.font_scale * (font.font_vmetrics.line_gap + font.font_vmetrics.ascent - font.font_vmetrics.descent);
         } else {
-            glyph_index := get_glyph_index(font.info, it);
-
+            glyph_index   := get_glyph_index(font.info, it);
             glyph_metrics := get_glyph_hmetrics(font.info, glyph_index);
 
             // Alredy scaled from internal font unites to pixels.
@@ -229,6 +221,24 @@ layout_and_draw_text_with_font :: (font: *Font, text: string, render_rects: *[..
             cursor_x += font.font_scale * glyph_metrics.advance;
         }
     }
+}
+
+font_compute_horizontal_advance_on_line :: (font: Font, line_text: string, character_count: s64) -> f32 {
+    advance: s64 = 0; // In font integers. We scale at the end to avoid rounding errors.
+    for :Unicode.utf8_iter line_text {
+        if it_index >= character_count {
+            break;
+        }
+
+        glyph_index   := get_glyph_index(font.info, it);
+        glyph_metrics := get_glyph_hmetrics(font.info, glyph_index);
+
+        advance += glyph_metrics.advance;
+    }
+
+    scaled_advance := advance * font.font_scale;
+
+    return scaled_advance;
 }
 
 #scope_file
