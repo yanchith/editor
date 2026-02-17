@@ -165,7 +165,7 @@ text_buffer_maybe_move_cursor_x :: (buffer: *TextBuffer, delta: s64) {
             // have the newline character, so we only pretend it does.
             if buffer.cursor_y == buffer.lines.count - 1 {
                 buffer.cursor_x = min(buffer.cursor_x + 1, buffer.lines[buffer.cursor_y].char_count);
-            } else if buffer.cursor_x < buffer.lines[buffer.cursor_y].char_count {
+            } else if buffer.cursor_x < buffer.lines[buffer.cursor_y].char_count - 1 {
                 buffer.cursor_x += 1;
             } else {
                 buffer.cursor_x = 0;
