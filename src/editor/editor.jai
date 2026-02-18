@@ -115,6 +115,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
 
                 case .CODEPOINT; {
+                    log("XXX EDIT");
+
                     if it.data.codepoint == {
                         case .BACKSPACE; {
                             text_buffer_delete_backward_at_cursor(*editor.buffer);
@@ -163,7 +165,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     {
         // XXX: @CompilerBug ??? makeing contiguous view fails, because the NewArray inside
-        // incorrectly returns its value... after I insert space at the beginning of the file... only on -x64?
+        // incorrectly returns its value... after I insert space at the beginning of the
+        // file... only on -x64? However, I also sometimes get an access violation on LLVM, so I
+        // think this is my bug?
         complete := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.occupied_count,, temp);
         before   := gap_buffer_get_bytes_before_gap(editor.buffer.gb);
         after    := gap_buffer_get_bytes_after_gap(editor.buffer.gb);
@@ -172,6 +176,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         log("XXX gb %:%", complete.count, cast(string, complete));
         log("XXX gb before %:%", before.count, cast(string, before));
         log("XXX gb after %:%", after.count, cast(string, after));
+        log("-------------------------------------");
     }
 
     //
