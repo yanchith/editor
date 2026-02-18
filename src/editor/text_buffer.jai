@@ -43,6 +43,8 @@ make_text_buffer :: (arena: *Arena) -> Text_Buffer {
 }
 
 text_buffer_insert_at_cursor :: (buffer: *Text_Buffer, text: string) {
+    // TODO(jt): @Speed We currently insert things into the gap buffer byte by byte. Batch it!
+
     assert_valid(buffer);
 
     gb_index := get_gap_buffer_index_for_cursor(buffer);
@@ -189,8 +191,6 @@ text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) ->
 text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cursor, Cursor {
     start: Cursor = text_buffer_get_start_cursor_for_line(buffer, line_index);
     end:   Cursor = text_buffer_get_end_cursor_for_line(buffer, line_index);
-
-    log("XXX % %", start, end);
 
     return start, end;
 }
