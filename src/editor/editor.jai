@@ -165,6 +165,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Draw cursor
     //
     {
+        // TODO(jt): @CompilerBug Sooo, line_end is uninitialized with -x64. Why?
         line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor.y);
         line_view := text_buffer_view_between_cursors(editor.buffer, line_start, line_end,, temp);
 
