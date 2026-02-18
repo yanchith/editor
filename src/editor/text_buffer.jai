@@ -111,7 +111,7 @@ text_buffer_delete_forward_at_cursor :: (buffer: *Text_Buffer) {
         array_ordered_remove_by_index(*buffer.lines, buffer.cursor.y + 1);
 
         deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
-        assert(newline_advance == deleted.count);
+        assert(newline_advance == deleted);
     } else {
         _, codepoint_advance := find_next_utf8_character_boundary(bytes, 0);
         if codepoint_advance {
@@ -119,7 +119,7 @@ text_buffer_delete_forward_at_cursor :: (buffer: *Text_Buffer) {
             buffer.lines[buffer.cursor.y].byte_count -= codepoint_advance;
 
             deleted := gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
-            assert(codepoint_advance == deleted.count);
+            assert(codepoint_advance == deleted);
         }
     }
 
@@ -153,7 +153,7 @@ text_buffer_delete_backward_at_cursor :: (buffer: *Text_Buffer) {
         buffer.cursor.y -= 1;
 
         deleted := gap_buffer_delete_backward(*buffer.gb, newline_advance);
-        assert(newline_advance == deleted.count);
+        assert(newline_advance == deleted);
     } else {
         _, codepoint_advance := find_previous_utf8_character_boundary(bytes, bytes.count);
         if codepoint_advance {
@@ -163,7 +163,7 @@ text_buffer_delete_backward_at_cursor :: (buffer: *Text_Buffer) {
             buffer.cursor.x -= 1;
 
             deleted := gap_buffer_delete_backward(*buffer.gb, codepoint_advance);
-            assert(codepoint_advance == deleted.count);
+            assert(codepoint_advance == deleted);
         }
     }
 
@@ -295,22 +295,22 @@ assert_valid :: (buffer: Text_Buffer) {
     assert(buffer.lines.count > 0, "Text_Buffer not initialized (has to have at least one line). Call make_buffer() to initialize.");
     assert_cursor_valid(buffer, buffer.cursor);
 
-    count := 0;
+    byte_count := 0;
     for 0..buffer.lines.count - 2 {
         assert(buffer.lines[it].char_count >= 0);
         assert(buffer.lines[it].byte_count >= 0);
 
-        line_byte_count := buffer.lines[it].byte_count;
-        count += line_byte_count;
+        byte_count += buffer.lines[it].byte_count;
 
-        assert(gap_buffer_get_nongap_byte(buffer.gb, count - 1) == "\n");
+        assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) == "\n");
     }
 
-    line_byte_count := buffer.lines[buffer.lines.count - 1].byte_count;
-    if line_byte_count > 0 {
-        count += line_byte_count;
-        assert(gap_buffer_get_nongap_byte(buffer.gb, count - 1) != "\n");
+    if buffer.lines[buffer.lines.count - 1].byte_count > 0 {
+        byte_count += buffer.lines[buffer.lines.count - 1].byte_count;
+        assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) != "\n");
     }
+
+    assert(byte_count == buffer.gb.occupied_count);
 }
 
 assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
