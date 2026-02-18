@@ -71,19 +71,20 @@ gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
         copy_source := gb.buffer.data + gb.gap_index + gb.gap_count;
         copy_count  := index - gb.gap_index;
 
-        // TODO(jt): @Correctness Make sure memory is allowed to overlap in JAI's memcpy.
-        memcpy(copy_dest, copy_source, copy_count);
+        Memory.copy(copy_dest, copy_source, copy_count);
     } else {
         // We are moving the gap backward, so copy data forward.
         copy_dest   := gb.buffer.data + index + gb.gap_count;
         copy_source := gb.buffer.data + index;
         copy_count  := gb.gap_index - index;
 
-        // TODO(jt): @Correctness Make sure memory is allowed to overlap in JAI's memcpy.
-        memcpy(copy_dest, copy_source, copy_count);
+        Memory.copy(copy_dest, copy_source, copy_count);
     }
 
     gb.gap_index = index;
+
+    // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
+    memset(gb.buffer.data + gb.gap_index, 0, gb.gap_count);
 }
 
 gap_buffer_insert :: (gb: *Gap_Buffer, text: string) {
@@ -104,43 +105,41 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
         tail_count := gb.buffer.count - gb.gap_count - gb.gap_index;
 
         // tail_count can be zero if we started with an empty buffer, or if the gap was at the end,
-        // but memcpy should be fine with it.
-        //
-        // TODO(jt): @Correctness Make sure memory is allowed to overlap in JAI's memcpy.
-        memcpy(tail_data + grow_amount, tail_data, tail_count);
+        // but the copy should be fine with it.
+        Memory.copy(tail_data + grow_amount, tail_data, tail_count);
 
         // Preserve gap position, but enlarge it.
         gb.gap_count += grow_amount;
     }
 
-    memcpy(gb.buffer.data + gb.gap_index, bytes.data, bytes.count);
+    Memory.copy(gb.buffer.data + gb.gap_index, bytes.data, bytes.count);
     gb.gap_index += bytes.count;
     gb.gap_count -= bytes.count;
 
     gb.occupied_count += bytes.count;
+
+    // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
+    memset(gb.buffer.data + gb.gap_index, 0, gb.gap_count);
 }
 
-
-// Deletes at the gap, moving forward. Returns array view of deleted bytes.
-gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> [] u8 /* Pointing to the gap in this buffer */ {
+// Deletes at the gap, moving forward. Returns number of actually deleted bytes.
+gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     assert_valid(gb);
 
     max_delete_count := gb.buffer.count - gb.gap_index - gb.gap_count; // Everything after the gap.
     delete_count = min(delete_count, max_delete_count);
 
-    // Return where the gap started before the deletion.
-    deleted: [] u8;
-    deleted.count = delete_count;
-    deleted.data  = gb.buffer.data + gb.gap_index + gb.gap_count;
-
     gb.occupied_count -= delete_count;
     gb.gap_count += delete_count;
 
-    return deleted;
+    // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
+    memset(gb.buffer.data + gb.gap_index, 0, gb.gap_count);
+
+    return delete_count;
 }
 
-// Deletes at the gap, moving backward. Returns array view of deleted bytes.
-gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> [] u8 /* Pointing to the gap in this buffer */ {
+// Deletes at the gap, moving backward. Returns number of actually deleted bytes.
+gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     assert_valid(gb);
 
     max_delete_count := gb.gap_index;
@@ -150,12 +149,10 @@ gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> [] u8 /* P
     gb.gap_index -= delete_count;
     gb.gap_count += delete_count;
 
-    // Return where the gap starts after deletion
-    deleted: [] u8;
-    deleted.count = delete_count;
-    deleted.data  = gb.buffer.data + gb.gap_index;
+    // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
+    memset(gb.buffer.data + gb.gap_index, 0, gb.gap_count);
 
-    return deleted;
+    return delete_count;
 }
 
 gap_buffer_replace :: (gb: *Gap_Buffer, delete_count: s64, insert_text: string) {
@@ -192,8 +189,8 @@ gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [
     tail_data  := gb.buffer.data + gb.gap_index + gb.gap_count;
     tail_count := count - head_count;
 
-    memcpy(result.data, head_data, head_count);
-    memcpy(result.data + head_count, tail_data, tail_count);
+    Memory.copy(result.data, head_data, head_count);
+    Memory.copy(result.data + head_count, tail_data, tail_count);
 
     return result;
 }
@@ -237,3 +234,7 @@ round_up_to_next_power_of_two :: inline (x: s64) -> s64 {
 
     return x;
 }
+
+#scope_file
+
+Memory :: #import "Memory";
