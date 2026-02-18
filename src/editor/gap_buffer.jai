@@ -88,7 +88,8 @@ gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
 }
 
 gap_buffer_insert :: (gb: *Gap_Buffer, text: string) {
-    inline gap_buffer_insert(gb, cast([] u8, text));
+    // TODO(jt): inline commented out for debugging.
+    /*inline*/ gap_buffer_insert(gb, cast([] u8, text));
 }
 
 // Inserts at the gap, advancing the gap index.
@@ -166,9 +167,13 @@ gap_buffer_replace :: (gb: *Gap_Buffer, delete_count: s64, insert_text: string) 
 gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
     assert_valid(gb);
 
-    assert(count <= gb.occupied_count);
     assert(index <= gb.occupied_count);
+    assert(count <= gb.occupied_count);
     assert(index + count <= gb.occupied_count);
+
+    if index >= gb.occupied_count {
+        return .[];
+    }
 
     if index + count <= gb.gap_index {
         // Simple case 1: return contiguous array view before the gap.
