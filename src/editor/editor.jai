@@ -41,8 +41,6 @@ f64 :: float64;
 #import "Arena";
 #import "Hash_Table";
 
-#import "Random"; // XXX
-
 String  :: #import "String";
 Math    :: #import "Math";
 Unicode :: #import "Unicode";
@@ -65,8 +63,6 @@ Editor :: struct {
     perm_arena: *Arena;
     font: Font;
     buffer: Text_Buffer;
-
-    XXX_rng: Random_State;
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
@@ -164,33 +160,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
         }
     }
-
-    // XXX: HERE stress test this!
-    XXX_debug_input_events: [..] Input_Event;
-    for 0..10 {
-        e := array_add(*XXX_debug_input_events);
-
-        if random_get_zero_to_one(*editor.XXX_rng) < 0.5 {
-            e.type = .KEY;
-            e.flags |= .PRESSED;
-
-            r := random_get_zero_to_one(*editor.XXX_rng);
-            if r < 0.25 {
-                e.data.key = ARROW_UP;
-            } else if r < 0.5 {
-                e.data.key = ARROW_DOWN;
-            } else if r < 0.75 {
-                e.data.key = ARROW_LEFT;
-            } else {
-                e.data.key = ARROW_RIGHT;
-            }
-        } else {
-            e.type = .CODEPOINT;
-            e.flags |= .PRESSED:
-        }
-    }
-
-
 
     // {
     //     // XXX: @CompilerBug ??? makeing contiguous view fails, because the NewArray inside
