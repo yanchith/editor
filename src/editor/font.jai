@@ -12,7 +12,7 @@
 // - vertical fonts
 //
 
-FONT_PIXEL_HEIGHT: f32 = 30;
+FONT_PIXEL_HEIGHT: f32 = 16;
 
 Font :: struct {
     arena: *Arena;

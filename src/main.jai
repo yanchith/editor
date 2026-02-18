@@ -5,12 +5,18 @@ f64 :: float64;
 #import "Hash_Table";
 
 Memory :: #import "Memory";
+Random :: #import "Random";
 String :: #import "String";
 File   :: #import "File";
 Window :: #import "Window_Creation";
 Input  :: #import "Input";
 Simp   :: #import "Simp"; // TODO(jt): Make our own simple renderer on Vulkan and Metal? SGPU? WGPU? Something.
 Editor :: #import,file "editor/editor.jai";
+
+Random_State           :: Random.Random_State;
+random_seed            :: Random.random_seed;
+random_get             :: Random.random_get;
+random_get_zero_to_one :: Random.random_get_zero_to_one;
 
 IRect :: Editor.IRect;
 
@@ -26,6 +32,9 @@ main :: () {
     editor_context := context;
     editor_context.logger      = context_logger;
     editor_context.logger_data = *context_logger_data;
+
+    fuzz_rng: Random_State;
+    random_seed(*fuzz_rng, 1);
 
     push_context editor_context {
         #if OS == .MACOS {
@@ -190,7 +199,8 @@ main :: () {
         editor: Editor.Editor;
         Editor.init(*editor, platform, renderer);
 
-        should_run := true;
+        should_run  := true;
+        should_fuzz := false;
 
         // TODO(jt): Change this to wake up and run only if there are events (but still v-sync the render).
         while should_run {
@@ -275,7 +285,7 @@ main :: () {
                                 case .F9;                      array_add(*input_events, { .KEY, flags, { key = .F9 } });
                                 case .F10;                     array_add(*input_events, { .KEY, flags, { key = .F10 } });
                                 case .F11;                     array_add(*input_events, { .KEY, flags, { key = .F11 } });
-                                case .F12;                     array_add(*input_events, { .KEY, flags, { key = .F12 } });
+                                case .F12;                     array_add(*input_events, { .KEY, flags, { key = .F12 } }); if it.key_pressed then should_fuzz = !should_fuzz;
 
                                 case .PRINT_SCREEN;            array_add(*input_events, { .KEY, flags, { key = .PRINT_SCREEN } });
 
@@ -283,6 +293,71 @@ main :: () {
                                 case .MOUSE_BUTTON_RIGHT;      array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_RIGHT } });
                                 case .MOUSE_BUTTON_MIDDLE;     array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_MIDDLE } });
                             }
+                        }
+                    }
+                }
+            }
+
+            if should_fuzz {
+                MOVES   :: Editor.Key.[.ARROW_UP, .ARROW_DOWN, .ARROW_LEFT, .ARROW_RIGHT];
+                ADDS    :: Editor.Codepoint.[.ENTER, .SPACEBAR, .TAB, #char "A", #char "B", #char "C", #char "D", #char "E", #char "F"];
+                DELETES :: Editor.Codepoint.[.BACKSPACE, .DELETE];
+
+                for 0..1000 {
+                    r := random_get_zero_to_one(*fuzz_rng);
+
+                    if r < 0.2 {
+                        e := array_add(*input_events);
+                        e.type = .KEY;
+                        e.flags |= .KEY_PRESSED;
+
+                        index := random_get(*fuzz_rng) % MOVES.count;
+                        e.data.key = MOVES[index];
+                    } else if r < 0.8 {
+                        e := array_add(*input_events);
+                        e.type = .CODEPOINT;
+                        e.flags |= .KEY_PRESSED;
+
+                        index := random_get(*fuzz_rng) % ADDS.count;
+                        e.data.codepoint = ADDS[index];
+                    } else if r < 0.99 {
+                        e := array_add(*input_events);
+                        e.type = .CODEPOINT;
+                        e.flags |= .KEY_PRESSED;
+
+                        index := random_get(*fuzz_rng) % DELETES.count;
+                        e.data.codepoint = DELETES[index];
+                    } else if r < 0.995 {
+                        for 0..100 {
+                            e := array_add(*input_events);
+                            e.type = .KEY;
+                            e.flags |= .KEY_PRESSED;
+
+                            e.data.key = .ARROW_RIGHT;
+                        }
+
+                        for 0..100 {
+                            e := array_add(*input_events);
+                            e.type = .CODEPOINT;
+                            e.flags |= .KEY_PRESSED;
+
+                            e.data.codepoint = .BACKSPACE;
+                        }
+                    } else {
+                        for 0..100 {
+                            e := array_add(*input_events);
+                            e.type = .KEY;
+                            e.flags |= .KEY_PRESSED;
+
+                            e.data.key = .ARROW_LEFT;
+                        }
+
+                        for 0..100 {
+                            e := array_add(*input_events);
+                            e.type = .CODEPOINT;
+                            e.flags |= .KEY_PRESSED;
+
+                            e.data.codepoint = .DELETE;
                         }
                     }
                 }
