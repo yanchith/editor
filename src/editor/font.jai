@@ -120,6 +120,12 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
         font.frame_cache_misses = 0;
     }
 
+    // TODO(jt): @Cleanup Early exit to prevent utf8_iter accessing the first byte of a 0-length
+    // string. Can remove after the fix is incorporated.
+    if text.count == 0 {
+        return;
+    }
+
     cursor_x: f32 = 0;
     cursor_y: f32 = font.font_scale * font.font_vmetrics.ascent;
 
