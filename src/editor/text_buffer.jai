@@ -186,9 +186,11 @@ text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) ->
     return end;
 }
 
-text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64) -> start: Cursor, end: Cursor {
-    start: Cursor = inline text_buffer_get_start_cursor_for_line(buffer, line_index);
-    end:   Cursor = inline text_buffer_get_end_cursor_for_line(buffer, line_index);
+text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cursor, Cursor {
+    start: Cursor = text_buffer_get_start_cursor_for_line(buffer, line_index);
+    end:   Cursor = text_buffer_get_end_cursor_for_line(buffer, line_index);
+
+    log("XXX % %", start, end);
 
     return start, end;
 }

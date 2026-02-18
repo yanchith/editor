@@ -165,8 +165,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Draw cursor
     //
     {
-        // TODO(jt): @CompilerBug Sooo, line_end is uninitialized with -x64. Why?
+        // XXX: @CompilerBug ??? Sooo, line_end is uninitialized with -x64 after I insert a space
+        // at the beginnning. Do I stamp on the stack somehow?
         line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor.y);
+        log("XXX 2 % %", line_start, line_end);
+
         line_view := text_buffer_view_between_cursors(editor.buffer, line_start, line_end,, temp);
 
         position := font_compute_position_on_line(editor.font, line_view, editor.buffer.cursor.x);
