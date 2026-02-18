@@ -84,7 +84,7 @@ gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
     gb.gap_index = index;
 
     // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
-    memset(gb.buffer.data + gb.gap_index, 0, gb.gap_count);
+    fillgap(gb);
 }
 
 gap_buffer_insert :: (gb: *Gap_Buffer, text: string) {
@@ -119,7 +119,7 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
     gb.occupied_count += bytes.count;
 
     // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
-    memset(gb.buffer.data + gb.gap_index, 0, gb.gap_count);
+    fillgap(gb);
 }
 
 // Deletes at the gap, moving forward. Returns number of actually deleted bytes.
@@ -133,7 +133,7 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     gb.gap_count += delete_count;
 
     // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
-    memset(gb.buffer.data + gb.gap_index, 0, gb.gap_count);
+    fillgap(gb);
 
     return delete_count;
 }
@@ -150,7 +150,7 @@ gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     gb.gap_count += delete_count;
 
     // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
-    memset(gb.buffer.data + gb.gap_index, 0, gb.gap_count);
+    fillgap(gb);
 
     return delete_count;
 }
@@ -197,6 +197,16 @@ gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [
 
 
 #scope_file
+
+// XXX: @Bug This should have been memset, but I am paranoid. But it does behave differently!
+fillgap :: (gb: *Gap_Buffer) {
+    for 0..gb.gap_count - 1 {
+        index := gb.gap_index + it;
+        assert(index >= 0 && index < gb.buffer.count);
+
+        gb.buffer.data[index] = 0;
+    }
+}
 
 assert_valid :: (gb: Gap_Buffer) {
     assert(gb.occupied_count == gb.buffer.count - gb.gap_count);
