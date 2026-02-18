@@ -4,6 +4,7 @@ f64 :: float64;
 #import "Basic";
 #import "Hash_Table";
 
+Memory :: #import "Memory";
 String :: #import "String";
 File   :: #import "File";
 Window :: #import "Window_Creation";
@@ -119,7 +120,7 @@ main :: () {
 
 
             assert(bitmap.data.count == data.count);
-            memcpy(bitmap.data.data, data.data, data.count);
+            Memory.copy(bitmap.data.data, data.data, data.count);
 
             texture: Simp.Texture;
             Simp.texture_load_from_bitmap(*texture, *bitmap);
@@ -142,7 +143,7 @@ main :: () {
             bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
 
             assert(bitmap.data.count == data.count);
-            memcpy(bitmap.data.data, data.data, data.count);
+            Memory.copy(bitmap.data.data, data.data, data.count);
 
             Simp.texture_load_from_bitmap(texture, *bitmap);
         }
@@ -318,7 +319,7 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
 
         // TODO(jt): @Speed resize + memset?
         for s.count..length - 1 {
-            append(*builder, #char " ");
+            append(*builder, " ");
         }
 
         append(*builder, s);
@@ -334,7 +335,7 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
 
         // TODO(jt): @Speed resize + memset?
         for s.count..length - 1 {
-            append(*builder, #char " ");
+            append(*builder, " ");
         }
 
         return builder_to_string(*builder,, temp);
