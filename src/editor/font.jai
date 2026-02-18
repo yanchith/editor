@@ -223,7 +223,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
     }
 }
 
-font_compute_horizontal_advance_on_line :: (font: Font, line_text: string, character_count: s64) -> f32 {
+font_compute_position_on_line :: (font: Font, line_text: string, character_count: s64) -> f32 {
     // TODO(jt): @Cleanup Early exit to prevent utf8_iter accessing the first byte of a 0-length
     // string. Can remove after the fix is incorporated.
     if line_text.count == 0 {
