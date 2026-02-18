@@ -316,7 +316,7 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
         builder: String_Builder;
         builder.allocator = temp;
 
-        // TODO(jt): @Speed memset?
+        // TODO(jt): @Speed resize + memset?
         for s.count..length - 1 {
             append(*builder, #char " ");
         }
@@ -332,7 +332,7 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
 
         append(*builder, s);
 
-        // TODO(jt): @Speed memset?
+        // TODO(jt): @Speed resize + memset?
         for s.count..length - 1 {
             append(*builder, #char " ");
         }

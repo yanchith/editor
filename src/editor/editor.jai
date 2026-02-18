@@ -170,7 +170,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         position := font_compute_position_on_line(editor.font, line_view, editor.buffer.cursor.x);
 
-        w: f32 = cast(f32, editor.font.max_glyph_width_in_integer_pixels); // XXX: Maybe just use the un-ceiled float version?... or the most precise version we can.
+        w: f32 = cast(f32, editor.font.max_glyph_width_in_integer_pixels);
         h: f32 = editor.font.font_scale * (editor.font.font_vmetrics.ascent - editor.font.font_vmetrics.descent + editor.font.font_vmetrics.line_gap);
         x: f32 = position;
         y: f32 = editor.buffer.cursor.y * h;
