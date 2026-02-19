@@ -1,3 +1,5 @@
+// TODO(jt): @Cleanup I commented out a bunch of inlines when debugging. Eventually put them back in.
+
 // A gap buffer operating on bytes. The bytes are assumed to be utf8, but this module does not
 // handle Unicode at all. The calling code has to do utf8 parsing and provide proper byte
 // indices.
@@ -88,7 +90,6 @@ gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
 }
 
 gap_buffer_insert :: (gb: *Gap_Buffer, text: string) {
-    // TODO(jt): inline commented out for debugging.
     /*inline*/ gap_buffer_insert(gb, cast([] u8, text));
 }
 
@@ -227,13 +228,13 @@ round_up_grow_size :: (required_size: s64) -> s64 {
     }
 }
 
-round_up_to_align :: inline (x: s64, alignment: s64) -> s64 {
+round_up_to_align :: /*inline*/ (x: s64, alignment: s64) -> s64 {
     // TODO(jt): #debug_assert This does NOT yet assert that alignment is a power of two.
     mask := alignment - 1;
     return (x + mask) & ~mask;
 }
 
-round_up_to_next_power_of_two :: inline (x: s64) -> s64 {
+round_up_to_next_power_of_two :: /*inline*/ (x: s64) -> s64 {
     // Taken from https://graphics.stanford.edu/%7Eseander/bithacks.html#RoundUpPowerOf2.
     // Maybe there's a better way to do this in 2026. Some bit_scan instructions maybe?
 
@@ -252,4 +253,6 @@ round_up_to_next_power_of_two :: inline (x: s64) -> s64 {
 
 #scope_file
 
-Memory :: #import "Memory";
+// TODO(jt): @Cleanup Switch back to using memory... once it is okay?
+// Memory :: #import "Memory";
+Memory :: #import "Dumbcopy";
