@@ -267,9 +267,11 @@ ArenaAutoPop :: (arena: *Arena) #expand {
 
 #scope_file
 
-// TODO(jt): @Cleanup We could copy over the few things we use.
+// TODO(jt): @Cleanup We could copy over the few things we use from basic and ditch that in here.
 Basic  :: #import "Basic";
-Memory :: #import "Memory";
+// TODO(jt): @Cleanup Switch back to using memory... once it is okay?
+// Memory :: #import "Memory";
+Memory :: #import "Dumbcopy";
 
 CAPS_VERSION_STRING :: "modules/Arena";
 

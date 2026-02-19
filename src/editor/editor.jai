@@ -161,31 +161,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    // {
-    //     // XXX: @CompilerBug ??? makeing contiguous view fails, because the NewArray inside
-    //     // incorrectly returns its value... after I insert space at the beginning of the
-    //     // file... only on -x64? However, I also sometimes get an access violation on LLVM, so I
-    //     // think this is my bug?
-    //     complete := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.occupied_count,, temp);
-    //     before   := gap_buffer_get_bytes_before_gap(editor.buffer.gb);
-    //     after    := gap_buffer_get_bytes_after_gap(editor.buffer.gb);
-
-    //     // log("-------------------------------------");
-    //     // log("XXX gb %:%", complete.count, cast(string, complete));
-    //     // log("XXX gb before %:%", before.count, cast(string, before));
-    //     // log("XXX gb after %:%", after.count, cast(string, after));
-    //     // log("-------------------------------------");
-    // }
-
     //
     // Draw cursor
     //
     {
         // XXX: @CompilerBug ??? Sooo, line_end is uninitialized with -x64 after I insert a space
         // at the beginnning. Do I stamp on the stack somehow?
-        //
-        // XXX: On llvm, we get a completely different crash after trying to delete at the beginning
-        // of the buffer, but only sometimes, because ASLR?
 
         // line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor.y);
         line_start := text_buffer_get_start_cursor_for_line(editor.buffer, editor.buffer.cursor.y);
