@@ -90,9 +90,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> bool {
     render_rects: [..] Render_Rect;
-    // render_rects.allocator = temp; // XXX
+    render_rects.allocator = temp;
     update_regions: [..] IRect;
-    // update_regions.allocator = temp; // XXX
+    update_regions.allocator = temp;
 
     for input.events {
         if it.flags & .KEY_PRESSED {
@@ -172,7 +172,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         line_start := text_buffer_get_start_cursor_for_line(editor.buffer, editor.buffer.cursor.y);
         line_end   := text_buffer_get_end_cursor_for_line(editor.buffer, editor.buffer.cursor.y);
 
-        line_view := text_buffer_view_between_cursors(editor.buffer, line_start, line_end); // XXX temp
+        line_view := text_buffer_view_between_cursors(editor.buffer, line_start, line_end);
 
         position := font_compute_position_on_line(editor.font, line_view, editor.buffer.cursor.x);
 
@@ -192,7 +192,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Layout and draw text
     //
     {
-        text := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.occupied_count); // XXX temp
+        text := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.occupied_count);
         font_layout_and_draw_text(*editor.font, cast(string, text), *render_rects, *update_regions, is_new_frame = true);
     }
 
