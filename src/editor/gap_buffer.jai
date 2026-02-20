@@ -5,7 +5,7 @@
 // TODO(jt): @Speed Gap Buffers have (theoretical?) problems with multiple cursors. Maybe we
 // eventually want something more complicated?
 Gap_Buffer :: struct {
-    occupied_count: s64; // Stored here for the caller's convenience. Always buffer.count - gap_count.
+    count: s64; // Stored here for the caller's convenience. Always buffer.count - gap_count.
 
     gap_index: s64;
     gap_count: s64;
@@ -26,7 +26,7 @@ gap_buffer_init :: (gb: *Gap_Buffer, initial_gap_count := 4) {
 gap_buffer_get_nongap_byte :: (gb: Gap_Buffer, index: s64) -> u8 {
     assert_valid(gb);
 
-    assert(index >= 0 && index < gb.occupied_count);
+    assert(index >= 0 && index < gb.count);
     if index < gb.gap_index {
         return gb.buffer[index];
     } else {
@@ -60,7 +60,7 @@ gap_buffer_get_bytes_after_gap :: (gb: Gap_Buffer) -> [] u8 {
 gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
     assert_valid(gb);
 
-    assert(index >= 0 && index <= gb.occupied_count);
+    assert(index >= 0 && index <= gb.count);
     if gb.gap_index == index {
         return;
     }
@@ -117,7 +117,7 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
     gb.gap_index += bytes.count;
     gb.gap_count -= bytes.count;
 
-    gb.occupied_count += bytes.count;
+    gb.count += bytes.count;
 
     #if DEBUG {
         memset(gb.buffer.data + gb.gap_index, 0xff, gb.gap_count);
@@ -131,7 +131,7 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     max_delete_count := gb.buffer.count - gb.gap_index - gb.gap_count; // Everything after the gap.
     delete_count = min(delete_count, max_delete_count);
 
-    gb.occupied_count -= delete_count;
+    gb.count -= delete_count;
     gb.gap_count += delete_count;
 
     #if DEBUG {
@@ -148,7 +148,7 @@ gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     max_delete_count := gb.gap_index;
     delete_count = min(delete_count, max_delete_count);
 
-    gb.occupied_count -= delete_count;
+    gb.count -= delete_count;
     gb.gap_index -= delete_count;
     gb.gap_count += delete_count;
 
@@ -170,11 +170,11 @@ gap_buffer_replace :: (gb: *Gap_Buffer, delete_count: s64, insert_text: string) 
 gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
     assert_valid(gb);
 
-    assert(index <= gb.occupied_count);
-    assert(count <= gb.occupied_count);
-    assert(index + count <= gb.occupied_count);
+    assert(index <= gb.count);
+    assert(count <= gb.count);
+    assert(index + count <= gb.count);
 
-    if index >= gb.occupied_count {
+    if index >= gb.count {
         return .[];
     }
 
@@ -206,7 +206,7 @@ gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [
 #scope_file
 
 assert_valid :: (gb: Gap_Buffer) {
-    assert(gb.occupied_count == gb.buffer.count - gb.gap_count);
+    assert(gb.count == gb.buffer.count - gb.gap_count);
 }
 
 round_up_grow_size :: (required_size: s64) -> s64 {
