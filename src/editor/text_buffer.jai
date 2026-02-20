@@ -1,5 +1,3 @@
-// TODO(jt): @Cleanup I commented out a bunch of inlines when debugging. Eventually put them back in.
-
 // Currently, Gap_Buffer operates only on bytes and is oblivious to them being UTF8. The Buffer
 // struct (this file) adds UTF8 knowledge. For now this is how it is.
 Text_Buffer :: struct {
@@ -327,7 +325,7 @@ assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
 }
 
 string_starts_with_newline :: (bytes: [] u8) -> bool, newline_byte_length: s64 {
-    newline, newline_byte_length := /*inline*/ string_starts_with_newline(cast(string, bytes));
+    newline, newline_byte_length := inline string_starts_with_newline(cast(string, bytes));
     return newline, newline_byte_length;
 }
 
@@ -342,7 +340,7 @@ string_starts_with_newline :: (s: string) -> bool, newline_byte_length: s64 {
 }
 
 string_ends_with_newline :: (bytes: [] u8) -> bool, newline_byte_length: s64 {
-    newline, newline_byte_length := /*inline*/ string_ends_with_newline(cast(string, bytes));
+    newline, newline_byte_length := inline string_ends_with_newline(cast(string, bytes));
     return newline, newline_byte_length;
 }
 
