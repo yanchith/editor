@@ -238,8 +238,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         viewport_y0 := editor.buffer_viewport_scroll.y;
         viewport_y1 := editor.buffer_viewport_scroll.y + input.window_size.y;
 
-        viewport_line_index_start := clamp(0, editor.buffer.lines.count - 1, cast(s64, floor(viewport_y0 / buffer_cell_h)));
-        viewport_line_index_end   := clamp(0, editor.buffer.lines.count - 1, cast(s64, ceil(viewport_y1 / buffer_cell_h)));
+        viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / buffer_cell_h)), 0, editor.buffer.lines.count - 1);
+        viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / buffer_cell_h)), 0, editor.buffer.lines.count - 1);
 
         viewport_start := text_buffer_get_start_cursor_for_line(editor.buffer, viewport_line_index_start);
         viewport_end   := text_buffer_get_end_cursor_for_line(editor.buffer, viewport_line_index_end);
