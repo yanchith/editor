@@ -314,7 +314,7 @@ assert_valid :: (buffer: Text_Buffer) {
         assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) != "\n");
     }
 
-    assert(byte_count == buffer.gb.occupied_count);
+    assert(byte_count == buffer.gb.count);
 }
 
 assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
@@ -402,7 +402,7 @@ get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, _cursor := CURSOR_INVAL
     line_index := cursor.y;
     if line_index >= buffer.lines.count {
         // We are past the last line. Return index past the last byte in the gap buffer.
-        return buffer.gb.occupied_count;
+        return buffer.gb.count;
     }
 
     index := 0;
