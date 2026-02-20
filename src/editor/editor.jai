@@ -34,6 +34,8 @@ A: Pass an allocator for each lifetime. Fortunately, these situations are rare.
 
 */
 
+DEBUG :: true; // Extra debugging features enabled for now.
+
 f32 :: float32;
 f64 :: float64;
 
@@ -165,13 +167,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Draw cursor
     //
     {
-        // XXX: @CompilerBug ??? Sooo, line_end is uninitialized with -x64 after I insert a space
-        // at the beginnning. Do I stamp on the stack somehow?
-
-        // line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor.y);
-        line_start := text_buffer_get_start_cursor_for_line(editor.buffer, editor.buffer.cursor.y);
-        line_end   := text_buffer_get_end_cursor_for_line(editor.buffer, editor.buffer.cursor.y);
-
+        line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor.y);
         line_view := text_buffer_view_between_cursors(editor.buffer, line_start, line_end);
 
         position := font_compute_position_on_line(editor.font, line_view, editor.buffer.cursor.x);

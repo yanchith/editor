@@ -1,5 +1,3 @@
-#module_parameters () (DEBUG_ASSERT := true);
-
 // This arena aims to be simple and minimal. It only does virtual memory reserve, and then
 // commits/decommits on the go. You tweak the minimal amount of retained memory to prevent releasing
 // all memory back to the OS only to allocate it again.
@@ -9,6 +7,8 @@
 // - Block chaining and releasing blocks. We'd only need this if we can't use virtual memory or decommit doesn't work for some reason.
 // - User-given first block.
 //
+
+#module_parameters()(DEBUG := true); // TODO(jt): Eventually default this to false, once we are condi
 
 ARENA_DEFAULT_RESERVE_SIZE: s64 : 256 << 20;
 ARENA_DEFAULT_COMMIT_SIZE:  s64 :  64 << 10;
@@ -32,15 +32,11 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
             }
 
             arena := cast(*Arena, allocator_data);
-            Basic.assert(arena != null);
+            assert(arena != null);
 
             result := arena_push(arena, requested_size);
             if result && old_size {
-                // TODO(jt): This is just us being paranoid. memcpy should be okay here, because if
-                // we didn't grow in-place, the memory never overlaps.
-                //
-                // memcpy(result, old_memory, old_size);
-                Memory.copy(result, old_memory, old_size);
+                memcpy(result, old_memory, old_size);
             }
 
             return result;
@@ -48,7 +44,7 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
 
         case .ALLOCATE; {
             arena := cast(*Arena, allocator_data);
-            Basic.assert(arena != null);
+            assert(arena != null);
 
             result := arena_push(arena, requested_size);
 
@@ -61,12 +57,12 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
 
         case .THREAD_START; #through;
         case .THREAD_STOP;
-        Basic.assert(false, "Multithreaded access is not supported by arena_allocator_proc.\n");
+        assert(false, "Multithreaded access is not supported by arena_allocator_proc.\n");
         return null;
 
         case .CREATE_HEAP;  #through;
         case .DESTROY_HEAP;
-        Basic.assert(false, "Create/Destroy heap are not supported by arena_allocator_proc\n");
+        assert(false, "Create/Destroy heap are not supported by arena_allocator_proc\n");
         return null;
 
         case .IS_THIS_YOURS; {
@@ -115,7 +111,7 @@ Arena :: struct {
     committed: s64;
 }
 
-// Allocate a new arena in its own memory and returns pointer to itself. This is useful, if you want
+// Allocate a new arena in its own memory and return pointer to itself. This is useful, if you want
 // to store the handle to the arena close to where it's being used instead of keeping it alive by
 // storing it on the stack above the code that uses it, but you don't have to use it this way.
 //
@@ -127,7 +123,7 @@ arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZ
     // Aligning happens in arena_init.
     arena.reserve_size = reserve_size;
     arena.commit_size  = commit_size;
-    arena.keep_size    = Basic.max(size_of(Arena), keep_size);
+    arena.keep_size    = max(size_of(Arena), keep_size);
 
     arena_init(*arena);
 
@@ -138,17 +134,17 @@ arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZ
 }
 
 arena_init :: (arena: *Arena) {
-    Basic.assert(arena.procs.page_size > 0 && is_power_of_two(arena.procs.page_size));
+    assert(arena.procs.page_size > 0 && is_power_of_two(arena.procs.page_size));
     // TODO(jt): Should we assert some more things here?
 
-    arena.reserve_size = align(Basic.max(1, arena.reserve_size), arena.procs.page_size);
-    arena.commit_size  = align(Basic.max(1, arena.commit_size), arena.procs.page_size);
-    arena.keep_size    = align(Basic.max(1, arena.keep_size), arena.procs.page_size);
+    arena.reserve_size = align(max(1, arena.reserve_size), arena.procs.page_size);
+    arena.commit_size  = align(max(1, arena.commit_size), arena.procs.page_size);
+    arena.keep_size    = align(max(1, arena.keep_size), arena.procs.page_size);
 
     start := arena.procs.mem_reserve(arena.reserve_size);
-    debug_assert(is_aligned(start, arena.procs.page_size));
+    assert(is_aligned(start, arena.procs.page_size));
     if !start {
-        Basic.log_error("Arena failed to reserve % bytes", arena.reserve_size);
+        log_error("Arena failed to reserve % bytes", arena.reserve_size);
     }
 
     arena.memory_start = start;
@@ -191,8 +187,8 @@ arena_push :: (arena: *Arena, $T: Type) -> *T {
 }
 
 arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
-    Basic.assert(size > 0);
-    Basic.assert(alignment > 0 && is_power_of_two(alignment));
+    assert(size > 0);
+    assert(alignment > 0 && is_power_of_two(alignment));
 
     if !arena.memory_start {
         arena_init(arena);
@@ -205,18 +201,18 @@ arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
 
     if arena.memory_start + arena.allocated > arena.memory_end {
         // Nothing we can do here. We return null so that the user notices the error sooner.
-        Basic.log_error("Arena ran out of reserved space allocating % bytes", size);
+        log_error("Arena ran out of reserved space allocating % bytes", size);
         return null;
     }
 
     if arena.allocated > arena.committed {
         commit_base := arena.memory_start + arena.committed;
-        commit_size := Basic.max(align(size, arena.procs.page_size), arena.commit_size);
+        commit_size := max(align(size, arena.procs.page_size), arena.commit_size);
 
         result := arena.procs.mem_commit(commit_base, commit_size);
         if !result {
             // Nothing we can do here. We return null so that the user notices the error sooner.
-            Basic.log_error("Arena failed to commit % bytes", commit_size);
+            log_error("Arena failed to commit % bytes", commit_size);
             return null;
         }
 
@@ -267,11 +263,12 @@ ArenaAutoPop :: (arena: *Arena) #expand {
 
 #scope_file
 
-// TODO(jt): @Cleanup We could copy over the few things we use from basic and ditch that in here.
+// TODO(jt): @Cleanup We could copy over the few things we use from basic and ditch the import.
 Basic  :: #import "Basic";
-// TODO(jt): @Cleanup Switch back to using memory... once it is okay?
-// Memory :: #import "Memory";
-Memory :: #import "Dumbcopy";
+
+assert    :: Basic.assert;
+max       :: Basic.max;
+log_error :: Basic.log_error;
 
 CAPS_VERSION_STRING :: "modules/Arena";
 
@@ -308,9 +305,9 @@ is_power_of_two :: inline (value: s64) -> bool {
     return value & (value - 1) == 0;
 }
 
-#if DEBUG_ASSERT {
+#if DEBUG {
     debug_assert :: (arg: bool, message := "", args: .. Any, loc := #caller_location) #no_debug #expand {
-        Basic.assert(arg, message, args, loc);
+        assert(arg, message, args, loc);
     }
 } else {
     debug_assert :: (#discard arg: bool, #discard message := "", #discard args: .. Any, #discard loc := #caller_location) #expand {}
