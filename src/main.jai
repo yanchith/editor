@@ -247,53 +247,65 @@ main :: () {
                         }
 
                         // The Input module's key_codes mirror ASCII in that range. However, for
-                        // control characters, we use our own enum, because most the rest of the
-                        // codepoint address space is taken up by Unicode.
-                        if it.key_code <= .DELETE {
-                            data: Editor.Input_Event.Data;
-                            data.codepoint = cast(Editor.Codepoint, it.key_code);
+                        // control characters outside of the ASCII range we use our own enum.
+                        if it.key_code == {
+                            // keycodes that are also in ASCII
+                            case .BACKSPACE;               array_add(*input_events, { .CODEPOINT, flags, { codepoint = .BACKSPACE } });
+                            case .TAB;                     array_add(*input_events, { .CODEPOINT, flags, { codepoint = .TAB } });
+                            case .LINEFEED;                array_add(*input_events, { .CODEPOINT, flags, { codepoint = .LINEFEED } });
+                            case .ENTER;                   array_add(*input_events, { .CODEPOINT, flags, { codepoint = .ENTER } });
+                            case .ESCAPE;                  array_add(*input_events, { .CODEPOINT, flags, { codepoint = .ESCAPE } });
+                            // SPACEBAR also gets sent as a text event, so we capture it there.
+                            case .DELETE;                  array_add(*input_events, { .CODEPOINT, flags, { codepoint = .DELETE } });
 
-                            array_add(*input_events, { .CODEPOINT, flags, data });
-                        } else {
-                            if it.key_code == {
-                                case .CTRL;                    array_add(*input_events, { .KEY, flags, { key = .CTRL} });
-                                case .ALT;                     array_add(*input_events, { .KEY, flags, { key = .ALT } });
-                                case .SHIFT;                   array_add(*input_events, { .KEY, flags, { key = .SHIFT } });
-                                case .META;                    array_add(*input_events, { .KEY, flags, { key = .META } });
+                            // keycodes that are not in ASCII
+                            case .CTRL;                    array_add(*input_events, { .KEY, flags, { key = .CTRL} });
+                            case .ALT;                     array_add(*input_events, { .KEY, flags, { key = .ALT } });
+                            case .SHIFT;                   array_add(*input_events, { .KEY, flags, { key = .SHIFT } });
+                            case .META;                    array_add(*input_events, { .KEY, flags, { key = .META } });
 
-                                case .ARROW_UP;                array_add(*input_events, { .KEY, flags, { key = .ARROW_UP } });
-                                case .ARROW_DOWN;              array_add(*input_events, { .KEY, flags, { key = .ARROW_DOWN } });
-                                case .ARROW_LEFT;              array_add(*input_events, { .KEY, flags, { key = .ARROW_LEFT } });
-                                case .ARROW_RIGHT;             array_add(*input_events, { .KEY, flags, { key = .ARROW_RIGHT } });
+                            case .ARROW_UP;                array_add(*input_events, { .KEY, flags, { key = .ARROW_UP } });
+                            case .ARROW_DOWN;              array_add(*input_events, { .KEY, flags, { key = .ARROW_DOWN } });
+                            case .ARROW_LEFT;              array_add(*input_events, { .KEY, flags, { key = .ARROW_LEFT } });
+                            case .ARROW_RIGHT;             array_add(*input_events, { .KEY, flags, { key = .ARROW_RIGHT } });
 
-                                case .PAGE_UP;                 array_add(*input_events, { .KEY, flags, { key = .PAGE_UP } });
-                                case .PAGE_DOWN;               array_add(*input_events, { .KEY, flags, { key = .PAGE_DOWN } });
+                            case .PAGE_UP;                 array_add(*input_events, { .KEY, flags, { key = .PAGE_UP } });
+                            case .PAGE_DOWN;               array_add(*input_events, { .KEY, flags, { key = .PAGE_DOWN } });
 
-                                case .HOME;                    array_add(*input_events, { .KEY, flags, { key = .HOME } });
-                                case .END;                     array_add(*input_events, { .KEY, flags, { key = .END } });
+                            case .HOME;                    array_add(*input_events, { .KEY, flags, { key = .HOME } });
+                            case .END;                     array_add(*input_events, { .KEY, flags, { key = .END } });
 
-                                case .INSERT;                  array_add(*input_events, { .KEY, flags, { key = .INSERT } });
+                            case .INSERT;                  array_add(*input_events, { .KEY, flags, { key = .INSERT } });
 
-                                case .F1;                      array_add(*input_events, { .KEY, flags, { key = .F1 } });
-                                case .F2;                      array_add(*input_events, { .KEY, flags, { key = .F2 } });
-                                case .F3;                      array_add(*input_events, { .KEY, flags, { key = .F3 } });
-                                case .F4;                      array_add(*input_events, { .KEY, flags, { key = .F4 } });
-                                case .F5;                      array_add(*input_events, { .KEY, flags, { key = .F5 } });
-                                case .F6;                      array_add(*input_events, { .KEY, flags, { key = .F6 } });
-                                case .F7;                      array_add(*input_events, { .KEY, flags, { key = .F7 } });
-                                case .F8;                      array_add(*input_events, { .KEY, flags, { key = .F8 } });
-                                case .F9;                      array_add(*input_events, { .KEY, flags, { key = .F9 } });
-                                case .F10;                     array_add(*input_events, { .KEY, flags, { key = .F10 } });
-                                case .F11;                     array_add(*input_events, { .KEY, flags, { key = .F11 } });
-                                case .F12;                     array_add(*input_events, { .KEY, flags, { key = .F12 } }); if it.key_pressed then should_fuzz = !should_fuzz;
+                            case .F1;                      array_add(*input_events, { .KEY, flags, { key = .F1 } });
+                            case .F2;                      array_add(*input_events, { .KEY, flags, { key = .F2 } });
+                            case .F3;                      array_add(*input_events, { .KEY, flags, { key = .F3 } });
+                            case .F4;                      array_add(*input_events, { .KEY, flags, { key = .F4 } });
+                            case .F5;                      array_add(*input_events, { .KEY, flags, { key = .F5 } });
+                            case .F6;                      array_add(*input_events, { .KEY, flags, { key = .F6 } });
+                            case .F7;                      array_add(*input_events, { .KEY, flags, { key = .F7 } });
+                            case .F8;                      array_add(*input_events, { .KEY, flags, { key = .F8 } });
+                            case .F9;                      array_add(*input_events, { .KEY, flags, { key = .F9 } });
+                            case .F10;                     array_add(*input_events, { .KEY, flags, { key = .F10 } });
+                            case .F11;                     array_add(*input_events, { .KEY, flags, { key = .F11 } });
+                            case .F12;                     array_add(*input_events, { .KEY, flags, { key = .F12 } }); if it.key_pressed then should_fuzz = !should_fuzz;
 
-                                case .PRINT_SCREEN;            array_add(*input_events, { .KEY, flags, { key = .PRINT_SCREEN } });
+                            case .PRINT_SCREEN;            array_add(*input_events, { .KEY, flags, { key = .PRINT_SCREEN } });
 
-                                case .MOUSE_BUTTON_LEFT;       array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_LEFT } });
-                                case .MOUSE_BUTTON_RIGHT;      array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_RIGHT } });
-                                case .MOUSE_BUTTON_MIDDLE;     array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_MIDDLE } });
-                            }
+                            case .MOUSE_BUTTON_LEFT;       array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_LEFT } });
+                            case .MOUSE_BUTTON_RIGHT;      array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_RIGHT } });
+                            case .MOUSE_BUTTON_MIDDLE;     array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_MIDDLE } });
                         }
+                    }
+
+                    case .TEXT_INPUT; {
+                        flags: Editor.Input_Event.Flags;
+                        flags |= .KEY_PRESSED; // TEXT_INPUT implies key_pressed.
+
+                        data: Editor.Input_Event.Data;
+                        data.codepoint = cast(Editor.Codepoint, it.utf32);
+
+                        array_add(*input_events, { .CODEPOINT, flags, data });
                     }
                 }
             }
