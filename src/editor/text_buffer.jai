@@ -75,7 +75,7 @@ text_buffer_insert_at_cursor :: (buffer: *Text_Buffer, text: string) {
 
         // TODO(jt): The Unicode module actually doesn't clamp this by itself and it can be as much
         // as 6 (this was valid in older specs?). Cleanup?
-        codepoint_advance := clamp(Unicode.trailingBytesForUTF8[text[0]], 1, 4);
+        codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
         gap_buffer_insert(*buffer.gb, String.slice(text, 0, codepoint_advance));
         advance(*text, codepoint_advance);
 
