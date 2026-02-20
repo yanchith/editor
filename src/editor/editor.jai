@@ -146,21 +146,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .ENTER;      text_buffer_insert_at_cursor(*editor.buffer, "\n");    buffer_maybe_changed = true;
 
                         case; {
-                            // TODO(jt): Expand the visible ascii range to all valid unicode ranges... somehow.
-                            if it.data.codepoint > 32 && it.data.codepoint < 127 {
-                                // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
-                                // buffer before inserting. That includes spacebar, enter, linefeed, etc.
-                                //
-                                // TODO(jt): @Speed This is a little dumb, because buffer will be
-                                // parsing this back to codepoints for its linedata tracking. Clean
-                                // this up after we know what we are doing.
-                                buf: [4] u8;
-                                s := string.{ 4, cast(*u8, *buf) };
-                                Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
+                            // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
+                            // buffer before inserting. That includes spacebar, enter, linefeed, etc.
+                            //
+                            // TODO(jt): @Speed This is a little dumb, because buffer will be
+                            // parsing this back to codepoints for its linedata tracking. Clean
+                            // this up after we know what we are doing.
+                            buf: [4] u8;
+                            s: string;
+                            s.data = buf.data;
+                            Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
 
-                                text_buffer_insert_at_cursor(*editor.buffer, s);
-                                buffer_maybe_changed = true;
-                            }
+                            text_buffer_insert_at_cursor(*editor.buffer, s);
+                            buffer_maybe_changed = true;
                         }
                     }
 

@@ -77,8 +77,9 @@ Glyph_Entry :: struct {
 
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
 make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font {
-    ATLAS_WIDTH_IN_CELLS  :: 64;
-    ATLAS_HEIGHT_IN_CELLS :: 64;
+    // Make this 4x4 to see christmas.
+    ATLAS_WIDTH_IN_CELLS  :: 128;
+    ATLAS_HEIGHT_IN_CELLS :: 128;
 
     arena_mark := arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
 
@@ -184,7 +185,11 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 // need this frame. If we really want to handle this case, we could flusb our rendering
                 // here and continue where we left of, but better to just have a larger cache. Also, we
                 // don't need to assert and can just log an error and overwrite.
-                assert(entry.stamp != font.glyph_cache_stamp);
+                //
+                // assert(entry.stamp != font.glyph_cache_stamp);
+                if entry.stamp == font.glyph_cache_stamp {
+                    log_error("Glyph cache overwriting slot % during same layout", entry_index);
+                }
 
                 table_remove(*font.glyph_table, entry.glyph_index);
 
