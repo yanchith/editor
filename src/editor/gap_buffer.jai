@@ -247,8 +247,6 @@ round_up_to_power_of_two :: inline (x: s64) -> s64 {
     return x;
 }
 
-#scope_file
-
 // TODO(jt): @Cleanup @Speed Switch back to using memory... once it is okay?
 // Memory :: #import "Memory";
 Memory :: #import "Dumbcopy";
