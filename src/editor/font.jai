@@ -244,7 +244,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
     }
 }
 
-font_compute_position_on_line :: (font: Font, line_text: string, character_count: s64) -> f32 {
+font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64) -> f32 {
     // TODO(jt): @Cleanup Early exit to prevent utf8_iter accessing the first byte of a 0-length
     // string. Can remove after the fix is incorporated.
     if line_text.count == 0 {
@@ -253,7 +253,7 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_count
 
     advance: s64 = 0; // In font integers. We scale at the end to avoid rounding errors.
     for :Unicode.utf8_iter line_text {
-        if it_index >= character_count {
+        if it_index >= character_index {
             break;
         }
 
