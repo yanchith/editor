@@ -1,5 +1,3 @@
-// TODO(jt): @Cleanup I commented out a bunch of inlines when debugging. Eventually put them back in.
-
 // A gap buffer operating on bytes. The bytes are assumed to be utf8, but this module does not
 // handle Unicode at all. The calling code has to do utf8 parsing and provide proper byte
 // indices.
@@ -85,12 +83,13 @@ gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
 
     gb.gap_index = index;
 
-    // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
-    fillgap(gb);
+    #if DEBUG {
+        memset(gb.buffer.data + gb.gap_index, 0xff, gb.gap_count);
+    }
 }
 
 gap_buffer_insert :: (gb: *Gap_Buffer, text: string) {
-    /*inline*/ gap_buffer_insert(gb, cast([] u8, text));
+    inline gap_buffer_insert(gb, cast([] u8, text));
 }
 
 // Inserts at the gap, advancing the gap index.
@@ -120,8 +119,9 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
 
     gb.occupied_count += bytes.count;
 
-    // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
-    fillgap(gb);
+    #if DEBUG {
+        memset(gb.buffer.data + gb.gap_index, 0xff, gb.gap_count);
+    }
 }
 
 // Deletes at the gap, moving forward. Returns number of actually deleted bytes.
@@ -134,8 +134,9 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     gb.occupied_count -= delete_count;
     gb.gap_count += delete_count;
 
-    // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
-    fillgap(gb);
+    #if DEBUG {
+        memset(gb.buffer.data + gb.gap_index, 0xff, gb.gap_count);
+    }
 
     return delete_count;
 }
@@ -151,8 +152,9 @@ gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     gb.gap_index -= delete_count;
     gb.gap_count += delete_count;
 
-    // TODO(jt): @Speed Only do this in debug builds. This is for debug purposes anyway.
-    fillgap(gb);
+    #if DEBUG {
+        memset(gb.buffer.data + gb.gap_index, 0xff, gb.gap_count);
+    }
 
     return delete_count;
 }
@@ -201,18 +203,7 @@ gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [
     return result;
 }
 
-
 #scope_file
-
-// XXX: @Bug This should have been memset, but I am paranoid. But it does behave differently!
-fillgap :: (gb: *Gap_Buffer) {
-    for 0..gb.gap_count - 1 {
-        index := gb.gap_index + it;
-        assert(index >= 0 && index < gb.buffer.count);
-
-        gb.buffer.data[index] = 0;
-    }
-}
 
 assert_valid :: (gb: Gap_Buffer) {
     assert(gb.occupied_count == gb.buffer.count - gb.gap_count);
@@ -221,24 +212,29 @@ assert_valid :: (gb: Gap_Buffer) {
 round_up_grow_size :: (required_size: s64) -> s64 {
     PAGE_SIZE :: 4096; // Not the actual page size on some systems, but we just need a threshold.
 
-    if required_size > PAGE_SIZE {
-        return round_up_to_align(required_size, PAGE_SIZE);
+    if required_size < PAGE_SIZE {
+        return round_up_to_power_of_two(required_size);
     } else {
-        return round_up_to_next_power_of_two(required_size);
+        return round_up_to_align(required_size, PAGE_SIZE);
     }
 }
 
-round_up_to_align :: /*inline*/ (x: s64, alignment: s64) -> s64 {
+round_up_to_align :: inline (x: s64, alignment: s64) -> s64 {
     // TODO(jt): #debug_assert This does NOT yet assert that alignment is a power of two.
     mask := alignment - 1;
     return (x + mask) & ~mask;
 }
 
-round_up_to_next_power_of_two :: /*inline*/ (x: s64) -> s64 {
-    // Taken from https://graphics.stanford.edu/%7Eseander/bithacks.html#RoundUpPowerOf2.
-    // Maybe there's a better way to do this in 2026. Some bit_scan instructions maybe?
+// If x is already a power of two, this does nothing.
+// Taken from https://graphics.stanford.edu/%7Eseander/bithacks.html#RoundUpPowerOf2.
+round_up_to_power_of_two :: inline (x: s64) -> s64 {
+    // Bitwise OR with the power of two downshifts smear the set bits all the way down, producing a
+    // number that once incremented will be a power of two.
+    //
+    // However, this is a long dependency chain of operations, so it can't be parallel. Maybe there
+    // is a better way of doing this on modern computers, like scan the highest bit and produce a
+    // mask we'd bitwise-or with?
 
-    // XXX: Audit code.
     x -= 1;
     x |= x >> 1;
     x |= x >> 2;
@@ -253,6 +249,6 @@ round_up_to_next_power_of_two :: /*inline*/ (x: s64) -> s64 {
 
 #scope_file
 
-// TODO(jt): @Cleanup Switch back to using memory... once it is okay?
+// TODO(jt): @Cleanup @Speed Switch back to using memory... once it is okay?
 // Memory :: #import "Memory";
 Memory :: #import "Dumbcopy";
