@@ -13,6 +13,10 @@
 //
 
 FONT_PIXEL_HEIGHT: f32 = 16;
+// XXX: Make this 4x4 to see christmas. (Also have to revert the atlas_width/height fix)
+// XXX: Also, we need padding around entries to prevent sampling adjacent rasterized glyphs.
+ATLAS_WIDTH_IN_CELLS  :: 32;
+ATLAS_HEIGHT_IN_CELLS :: 32;
 
 Font :: struct {
     arena: *Arena;
@@ -77,11 +81,6 @@ Glyph_Entry :: struct {
 
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
 make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font {
-    // XXX: The glyph cache is fucked. I had to increase the size to 128 so that it doesn't show. Fix it!
-    // Make this 4x4 to see christmas.
-    ATLAS_WIDTH_IN_CELLS  :: 128;
-    ATLAS_HEIGHT_IN_CELLS :: 128;
-
     arena_mark := arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
 
     info: stbtt_fontinfo;
@@ -170,8 +169,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 assert(entry.glyph_index == glyph_index);
 
                 // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
-                glyph_cell_x_in_atlas = entry_index % font.glyph_atlas_width;
-                glyph_cell_y_in_atlas = entry_index / font.glyph_atlas_height;
+                glyph_cell_x_in_atlas = entry_index % ATLAS_WIDTH_IN_CELLS;
+                glyph_cell_y_in_atlas = entry_index / ATLAS_HEIGHT_IN_CELLS;
 
                 entry.stamp = font.glyph_cache_stamp;
 
@@ -183,13 +182,10 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 entry := *font.glyph_entries[entry_index];
 
                 // We can't overwrite an entry we wrote to this frame. We would be evicting something we
-                // need this frame. If we really want to handle this case, we could flusb our rendering
-                // here and continue where we left of, but better to just have a larger cache. Also, we
-                // don't need to assert and can just log an error and overwrite.
-                //
-                // assert(entry.stamp != font.glyph_cache_stamp);
+                // need this frame. If we really want to handle this case, we could flush our rendering
+                // here and continue where we left of, but better to just have a larger cache.
                 if entry.stamp == font.glyph_cache_stamp {
-                    log_error("Glyph cache overwriting slot % during same layout", entry_index);
+                    log_error("Glyph cache overwriting slot % during same layout. Rendering is going to look funny.", entry_index);
                 }
 
                 table_remove(*font.glyph_table, entry.glyph_index);
@@ -198,14 +194,17 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 entry.glyph_index = glyph_index;
 
                 // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
-                glyph_cell_x_in_atlas = entry_index % font.glyph_atlas_width;
-                glyph_cell_y_in_atlas = entry_index / font.glyph_atlas_height;
+                glyph_cell_x_in_atlas = entry_index % ATLAS_WIDTH_IN_CELLS;
+                glyph_cell_y_in_atlas = entry_index / ATLAS_HEIGHT_IN_CELLS;
 
                 move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
                 assert(font.glyph_entries_tail == entry_index);
 
-                out := font.glyph_atlas.data + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels + glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels;
-                // TODO(jt): This does not clear previous cell to zero, which we maybe should?
+                out := font.glyph_atlas.data +
+                       font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels +
+                       glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels;
+
+                clear_glyph_cell(out, font.max_glyph_width_in_scaled_integer_pixels, font.max_glyph_height_in_scaled_integer_pixels, font.glyph_atlas_width);
                 rasterize_glyph(font.info, glyph_index,
                                 out, glyph_bitmap_width, glyph_bitmap_height,
                                 font.glyph_atlas_width,
@@ -302,6 +301,16 @@ move_back_glyph_entry :: (entries: [] Glyph_Entry, head_index: *s32, tail_index:
 
     entries[tail_index.*].next = index;
     tail_index.* = index;
+}
+
+clear_glyph_cell :: (out: *u8, out_width: s32, out_height: s32, out_stride: s32) {
+    for y: 0..out_height - 1 {
+        for x: 0..out_width - 1 {
+            // TODO(jt): @Speed memset each row span?
+            p := out + y * out_stride  + x;
+            p.* = 0;
+        }
+    }
 }
 
 get_font_vmetrics :: (info: stbtt_fontinfo) -> Font_VMetrics {
