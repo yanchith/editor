@@ -77,6 +77,7 @@ Glyph_Entry :: struct {
 
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
 make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font {
+    // XXX: The glyph cache is fucked. I had to increase the size to 128 so that it doesn't show. Fix it!
     // Make this 4x4 to see christmas.
     ATLAS_WIDTH_IN_CELLS  :: 128;
     ATLAS_HEIGHT_IN_CELLS :: 128;
