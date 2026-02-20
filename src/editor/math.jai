@@ -28,44 +28,43 @@ operator == :: (a: IVector2, b: IVector2) -> bool {
 }
 
 operator + :: (a: IVector2, b: IVector2) -> IVector2 {
-    return .{ a.x + b.x, a.y + b.y };
+    return { a.x + b.x, a.y + b.y };
 }
 
 operator - :: (a: IVector2) -> IVector2 {
-    return .{ -a.x, -a.y };
+    return { -a.x, -a.y };
 }
 
 operator - :: (a: IVector2, b: IVector2) -> IVector2 {
-    return .{ a.x - b.x, a.y - b.y };
+    return { a.x - b.x, a.y - b.y };
 }
 
 operator * :: (a: IVector2, b: s32) -> IVector2 #symmetric {
-    return .{ a.x * b, a.y * b };
+    return { a.x * b, a.y * b };
 }
 
-// Hadamard
 operator * :: (a: IVector2, b: IVector2) -> IVector2 {
-    return .{ a.x * b.x, a.y * b.y };
+    return { a.x * b.x, a.y * b.y };
 }
 
 operator / :: (a: IVector2, b: s32) -> IVector2 {
-    return .{ a.x / b, a.y / b };
+    return { a.x / b, a.y / b };
 }
 
 operator / :: (a: IVector2, b: IVector2) -> IVector2 {
-    return .{ a.x / b.x, a.y / b.y };
+    return { a.x / b.x, a.y / b.y };
 }
 
 min :: (a: IVector2, b: IVector2) -> IVector2 {
-    return .{ min(a.x, b.x), min(a.y, b.y) };
+    return { min(a.x, b.x), min(a.y, b.y) };
 }
 
 max :: (a: IVector2, b: IVector2) -> IVector2 {
-    return .{ max(a.x, b.x), max(a.y, b.y) };
+    return { max(a.x, b.x), max(a.y, b.y) };
 }
 
 ivector_to_vector :: inline (a: IVector2) -> Vector2 {
-    return Vector2.{ cast(f32, a.x), cast(f32, a.y) };
+    return { cast(f32, a.x), cast(f32, a.y) };
 }
 
 //
@@ -85,8 +84,8 @@ Rect :: struct {
 }
 
 rect_from_point_and_size :: inline (x0: f32, y0: f32, width: f32, height: f32) -> Rect {
-    p0 := Vector2.{ x0, y0 };
-    p1 := Vector2.{ x0 + width, y0 + height};
+    p0: Vector2 = { x0, y0 };
+    p1: Vector2 = { x0 + width, y0 + height};
 
     return { p0.x, p0.y, p1.x, p1.y };
 }
@@ -105,7 +104,21 @@ rect_max :: inline (r: Rect) -> Vector2 {
     return { x, y };
 }
 
-// TODO(jt): Add rect_width and rect_height that do check for flip.
+rect_width :: inline (r: Rect) -> f32 {
+    if r.x0 < r.x1 {
+        return r.x1 - r.x0;
+    } else {
+        return r.x0 - r.x1;
+    }
+}
+
+rect_height :: inline (r: Rect) -> f32 {
+    if r.y0 < r.y1 {
+        return r.y1 - r.y0;
+    } else {
+        return r.y0 - r.y1;
+    }
+}
 
 // TODO(jt): @Speed If we use this a lot and it generates bad code, we can try and do the inplace
 // version as an overload.
@@ -114,6 +127,20 @@ rect_fixup :: (r: Rect) -> Rect {
     p1 := rect_max(r);
 
     return make_rect(p0, p1);
+}
+
+operator + :: (r: Rect, v: Vector2) -> Rect {
+    result: Rect = ---;
+    result.p0 = r.p0 + v;
+    result.p1 = r.p1 + v;
+    return result;
+}
+
+operator - :: (r: Rect, v: Vector2) -> Rect {
+    result: Rect = ---;
+    result.p0 = r.p0 - v;
+    result.p1 = r.p1 - v;
+    return result;
 }
 
 //
@@ -133,8 +160,8 @@ IRect :: struct {
 }
 
 irect_from_point_and_size :: inline (x0: s32, y0: s32, width: s32, height: s32) -> IRect {
-    p0 := IVector2.{ x0, y0 };
-    p1 := IVector2.{ x0 + width, y0 + height};
+    p0: IVector2 = { x0, y0 };
+    p1: IVector2 = { x0 + width, y0 + height};
 
     return { p0.x, p0.y, p1.x, p1.y };
 }
