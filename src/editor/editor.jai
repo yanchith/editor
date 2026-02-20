@@ -253,7 +253,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, scroll_offset, is_new_frame = true);
     } else {
-        text := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.occupied_count);
+        text := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.count);
         font_layout_and_draw_text(*editor.font, cast(string, text), *render_rects, *update_regions, editor.buffer_viewport_scroll, is_new_frame = true);
     }
 
