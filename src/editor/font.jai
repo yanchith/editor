@@ -20,16 +20,22 @@ Font :: struct {
 
     texture_id: Texture_ID;
 
+    // Font info stuff
+
     info: stbtt_fontinfo;
 
     font_vmetrics: Font_VMetrics;
     font_bounding_box: IRect;
     font_scale: f32;
 
-    max_glyph_width_in_integer_pixels: s32;
-    max_glyph_height_in_integer_pixels: s32;
+    line_height_in_scaled_pixels: f32;
+    max_glyph_width_in_scaled_pixels: f32;
+    max_glyph_height_in_scaled_pixels: f32;
+    max_glyph_width_in_scaled_integer_pixels: s32;
+    max_glyph_height_in_scaled_integer_pixels: s32;
 
-    // Glyph cache stuff...
+    // Glyph cache stuff
+
     glyph_atlas: [] u8;
     glyph_atlas_width: s32;
     glyph_atlas_height: s32;
@@ -91,11 +97,14 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     font.font_bounding_box = get_font_bounding_box(info);
     font.font_scale        = get_font_scale_for_pixel_height(info, FONT_PIXEL_HEIGHT);
 
-    font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.font_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0)));
-    font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.font_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0)));
+    font.line_height_in_scaled_pixels = font.font_scale * (font.font_vmetrics.ascent - font.font_vmetrics.descent + font.font_vmetrics.line_gap);
+    font.max_glyph_width_in_scaled_pixels  = font.font_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
+    font.max_glyph_height_in_scaled_pixels = font.font_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
+    font.max_glyph_width_in_scaled_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_scaled_pixels));
+    font.max_glyph_height_in_scaled_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_scaled_pixels));
 
-    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_integer_pixels;
-    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_integer_pixels;
+    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_scaled_integer_pixels;
+    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_scaled_integer_pixels;
     table_size   := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
 
     font.glyph_atlas        = NewArray(atlas_width * atlas_height, u8,, arena_allocator(font.arena));
@@ -111,7 +120,7 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     return font;
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, is_new_frame := false) {
+font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, scroll: Vector2, is_new_frame := false) {
     // TODO(jt): @Cleanup Consider having the user update the stamp manually?
     if is_new_frame {
         font.glyph_cache_stamp += 1;
@@ -189,7 +198,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
                 assert(font.glyph_entries_tail == entry_index);
 
-                out := font.glyph_atlas.data + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_integer_pixels + glyph_cell_x_in_atlas * font.max_glyph_width_in_integer_pixels;
+                out := font.glyph_atlas.data + font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels + glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels;
                 // TODO(jt): This does not clear previous cell to zero, which we maybe should?
                 rasterize_glyph(font.info, glyph_index,
                                 out, glyph_bitmap_width, glyph_bitmap_height,
@@ -201,8 +210,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 array_add(
                     update_regions,
                     irect_from_point_and_size(
-                        glyph_cell_x_in_atlas * font.max_glyph_width_in_integer_pixels,
-                        glyph_cell_y_in_atlas * font.max_glyph_height_in_integer_pixels,
+                        glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels,
+                        glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels,
                         glyph_bitmap_width,
                         glyph_bitmap_height,
                     ),
@@ -211,14 +220,14 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 
             rr := array_add(render_rects);
             rr.rect = rect_from_point_and_size(
-                cursor_x + glyph_bitmap_box.x0,
-                cursor_y + glyph_bitmap_box.y0,
+                cursor_x + glyph_bitmap_box.x0 - scroll.x,
+                cursor_y + glyph_bitmap_box.y0 - scroll.y,
                 cast(f32, glyph_bitmap_width),
                 cast(f32, glyph_bitmap_height),
             );
             rr.texture_rect = rect_from_point_and_size(
-                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_integer_pixels) / font.glyph_atlas_width,
-                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_integer_pixels) / font.glyph_atlas_height,
+                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels) / font.glyph_atlas_width,
+                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels) / font.glyph_atlas_height,
                 cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
                 cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
             );
