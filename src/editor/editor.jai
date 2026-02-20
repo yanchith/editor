@@ -49,6 +49,7 @@ Unicode :: #import "Unicode";
 
 Vector2    :: Math.Vector2;
 Vector4    :: Math.Vector4;
+floor      :: Math.floor;
 ceil       :: Math.ceil;
 operator+  :: Math.operator+;
 operator-  :: Math.operator-;
@@ -71,7 +72,9 @@ Editor :: struct {
     font: Font;
 
     buffer: Text_Buffer;
-    buffer_panel_scroll: Vector2;
+    buffer_viewport_scroll: Vector2;
+
+    dev_cull_viewport: bool;
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
@@ -86,7 +89,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
 
     editor.font   = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS);
     editor.buffer = make_text_buffer(buffer_arena);
-    editor.buffer_panel_scroll = { 0, 0 };
+    editor.buffer_viewport_scroll = { 0, 0 };
+
+    editor.dev_cull_viewport = true;
 
     text_buffer_insert_at_cursor(*editor.buffer, HELLO_TEXT);
 
@@ -116,12 +121,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .ARROW_RIGHT;  text_buffer_maybe_move_cursor_x(*editor.buffer, 1);  buffer_maybe_changed = true;
 
                         // TODO(jt): Move screen up or down.
-                        case .PAGE_UP;      editor.buffer_panel_scroll.y -= 10;
-                        case .PAGE_DOWN;    editor.buffer_panel_scroll.y += 10;
+                        case .PAGE_UP;      editor.buffer_viewport_scroll.y -= 10;
+                        case .PAGE_DOWN;    editor.buffer_viewport_scroll.y += 10;
 
                         // TODO(jt): Move screen to the beginning and end of buffer.
                         case .HOME;
                         case .END;
+
+                        case .F11;          editor.dev_cull_viewport = !editor.dev_cull_viewport;
                     }
                 }
 
@@ -180,22 +187,30 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         window_w := cast(f32, input.window_size.x);
         window_h := cast(f32, input.window_size.y);
 
-        scroll_padding_x := min(window_w * 0.25, buffer_cell_w * 4);
-        scroll_padding_y := min(window_h * 0.25, buffer_cell_h * 4);
+        SCROLL_PADDING_CELLS_X :: 0; // TODO(jt): #config Make this configurable. I don't like having this, so I turned it off.
+        SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): #config Make this configurable. I don't like having this, so I turned it off.
+        scroll_padding_x := min(window_w * 0.25, buffer_cell_w * SCROLL_PADDING_CELLS_X);
+        scroll_padding_y := min(window_h * 0.25, buffer_cell_h * SCROLL_PADDING_CELLS_Y);
 
         cursor := editor.buffer.cursor;
 
-        panel_rect := rect_from_point_and_size(editor.buffer_panel_scroll.x, editor.buffer_panel_scroll.y, window_w, window_h);
+        viewport_rect := rect_from_point_and_size(editor.buffer_viewport_scroll.x, editor.buffer_viewport_scroll.y, window_w, window_h);
         cursor_rect := rect_from_point_and_size(buffer_cursor_position.x, buffer_cursor_position.y, buffer_cell_w, buffer_cell_h);
 
-        if cursor_rect.y1 > panel_rect.y1 {
-            editor.buffer_panel_scroll.y = cursor_rect.y0 - window_h + rect_height(cursor_rect) + scroll_padding_y;
-        } else if cursor_rect.y0 < panel_rect.y0 {
-            editor.buffer_panel_scroll.y = cursor_rect.y0 - scroll_padding_y;
+        if cursor_rect.x1 > viewport_rect.x1 {
+            editor.buffer_viewport_scroll.x = cursor_rect.x0 - window_w + rect_width(cursor_rect) + scroll_padding_x;
+        } else if cursor_rect.x0 < viewport_rect.x0 {
+            editor.buffer_viewport_scroll.x = cursor_rect.x0 - scroll_padding_x;
         }
 
-        editor.buffer_panel_scroll.x = max(0.0, editor.buffer_panel_scroll.x);
-        editor.buffer_panel_scroll.y = max(0.0, editor.buffer_panel_scroll.y);
+        if cursor_rect.y1 > viewport_rect.y1 {
+            editor.buffer_viewport_scroll.y = cursor_rect.y0 - window_h + rect_height(cursor_rect) + scroll_padding_y;
+        } else if cursor_rect.y0 < viewport_rect.y0 {
+            editor.buffer_viewport_scroll.y = cursor_rect.y0 - scroll_padding_y;
+        }
+
+        editor.buffer_viewport_scroll.x = max(0.0, editor.buffer_viewport_scroll.x);
+        editor.buffer_viewport_scroll.y = max(0.0, editor.buffer_viewport_scroll.y);
     }
 
     //
@@ -205,7 +220,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         position := buffer_cursor_position;
 
         cursor := array_add(*render_rects);
-        cursor.rect = rect_from_point_and_size(position.x, position.y, buffer_cell_w, buffer_cell_h) - editor.buffer_panel_scroll;
+        cursor.rect = rect_from_point_and_size(position.x, position.y, buffer_cell_w, buffer_cell_h) - editor.buffer_viewport_scroll;
         cursor.texture_rect = { 0, 0, 0, 0 };
         cursor.texture_id = TEXTURE_ID_GLYPH_ATLAS;
         cursor.color = { 0.05, 0.5, 0.05, 1 };
@@ -214,10 +229,32 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     //
     // Layout and draw text
     //
-    {
-        // XXX: Culling: Start on first visible line and end on last visible line. Don't layout the whole world.
+    if editor.dev_cull_viewport {
+        // This does very simple vertical culling by doing layout and draw only on visible
+        // lines. If the lines are long, we do a lot of layout and draw.
+        //
+        // TODO(jt): @Speed Horizontal culling?
+
+        viewport_y0 := editor.buffer_viewport_scroll.y;
+        viewport_y1 := editor.buffer_viewport_scroll.y + input.window_size.y;
+
+        viewport_line_index_start := clamp(0, editor.buffer.lines.count - 1, cast(s64, floor(viewport_y0 / buffer_cell_h)));
+        viewport_line_index_end   := clamp(0, editor.buffer.lines.count - 1, cast(s64, ceil(viewport_y1 / buffer_cell_h)));
+
+        viewport_start := text_buffer_get_start_cursor_for_line(editor.buffer, viewport_line_index_start);
+        viewport_end   := text_buffer_get_end_cursor_for_line(editor.buffer, viewport_line_index_end);
+        viewport_view  := text_buffer_view_between_cursors(editor.buffer, viewport_start, viewport_end);
+
+        // Because we start the layout just before the current viewport, the rendering scroll offset
+        // is just the fractional part of the cell.
+        scroll_offset: Vector2;
+        scroll_offset.x = editor.buffer_viewport_scroll.x;
+        scroll_offset.y = viewport_y0 - buffer_cell_h * viewport_line_index_start;
+
+        font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, scroll_offset, is_new_frame = true);
+    } else {
         text := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.occupied_count);
-        font_layout_and_draw_text(*editor.font, cast(string, text), *render_rects, *update_regions, editor.buffer_panel_scroll, is_new_frame = true);
+        font_layout_and_draw_text(*editor.font, cast(string, text), *render_rects, *update_regions, editor.buffer_viewport_scroll, is_new_frame = true);
     }
 
     renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
@@ -239,10 +276,28 @@ make_arena_procs :: (platform: Platform) -> Arena_Procs {
 }
 
 HELLO_TEXT :: #string DONE
-But I must explain to you how all this mistaken idea of denouncing pleasure
-and praising pain was born and I will give you a complete account of the system,
-and expound the actual teachings of the great explorer of the truth,
-the master-builder of human happiness.
+But I must explain to you how all this mistaken idea of denouncing pleasure and praising pain was
+born and I will give you a complete account of the system, and expound the actual teachings of the
+great explorer of the truth, the master-builder of human happiness. No one rejects, dislikes, or
+avoids pleasure itself, because it is pleasure, but because those who do not know how to pursue
+pleasure rationally encounter consequences that are extremely painful. Nor again is there anyone who
+loves or pursues or desires to obtain pain of itself, because it is pain, but because occasionally
+circumstances occur in which toil and pain can procure him some great pleasure. To take a trivial
+example, which of us ever undertakes laborious physical exercise, except to obtain some advantage
+from it? But who has any right to find fault with a man who chooses to enjoy a pleasure that has no
+annoying consequences, or one who avoids a pain that produces no resultant pleasure?
+
+On the other hand, we denounce with righteous indignation and dislike men who are so beguiled and
+demoralized by the charms of pleasure of the moment, so blinded by desire, that they cannot foresee
+the pain and trouble that are bound to ensue; and equal blame belongs to those who fail in their
+duty through weakness of will, which is the same as saying through shrinking from toil and
+pain. These cases are perfectly simple and easy to distinguish. In a free hour, when our power of
+choice is untrammelled and when nothing prevents our being able to do what we like best, every
+pleasure is to be welcomed and every pain avoided. But in certain circumstances and owing to the
+claims of duty or the obligations of business it will frequently occur that pleasures have to be
+repudiated and annoyances accepted. The wise man therefore always holds in these matters to this
+principle of selection: he rejects pleasures to secure other greater pleasures, or else he endures
+pains to avoid worse pains.
 
 Hello, Sailor!
 DONE
