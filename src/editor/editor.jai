@@ -80,8 +80,6 @@ Editor :: struct {
     key_alt_down: bool;
     key_shift_down: bool;
     key_meta_down: bool;
-
-    dev_cull_viewport: bool;
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
@@ -102,8 +100,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.key_alt_down = false;
     editor.key_shift_down = false;
     editor.key_meta_down = false;
-
-    editor.dev_cull_viewport = true;
 
     text_buffer_insert(*editor.buffer, HELLO_TEXT);
 
@@ -148,8 +144,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         // TODO(jt): Move screen to the beginning and end of buffer.
                         case .HOME;
                         case .END;
-
-                        case .F11;          editor.dev_cull_viewport = !editor.dev_cull_viewport;
                     }
                 }
 
@@ -330,12 +324,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     //
     // Layout and draw text
     //
-    if editor.dev_cull_viewport {
+    {
         // This does very simple vertical culling by doing layout and draw only on visible
         // lines. If the lines are long, we do a lot of layout and draw.
         //
         // TODO(jt): @Speed Horizontal culling?
-
         viewport_y0 := editor.buffer_viewport_scroll.y;
         viewport_y1 := editor.buffer_viewport_scroll.y + input.window_size.y;
 
@@ -353,9 +346,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         scroll_offset.y = viewport_y0 - buffer_cell_h * viewport_line_index_start;
 
         font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, scroll_offset, is_new_frame = true);
-    } else {
-        text := gap_buffer_make_contiguous_view(editor.buffer.gb, 0, editor.buffer.gb.count);
-        font_layout_and_draw_text(*editor.font, cast(string, text), *render_rects, *update_regions, editor.buffer_viewport_scroll, is_new_frame = true);
     }
 
     renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
