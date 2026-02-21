@@ -12,7 +12,7 @@
 // - vertical fonts
 //
 
-FONT_PIXEL_HEIGHT: f32 = 16;
+FONT_PIXEL_HEIGHT: f32 = 30;
 // XXX: Make this 4x4 to see christmas. (Also have to revert the atlas_width/height fix)
 // XXX: Also, we need padding around entries to prevent sampling adjacent rasterized glyphs.
 ATLAS_WIDTH_IN_CELLS  :: 32;

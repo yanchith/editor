@@ -51,6 +51,7 @@ Vector2    :: Math.Vector2;
 Vector4    :: Math.Vector4;
 floor      :: Math.floor;
 ceil       :: Math.ceil;
+lerp       :: Math.lerp;
 operator+  :: Math.operator+;
 operator-  :: Math.operator-;
 operator*  :: Math.operator*;
@@ -73,6 +74,7 @@ Editor :: struct {
 
     buffer: Text_Buffer;
     buffer_viewport_scroll: Vector2;
+    buffer_viewport_scroll_target: Vector2;
 
     dev_cull_viewport: bool;
 }
@@ -121,8 +123,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .ARROW_RIGHT;  text_buffer_maybe_move_cursor_x(*editor.buffer, 1);  buffer_maybe_changed = true;
 
                         // TODO(jt): Move screen up or down.
-                        case .PAGE_UP;      editor.buffer_viewport_scroll.y -= 10;
-                        case .PAGE_DOWN;    editor.buffer_viewport_scroll.y += 10;
+                        case .PAGE_UP;      editor.buffer_viewport_scroll_target.y -= 10;
+                        case .PAGE_DOWN;    editor.buffer_viewport_scroll_target.y += 10;
 
                         // TODO(jt): Move screen to the beginning and end of buffer.
                         case .HOME;
@@ -192,24 +194,28 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         cursor := editor.buffer.cursor;
 
-        viewport_rect := rect_from_point_and_size(editor.buffer_viewport_scroll.x, editor.buffer_viewport_scroll.y, window_w, window_h);
+        viewport_rect := rect_from_point_and_size(editor.buffer_viewport_scroll_target.x, editor.buffer_viewport_scroll_target.y, window_w, window_h);
         cursor_rect := rect_from_point_and_size(buffer_cursor_position.x, buffer_cursor_position.y, buffer_cell_w, buffer_cell_h);
 
         if cursor_rect.x1 > viewport_rect.x1 {
-            editor.buffer_viewport_scroll.x = cursor_rect.x0 - window_w + rect_width(cursor_rect) + scroll_padding_x;
+            editor.buffer_viewport_scroll_target.x = cursor_rect.x0 - window_w + rect_width(cursor_rect) + scroll_padding_x;
         } else if cursor_rect.x0 < viewport_rect.x0 {
-            editor.buffer_viewport_scroll.x = cursor_rect.x0 - scroll_padding_x;
+            editor.buffer_viewport_scroll_target.x = cursor_rect.x0 - scroll_padding_x;
         }
 
         if cursor_rect.y1 > viewport_rect.y1 {
-            editor.buffer_viewport_scroll.y = cursor_rect.y0 - window_h + rect_height(cursor_rect) + scroll_padding_y;
+            editor.buffer_viewport_scroll_target.y = cursor_rect.y0 - window_h + rect_height(cursor_rect) + scroll_padding_y;
         } else if cursor_rect.y0 < viewport_rect.y0 {
-            editor.buffer_viewport_scroll.y = cursor_rect.y0 - scroll_padding_y;
+            editor.buffer_viewport_scroll_target.y = cursor_rect.y0 - scroll_padding_y;
         }
 
-        editor.buffer_viewport_scroll.x = max(0.0, editor.buffer_viewport_scroll.x);
-        editor.buffer_viewport_scroll.y = max(0.0, editor.buffer_viewport_scroll.y);
+        editor.buffer_viewport_scroll_target.x = max(0.0, editor.buffer_viewport_scroll_target.x);
+        editor.buffer_viewport_scroll_target.y = max(0.0, editor.buffer_viewport_scroll_target.y);
     }
+
+    // TODO(jt): At least make this frame rate independent, but ideally also make it a closed-form
+    // Hermite lerp, where we munge the previous animation.
+    editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.2);
 
     //
     // Draw cursor
