@@ -80,6 +80,14 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
         // TODO(jt): The Unicode module actually doesn't clamp this by itself and it can be as much
         // as 6 (this was valid in older specs?). Cleanup?
         codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
+
+        // TODO(jt): This probably shouldn't be an assert, but we need to do something about
+        // incorrect unicode coming in and prevent it getting into the buffer. If we are ingesting a
+        // new file, we should probably check ahead for encoding or something. If we are in
+        // interactive mode, maybe it is okay to not insert.
+        _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
+        assert(codepoint_advance == codepoint_advance_check);
+
         gap_buffer_insert(*buffer.gb, String.slice(text, 0, codepoint_advance));
         advance(*text, codepoint_advance);
 
@@ -96,6 +104,10 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
 text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 
+    if buffer.cursor0 == buffer.cursor1 {
+        return;
+    }
+
     start_cursor := text_buffer_get_min_cursor(buffer);
     end_cursor   := text_buffer_get_max_cursor(buffer);
 
@@ -110,11 +122,8 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
     bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
 
     delete_count := end_gb_index - start_gb_index;
-
-    for 0..delete_count - 1 {
-        view := array_view(bytes, it);
-
-        newline, newline_advance := string_starts_with_newline(view);
+    while delete_count > 0 {
+        newline, newline_advance := string_starts_with_newline(bytes);
         if newline {
             if buffer.cursor0.y == buffer.lines.count - 1 {
                 assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count);
@@ -134,18 +143,20 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
             deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
             assert(newline_advance == deleted);
 
-            start_gb_index += newline_advance;
+            bytes = array_view(bytes, newline_advance);
+            delete_count -= newline_advance;
         } else {
-            _, codepoint_advance := find_next_utf8_character_boundary(view, 0);
+            _, codepoint_advance := find_next_utf8_character_boundary(bytes, 0);
             if codepoint_advance {
                 buffer.lines[buffer.cursor0.y].char_count -= 1;
                 buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
 
                 deleted := gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
                 assert(codepoint_advance == deleted);
-            }
 
-            start_gb_index += codepoint_advance;
+                bytes = array_view(bytes, codepoint_advance);
+                delete_count -= codepoint_advance;
+            }
         }
     }
 
@@ -154,6 +165,13 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
 
 text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
+
+    if buffer.cursor0 != buffer.cursor1 {
+        text_buffer_delete_between_cursors(buffer);
+        assert(buffer.cursor0 == buffer.cursor1);
+
+        return;
+    }
 
     gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, text_buffer_get_min_cursor(buffer));
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
@@ -197,6 +215,13 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 
 text_buffer_delete_backward :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
+
+    if buffer.cursor0 != buffer.cursor1 {
+        text_buffer_delete_between_cursors(buffer);
+        assert(buffer.cursor0 == buffer.cursor1);
+
+        return;
+    }
 
     gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, text_buffer_get_min_cursor(buffer));
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
@@ -486,14 +511,19 @@ find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> index: s64, s
         return bytes.count, 0;
     }
 
+    assert(byte_is_utf8_character_boundary(bytes[index]));
+
     // When scanning forward, we could also trust the unicode and advance based on what we read? Not
     // sure if that's going to be faster, since it introduces a data dependency.
     next_index := index + 1;
-    while next_index < bytes.count && Unicode.trailingBytesForUTF8[bytes[next_index]] > 0 {
+    while next_index < bytes.count && !byte_is_utf8_character_boundary(bytes[next_index]) {
         next_index += 1;
     }
 
-    return next_index, next_index - index;
+    scanned_count := next_index - index;
+    assert(scanned_count <= 4);
+
+    return next_index, scanned_count;
 }
 
 find_previous_utf8_character_boundary :: (bytes: [] u8, index: s64) -> index: s64, scanned_count: s64 {
@@ -502,10 +532,29 @@ find_previous_utf8_character_boundary :: (bytes: [] u8, index: s64) -> index: s6
         return 0, 0;
     }
 
+    if index < bytes.count { // Otherwise index == count, which is a valid starting point.
+        assert(byte_is_utf8_character_boundary(bytes[index]));
+    }
+
     prev_index := index - 1;
-    while prev_index > 0 && Unicode.trailingBytesForUTF8[bytes[prev_index]] > 0 {
+    while prev_index > 0 && !byte_is_utf8_character_boundary(bytes[prev_index]) {
         prev_index -= 1;
     }
 
+    scanned_count := index - prev_index;
+    assert(scanned_count <= 4);
+
     return prev_index, index - prev_index;
+}
+
+
+byte_is_utf8_character_boundary :: inline (byte: u8) -> bool {
+    /*
+    pub(crate) const fn is_utf8_char_boundary(self) -> bool {
+        // This is bit magic equivalent to: b < 128 || b >= 192
+        (self as i8) >= -0x40
+    }
+    */
+
+    return byte < 128 || byte >= 192;
 }
