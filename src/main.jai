@@ -233,6 +233,7 @@ main :: () {
                         should_run = false;
                     }
 
+                    // XXX: On macOS at least, we are missing combined accented characters, like 'e -> = é
                     case .KEYBOARD; {
                         #if OS == .WINDOWS {
                             if it.alt_pressed && it.key_code == .F4 {
@@ -312,7 +313,7 @@ main :: () {
 
             if should_fuzz {
                 MOVES   :: Editor.Key.[.ARROW_UP, .ARROW_DOWN, .ARROW_LEFT, .ARROW_RIGHT];
-                ADDS    :: Editor.Codepoint.[.ENTER, .SPACEBAR, .TAB, #char "A", #char "B", #char "C", #char "D", #char "E", #char "F"];
+                ADDS    :: Editor.Codepoint.[.ENTER, .SPACEBAR, .TAB, #char "A", #char "B", #char "C", #char "D", #char "E", #char "F", #char "š", #char "č", #char "ť", #char "か", #char "わ", #char "い", #char "可", #char "愛"];
                 DELETES :: Editor.Codepoint.[.BACKSPACE, .DELETE];
 
                 for 0..1000 {
