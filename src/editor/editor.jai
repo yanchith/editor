@@ -76,6 +76,11 @@ Editor :: struct {
     buffer_viewport_scroll: Vector2;
     buffer_viewport_scroll_target: Vector2;
 
+    key_ctrl_down: bool;
+    key_alt_down: bool;
+    key_shift_down: bool;
+    key_meta_down: bool;
+
     dev_cull_viewport: bool;
 }
 
@@ -92,6 +97,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.font   = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS);
     text_buffer_init(*editor.buffer, buffer_arena);
     editor.buffer_viewport_scroll = { 0, 0 };
+
+    editor.key_ctrl_down = false;
+    editor.key_alt_down = false;
+    editor.key_shift_down = false;
+    editor.key_meta_down = false;
 
     editor.dev_cull_viewport = true;
 
@@ -113,14 +123,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     buffer_maybe_changed := false;
     for input.events {
+        if it.type == {
+            case .KEY; if it.data.key == {
+                case .CTRL;   editor.key_ctrl_down = cast(bool, it.flags & .KEY_PRESSED);
+                case .ALT;    editor.key_alt_down = cast(bool, it.flags & .KEY_PRESSED);
+                case .SHIFT;  editor.key_shift_down = cast(bool, it.flags & .KEY_PRESSED);
+                case .META;   editor.key_meta_down = cast(bool, it.flags & .KEY_PRESSED);
+            }
+        }
+
         if it.flags & .KEY_PRESSED {
             if it.type == {
                 case .KEY; {
                     if it.data.key == {
-                        case .ARROW_UP;     text_buffer_maybe_move_cursor_y(*editor.buffer, -1); buffer_maybe_changed = true;
-                        case .ARROW_DOWN;   text_buffer_maybe_move_cursor_y(*editor.buffer, 1);  buffer_maybe_changed = true;
-                        case .ARROW_LEFT;   text_buffer_maybe_move_cursor_x(*editor.buffer, -1); buffer_maybe_changed = true;
-                        case .ARROW_RIGHT;  text_buffer_maybe_move_cursor_x(*editor.buffer, 1);  buffer_maybe_changed = true;
+                        case .ARROW_UP;     text_buffer_maybe_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
+                        case .ARROW_DOWN;   text_buffer_maybe_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
+                        case .ARROW_LEFT;   text_buffer_maybe_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
+                        case .ARROW_RIGHT;  text_buffer_maybe_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
 
                         // TODO(jt): Move screen up or down.
                         case .PAGE_UP;      editor.buffer_viewport_scroll_target.y -= 10;
@@ -172,19 +191,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     buffer_cell_w := editor.font.max_glyph_width_in_scaled_pixels;
     buffer_cell_h := editor.font.line_height_in_scaled_pixels;
     buffer_cursor0_position: Vector2;
-    buffer_cursor1_position: Vector2;
     {
         c0_line_start, c0_line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor0.y);
-        c0_line_view := text_buffer_view_between_cursors(editor.buffer, c0_line_start, c0_line_end);
-
-        c1_line_start, c1_line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor1.y);
-        c1_line_view := text_buffer_view_between_cursors(editor.buffer, c1_line_start, c1_line_end);
+        c0_line_view := text_buffer_view_between_cursors(editor.buffer, c0_line_start, c0_line_end,, temp);
 
         buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, editor.buffer.cursor0.x);
         buffer_cursor0_position.y = editor.buffer.cursor0.y * buffer_cell_h;
-
-        buffer_cursor1_position.x = font_compute_position_on_line(editor.font, c1_line_view, editor.buffer.cursor1.x);
-        buffer_cursor1_position.y = editor.buffer.cursor1.y * buffer_cell_h;
     }
 
     //
@@ -225,6 +237,84 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.2);
 
     //
+    // Layout and draw selection
+    //
+    if editor.buffer.cursor0 != editor.buffer.cursor1 {
+        // XXX: Culling
+
+        cursor_start := text_buffer_get_min_cursor(editor.buffer);
+        cursor_end   := text_buffer_get_max_cursor(editor.buffer);
+
+        if cursor_start.y == cursor_end.y {
+            line_start := text_buffer_get_start_cursor_for_line(editor.buffer, cursor_start.y);
+
+            view_before_cursor   := text_buffer_view_between_cursors(editor.buffer, line_start, cursor_start,, temp);
+            view_between_cursors := text_buffer_view_between_cursors(editor.buffer, cursor_start, cursor_end,, temp);
+
+            selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
+            selection_x1 := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x) + selection_x0;
+            selection_y0 := cursor_start.y * buffer_cell_h;
+            selection_y1 := selection_y0 + buffer_cell_h;
+
+            selection := array_add(*render_rects);
+            selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;;
+            selection.texture_rect = { 0, 0, 0, 0 };
+            selection.texture_id = TEXTURE_ID_GLYPH_ATLAS;
+            selection.color = { 0.7, 0.8, 0.7, 1 };
+        } else {
+            {
+                line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, cursor_start.y);
+
+                view_before_cursor := text_buffer_view_between_cursors(editor.buffer, line_start, cursor_start,, temp);
+                view_after_cursor  := text_buffer_view_between_cursors(editor.buffer, cursor_start, line_end,, temp);
+
+                selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
+                selection_x1 := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x) + selection_x0;
+                selection_y0 := cursor_start.y * buffer_cell_h;
+                selection_y1 := selection_y0 + buffer_cell_h;
+
+                selection := array_add(*render_rects);
+                selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
+                selection.texture_rect = { 0, 0, 0, 0 };
+                selection.texture_id = TEXTURE_ID_GLYPH_ATLAS;
+                selection.color = { 0.7, 0.8, 0.7, 1 };
+            }
+
+            for (cursor_start.y + 1)..(cursor_end.y - 1) {
+                line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, it);
+                line_view            := text_buffer_view_between_cursors(editor.buffer, line_start, line_end,, temp);
+                selection_x0 := 0.0;
+                selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x);
+                selection_y0 := it * buffer_cell_h;
+                selection_y1 := selection_y0 + buffer_cell_h;
+
+                selection := array_add(*render_rects);
+                selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
+                selection.texture_rect = { 0, 0, 0, 0 };
+                selection.texture_id = TEXTURE_ID_GLYPH_ATLAS;
+                selection.color = { 0.7, 0.8, 0.7, 1 };
+            }
+
+            {
+                line_start := text_buffer_get_start_cursor_for_line(editor.buffer, cursor_end.y);
+
+                view_before_cursor := text_buffer_view_between_cursors(editor.buffer, line_start, cursor_end,, temp);
+
+                selection_x0 := 0.0;
+                selection_x1 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x);
+                selection_y0 := cursor_end.y * buffer_cell_h;
+                selection_y1 := selection_y0 + buffer_cell_h;
+
+                selection := array_add(*render_rects);
+                selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
+                selection.texture_rect = { 0, 0, 0, 0 };
+                selection.texture_id = TEXTURE_ID_GLYPH_ATLAS;
+                selection.color = { 0.7, 0.8, 0.7, 1 };
+            }
+        }
+    }
+
+    //
     // Draw cursor
     //
     {
@@ -254,7 +344,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         viewport_start := text_buffer_get_start_cursor_for_line(editor.buffer, viewport_line_index_start);
         viewport_end   := text_buffer_get_end_cursor_for_line(editor.buffer, viewport_line_index_end);
-        viewport_view  := text_buffer_view_between_cursors(editor.buffer, viewport_start, viewport_end);
+        viewport_view  := text_buffer_view_between_cursors(editor.buffer, viewport_start, viewport_end,, temp);
 
         // Because we start the layout just before the current viewport, the rendering scroll offset
         // is just the fractional part of the cell.
