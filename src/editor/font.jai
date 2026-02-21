@@ -12,6 +12,7 @@
 // - vertical fonts
 //
 
+// XXX: @Bug Why is the cursor invisible (light color), if FONT_PIXEL_HEIGHT is 40?
 FONT_PIXEL_HEIGHT: f32 = 34;
 // XXX: Make this 4x4 to see christmas. (Also have to revert the atlas_width/height fix)
 // XXX: Also, we need padding around entries to prevent sampling adjacent rasterized glyphs.
