@@ -161,19 +161,28 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .ENTER;      text_buffer_insert(*editor.buffer, "\n");    buffer_maybe_changed = true;
 
                         case; {
-                            // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
-                            // buffer before inserting. That includes spacebar, enter, linefeed, etc.
-                            //
-                            // TODO(jt): @Speed This is a little dumb, because buffer will be
-                            // parsing this back to codepoints for its linedata tracking. Clean
-                            // this up after we know what we are doing.
-                            buf: [4] u8;
-                            s: string;
-                            s.data = buf.data;
-                            Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
+                            if editor.key_ctrl_down {
+                                if it.data.codepoint == {
+                                    case #char "N";  text_buffer_maybe_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "P";  text_buffer_maybe_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "F";  text_buffer_maybe_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "B";  text_buffer_maybe_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
+                                }
+                            } else {
+                                // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
+                                // buffer before inserting. That includes spacebar, enter, linefeed, etc.
+                                //
+                                // TODO(jt): @Speed This is a little dumb, because buffer will be
+                                // parsing this back to codepoints for its linedata tracking. Clean
+                                // this up after we know what we are doing.
+                                buf: [4] u8;
+                                s: string;
+                                s.data = buf.data;
+                                Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
 
-                            text_buffer_insert(*editor.buffer, s);
-                            buffer_maybe_changed = true;
+                                text_buffer_insert(*editor.buffer, s);
+                                buffer_maybe_changed = true;
+                            }
                         }
                     }
 
@@ -234,8 +243,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Layout and draw selection
     //
     if editor.buffer.cursor0 != editor.buffer.cursor1 {
-        // XXX: Culling
-
         cursor_start := text_buffer_get_min_cursor(editor.buffer);
         cursor_end   := text_buffer_get_max_cursor(editor.buffer);
 
@@ -256,7 +263,24 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             selection.texture_id = TEXTURE_ID_GLYPH_ATLAS;
             selection.color = { 0.7, 0.8, 0.7, 1 };
         } else {
-            {
+            // This does very simple vertical culling by doing layout and draw only on visible
+            // lines. If the lines are long, we do a lot of layout and draw.
+            //
+            // TODO(jt): @Speed Horizontal culling?
+            viewport_y0 := editor.buffer_viewport_scroll.y;
+            viewport_y1 := editor.buffer_viewport_scroll.y + input.window_size.y;
+
+            viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / buffer_cell_h)), 0, editor.buffer.lines.count - 1);
+            viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / buffer_cell_h)), 0, editor.buffer.lines.count - 1);
+
+            // Because we start the layout just before the current viewport, the rendering scroll offset
+            // is just the fractional part of the cell.
+            scroll_offset: Vector2;
+            scroll_offset.x = editor.buffer_viewport_scroll.x;
+            scroll_offset.y = viewport_y0 - buffer_cell_h * viewport_line_index_start;
+
+            // First line, if in viewport
+            if cursor_start.y >= viewport_line_index_start && cursor_start.y <= viewport_line_index_end {
                 line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, cursor_start.y);
 
                 view_before_cursor := text_buffer_view_between_cursors(editor.buffer, line_start, cursor_start,, temp);
@@ -274,7 +298,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection.color = { 0.7, 0.8, 0.7, 1 };
             }
 
+            // Center lines, if in viewport
             for (cursor_start.y + 1)..(cursor_end.y - 1) {
+                // TODO(jt): @Speed Clamp center lines range instead.
+                if it < viewport_line_index_start || it > viewport_line_index_end {
+                    continue;
+                }
+
                 line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, it);
                 line_view            := text_buffer_view_between_cursors(editor.buffer, line_start, line_end,, temp);
                 selection_x0 := 0.0;
@@ -289,7 +319,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection.color = { 0.7, 0.8, 0.7, 1 };
             }
 
-            {
+            if cursor_end.y >= viewport_line_index_start && cursor_end.y <= viewport_line_index_end {
                 line_start := text_buffer_get_start_cursor_for_line(editor.buffer, cursor_end.y);
 
                 view_before_cursor := text_buffer_view_between_cursors(editor.buffer, line_start, cursor_end,, temp);
