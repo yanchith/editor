@@ -90,12 +90,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     assert(success);
 
     editor.font   = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS);
-    editor.buffer = make_text_buffer(buffer_arena);
+    text_buffer_init(*editor.buffer, buffer_arena);
     editor.buffer_viewport_scroll = { 0, 0 };
 
     editor.dev_cull_viewport = true;
 
-    text_buffer_insert_at_cursor(*editor.buffer, HELLO_TEXT);
+    text_buffer_insert(*editor.buffer, HELLO_TEXT);
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -136,16 +136,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 case .CODEPOINT; {
                     if it.data.codepoint == {
-                        case .BACKSPACE;  text_buffer_delete_backward_at_cursor(*editor.buffer); buffer_maybe_changed = true;
-                        case .DELETE;     text_buffer_delete_forward_at_cursor(*editor.buffer);  buffer_maybe_changed = true;
+                        case .BACKSPACE;  text_buffer_delete_backward(*editor.buffer); buffer_maybe_changed = true;
+                        case .DELETE;     text_buffer_delete_forward(*editor.buffer);  buffer_maybe_changed = true;
 
                         // TODO(jt): Make indentation configurable.
                         // TODO(jt): Preserve tab-ness in tab-only documents.
-                        case .TAB;        text_buffer_insert_at_cursor(*editor.buffer, "    ");  buffer_maybe_changed = true;
-                        case .SPACEBAR;   text_buffer_insert_at_cursor(*editor.buffer, " ");     buffer_maybe_changed = true;
+                        case .TAB;        text_buffer_insert(*editor.buffer, "    ");  buffer_maybe_changed = true;
+                        case .SPACEBAR;   text_buffer_insert(*editor.buffer, " ");     buffer_maybe_changed = true;
 
                         // TODO(jt): Preserve CRLF in CRLF-only documents.
-                        case .ENTER;      text_buffer_insert_at_cursor(*editor.buffer, "\n");    buffer_maybe_changed = true;
+                        case .ENTER;      text_buffer_insert(*editor.buffer, "\n");    buffer_maybe_changed = true;
 
                         case; {
                             // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
@@ -159,7 +159,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             s.data = buf.data;
                             Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
 
-                            text_buffer_insert_at_cursor(*editor.buffer, s);
+                            text_buffer_insert(*editor.buffer, s);
                             buffer_maybe_changed = true;
                         }
                     }
@@ -171,13 +171,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     buffer_cell_w := editor.font.max_glyph_width_in_scaled_pixels;
     buffer_cell_h := editor.font.line_height_in_scaled_pixels;
-    buffer_cursor_position: Vector2;
+    buffer_cursor0_position: Vector2;
+    buffer_cursor1_position: Vector2;
     {
-        line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor.y);
-        line_view := text_buffer_view_between_cursors(editor.buffer, line_start, line_end);
+        c0_line_start, c0_line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor0.y);
+        c0_line_view := text_buffer_view_between_cursors(editor.buffer, c0_line_start, c0_line_end);
 
-        buffer_cursor_position.x = font_compute_position_on_line(editor.font, line_view, editor.buffer.cursor.x);
-        buffer_cursor_position.y = editor.buffer.cursor.y * buffer_cell_h;
+        c1_line_start, c1_line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor1.y);
+        c1_line_view := text_buffer_view_between_cursors(editor.buffer, c1_line_start, c1_line_end);
+
+        buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, editor.buffer.cursor0.x);
+        buffer_cursor0_position.y = editor.buffer.cursor0.y * buffer_cell_h;
+
+        buffer_cursor1_position.x = font_compute_position_on_line(editor.font, c1_line_view, editor.buffer.cursor1.x);
+        buffer_cursor1_position.y = editor.buffer.cursor1.y * buffer_cell_h;
     }
 
     //
@@ -192,10 +199,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         scroll_padding_x := min(window_w * 0.25, buffer_cell_w * SCROLL_PADDING_CELLS_X);
         scroll_padding_y := min(window_h * 0.25, buffer_cell_h * SCROLL_PADDING_CELLS_Y);
 
-        cursor := editor.buffer.cursor;
+        cursor0 := editor.buffer.cursor0;
 
         viewport_rect := rect_from_point_and_size(editor.buffer_viewport_scroll_target.x, editor.buffer_viewport_scroll_target.y, window_w, window_h);
-        cursor_rect := rect_from_point_and_size(buffer_cursor_position.x, buffer_cursor_position.y, buffer_cell_w, buffer_cell_h);
+        cursor_rect := rect_from_point_and_size(buffer_cursor0_position.x, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
 
         if cursor_rect.x1 > viewport_rect.x1 {
             editor.buffer_viewport_scroll_target.x = cursor_rect.x0 - window_w + rect_width(cursor_rect) + scroll_padding_x;
@@ -221,7 +228,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Draw cursor
     //
     {
-        position := buffer_cursor_position;
+        position := buffer_cursor0_position;
 
         cursor := array_add(*render_rects);
         cursor.rect = rect_from_point_and_size(position.x, position.y, buffer_cell_w, buffer_cell_h) - editor.buffer_viewport_scroll;
