@@ -298,18 +298,14 @@ main :: () {
                             case .MOUSE_BUTTON_MIDDLE;     array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_MIDDLE } });
 
                             case; {
-                                #if OS == .MACOS {
-                                    // @Hack macOS doesn't send these as TEXT_INPUT, if ctrl is held
-                                    // down, so we listen for them here. More accurately,
-                                    // text_input_count is nonzero and it sends weird control
-                                    // characters, but they get filtered out. Probably there is a
-                                    // better way of doing this, but for now we are hacking around
-                                    // modules/Input.
-                                    //
-                                    // Between SPACE and DELETE
-                                    if it.ctrl_pressed && it.key_code >= 32 && it.key_code <= 127 {
-                                        array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });
-                                    }
+                                // TODO(jt): @Cleanup @Hack Both Windows and macOS don't send these
+                                // key codes as TEXT_INPUT, if ctrl is held down, so we listen for
+                                // them here. More accurately, text_input_count is nonzero and it
+                                // sends weird control characters, but they get filtered
+                                // out. Probably there is a better way of doing this, but for now we
+                                // are hacking around modules/Input.
+                                if it.ctrl_pressed && it.key_code >= .SPACEBAR && it.key_code <= .DELETE {
+                                    array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });
                                 }
                             }
                         }
