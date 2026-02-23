@@ -174,7 +174,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 //
                                 // TODO(jt): @Speed This is a little dumb, because buffer will be
                                 // parsing this back to codepoints for its linedata tracking. Clean
-                                // this up after we know what we are doing.
+                                // this up after we know what we are doing (on all levels, from the
+                                // OS to our buffer!)
                                 buf: [4] u8;
                                 s: string;
                                 s.data = buf.data;
