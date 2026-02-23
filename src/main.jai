@@ -1,20 +1,27 @@
 f32 :: float32;
 f64 :: float64;
 
+#if OS == .WINDOWS {
+    #import "Windows";
+} else #if OS == .MACOS {
+    #import "POSIX";
+    #import "Objective_C";
+    #import "Objective_C/AppKit";
+} else {
+    #assert(false, "Unsupported OS");
+}
+
 #import "Basic";
 #import "Hash_Table";
 
 Random :: #import "Random";
 String :: #import "String";
 File   :: #import "File";
+Thread :: #import "Thread"; // Actually only used on Windows currently.
 Window :: #import "Window_Creation";
 Input  :: #import "Input";
-Simp   :: #import "Simp"; // TODO(jt): Make our own simple renderer on Vulkan and Metal? SGPU? WGPU? Something.
+Simp   :: #import "Simp";
 Editor :: #import,file "editor/editor.jai";
-
-#if OS == .WINDOWS {
-    Thread :: #import "Thread";
-}
 
 Random_State           :: Random.Random_State;
 random_seed            :: Random.random_seed;
@@ -61,13 +68,16 @@ main :: () {
 
 
         #if OS == .WINDOWS {
+            // #WaitForEvents
+            //
+            // On Windows, we wait for events each frame by waiting on a semaphore. The semaphore is
+            // notified from our window proc.
+            //
+            // XXX: HERE Test that this actually works.
             new_events_semaphore: Thread.Semaphore;
             Thread.init(*new_events_semaphore);
 
-            // On Windows, we modify the window proc, so that we can notify our
-            // wait-for-new-messages semaphore.
-            W :: #import "Windows";
-            context.input_handler.window_proc = (hwnd: W.HWND, message: u32, wParam: W.WPARAM, lparam: W.LPARAM) -> s64 #c_call {
+            context.input_handler.window_proc = (hwnd: HWND, message: u32, wParam: WPARAM, lparam: LPARAM) -> s64 #c_call {
                 Input.MyWindowProc(hwnd, message, wParam, lParam);
                 Thread.signal(*new_messages_semaphore);
             }
@@ -81,47 +91,43 @@ main :: () {
 
         platform: Editor.Platform;
         #if OS == .WINDOWS {
-            W :: #import "Windows";
-
-            info: W.SYSTEM_INFO;
-            W.GetSystemInfo(*info);
+            info: SYSTEM_INFO;
+            GetSystemInfo(*info);
 
             platform.page_size = info.dwPageSize;
             platform.mem_reserve = (size: s64) -> *void {
-                return W.VirtualAlloc(null, cast(u64, size), W.MEM_RESERVE, W.PAGE_READWRITE);
+                return VirtualAlloc(null, cast(u64, size), MEM_RESERVE, PAGE_READWRITE);
             };
             platform.mem_release = (pointer: *void, size: s64) {
-                W.VirtualFree(pointer, 0, W.MEM_RELEASE);
+                VirtualFree(pointer, 0, MEM_RELEASE);
             }
             platform.mem_commit = (pointer: *void, size: s64) -> bool {
-                result := W.VirtualAlloc(pointer, cast(u64, size), W.MEM_COMMIT, W.PAGE_READWRITE);
+                result := VirtualAlloc(pointer, cast(u64, size), MEM_COMMIT, PAGE_READWRITE);
                 return result != null;
             }
             platform.mem_decommit = (pointer: *void, size: s64) {
-                W.VirtualFree(pointer, cast(u64, size), W.MEM_DECOMMIT);
+                VirtualFree(pointer, cast(u64, size), MEM_DECOMMIT);
             };
         } else #if OS_IS_UNIX {
-            P :: #import "POSIX";
-
-            platform.page_size = P.sysconf(P._SC_PAGE_SIZE);
+            platform.page_size = sysconf(_SC_PAGE_SIZE);
             platform.mem_reserve = (size: s64) -> *void {
-                result := P.mmap(null, cast(u64, size), P.PROT_NONE, P.MAP_PRIVATE | P.MAP_ANONYMOUS, 0, 0);
-                if result == P.MAP_FAILED {
+                result := mmap(null, cast(u64, size), PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+                if result == MAP_FAILED {
                     result = null;
                 }
 
                 return result;
             }
             platform.mem_release = (pointer: *void, size: s64) {
-                P.munmap(pointer, cast(u64, size));
+                munmap(pointer, cast(u64, size));
             }
             platform.mem_commit = (pointer: *void, size: s64) -> bool {
-                result := P.mprotect(pointer, cast(u64, size), P.PROT_READ | P.PROT_WRITE);
+                result := mprotect(pointer, cast(u64, size), PROT_READ | PROT_WRITE);
                 return result == 0;
             }
             platform.mem_decommit = (pointer: *void, size: s64) {
-                P.madvise(pointer, cast(u64, size), P.MADV_DONTNEED);
-                P.mprotect(pointer, cast(u64, size), P.PROT_NONE);
+                madvise(pointer, cast(u64, size), MADV_DONTNEED);
+                mprotect(pointer, cast(u64, size), PROT_NONE);
             }
         }
 
@@ -221,29 +227,8 @@ main :: () {
         should_run  := true;
         should_fuzz := false;
 
-        // XXX: HERE Change this to wake up and run only if there are events (but still v-sync the
-        // render).
-        //
-        // To do this, we have the following options:
-        //
-        // - Custom platform layer for all platforms,
-        // - Hack it into modules/Input,
-        // - Switch to SDL.
-        //
-        // For now, let's try and hack this into the current situation, otherwise we'd have to
-        // replace not just modules/Input, but also modules/Window_Creation and modules/Simp.
-        //
-        // For modifying modules/Input, we have find a way to insert sleep and wakeup into the
-        // modules/Input. The sleep/wakeup primitives are wait_for/signal from modules/Thread.
-        //
-        // For Windows (TM), the wakeup would have to be called from the window proc (so, we'd have
-        // to find a way to modify it).
-        //
-        // For macOS, I am not sure, but there is the nextEventMatchingMask which seems like it is
-        // able to wait on its own?
-
         while should_run {
-            reset_temporary_storage();
+            log("XXX frame");
 
             time_frame_start := current_time_monotonic();
             time_since_program_start := time_frame_start - time_program_start;
@@ -436,15 +421,32 @@ main :: () {
 
             Simp.clear_render_target(1, 1, 1, 1);
 
-            wants_quit := Editor.update_and_render(*editor, platform, renderer, input);
+            wants_quit, wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
             if wants_quit {
                 should_run = false;
             }
 
             Simp.swap_buffers(window);
 
+            reset_temporary_storage();
+
             #if OS == .WINDOWS {
-                Thread.wait_for(*new_events_semaphore);
+                // #WaitForEvents
+                //
+                // This semaphore is notified from the window proc.
+                if !wants_next_frame {
+                    Thread.wait_for(*new_events_semaphore);
+                }
+            }
+
+            #if OS == .MACOS {
+                // #WaitForEvents
+                //
+                // On macOS, it looks like we can block until new events arrive just by calling
+                // nextEventMatchingMask (with NO as the last parameter so that we don't dequeu).
+                if !wants_next_frame {
+                    NSApplication.nextEventMatchingMask(NSApp, NSEventMaskAny, NSDate.distantFuture(), NSDefaultRunLoopMode, NO);
+                }
             }
         }
     }
