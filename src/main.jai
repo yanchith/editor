@@ -162,12 +162,12 @@ main :: () {
             // draw command instead of looping and binding per iteration. If they for some reason
             // don't fit into one texture, we'd flush thhe pipeline.
             for render_rects {
-                texture := table_find_pointer(*renderer_textures, it.texture_id);
 
-                // NOTE(jt): This is where we'd normally call Simp.set_shader_for_images(texture),
-                // but we instead pass in our modified shader, so we have to do a little bit more
-                // work.
-                {
+                texture := table_find_pointer(*renderer_textures, it.texture_id);
+                if texture {
+                    // NOTE(jt): This is where we'd normally call
+                    // Simp.set_shader_for_images(texture), but we instead pass in our modified
+                    // shader, so we have to do a little bit more work.
                     Simp.immediate_flush();
 
                     target_shader := *renderer_shader;
@@ -177,6 +177,8 @@ main :: () {
                     }
 
                     Simp.immediate_set_texture(texture);
+                } else {
+                    Simp.set_shader_for_color(enable_blend = true);
                 }
 
                 Simp.immediate_quad(
@@ -483,8 +485,8 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
 // This is a modified version of SHADER_SPRITE_LEFT_HANDED from Simp, so that we can pass in a
 // single-channel texture and have the colors map the way we want.
 SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL :: #string END
-OUT_IN vec2 TexCoords;
-OUT_IN vec4 iterated_color;
+OUT_IN vec2 v_tex_coords;
+OUT_IN vec4 v_color;
 
 #ifdef VERTEX_SHADER
 in vec4 vert_position;
@@ -494,9 +496,9 @@ in vec2 vert_uv0;
 uniform mat4 projection;
 
 void main() {
-    TexCoords = vert_uv0.xy;
+    v_tex_coords = vert_uv0.xy;
+    v_color = vert_color;
     gl_Position = projection * vec4(vert_position.xy, 0.0, 1.0);
-    iterated_color = vert_color;
 }
 #endif
 
@@ -506,9 +508,7 @@ out vec4 color;
 uniform sampler2D diffuse_texture;
 
 void main () {
-    // This is the modified part. The single texture channel will become our alpha. We also got rid
-    // of the discard.
-    color = iterated_color * vec4(1, 1, 1, texture(diffuse_texture, TexCoords));
+    color = v_color * vec4(1, 1, 1, texture(diffuse_texture, v_tex_coords));
 }
 #endif
 END

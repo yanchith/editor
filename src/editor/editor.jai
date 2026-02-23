@@ -66,7 +66,14 @@ operator== :: Math.operator==;
 #load "font.jai";
 #load "text_buffer.jai";
 
-TEXTURE_ID_GLYPH_ATLAS: Texture_ID = 0;
+// ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
+// if the texture wasn't uploaded (we don't upload TEXTURE_ID_NONE). We could also reserve a few
+// pixels in the font atlas for color shading, but maybe we don't want to do that?
+TEXTURE_ID_NONE        : Texture_ID : 0;
+TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
+
+COLOR_CURSOR    : Vector4 : { 0.7, 0.8, 0.7, 1.0 };
+COLOR_SELECTION : Vector4 : { 0.7, 0.8, 0.7, 0.3 };
 
 Editor :: struct {
     perm_arena: *Arena;
@@ -261,8 +268,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             selection := array_add(*render_rects);
             selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;;
             selection.texture_rect = { 0, 0, 0, 0 };
-            selection.texture_id = TEXTURE_ID_GLYPH_ATLAS;
-            selection.color = { 0.7, 0.8, 0.7, 1 };
+            selection.texture_id = TEXTURE_ID_NONE;
+            selection.color = COLOR_SELECTION;
         } else {
             // This does very simple vertical culling by doing layout and draw only on visible
             // lines. If the lines are long, we do a lot of layout and draw.
@@ -295,8 +302,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection := array_add(*render_rects);
                 selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
                 selection.texture_rect = { 0, 0, 0, 0 };
-                selection.texture_id = TEXTURE_ID_GLYPH_ATLAS;
-                selection.color = { 0.7, 0.8, 0.7, 1 };
+                selection.texture_id = TEXTURE_ID_NONE;
+                selection.color = COLOR_SELECTION;
             }
 
             // Center lines, if in viewport
@@ -316,8 +323,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection := array_add(*render_rects);
                 selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
                 selection.texture_rect = { 0, 0, 0, 0 };
-                selection.texture_id = TEXTURE_ID_GLYPH_ATLAS;
-                selection.color = { 0.7, 0.8, 0.7, 1 };
+                selection.texture_id = TEXTURE_ID_NONE;
+                selection.color = COLOR_SELECTION;
             }
 
             if cursor_end.y >= viewport_line_index_start && cursor_end.y <= viewport_line_index_end {
@@ -333,8 +340,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection := array_add(*render_rects);
                 selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
                 selection.texture_rect = { 0, 0, 0, 0 };
-                selection.texture_id = TEXTURE_ID_GLYPH_ATLAS;
-                selection.color = { 0.7, 0.8, 0.7, 1 };
+                selection.texture_id = TEXTURE_ID_NONE;
+                selection.color = COLOR_SELECTION;
             }
         }
     }
@@ -348,8 +355,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         cursor := array_add(*render_rects);
         cursor.rect = rect_from_point_and_size(position.x, position.y, buffer_cell_w, buffer_cell_h) - editor.buffer_viewport_scroll;
         cursor.texture_rect = { 0, 0, 0, 0 };
-        cursor.texture_id = TEXTURE_ID_GLYPH_ATLAS;
-        cursor.color = { 0.05, 0.5, 0.05, 1 };
+        cursor.texture_id = TEXTURE_ID_NONE;
+        cursor.color = COLOR_CURSOR;
     }
 
     //
