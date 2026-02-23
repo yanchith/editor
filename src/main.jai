@@ -4,7 +4,6 @@ f64 :: float64;
 #import "Basic";
 #import "Hash_Table";
 
-Memory :: #import "Memory";
 Random :: #import "Random";
 String :: #import "String";
 File   :: #import "File";
@@ -12,6 +11,10 @@ Window :: #import "Window_Creation";
 Input  :: #import "Input";
 Simp   :: #import "Simp"; // TODO(jt): Make our own simple renderer on Vulkan and Metal? SGPU? WGPU? Something.
 Editor :: #import,file "editor/editor.jai";
+
+#if OS == .WINDOWS {
+    Thread :: #import "Thread";
+}
 
 Random_State           :: Random.Random_State;
 random_seed            :: Random.random_seed;
@@ -55,6 +58,20 @@ main :: () {
         }
 
         time_last_frame_start := time_program_start;
+
+
+        #if OS == .WINDOWS {
+            new_events_semaphore: Thread.Semaphore;
+            Thread.init(*new_events_semaphore);
+
+            // On Windows, we modify the window proc, so that we can notify our
+            // wait-for-new-messages semaphore.
+            W :: #import "Windows";
+            context.input_handler.window_proc = (hwnd: W.HWND, message: u32, wParam: W.WPARAM, lparam: W.LPARAM) -> s64 #c_call {
+                Input.MyWindowProc(hwnd, message, wParam, lParam);
+                Thread.signal(*new_messages_semaphore);
+            }
+        }
 
         window_width:  s32 = 1600;
         window_height: s32 = 900;
@@ -129,7 +146,7 @@ main :: () {
 
 
             assert(bitmap.data.count == data.count);
-            Memory.copy(bitmap.data.data, data.data, data.count);
+            memcpy(bitmap.data.data, data.data, data.count);
 
             texture: Simp.Texture;
             Simp.texture_load_from_bitmap(*texture, *bitmap);
@@ -152,7 +169,7 @@ main :: () {
             bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
 
             assert(bitmap.data.count == data.count);
-            Memory.copy(bitmap.data.data, data.data, data.count);
+            memcpy(bitmap.data.data, data.data, data.count);
 
             Simp.texture_load_from_bitmap(texture, *bitmap);
         }
@@ -204,7 +221,27 @@ main :: () {
         should_run  := true;
         should_fuzz := false;
 
-        // TODO(jt): Change this to wake up and run only if there are events (but still v-sync the render).
+        // XXX: HERE Change this to wake up and run only if there are events (but still v-sync the
+        // render).
+        //
+        // To do this, we have the following options:
+        //
+        // - Custom platform layer for all platforms,
+        // - Hack it into modules/Input,
+        // - Switch to SDL.
+        //
+        // For now, let's try and hack this into the current situation, otherwise we'd have to
+        // replace not just modules/Input, but also modules/Window_Creation and modules/Simp.
+        //
+        // For modifying modules/Input, we have find a way to insert sleep and wakeup into the
+        // modules/Input. The sleep/wakeup primitives are wait_for/signal from modules/Thread.
+        //
+        // For Windows (TM), the wakeup would have to be called from the window proc (so, we'd have
+        // to find a way to modify it).
+        //
+        // For macOS, I am not sure, but there is the nextEventMatchingMask which seems like it is
+        // able to wait on its own?
+
         while should_run {
             reset_temporary_storage();
 
@@ -406,6 +443,9 @@ main :: () {
 
             Simp.swap_buffers(window);
 
+            #if OS == .WINDOWS {
+                Thread.wait_for(*new_events_semaphore);
+            }
         }
     }
 }
