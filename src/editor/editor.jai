@@ -118,7 +118,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     );
 }
 
-update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> bool {
+update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
+    wants_quit       := false;
+    wants_next_frame := false;
+
     render_rects: [..] Render_Rect;
     render_rects.allocator = temp;
     update_regions: [..] IRect;
@@ -246,6 +249,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // TODO(jt): At least make this frame rate independent, but ideally also make it a closed-form
     // Hermite lerp, where we munge the previous animation.
     editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.2);
+    if Math.length_squared(editor.buffer_viewport_scroll_target - editor.buffer_viewport_scroll) > 0.1 {
+        wants_next_frame = true;
+    }
 
     //
     // Layout and draw selection
@@ -389,7 +395,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
     renderer.draw_rects(render_rects);
 
-    return false;
+    return wants_quit, wants_next_frame;
 }
 
 #scope_file
