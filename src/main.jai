@@ -412,6 +412,9 @@ main :: () {
                 should_run = false;
             }
 
+            time_update_done := current_time_monotonic();
+            log("Frame done in % ms", 1000 * to_float64_seconds(time_update_done - time_frame_start));
+
             Simp.swap_buffers(window);
 
             reset_temporary_storage();
