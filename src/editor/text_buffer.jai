@@ -508,6 +508,10 @@ text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: 
     assert_valid(buffer);
 }
 
+text_buffer_join_cursors :: (buffer: *Text_Buffer) {
+    buffer.cursor1 = buffer.cursor0;
+}
+
 text_buffer_get_min_cursor :: (buffer: Text_Buffer) -> Cursor {
     if buffer.cursor0.y < buffer.cursor1.y {
         return buffer.cursor0;
