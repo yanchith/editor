@@ -127,7 +127,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions: [..] IRect;
     update_regions.allocator = temp;
 
-    buffer_maybe_changed := false;
+    clamp_scroll_to_cursor := false;
     for input.events {
         if it.type == {
             case .KEY; if it.data.key == {
@@ -142,10 +142,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.data.key == {
-                        case .ARROW_UP;     text_buffer_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
-                        case .ARROW_DOWN;   text_buffer_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
-                        case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
-                        case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
+                        case .ARROW_UP;     text_buffer_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                        case .ARROW_DOWN;   text_buffer_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                        case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                        case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); clamp_scroll_to_cursor = true;
 
                         // TODO(jt): Move screen up or down.
                         case .PAGE_UP;      editor.buffer_viewport_scroll_target.y -= 10;
@@ -159,32 +159,34 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 case .CODEPOINT; {
                     if it.data.codepoint == {
-                        case .BACKSPACE;  text_buffer_delete_backward(*editor.buffer); buffer_maybe_changed = true;
-                        case .DELETE;     text_buffer_delete_forward(*editor.buffer);  buffer_maybe_changed = true;
+                        case .BACKSPACE;  text_buffer_delete_backward(*editor.buffer); clamp_scroll_to_cursor = true;
+                        case .DELETE;     text_buffer_delete_forward(*editor.buffer);  clamp_scroll_to_cursor = true;
 
                         // TODO(jt): Make indentation configurable.
                         // TODO(jt): Preserve tab-ness in tab-only documents.
-                        case .TAB;        text_buffer_insert(*editor.buffer, "    ");  buffer_maybe_changed = true;
-                        case .SPACEBAR;   text_buffer_insert(*editor.buffer, " ");     buffer_maybe_changed = true;
+                        case .TAB;        text_buffer_insert(*editor.buffer, "    ");  clamp_scroll_to_cursor = true;
+                        case .SPACEBAR;   text_buffer_insert(*editor.buffer, " ");     clamp_scroll_to_cursor = true;
 
                         // TODO(jt): Preserve CRLF in CRLF-only documents.
-                        case .ENTER;      text_buffer_insert(*editor.buffer, "\n");    buffer_maybe_changed = true;
+                        case .ENTER;      text_buffer_insert(*editor.buffer, "\n");    clamp_scroll_to_cursor = true;
 
                         case; {
                             if editor.key_ctrl_down {
                                 if it.data.codepoint == {
-                                    case #char "P";  text_buffer_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
-                                    case #char "N";  text_buffer_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
-                                    case #char "B";  text_buffer_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
-                                    case #char "F";  text_buffer_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
-                                    case #char "A";  text_buffer_move_cursor_to_start_of_line(*editor.buffer, editor.key_shift_down); buffer_maybe_changed = true;
-                                    case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "P";  text_buffer_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                                    case #char "N";  text_buffer_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                                    case #char "B";  text_buffer_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                                    case #char "F";  text_buffer_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                                    case #char "A";  text_buffer_move_cursor_to_start_of_line(*editor.buffer, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                                    case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.key_shift_down); clamp_scroll_to_cursor = true;
                                     case #char "L";  recenter_viewport(editor, input);
+                                    case #char "V";  scroll_viewport_down(editor, input); // clamp_scroll_to_cursor = true;
                                 }
                             } else if editor.key_alt_down {
                                 if it.data.codepoint == {
-                                    case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.key_shift_down); buffer_maybe_changed = true;
-                                    case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                                    case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                                    case #char "V";  scroll_viewport_up(editor, input); // clamp_scroll_to_cursor = true;
                                 }
                             } else {
                                 // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
@@ -200,7 +202,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
 
                                 text_buffer_insert(*editor.buffer, s);
-                                buffer_maybe_changed = true;
+                                clamp_scroll_to_cursor = true;
                             }
                         }
                     }
@@ -224,7 +226,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     //
     // Scroll buffer to cursor, if buffer changed
     //
-    if buffer_maybe_changed {
+    if clamp_scroll_to_cursor {
         window_w := cast(f32, input.window_size.x);
         window_h := cast(f32, input.window_size.y);
 
@@ -256,6 +258,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Scroll animation
     //
     {
+        editor.buffer_viewport_scroll_target.x = max(0.0, editor.buffer_viewport_scroll_target.x);
+        editor.buffer_viewport_scroll_target.y = max(0.0, editor.buffer_viewport_scroll_target.y);
+
         // TODO(jt): At least make this frame rate independent, but ideally also make it a
         // closed-form Hermite lerp, where we munge the previous animation.
         editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.2);
@@ -427,6 +432,30 @@ recenter_viewport :: (editor: *Editor, input: Input) {
     }
 }
 
+scroll_viewport_up :: (editor: *Editor, input: Input) {
+    cell_h := editor.font.line_height_in_scaled_pixels;
+
+    delta_max := cast(s64, floor(input.window_size.y / cell_h));
+    delta     := min(editor.buffer.cursor0.y, delta_max);
+
+    text_buffer_move_cursor_y(*editor.buffer, -delta, editor.key_shift_down);
+    if delta == delta_max {
+        editor.buffer_viewport_scroll_target.y -= delta * cell_h;
+    }
+}
+
+scroll_viewport_down :: (editor: *Editor, input: Input) {
+    cell_h := editor.font.line_height_in_scaled_pixels;
+
+    delta_max := cast(s64, floor(input.window_size.y / cell_h));
+    delta     := min(editor.buffer.lines.count - 1 - editor.buffer.cursor0.y, delta_max);
+
+    text_buffer_move_cursor_y(*editor.buffer, delta, editor.key_shift_down);
+    if delta == delta_max {
+        editor.buffer_viewport_scroll_target.y += delta * cell_h;
+    }
+}
+
 make_arena_procs :: (platform: Platform) -> Arena_Procs {
     return {
         platform.page_size,
@@ -438,28 +467,92 @@ make_arena_procs :: (platform: Platform) -> Arena_Procs {
 }
 
 HELLO_TEXT :: #string DONE
-But I must explain to you how all this mistaken idea of denouncing pleasure and praising pain was
-born and I will give you a complete account of the system, and expound the actual teachings of the
-great explorer of the truth, the master-builder of human happiness. No one rejects, dislikes, or
-avoids pleasure itself, because it is pleasure, but because those who do not know how to pursue
-pleasure rationally encounter consequences that are extremely painful. Nor again is there anyone who
-loves or pursues or desires to obtain pain of itself, because it is pain, but because occasionally
-circumstances occur in which toil and pain can procure him some great pleasure. To take a trivial
-example, which of us ever undertakes laborious physical exercise, except to obtain some advantage
-from it? But who has any right to find fault with a man who chooses to enjoy a pleasure that has no
-annoying consequences, or one who avoids a pain that produces no resultant pleasure?
+YEAR OF GLAD
+I am seated in an office, surrounded by heads and bodies. My posture is consciously congruent to the shape of my hard chair.
+This is a cold room in University Administration, wood-walled, Remington-hung, double-windowed against the November heat,
+insulated from Administrative sounds by the reception area outside, at which Uncle Charles, Mr. deLint and I were lately received.
+I am in here.
+Three faces have resolved into place above summer-weight sportcoats and half-Windsors across a polished pine conference
+table shiny with the spidered light of an Arizona noon. These are three Deans — of Admissions, Academic Affairs, Athletic
+Affairs. I do not know which face belongs to whom.
+I believe I appear neutral, maybe even pleasant, though I've been coached to err on the side of neutrality and not attempt what
+would feel to me like a pleasant expression or smile.
+I have committed to crossing my legs I hope carefully, ankle on knee, hands together in the lap of my slacks. My fingers are
+mated into a mirrored series of what manifests, to me, as the letter X. The interview room's other personnel include: the
+University's Director of Composition, its varsity tennis coach, and Academy prorector Mr. A. deLint. C.T. is beside me; the others
+sit, stand and stand, respectively, at the periphery of my focus. The tennis coach jingles pocket-change. There is something
+vaguely digestive about the room's odor. The high-traction sole of my complimentary Nike sneaker runs parallel to the wobbling
+loafer of my mother's half-brother, here in his capacity as Headmaster, sitting in the chair to what I hope is my immediate right,
+also facing Deans.
+The Dean at left, a lean yellowish man whose fixed smile nevertheless has the impermanent quality of something stamped
+into uncooperative material, is a personality-type I've come lately to appreciate, the type who delays need of any response from
+me by relating my side of the story for me, to me. Passed a packet of computer-sheets by the shaggy lion of a Dean at center, he is
+speaking more or less to these pages, smiling down.
+'You are Harold Incandenza, eighteen, date of secondary-school graduation approximately one month from now, attending the
+Enfield Tennis Academy, Enfield, Massachusetts, a boarding school, where you reside.' His reading glasses are rectangular, court-
+shaped, the sidelines at top and bottom. 'You are, according to Coach White and Dean [unintelligible], a regionally, nationally,
+and continentally ranked junior tennis player, a potential O.N.A.N.C.A.A. athlete of substantial promise, recruited by Coach
+White via correspondence with Dr. Tavis here commencing .. . February of this year.' The top page is removed and brought
+around neatly to the bottom of the sheaf, at intervals. 'You have been in residence at the Enfield Tennis Academy since age
+seven.’
 
-On the other hand, we denounce with righteous indignation and dislike men who are so beguiled and
-demoralized by the charms of pleasure of the moment, so blinded by desire, that they cannot foresee
-the pain and trouble that are bound to ensue; and equal blame belongs to those who fail in their
-duty through weakness of will, which is the same as saying through shrinking from toil and
-pain. These cases are perfectly simple and easy to distinguish. In a free hour, when our power of
-choice is untrammelled and when nothing prevents our being able to do what we like best, every
-pleasure is to be welcomed and every pain avoided. But in certain circumstances and owing to the
-claims of duty or the obligations of business it will frequently occur that pleasures have to be
-repudiated and annoyances accepted. The wise man therefore always holds in these matters to this
-principle of selection: he rejects pleasures to secure other greater pleasures, or else he endures
-pains to avoid worse pains.
+I am debating whether to risk scratching the right side of my jaw, where there is a wen.
+'Coach White informs our offices that he holds the Enfield Tennis Academy's program and achievements in high regard, that
+the University of Arizona tennis squad has profited from the prior matriculation of several former E.T.A. alumni, one of whom
+was one Mr. Aubrey F. deLint, who appears also to be with you here today. Coach White and his staff have given us —’
+The yellow administrator's usage is on the whole undistinguished, though I have to admit he's made himself understood. The
+Director of Composition seems to have more than the normal number of eyebrows. The Dean at right is looking at my face a bit
+strangely.
+Uncle Charles is saying that though he can anticipate that the Deans might be predisposed to weigh what he avers as coming
+from his possible appearance as a kind of cheerleader for E.T.A., he can assure the assembled Deans that all this is true, and that
+the Academy has presently in residence no fewer than a third of the continent's top thirty juniors, in age brackets all across the
+board, and that I here, who go by 'Hal,' usually, am 'right up there among the very cream.' Right and center Deans smile
+professionally; the heads of deLint and the coach incline as the Dean at left clears his throat:
+'— belief that you could well make, even as a freshman, a real contribution to this University's varsity tennis program. We are
+pleased,' he either says or reads, removing a page, 'that a competition of some major sort here has brought you down and given us
+the chance to sit down and chat together about your application and potential recruitment and matriculation and scholarship.’
+'I've been asked to add that Hal here is seeded third, Boys' 18-and-Under Singles, in the prestigious WhataBurger Southwest
+Junior Invitational out at the Randolph Tennis Center —' says what I infer is Athletic Affairs, his cocked head showing a freckled
+scalp.
 
-Hello, Sailor!
+'Out at Randolph Park, near the outstanding El Con Marriott,' C.T. inserts, 'a venue the whole contingent's been vocal about
+finding absolutely top-hole thus far, which —’
+'Just so, Chuck, and that according to Chuck here Hal has already justified his seed, he's reached the semifinals as of this
+morning's apparently impressive win, and that he'll be playing out at the Center again tomorrow, against the winner of a
+quarterfinal game tonight, and so will be playing tomorrow at I believe scheduled for 0830 —’
+'Try to get under way before the godawful heat out there. Though of course a dry heat.’
+'— and has apparently already qualified for this winter's Continental Indoors, up in Edmonton, Kirk tells me —' cocking
+further to look up and left at the varsity coach, whose smile's teeth are radiant against a violent sunburn — 'Which is something
+indeed.' He smiles, looking at me. 'Did we get all that right Hal.’
+C.T. has crossed his arms casually; their triceps' flesh is webbed with mottle in the air-conditioned sunlight. 'You sure did.
+Bill.' He smiles. The two halves of his mustache never quite match. 'And let me say if I may that Hal's excited, excited to be
+invited for the third year running to the Invitational again, to be back here in a community he has real affection for, to visit with
+your alumni and coaching staff, to have already justified his high seed in this week's not unstiff competition, to as they say still be
+in it without the fat woman in the Viking hat having sung, so to speak, but of course most of all to have a chance to meet you
+gentlemen and have a look at the facilities here. Everything here is absolutely top-slot, from what he's seen.’
+There is a silence. DeLint shifts his back against the room's panelling and recenters his weight. My uncle beams and
+straightens a straight watchband. 62.5% of the room's faces are directed my way, pleasantly expectant. My chest bumps like a
+dryer with shoes in it. I compose what I project will be seen as a smile. I turn this way and that, slightly, sort of directing the
+expression to everyone in the room.
+There is a new silence. The yellow Dean's eyebrows go circumflex. The two other Deans look to the Director of Composition.
+The tennis coach has moved to stand at the broad window, feeling at the back of his crewcut. Uncle Charles strokes the forearm
+above his watch. Sharp curved palm-shadows move slightly over the pine table's shine, the one head's shadow a black moon.
+'Is Hal all right, Chuck?' Athletic Affairs asks. 'Hal just seemed to ... well, grimace. Is he in pain? Are you in pain, son?’
+'Hal's right as rain,' smiles my uncle, soothing the air with a casual hand. 'Just a bit of a let's call it maybe a facial tic, slightly,
+at all the adrenaline of being here on your impressive campus, justifying his seed so far without dropping a set, receiving that
+official written offer of not only waivers but a living allowance from Coach White here, on Pac 10 letterhead, being ready in all
+probability to sign a National Letter of Intent right here and now this very day, he's indicated to me.' C.T. looks to me, his look
+horribly mild. I do the safe thing, relaxing every muscle in my face, emptying out all expression. I stare carefully into the
+Kekuléan knot of the middle Dean's necktie.
+My silent response to the expectant silence begins to affect the air of the room, the bits of dust and sportcoat-lint stirred
+around by the AC's vents dancing jaggedly in the slanted plane of windowlight, the air over the table like the sparkling space just
+above a fresh-poured seltzer. The coach, in a slight accent neither British nor Australian, is telling C.T. that the whole application-
+interface process, while usually just a pleasant formality, is probably best accentuated by letting the applicant speak up for
+himself. Right and center Deans have inclined together in soft conference, forming a kind of tepee of skin and hair. I presume it's
+probably facilitate that the tennis coach mistook for accentuate, though accelerate, while clunkier than facilitate, is from a phonetic
+perspective more sensible, as a mistake. The Dean with the flat yellow face has leaned forward, his lips drawn back from his teeth
+in what I see as concern. His hands come together on the conference table's surface. His own fingers look like they mate as my
+own four-X series dissolves and I hold tight to the sides of my chair.
+We need candidly to chat re potential problems with my application, they and I, he is beginning to say. He makes a reference
+to candor and its value.
 DONE
