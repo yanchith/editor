@@ -3,11 +3,17 @@ f64 :: float64;
 
 #if OS == .WINDOWS {
     #import "Windows";
+
+    // TODO(jt): @Cleanup WaitMessage is commented out in modules/Windows, but we want it for
+    // blocking. Remove our version if it evet gets added there?
+    user32 :: #library,system "user32";
+    WaitMessage :: () -> BOOL #foreign user32;
 } else #if OS == .MACOS {
     #import "POSIX";
     #import "Objective_C";
     #import "Objective_C/AppKit";
 } else {
+    // TODO(jt): Linux, I guess.
     #assert(false, "Unsupported OS");
 }
 
@@ -17,7 +23,6 @@ f64 :: float64;
 Random :: #import "Random";
 String :: #import "String";
 File   :: #import "File";
-Thread :: #import "Thread"; // Actually only used on Windows currently.
 Window :: #import "Window_Creation";
 Input  :: #import "Input";
 Simp   :: #import "Simp";
@@ -65,23 +70,6 @@ main :: () {
         }
 
         time_last_frame_start := time_program_start;
-
-
-        #if OS == .WINDOWS {
-            // #WaitForEvents
-            //
-            // On Windows, we wait for events each frame by waiting on a semaphore. The semaphore is
-            // notified from our window proc.
-            //
-            // XXX: HERE Test that this actually works.
-            new_events_semaphore: Thread.Semaphore;
-            Thread.init(*new_events_semaphore);
-
-            context.input_handler.window_proc = (hwnd: HWND, message: u32, wParam: WPARAM, lparam: LPARAM) -> s64 #c_call {
-                Input.MyWindowProc(hwnd, message, wParam, lParam);
-                Thread.signal(*new_messages_semaphore);
-            }
-        }
 
         window_width:  s32 = 1600;
         window_height: s32 = 900;
@@ -228,8 +216,6 @@ main :: () {
         should_fuzz := false;
 
         while should_run {
-            log("XXX frame");
-
             time_frame_start := current_time_monotonic();
             time_since_program_start := time_frame_start - time_program_start;
 
@@ -430,21 +416,19 @@ main :: () {
 
             reset_temporary_storage();
 
-            #if OS == .WINDOWS {
-                // #WaitForEvents
-                //
-                // This semaphore is notified from the window proc.
-                if !wants_next_frame {
-                    Thread.wait_for(*new_events_semaphore);
+            if !wants_quit && !wants_next_frame {
+                #if OS == .WINDOWS {
+                    // #WaitForEvents
+                    //
+                    // On Windows (TM), we wait for new events with WaitMessage.
+                    WaitMessage();
                 }
-            }
 
-            #if OS == .MACOS {
-                // #WaitForEvents
-                //
-                // On macOS, it looks like we can block until new events arrive just by calling
-                // nextEventMatchingMask (with NO as the last parameter so that we don't dequeu).
-                if !wants_next_frame {
+                #if OS == .MACOS {
+                    // #WaitForEvents
+                    //
+                    // On macOS, we wait for events by checking the queue with nextEventMatchingMask
+                    // (with NO as the last parameter so that we don't dequeue).
                     NSApplication.nextEventMatchingMask(NSApp, NSEventMaskAny, NSDate.distantFuture(), NSDefaultRunLoopMode, NO);
                 }
             }
