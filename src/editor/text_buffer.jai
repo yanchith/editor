@@ -333,7 +333,7 @@ text_buffer_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: 
     return cast(string, view);
 }
 
-text_buffer_maybe_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting := false) {
+text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool) {
     assert_valid(buffer);
 
     if delta > 0 {
@@ -373,7 +373,7 @@ text_buffer_maybe_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting 
     assert_valid(buffer);
 }
 
-text_buffer_maybe_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting := false) {
+text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool) {
     assert_valid(buffer);
 
     // Cursor can not be past the last line
@@ -388,6 +388,121 @@ text_buffer_maybe_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting 
 
     if !selecting {
         buffer.cursor1 = buffer.cursor0;
+    }
+
+    assert_valid(buffer);
+}
+
+text_buffer_move_cursor_to_start_of_line :: (buffer: *Text_Buffer, selecting: bool)  {
+    assert_valid(buffer);
+
+    line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
+    line_view            := text_buffer_view_between_cursors(buffer, line_start, line_end,, temp);
+
+    first_nonspace_index := -1;
+    for line_view {
+        // We don't parse unicode here, because even if our whitespace is also a valid continuation
+        // byte, it would have to be preceeded by a nonwhitespace byte.
+        if !is_space(it) {
+            first_nonspace_index = it_index;
+            break;
+        }
+    }
+
+    if first_nonspace_index == -1 || buffer.cursor0.x == first_nonspace_index {
+        buffer.cursor0.x = 0;
+    } else {
+        buffer.cursor0.x = first_nonspace_index;
+    }
+
+    if !selecting {
+        buffer.cursor1 = buffer.cursor0;
+    }
+
+    assert_valid(buffer);
+}
+
+text_buffer_move_cursor_to_end_of_line :: (buffer: *Text_Buffer, selecting: bool)  {
+    assert_valid(buffer);
+
+    buffer.cursor0 = text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
+
+    if !selecting {
+        buffer.cursor1 = buffer.cursor0;
+    }
+
+    assert_valid(buffer);
+}
+
+text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecting: bool) {
+    assert_valid(buffer);
+
+    found := false;
+    found_index := -1;
+    {
+        line_index := buffer.cursor0.y - 1;
+        while !found && line_index >= 0 {
+            line_start, line_end := text_buffer_get_cursors_for_line(buffer, line_index);
+            line_view            := text_buffer_view_between_cursors(buffer, line_start, line_end,, temp);
+
+            blank := true;
+            for line_view {
+                if !is_space(it) {
+                    blank = false;
+                    break;
+                }
+            }
+
+            if blank {
+                found = true;
+                found_index = line_index;
+            }
+
+            line_index -= 1;
+        }
+    }
+
+    if found {
+        text_buffer_move_cursor_y(buffer, found_index - buffer.cursor0.y, selecting);
+    } else {
+        text_buffer_move_cursor_y(buffer, -1, selecting);
+    }
+
+    assert_valid(buffer);
+}
+
+text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: bool) {
+    assert_valid(buffer);
+
+    found := false;
+    found_index := -1;
+    {
+        line_index := buffer.cursor0.y + 1;
+        while !found && line_index < buffer.lines.count {
+            line_start, line_end := text_buffer_get_cursors_for_line(buffer, line_index);
+            line_view            := text_buffer_view_between_cursors(buffer, line_start, line_end,, temp);
+
+            blank := true;
+            for line_view {
+                if !is_space(it) {
+                    blank = false;
+                    break;
+                }
+            }
+
+            if blank {
+                found = true;
+                found_index = line_index;
+            }
+
+            line_index += 1;
+        }
+    }
+
+    if found {
+        text_buffer_move_cursor_y(buffer, found_index - buffer.cursor0.y, selecting);
+    } else {
+        text_buffer_move_cursor_y(buffer, +1, selecting);
     }
 
     assert_valid(buffer);
@@ -462,6 +577,8 @@ assert_valid :: (buffer: Text_Buffer) {
         byte_count += buffer.lines[buffer.lines.count - 1].byte_count;
         assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) != "\n");
     }
+
+    // TODO(jt): Recompute metadata and compare to current instead?
 
     assert(byte_count == buffer.gb.count);
 }
