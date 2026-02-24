@@ -314,7 +314,9 @@ main :: () {
                                 // sends weird control characters, but they get filtered
                                 // out. Probably there is a better way of doing this, but for now we
                                 // are hacking around modules/Input.
-                                if it.ctrl_pressed && it.key_code >= .SPACEBAR && it.key_code <= .DELETE {
+                                //
+                                // Likewise for alt, but that gets remapped to alternative characters on macOS.
+                                if (it.ctrl_pressed || it.alt_pressed) && it.key_code >= .SPACEBAR && it.key_code <= .DELETE {
                                     array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });
                                 }
                             }
@@ -407,13 +409,16 @@ main :: () {
 
             Simp.clear_render_target(1, 1, 1, 1);
 
+            time_update_start := current_time_monotonic();
+
             wants_quit, wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
+            wants_next_frame |= should_fuzz;
             if wants_quit {
                 should_run = false;
             }
 
             time_update_done := current_time_monotonic();
-            log("Frame done in % ms", 1000 * to_float64_seconds(time_update_done - time_frame_start));
+            log("Update: % ms, Frame: % ms", 1000 * to_float64_seconds(time_update_done - time_update_start), 1000 * to_float64_seconds(time_update_done - time_frame_start));
 
             Simp.swap_buffers(window);
 
