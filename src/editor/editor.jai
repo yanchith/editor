@@ -80,6 +80,7 @@ Editor :: struct {
     font: Font;
 
     buffer: Text_Buffer;
+    buffer_selecting: bool;
     buffer_viewport_scroll: Vector2;
     buffer_viewport_scroll_target: Vector2;
 
@@ -133,7 +134,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             case .KEY; if it.data.key == {
                 case .CTRL;   editor.key_ctrl_down = cast(bool, it.flags & .KEY_PRESSED);
                 case .ALT;    editor.key_alt_down = cast(bool, it.flags & .KEY_PRESSED);
-                case .SHIFT;  editor.key_shift_down = cast(bool, it.flags & .KEY_PRESSED);
+                case .SHIFT; {
+                    editor.key_shift_down = cast(bool, it.flags & .KEY_PRESSED);
+
+                    if editor.key_shift_down {
+                        // If we were already selecting (because of C-SPACE), flush that.
+                        if editor.buffer_selecting {
+                            text_buffer_join_cursors(*editor.buffer);
+                        }
+                        editor.buffer_selecting = true;
+                    } else {
+                        editor.buffer_selecting = false;
+                    }
+
+                }
                 case .META;   editor.key_meta_down = cast(bool, it.flags & .KEY_PRESSED);
             }
         }
@@ -142,10 +156,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.data.key == {
-                        case .ARROW_UP;     text_buffer_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                        case .ARROW_DOWN;   text_buffer_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                        case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                        case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); clamp_scroll_to_cursor = true;
+                        case .ARROW_UP;     text_buffer_move_cursor_y(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                        case .ARROW_DOWN;   text_buffer_move_cursor_y(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                        case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                        case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
 
                         // TODO(jt): Move screen up or down.
                         case .PAGE_UP;      editor.buffer_viewport_scroll_target.y -= 10;
@@ -158,37 +172,41 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
 
                 case .CODEPOINT; {
-                    if it.data.codepoint == {
-                        case .BACKSPACE;  text_buffer_delete_backward(*editor.buffer); clamp_scroll_to_cursor = true;
-                        case .DELETE;     text_buffer_delete_forward(*editor.buffer);  clamp_scroll_to_cursor = true;
+                    if editor.key_ctrl_down {
+                        if it.data.codepoint == {
+                            case #char "P";  text_buffer_move_cursor_y(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "N";  text_buffer_move_cursor_y(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "B";  text_buffer_move_cursor_x(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "F";  text_buffer_move_cursor_x(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "A";  text_buffer_move_cursor_to_start_of_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "L";  recenter_viewport(editor, input);
+                            case #char "V";  scroll_viewport_down(editor, input);
+                            case .SPACEBAR;  editor.buffer_selecting = true;  text_buffer_join_cursors(*editor.buffer);
+                            case #char "G";  editor.buffer_selecting = false; text_buffer_join_cursors(*editor.buffer);
+                        }
+                    } else if editor.key_alt_down {
+                        if it.data.codepoint == {
+                            case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "V";  scroll_viewport_up(editor, input);
+                        }
+                    } else {
+                        editor.buffer_selecting = false;
 
-                        // TODO(jt): Make indentation configurable.
-                        // TODO(jt): Preserve tab-ness in tab-only documents.
-                        case .TAB;        text_buffer_insert(*editor.buffer, "    ");  clamp_scroll_to_cursor = true;
-                        case .SPACEBAR;   text_buffer_insert(*editor.buffer, " ");     clamp_scroll_to_cursor = true;
+                        if it.data.codepoint == {
+                            case .BACKSPACE;  text_buffer_delete_backward(*editor.buffer); clamp_scroll_to_cursor = true;
+                            case .DELETE;     text_buffer_delete_forward(*editor.buffer);  clamp_scroll_to_cursor = true;
 
-                        // TODO(jt): Preserve CRLF in CRLF-only documents.
-                        case .ENTER;      text_buffer_insert(*editor.buffer, "\n");    clamp_scroll_to_cursor = true;
+                            // TODO(jt): Make indentation configurable.
+                            // TODO(jt): Preserve tab-ness in tab-only documents.
+                            case .TAB;        text_buffer_insert(*editor.buffer, "    ");  clamp_scroll_to_cursor = true;
+                            case .SPACEBAR;   text_buffer_insert(*editor.buffer, " ");     clamp_scroll_to_cursor = true;
 
-                        case; {
-                            if editor.key_ctrl_down {
-                                if it.data.codepoint == {
-                                    case #char "P";  text_buffer_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                                    case #char "N";  text_buffer_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                                    case #char "B";  text_buffer_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                                    case #char "F";  text_buffer_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                                    case #char "A";  text_buffer_move_cursor_to_start_of_line(*editor.buffer, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                                    case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                                    case #char "L";  recenter_viewport(editor, input);
-                                    case #char "V";  scroll_viewport_down(editor, input); // clamp_scroll_to_cursor = true;
-                                }
-                            } else if editor.key_alt_down {
-                                if it.data.codepoint == {
-                                    case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                                    case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.key_shift_down); clamp_scroll_to_cursor = true;
-                                    case #char "V";  scroll_viewport_up(editor, input); // clamp_scroll_to_cursor = true;
-                                }
-                            } else {
+                            // TODO(jt): Preserve CRLF in CRLF-only documents.
+                            case .ENTER;      text_buffer_insert(*editor.buffer, "\n");    clamp_scroll_to_cursor = true;
+
+                            case; {
                                 // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
                                 // buffer before inserting. That includes spacebar, enter, linefeed, etc.
                                 //
@@ -206,7 +224,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             }
                         }
                     }
-
                 }
             }
         }
@@ -438,7 +455,7 @@ scroll_viewport_up :: (editor: *Editor, input: Input) {
     delta_max := cast(s64, floor(input.window_size.y / cell_h));
     delta     := min(editor.buffer.cursor0.y, delta_max);
 
-    text_buffer_move_cursor_y(*editor.buffer, -delta, editor.key_shift_down);
+    text_buffer_move_cursor_y(*editor.buffer, -delta, editor.buffer_selecting);
     if delta == delta_max {
         editor.buffer_viewport_scroll_target.y -= delta * cell_h;
     }
@@ -450,7 +467,7 @@ scroll_viewport_down :: (editor: *Editor, input: Input) {
     delta_max := cast(s64, floor(input.window_size.y / cell_h));
     delta     := min(editor.buffer.lines.count - 1 - editor.buffer.cursor0.y, delta_max);
 
-    text_buffer_move_cursor_y(*editor.buffer, delta, editor.key_shift_down);
+    text_buffer_move_cursor_y(*editor.buffer, delta, editor.buffer_selecting);
     if delta == delta_max {
         editor.buffer_viewport_scroll_target.y += delta * cell_h;
     }
