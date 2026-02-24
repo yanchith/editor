@@ -127,7 +127,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions: [..] IRect;
     update_regions.allocator = temp;
 
-    maybe_changed := false;
+    buffer_maybe_changed := false;
     for input.events {
         if it.type == {
             case .KEY; if it.data.key == {
@@ -142,10 +142,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.data.key == {
-                        case .ARROW_UP;     text_buffer_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); maybe_changed = true;
-                        case .ARROW_DOWN;   text_buffer_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); maybe_changed = true;
-                        case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); maybe_changed = true;
-                        case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); maybe_changed = true;
+                        case .ARROW_UP;     text_buffer_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
+                        case .ARROW_DOWN;   text_buffer_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
+                        case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
+                        case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
 
                         // TODO(jt): Move screen up or down.
                         case .PAGE_UP;      editor.buffer_viewport_scroll_target.y -= 10;
@@ -159,31 +159,32 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 case .CODEPOINT; {
                     if it.data.codepoint == {
-                        case .BACKSPACE;  text_buffer_delete_backward(*editor.buffer); maybe_changed = true;
-                        case .DELETE;     text_buffer_delete_forward(*editor.buffer);  maybe_changed = true;
+                        case .BACKSPACE;  text_buffer_delete_backward(*editor.buffer); buffer_maybe_changed = true;
+                        case .DELETE;     text_buffer_delete_forward(*editor.buffer);  buffer_maybe_changed = true;
 
                         // TODO(jt): Make indentation configurable.
                         // TODO(jt): Preserve tab-ness in tab-only documents.
-                        case .TAB;        text_buffer_insert(*editor.buffer, "    ");  maybe_changed = true;
-                        case .SPACEBAR;   text_buffer_insert(*editor.buffer, " ");     maybe_changed = true;
+                        case .TAB;        text_buffer_insert(*editor.buffer, "    ");  buffer_maybe_changed = true;
+                        case .SPACEBAR;   text_buffer_insert(*editor.buffer, " ");     buffer_maybe_changed = true;
 
                         // TODO(jt): Preserve CRLF in CRLF-only documents.
-                        case .ENTER;      text_buffer_insert(*editor.buffer, "\n");    maybe_changed = true;
+                        case .ENTER;      text_buffer_insert(*editor.buffer, "\n");    buffer_maybe_changed = true;
 
                         case; {
                             if editor.key_ctrl_down {
                                 if it.data.codepoint == {
-                                    case #char "P";  text_buffer_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); maybe_changed = true;
-                                    case #char "N";  text_buffer_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); maybe_changed = true;
-                                    case #char "B";  text_buffer_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); maybe_changed = true;
-                                    case #char "F";  text_buffer_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); maybe_changed = true;
-                                    case #char "A";  text_buffer_move_cursor_to_start_of_line(*editor.buffer, editor.key_shift_down); maybe_changed = true;
-                                    case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.key_shift_down); maybe_changed = true;
+                                    case #char "P";  text_buffer_move_cursor_y(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "N";  text_buffer_move_cursor_y(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "B";  text_buffer_move_cursor_x(*editor.buffer, -1, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "F";  text_buffer_move_cursor_x(*editor.buffer,  1, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "A";  text_buffer_move_cursor_to_start_of_line(*editor.buffer, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "L";  recenter_viewport(editor, input);
                                 }
                             } else if editor.key_alt_down {
                                 if it.data.codepoint == {
-                                    case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.key_shift_down); maybe_changed = true;
-                                    case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.key_shift_down); maybe_changed = true;
+                                    case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.key_shift_down); buffer_maybe_changed = true;
+                                    case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.key_shift_down); buffer_maybe_changed = true;
                                 }
                             } else {
                                 // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
@@ -199,7 +200,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
 
                                 text_buffer_insert(*editor.buffer, s);
-                                maybe_changed = true;
+                                buffer_maybe_changed = true;
                             }
                         }
                     }
@@ -221,9 +222,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     //
-    // Scroll buffer to cursor, if something changed
+    // Scroll buffer to cursor, if buffer changed
     //
-    if maybe_changed {
+    if buffer_maybe_changed {
         window_w := cast(f32, input.window_size.x);
         window_h := cast(f32, input.window_size.y);
 
@@ -248,16 +249,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         } else if cursor_rect.y0 < viewport_rect.y0 {
             editor.buffer_viewport_scroll_target.y = cursor_rect.y0 - scroll_padding_y;
         }
-
-        editor.buffer_viewport_scroll_target.x = max(0.0, editor.buffer_viewport_scroll_target.x);
-        editor.buffer_viewport_scroll_target.y = max(0.0, editor.buffer_viewport_scroll_target.y);
     }
 
-    // TODO(jt): At least make this frame rate independent, but ideally also make it a closed-form
-    // Hermite lerp, where we munge the previous animation.
-    editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.2);
-    if Math.length_squared(editor.buffer_viewport_scroll_target - editor.buffer_viewport_scroll) > 0.1 {
-        wants_next_frame = true;
+
+    //
+    // Scroll animation
+    //
+    {
+        // TODO(jt): At least make this frame rate independent, but ideally also make it a
+        // closed-form Hermite lerp, where we munge the previous animation.
+        editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.2);
+        if Math.length_squared(editor.buffer_viewport_scroll_target - editor.buffer_viewport_scroll) > 0.1 {
+            wants_next_frame = true;
+        }
     }
 
     //
@@ -279,7 +283,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             selection_y1 := selection_y0 + buffer_cell_h;
 
             selection := array_add(*render_rects);
-            selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;;
+            selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
             selection.texture_rect = { 0, 0, 0, 0 };
             selection.texture_id = TEXTURE_ID_NONE;
             selection.color = COLOR_SELECTION;
@@ -406,6 +410,22 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 }
 
 #scope_file
+
+recenter_viewport :: (editor: *Editor, input: Input) {
+    cursor_y := editor.buffer.cursor0.y * editor.font.line_height_in_scaled_pixels;
+
+    center := cursor_y - 0.5 * input.window_size.y;
+    top    := cursor_y;
+    bottom := cursor_y - input.window_size.y + editor.font.line_height_in_scaled_pixels;
+
+    if editor.buffer_viewport_scroll_target.y == center {
+        editor.buffer_viewport_scroll_target.y = top;
+    } else if editor.buffer_viewport_scroll_target.y == top {
+        editor.buffer_viewport_scroll_target.y = bottom;
+    } else {
+        editor.buffer_viewport_scroll_target.y = center;
+    }
+}
 
 make_arena_procs :: (platform: Platform) -> Arena_Procs {
     return {
