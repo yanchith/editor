@@ -189,6 +189,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         if it.data.codepoint == {
                             case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "B";  text_buffer_move_cursor_to_previous_word_boundary(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "F";  text_buffer_move_cursor_to_next_word_boundary(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char "V";  scroll_viewport_up(editor, input);
                         }
                     } else {
@@ -234,7 +236,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     buffer_cursor0_position: Vector2;
     {
         c0_line_start, c0_line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor0.y);
-        c0_line_view := text_buffer_view_between_cursors(editor.buffer, c0_line_start, c0_line_end,, temp);
+        c0_line_view := text_buffer_make_view_between_cursors(editor.buffer, c0_line_start, c0_line_end,, temp);
 
         buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, editor.buffer.cursor0.x);
         buffer_cursor0_position.y = editor.buffer.cursor0.y * buffer_cell_h;
@@ -296,8 +298,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if cursor_start.y == cursor_end.y {
             line_start := text_buffer_get_start_cursor_for_line(editor.buffer, cursor_start.y);
 
-            view_before_cursor   := text_buffer_view_between_cursors(editor.buffer, line_start, cursor_start,, temp);
-            view_between_cursors := text_buffer_view_between_cursors(editor.buffer, cursor_start, cursor_end,, temp);
+            view_before_cursor   := text_buffer_make_view_between_cursors(editor.buffer, line_start, cursor_start,, temp);
+            view_between_cursors := text_buffer_make_view_between_cursors(editor.buffer, cursor_start, cursor_end,, temp);
 
             selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
             selection_x1 := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x) + selection_x0;
@@ -330,8 +332,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if cursor_start.y >= viewport_line_index_start && cursor_start.y <= viewport_line_index_end {
                 line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, cursor_start.y);
 
-                view_before_cursor := text_buffer_view_between_cursors(editor.buffer, line_start, cursor_start,, temp);
-                view_after_cursor  := text_buffer_view_between_cursors(editor.buffer, cursor_start, line_end,, temp);
+                view_before_cursor := text_buffer_make_view_between_cursors(editor.buffer, line_start, cursor_start,, temp);
+                view_after_cursor  := text_buffer_make_view_between_cursors(editor.buffer, cursor_start, line_end,, temp);
 
                 selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
                 selection_x1 := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x) + selection_x0;
@@ -353,7 +355,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
 
                 line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, it);
-                line_view            := text_buffer_view_between_cursors(editor.buffer, line_start, line_end,, temp);
+                line_view            := text_buffer_make_view_between_cursors(editor.buffer, line_start, line_end,, temp);
                 selection_x0 := 0.0;
                 selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x);
                 selection_y0 := it * buffer_cell_h;
@@ -369,7 +371,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if cursor_end.y >= viewport_line_index_start && cursor_end.y <= viewport_line_index_end {
                 line_start := text_buffer_get_start_cursor_for_line(editor.buffer, cursor_end.y);
 
-                view_before_cursor := text_buffer_view_between_cursors(editor.buffer, line_start, cursor_end,, temp);
+                view_before_cursor := text_buffer_make_view_between_cursors(editor.buffer, line_start, cursor_end,, temp);
 
                 selection_x0 := 0.0;
                 selection_x1 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x);
@@ -414,7 +416,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         viewport_start := text_buffer_get_start_cursor_for_line(editor.buffer, viewport_line_index_start);
         viewport_end   := text_buffer_get_end_cursor_for_line(editor.buffer, viewport_line_index_end);
-        viewport_view  := text_buffer_view_between_cursors(editor.buffer, viewport_start, viewport_end,, temp);
+        viewport_view  := text_buffer_make_view_between_cursors(editor.buffer, viewport_start, viewport_end,, temp);
 
         // Because we start the layout just before the current viewport, the rendering scroll offset
         // is just the fractional part of the cell.

@@ -22,6 +22,8 @@ operator == :: (a: Cursor, b: Cursor) -> bool {
 Line :: struct {
     char_count: s64; // Including newline at the end
     byte_count: s64;
+
+    // newline_char_count: s64; // XXX: HERE Start tracking this, so we know how much to subtract if the newline is \r\n.
 }
 
 text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena) {
@@ -66,6 +68,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
             gap_buffer_insert(*buffer.gb, String.slice(text, 0, newline_advance));
             advance(*text, newline_advance);
 
+            // XXX: If the newline is \r\n, isn't it two characters? We should probably respect that.
             buffer.lines[buffer.cursor0.y].char_count += 1 - char_count_after_cursor;
             buffer.lines[buffer.cursor0.y].byte_count += newline_advance - byte_count_after_cursor;
 
@@ -132,6 +135,7 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
             }
             assert(buffer.cursor0.y + 1 < buffer.lines.count);
 
+            // XXX: If the newline is \r\n, isn't it two characters? We should probably respect that.
             buffer.lines[buffer.cursor0.y].char_count -= 1;
             buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
 
@@ -187,6 +191,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
         }
         assert(buffer.cursor0.y + 1 < buffer.lines.count);
 
+        // XXX: If the newline is \r\n, isn't it two characters? We should probably respect that.
         buffer.lines[buffer.cursor0.y].char_count -= 1;
         buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
 
@@ -273,7 +278,7 @@ text_buffer_get_start_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) 
     return start;
 }
 
-text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cursor {
+text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false) -> Cursor {
     assert(line_index < buffer.lines.count);
     line := buffer.lines[line_index];
     endx := ifx line_index == buffer.lines.count - 1 then line.char_count else line.char_count - 1;
@@ -310,7 +315,7 @@ text_buffer_byte_count_between_cursors :: (buffer: Text_Buffer, _start: Cursor, 
     return end_index - start_index;
 }
 
-text_buffer_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
+text_buffer_make_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
     assert_cursor_valid(buffer, _start);
     assert_cursor_valid(buffer, _end);
 
@@ -331,6 +336,43 @@ text_buffer_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: 
     view := gap_buffer_make_contiguous_view(buffer.gb, start_index, end_index - start_index);
 
     return cast(string, view);
+}
+
+text_buffer_get_character_at_cursor :: (buffer: *Text_Buffer, cursor: Cursor) -> u32 {
+    gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, cursor);
+
+    buf: [4] u8;
+    buf_length := 0;
+    if buffer.gb.count - gb_index == {
+        case 0;  assert(false);
+
+        case 1; {
+            buf[0] = gap_buffer_get_nongap_byte(buffer.gb, gb_index);
+            buf_length = 1;
+        }
+        case 2; {
+            buf[0] = gap_buffer_get_nongap_byte(buffer.gb, gb_index);
+            buf[1] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 1);
+            buf_length = 2;
+        }
+        case 3; {
+            buf[0] = gap_buffer_get_nongap_byte(buffer.gb, gb_index);
+            buf[1] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 1);
+            buf[2] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 2);
+            buf_length = 3;
+        }
+        case; {
+            buf[0] = gap_buffer_get_nongap_byte(buffer.gb, gb_index);
+            buf[1] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 1);
+            buf[2] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 2);
+            buf[3] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 3);
+            buf_length = 4;
+        }
+    }
+
+    codepoint := Unicode.character_utf8_to_utf32(buf.data, buf_length);
+
+    return codepoint;
 }
 
 text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool) {
@@ -397,7 +439,7 @@ text_buffer_move_cursor_to_start_of_line :: (buffer: *Text_Buffer, selecting: bo
     assert_valid(buffer);
 
     line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
-    line_view            := text_buffer_view_between_cursors(buffer, line_start, line_end,, temp);
+    line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
 
     first_nonspace_index := -1;
     for line_view {
@@ -434,6 +476,82 @@ text_buffer_move_cursor_to_end_of_line :: (buffer: *Text_Buffer, selecting: bool
     assert_valid(buffer);
 }
 
+text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, selecting: bool) {
+    assert_valid(buffer);
+    // XXX: Do this based on next_word_boundary
+}
+
+text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selecting: bool) {
+    assert_valid(buffer);
+
+    // XXX: HERE I am not very satisfied with how this is done. Let's try and simplify. Currently
+    // the scanning function does not see the newline at the end, because that's how our
+    // view_between_cursors works, but maybe we should reconsider that?
+
+    // XXX: @Bug This crashes at the end of the file.
+
+    search_line_forward :: (line_view: string, starts_inside_word: bool) -> found: bool, ends_inside_word: bool, dx: s64 {
+        if line_view.count == 0 { // XXX: @Hack Explain
+            return false, false, 0;
+        }
+
+        inside_word := starts_inside_word;
+
+        found := false;
+        dx := 0;
+        for :Unicode.utf8_iter line_view {
+            is_boundary := character_is_word_boundary(it);
+            if inside_word && is_boundary {
+                found = true;
+                break;
+            }
+
+            if !is_boundary {
+                inside_word = true;
+            }
+
+            dx += 1;
+        }
+
+        return found, inside_word, dx;
+    }
+
+    line_end          := text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
+    view_after_cursor := text_buffer_make_view_between_cursors(buffer, buffer.cursor0, line_end,, temp);
+
+    start_character := text_buffer_get_character_at_cursor(buffer, buffer.cursor0);
+    starts_inside_word := !character_is_word_boundary(start_character);
+
+    found, ends_inside_word, dx := search_line_forward(view_after_cursor, starts_inside_word);
+    if found || ends_inside_word { // XXX: @Hack Explain
+        buffer.cursor0.x += dx;
+    } else {
+        while true {
+            buffer.cursor0.x = 0;
+            cursor_before := buffer.cursor0;
+            text_buffer_move_cursor_y(buffer, 1, selecting);
+            if cursor_before == buffer.cursor0 {
+                break;
+            }
+
+            line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
+            line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
+
+            found, ends_inside_word, dx = search_line_forward(line_view, false);
+            if found || ends_inside_word {
+                buffer.cursor0.x += dx;
+                break;
+            }
+        }
+    }
+
+    if !selecting {
+        buffer.cursor1 = buffer.cursor0;
+    }
+
+    assert_valid(buffer);
+}
+
 text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecting: bool) {
     assert_valid(buffer);
 
@@ -443,8 +561,10 @@ text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecti
         line_index := buffer.cursor0.y - 1;
         while !found && line_index >= 0 {
             line_start, line_end := text_buffer_get_cursors_for_line(buffer, line_index);
-            line_view            := text_buffer_view_between_cursors(buffer, line_start, line_end,, temp);
+            line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
 
+            // We can avoid utf8 parsing, because we are looking strictly for whitespace-only lines
+            // and we scan them whole.
             blank := true;
             for line_view {
                 if !is_space(it) {
@@ -480,8 +600,10 @@ text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: 
         line_index := buffer.cursor0.y + 1;
         while !found && line_index < buffer.lines.count {
             line_start, line_end := text_buffer_get_cursors_for_line(buffer, line_index);
-            line_view            := text_buffer_view_between_cursors(buffer, line_start, line_end,, temp);
+            line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
 
+            // We can avoid utf8 parsing, because we are looking strictly for whitespace-only lines
+            // and we scan them whole.
             blank := true;
             for line_view {
                 if !is_space(it) {
@@ -563,7 +685,7 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
 #scope_file
 
 assert_valid :: (buffer: Text_Buffer) {
-    assert(buffer.lines.count > 0, "Text_Buffer not initialized (has to have at least one line). Call make_buffer() to initialize.");
+    assert(buffer.lines.count > 0, "Text_Buffer not initialized (has to have at least one line). Call text_buffer_init().");
     assert_cursor_valid(buffer, buffer.cursor0);
     assert_cursor_valid(buffer, buffer.cursor1);
 
@@ -678,4 +800,9 @@ byte_is_utf8_character_boundary :: inline (byte: u8) -> bool {
     */
 
     return byte < 128 || byte >= 192;
+}
+
+// TODO(jt): Make this configurable.
+character_is_word_boundary :: inline (codepoint: u32) -> bool {
+    return codepoint == #char " " || codepoint == #char "\t" || codepoint == #char "_" || codepoint == #char "-";
 }
