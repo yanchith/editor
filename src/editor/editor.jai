@@ -589,4 +589,108 @@ in what I see as concern. His hands come together on the conference table's surf
 own four-X series dissolves and I hold tight to the sides of my chair.
 We need candidly to chat re potential problems with my application, they and I, he is beginning to say. He makes a reference
 to candor and its value.
+
+'The issues my office faces with the application materials on file from you, Hal, involve some test scores.' He glances down at
+a colorful sheet of standardized scores in the trench his arms have made. 'The Admissions staff is looking at standardized test
+scores from you that are, as I'm sure you know and can explain, are, shall we say ... subnormal.' I'm to explain.
+It's clear that this really pretty sincere yellow Dean at left is Admissions. And surely the little aviarian figure at right is
+Athletics, then, because the facial creases of the shaggy middle Dean are now pursed in a kind of distanced affront, an I'm-eating-
+something-that-makes-me-really-appreciate-the-presence-of-whatever-I'm-drinking-along-with-it look that spells professionally
+Academic reservations. An uncomplicated loyalty to standards, then, at center. My uncle looks to Athletics as if puzzled. He shifts
+slightly in his chair.
+The incongruity between Admissions's hand- and face-color is almost wild. '—verbal scores that are just quite a bit closer to
+zero than we're comfortable with, as against a secondary-school transcript from the institution where both your mother and her
+brother are administrators —' reading directly out of the sheaf inside his arms' ellipse — 'that this past year, yes, has fallen off a
+bit, but by the word I mean "fallen off" to outstanding from three previous years of frankly incredible.’
+'Off the charts.’
+'Most institutions do not even have grades of A with multiple pluses after it,' says the Director of Composition, his expression
+impossible to interpret.
+'This kind of ... how shall I put it... incongruity,' Admissions says, his expression frank and concerned, 'I've got to tell you
+sends up a red flag of potential concern during the admissions process.’
+'We thus invite you to explain the appearance of incongruity if not outright shenanigans.' Students has a tiny piping voice
+that's absurd coming out of a face this big.
+'Surely by incredible you meant very very very impressive, as opposed to literally quote "incredible," surely,' says C.T.,
+seeming to watch the coach at the window massaging the back of his neck. The huge window gives out on nothing more than
+dazzling sunlight and cracked earth with heat-shimmers over it.
+'Then there is before us the matter of not the required two but nine separate application essays, some of which of nearly
+monograph-length, each without exception being —' different sheet — 'the adjective various evalua-tors used was quote "stellar"
+—’
+Dir. of Comp.: 'I made in my assessment deliberate use of lapidary and effete.’
+'— but in areas and with titles, I'm sure you recall quite well, Hal: "Neoclassical Assumptions in Contemporary Prescriptive
+Grammar," "The Implications of Post-Fourier Transformations for a Holographically Mimetic Cinema," "The Emergence of
+Heroic Stasis in Broadcast Entertainment" —’
+' "Montague Grammar and the Semantics of Physical Modality"?’
+' "A Man Who Began to Suspect He Was Made of Glass"?’
+' "Tertiary Symbolism in Justinian Erotica"?’
+Now showing broad expanses of recessed gum. 'Suffice to say that there's some frank and candid concern about the recipient
+of these unfortunate test scores, though perhaps explainable test scores, being these essays' sole individual author.’
+'I'm not sure Hal's sure just what's being implied here,' my uncle says. The Dean at center is fingering his lapels as he
+interprets distasteful computed data.
+'What the University is saying here is that from a strictly academic point of view there are admission problems that Hal needs
+to try to help us iron out. A matriculant's first role at the University is and must be as a student. We couldn't admit a student we
+have reason to suspect can't cut the mustard, no matter how much of an asset he might be on the field.’
+'Dean Sawyer means the court, of course, Chuck,' Athletic Affairs says, head severely cocked so he's including the White
+person behind him in the address somehow. 'Not to mention O.N.A.N.C.A.A. regulations and investigators always snuffling
+around for some sort of whiff of the smell of impropriety.’
+The varsity tennis coach looks at his own watch.
+'Assuming these board scores are accurate reflectors of true capacity in this case,' Academic Affairs says, his high voice
+serious and sotto, still looking at the file before him as if it were a plate of something bad, Til tell you right now my opinion is it
+wouldn't be fair. It wouldn't be fair to the other applicants. Wouldn't be fair to the University community.' He looks at me. 'And
+it'd be especially unfair to Hal himself. Admitting a boy we see as simply an athletic asset would amount to just using that boy.
+We're under myriad scrutiny to make sure we're not using anybody. Your board results, son, indicate that we could be accused of
+using you.’
+Uncle Charles is asking Coach White to ask the Dean of Athletic Affairs whether the weather over scores would be as heavy
+if I were, say, a revenue-raising football prodigy. The familiar panic at feeling misperceived is rising, and my chest bumps and
+thuds. I expend energy on remaining utterly silent in my chair, empty, my eyes two great pale zeros. People have promised to get
+me through this.
+Uncle C.T., though, has the pinched look of the cornered. His voice takes on an odd timbre when he's cornered, as if he were
+shouting as he receded. 'Hal's grades at E.T.A., which is I should stress an Academy, not simply a camp or factory, accredited by
+both the Commonwealth of Massachusetts and the North American Sports Academy Association, it's focused on the total needs of
+the player and student, founded by a towering intellectual figure whom I hardly need name, here, and based by him on the
+rigorous Oxbridge Quadrivium-Trivium curricular model, a school fully staffed and equipped, by a fully certified staff, should
+show that my nephew here can cut just about any Pac 10 mustard that needs cutting, and that —’
+DeLint is moving toward the tennis coach, who is shaking his head.
+'— would be able to see a distinct flavor of minor-sport prejudice about this whole thing,' C.T. says, crossing and recrossing
+his legs as I listen, composed and staring.
+The room's carbonated silence is now hostile. T think it's time to let the actual applicant himself speak out on his own behalf,'
+Academic Affairs says very quietly. 'This seems somehow impossible with you here, sir.’
+Athletics smiles tiredly under a hand that massages the bridge of his nose. 'Maybe you'd excuse us for a moment and wait
+outside, Chuck.’
+'Coach White could accompany Mr. Tavis and his associate out to reception,' the yellow Dean says, smiling into my
+unfocused eyes.
+'— led to believe this had all been ironed out in advance, from the —' C.T. is saying as he and deLint are shown to the door.
+The tennis coach extends a hypertrophied arm. Athletics says 'We're all friends and colleagues here.’
+This is not working out. It strikes me that exit signs would look to a native speaker of Latin like red-lit signs that say HE
+leaves. I would yield to the urge to bolt for the door ahead of them if I could know that bolting for the door is what the men in this
+room would see. DeLint is murmuring something to the tennis coach. Sounds of keyboards, phone consoles as the door is briefly
+opened, then firmly shut. I am alone among administrative heads.
+'— offense intended to anyone,' Athletic Affairs is saying, his sportcoat tan and his necktie insigniated in tiny print — 'beyond
+just physical abilities out there in play, which believe me we respect, want, believe me.’
+'— question about it we wouldn't be so anxious to chat with you directly, see?’
+'— that we've known in processing several prior applications through Coach White's office that the Enfield School is
+operated, however impressively, by close relations of first your brother, who I can still remember the way White's predecessor
+Maury Klamkin wooed that kid, so that grades' objectivity can be all too easily called into question —’
+'By whomsoever's calling — N.A.A.U.P., ill-willed Pac 10 programs, O.N.A.N.C.A.A. —’
+The essays are old ones, yes, but they are mine; de moi. But they are, yes, old, not quite on the application's instructed subject
+of Most Meaningful Educational Experience Ever. If I'd done you one from the last year, it would look to you like some sort of
+infant's random stabs on a keyboard, and to you, who use whomsoever as a subject. And in this new smaller company, the
+Director of Composition seems abruptly to have actuated, emerged as both the Alpha of the pack here and way more effeminate
+than he'd seemed at first, standing hip-shot with a hand on his waist, walking with a roll to his shoulders, jingling change as he
+pulls up his pants as he slides into the chair still warm from C.T.'s bottom, crossing his legs in a way that inclines him well into
+my personal space, so that I can see multiple eyebrow-tics and capillary webs in the oysters below his eyes and smell fabric-
+softener and the remains of a breath-mint turned sour.
+'. . . a bright, solid, but very shy boy, we know about your being very shy, Kirk White's told us what your athletically built if
+rather stand-offish younger instructor told him,' the Director says softly, cupping what I feel to be a hand over my sportcoat's
+biceps (surely not), 'who simply needs to swallow hard and trust and tell his side of the story to these gentlemen who bear no
+maliciousness none at all but are doing our jobs and trying to look out for everyone's interests at the same time.’
+I can picture deLint and White sitting with their elbows on their knees in the defecatory posture of all athletes at rest, deLint
+staring at his huge thumbs, while C.T. in the reception area paces in a tight ellipse, speaking into his portable phone. I have been
+coached for this like a Don before a RICO hearing. A neutral and affectless silence. The sort of all-defensive game Schtitt used to
+have me play: the best defense: let everything bounce off you; do nothing. I'd tell you all you want and more, if the sounds I made
+could be what you hear.
+Athletics with his head out from under his wing: '— to avoid admission procedures that could be seen as primarily athletics-
+oriented. It could be a mess, son.’
+'Bill means the appearance, not necessarily the real true facts of the matter, which you alone can fill in,' says the Director of
+Composition.
+
 DONE
