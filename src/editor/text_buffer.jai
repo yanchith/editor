@@ -22,8 +22,6 @@ operator == :: (a: Cursor, b: Cursor) -> bool {
 Line :: struct {
     char_count: s64; // Including newline at the end
     byte_count: s64;
-
-    // newline_char_count: s64; // XXX: HERE Start tracking this, so we know how much to subtract if the newline is \r\n.
 }
 
 text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena) {
@@ -68,7 +66,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
             gap_buffer_insert(*buffer.gb, String.slice(text, 0, newline_advance));
             advance(*text, newline_advance);
 
-            // XXX: If the newline is \r\n, isn't it two characters? We should probably respect that.
+            // We treat \r\n as one character, if it happens to be in there.
             buffer.lines[buffer.cursor0.y].char_count += 1 - char_count_after_cursor;
             buffer.lines[buffer.cursor0.y].byte_count += newline_advance - byte_count_after_cursor;
 
@@ -135,7 +133,7 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
             }
             assert(buffer.cursor0.y + 1 < buffer.lines.count);
 
-            // XXX: If the newline is \r\n, isn't it two characters? We should probably respect that.
+            // We treat \r\n as one character, if it happens to be in there.
             buffer.lines[buffer.cursor0.y].char_count -= 1;
             buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
 
@@ -191,7 +189,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
         }
         assert(buffer.cursor0.y + 1 < buffer.lines.count);
 
-        // XXX: If the newline is \r\n, isn't it two characters? We should probably respect that.
+        // We treat \r\n as one character, if it happens to be in there.
         buffer.lines[buffer.cursor0.y].char_count -= 1;
         buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
 
@@ -500,13 +498,13 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
         found := false;
         dx := 0;
         for :Unicode.utf8_iter line_view {
-            is_boundary := character_is_word_boundary(it);
-            if inside_word && is_boundary {
+            is_nonword := character_is_nonword_character(it);
+            if inside_word && is_nonword {
                 found = true;
                 break;
             }
 
-            if !is_boundary {
+            if !is_nonword {
                 inside_word = true;
             }
 
@@ -520,7 +518,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
     view_after_cursor := text_buffer_make_view_between_cursors(buffer, buffer.cursor0, line_end,, temp);
 
     start_character := text_buffer_get_character_at_cursor(buffer, buffer.cursor0);
-    starts_inside_word := !character_is_word_boundary(start_character);
+    starts_inside_word := !character_is_nonword_character(start_character);
 
     found, ends_inside_word, dx := search_line_forward(view_after_cursor, starts_inside_word);
     if found || ends_inside_word { // XXX: @Hack Explain
@@ -696,6 +694,7 @@ assert_valid :: (buffer: Text_Buffer) {
 
         byte_count += buffer.lines[it].byte_count;
 
+        // This should also work for \r\n newlines.
         assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) == "\n");
     }
 
@@ -791,18 +790,38 @@ find_previous_utf8_character_boundary :: (bytes: [] u8, index: s64) -> index: s6
 }
 
 
-byte_is_utf8_character_boundary :: inline (byte: u8) -> bool {
-    /*
+byte_is_utf8_character_boundary :: inline (b: u8) -> bool {
+    /* Taken from Rust's std.
+
     pub(crate) const fn is_utf8_char_boundary(self) -> bool {
         // This is bit magic equivalent to: b < 128 || b >= 192
         (self as i8) >= -0x40
     }
     */
-
-    return byte < 128 || byte >= 192;
+    return b < 128 || b >= 192;
 }
 
-// TODO(jt): Make this configurable.
-character_is_word_boundary :: inline (codepoint: u32) -> bool {
-    return codepoint == #char " " || codepoint == #char "\t" || codepoint == #char "_" || codepoint == #char "-";
+// TODO(jt): Make this configurable?
+character_is_nonword_character :: inline (c: u32) -> bool {
+    if c == {
+        case #char " ";   #through;
+        case #char "\t";  #through;
+        case #char "_";   #through;
+        case #char "-";   #through;
+        case #char ".";   #through;
+        case #char ",";   #through;
+        case #char ";";   #through;
+        case #char ":";   #through;
+        case #char "(";   #through;
+        case #char ")";   #through;
+        case #char "<";   #through;
+        case #char ">";   #through;
+        case #char "{";   #through;
+        case #char "}";   #through;
+        case #char "[";   #through;
+        case #char "]";   #through;
+        case #char "\"";  #through;
+        case #char "'";   return true;
+        case;             return false;
+    }
 }
