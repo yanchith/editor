@@ -100,6 +100,9 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
         new_count   := round_up_grow_size(gb.buffer.count + bytes.count - gb.gap_count);
         grow_amount := new_count - gb.buffer.count;
 
+        // XXX: HERE the copy fails. Did we make an error?
+        log("XXX new size and grow amount % %", new_count, grow_amount);
+
         array_resize(*gb.buffer, new_count);
 
         tail_data  := gb.buffer.data + gb.gap_index + gb.gap_count;
