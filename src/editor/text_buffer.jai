@@ -336,43 +336,6 @@ text_buffer_make_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _
     return cast(string, view);
 }
 
-text_buffer_get_character_at_cursor :: (buffer: *Text_Buffer, cursor: Cursor) -> u32 {
-    gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, cursor);
-
-    buf: [4] u8;
-    buf_length := 0;
-    if buffer.gb.count - gb_index == {
-        case 0;  assert(false);
-
-        case 1; {
-            buf[0] = gap_buffer_get_nongap_byte(buffer.gb, gb_index);
-            buf_length = 1;
-        }
-        case 2; {
-            buf[0] = gap_buffer_get_nongap_byte(buffer.gb, gb_index);
-            buf[1] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 1);
-            buf_length = 2;
-        }
-        case 3; {
-            buf[0] = gap_buffer_get_nongap_byte(buffer.gb, gb_index);
-            buf[1] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 1);
-            buf[2] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 2);
-            buf_length = 3;
-        }
-        case; {
-            buf[0] = gap_buffer_get_nongap_byte(buffer.gb, gb_index);
-            buf[1] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 1);
-            buf[2] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 2);
-            buf[3] = gap_buffer_get_nongap_byte(buffer.gb, gb_index + 3);
-            buf_length = 4;
-        }
-    }
-
-    codepoint := Unicode.character_utf8_to_utf32(buf.data, buf_length);
-
-    return codepoint;
-}
-
 text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool) {
     assert_valid(buffer);
 
@@ -474,31 +437,107 @@ text_buffer_move_cursor_to_end_of_line :: (buffer: *Text_Buffer, selecting: bool
     assert_valid(buffer);
 }
 
-text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, selecting: bool) {
-    assert_valid(buffer);
-    // XXX: Do this based on next_word_boundary
-}
-
-text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selecting: bool) {
+text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, selecting: bool) -> y_changed: bool {
     assert_valid(buffer);
 
-    // XXX: HERE I am not very satisfied with how this is done. Let's try and simplify. Currently
-    // the scanning function does not see the newline at the end, because that's how our
-    // view_between_cursors works, but maybe we should reconsider that?
+    y_changed := false;
 
-    // XXX: @Bug This crashes at the end of the file.
-
-    search_line_forward :: (line_view: string, starts_inside_word: bool) -> found: bool, ends_inside_word: bool, dx: s64 {
-        if line_view.count == 0 { // XXX: @Hack Explain
+    search_line_backward :: (line_view: string) -> found: bool, inside_word: bool, dx: s64 {
+        // The line is empty, so we couldn't have started inside a word.
+        if line_view.count == 0 {
             return false, false, 0;
         }
 
-        inside_word := starts_inside_word;
+        inside_word_initial_set := false;
+        inside_word             := false;
+
+        found := false;
+        dx := 0;
+        for < :Unicode.utf8_iter line_view {
+            is_nonword := character_is_nonword_character(it);
+
+            if !inside_word_initial_set {
+                inside_word             = !is_nonword;
+                inside_word_initial_set = true;
+            }
+
+            if inside_word && is_nonword {
+                found = true;
+                break;
+            }
+
+            if !is_nonword {
+                inside_word = true;
+            }
+
+            dx += 1;
+        }
+
+        return found, inside_word, dx;
+    }
+
+    line_start         := text_buffer_get_start_cursor_for_line(buffer, buffer.cursor0.y);
+    view_before_cursor := text_buffer_make_view_between_cursors(buffer, line_start, buffer.cursor0,, temp);
+
+    found, inside_word, dx := search_line_backward(view_before_cursor);
+    if found || inside_word {
+        buffer.cursor0.x -= dx;
+    } else {
+        while true {
+            previous_cursor := buffer.cursor0;
+            text_buffer_move_cursor_y(buffer, -1, selecting);
+            if previous_cursor.y == buffer.cursor0.y {
+                break;
+            }
+
+            y_changed = true;
+
+            buffer.cursor0 = text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
+
+            line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
+            line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
+
+            found, inside_word, dx = search_line_backward(line_view);
+            if found || inside_word {
+                buffer.cursor0.x -= dx;
+                break;
+            }
+        }
+    }
+
+    if !selecting {
+        buffer.cursor1 = buffer.cursor0;
+    }
+
+    assert_valid(buffer);
+
+    return y_changed;
+}
+
+text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selecting: bool) -> y_changed: bool {
+    assert_valid(buffer);
+
+    y_changed := false;
+
+    search_line_forward :: (line_view: string) -> found: bool, inside_word: bool, dx: s64 {
+        // The line is empty, so we couldn't have started inside a word.
+        if line_view.count == 0 {
+            return false, false, 0;
+        }
+
+        inside_word_initial_set := false;
+        inside_word             := false;
 
         found := false;
         dx := 0;
         for :Unicode.utf8_iter line_view {
             is_nonword := character_is_nonword_character(it);
+
+            if !inside_word_initial_set {
+                inside_word             = !is_nonword;
+                inside_word_initial_set = true;
+            }
+
             if inside_word && is_nonword {
                 found = true;
                 break;
@@ -517,26 +556,26 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
     line_end          := text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
     view_after_cursor := text_buffer_make_view_between_cursors(buffer, buffer.cursor0, line_end,, temp);
 
-    start_character := text_buffer_get_character_at_cursor(buffer, buffer.cursor0);
-    starts_inside_word := !character_is_nonword_character(start_character);
-
-    found, ends_inside_word, dx := search_line_forward(view_after_cursor, starts_inside_word);
-    if found || ends_inside_word { // XXX: @Hack Explain
+    found, inside_word, dx := search_line_forward(view_after_cursor);
+    if found || inside_word {
         buffer.cursor0.x += dx;
     } else {
         while true {
-            buffer.cursor0.x = 0;
-            cursor_before := buffer.cursor0;
+            previous_cursor := buffer.cursor0;
             text_buffer_move_cursor_y(buffer, 1, selecting);
-            if cursor_before == buffer.cursor0 {
+            if previous_cursor.y == buffer.cursor0.y {
                 break;
             }
+
+            y_changed = true;
+
+            buffer.cursor0.x = 0;
 
             line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
             line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
 
-            found, ends_inside_word, dx = search_line_forward(line_view, false);
-            if found || ends_inside_word {
+            found, inside_word, dx = search_line_forward(line_view);
+            if found || inside_word {
                 buffer.cursor0.x += dx;
                 break;
             }
@@ -548,6 +587,8 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
     }
 
     assert_valid(buffer);
+
+    return y_changed;
 }
 
 text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecting: bool) {

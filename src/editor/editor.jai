@@ -129,6 +129,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions.allocator = temp;
 
     clamp_scroll_to_cursor := false;
+    clamp_scroll_to_start_of_line := false;
+    clamp_scroll_to_end_of_line := false;
+
     for input.events {
         if it.type == {
             case .KEY; if it.data.key == {
@@ -189,8 +192,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         if it.data.codepoint == {
                             case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char "B";  text_buffer_move_cursor_to_previous_word_boundary(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char "F";  text_buffer_move_cursor_to_next_word_boundary(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "B";
+                                clamp_scroll_to_end_of_line |= text_buffer_move_cursor_to_previous_word_boundary(*editor.buffer, editor.buffer_selecting);
+                                clamp_scroll_to_cursor = true;
+                            case #char "F";
+                                clamp_scroll_to_start_of_line |= text_buffer_move_cursor_to_next_word_boundary(*editor.buffer, editor.buffer_selecting);
+                                clamp_scroll_to_cursor = true;
                             case #char "V";  scroll_viewport_up(editor, input);
                         }
                     } else {
@@ -234,18 +241,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     buffer_cell_w := editor.font.max_glyph_width_in_scaled_pixels;
     buffer_cell_h := editor.font.line_height_in_scaled_pixels;
     buffer_cursor0_position: Vector2;
+    buffer_cursor0_line_end_x: f32;
     {
         c0_line_start, c0_line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor0.y);
         c0_line_view := text_buffer_make_view_between_cursors(editor.buffer, c0_line_start, c0_line_end,, temp);
 
         buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, editor.buffer.cursor0.x);
         buffer_cursor0_position.y = editor.buffer.cursor0.y * buffer_cell_h;
+        buffer_cursor0_line_end_x = font_compute_position_on_line(editor.font, c0_line_view, c0_line_end.x);
     }
 
     //
     // Scroll buffer to cursor, if buffer changed
     //
-    if clamp_scroll_to_cursor {
+    if clamp_scroll_to_cursor || clamp_scroll_to_start_of_line || clamp_scroll_to_end_of_line {
         window_w := cast(f32, input.window_size.x);
         window_h := cast(f32, input.window_size.y);
 
@@ -257,21 +266,27 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         cursor0 := editor.buffer.cursor0;
 
         viewport_rect := rect_from_point_and_size(editor.buffer_viewport_scroll_target.x, editor.buffer_viewport_scroll_target.y, window_w, window_h);
-        cursor_rect := rect_from_point_and_size(buffer_cursor0_position.x, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
-
-        if cursor_rect.x1 > viewport_rect.x1 {
-            editor.buffer_viewport_scroll_target.x = cursor_rect.x0 - window_w + rect_width(cursor_rect) + scroll_padding_x;
-        } else if cursor_rect.x0 < viewport_rect.x0 {
-            editor.buffer_viewport_scroll_target.x = cursor_rect.x0 - scroll_padding_x;
+        scroll_to_rect: Rect;
+        if clamp_scroll_to_start_of_line {
+            scroll_to_rect = rect_from_point_and_size(0, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
+        } else if clamp_scroll_to_end_of_line {
+            scroll_to_rect = rect_from_point_and_size(buffer_cursor0_line_end_x, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
+        } else {
+             scroll_to_rect = rect_from_point_and_size(buffer_cursor0_position.x, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
         }
 
-        if cursor_rect.y1 > viewport_rect.y1 {
-            editor.buffer_viewport_scroll_target.y = cursor_rect.y0 - window_h + rect_height(cursor_rect) + scroll_padding_y;
-        } else if cursor_rect.y0 < viewport_rect.y0 {
-            editor.buffer_viewport_scroll_target.y = cursor_rect.y0 - scroll_padding_y;
+        if scroll_to_rect.x1 > viewport_rect.x1 {
+            editor.buffer_viewport_scroll_target.x = scroll_to_rect.x0 - window_w + rect_width(scroll_to_rect) + scroll_padding_x;
+        } else if scroll_to_rect.x0 < viewport_rect.x0 {
+            editor.buffer_viewport_scroll_target.x = scroll_to_rect.x0 - scroll_padding_x;
+        }
+
+        if scroll_to_rect.y1 > viewport_rect.y1 {
+            editor.buffer_viewport_scroll_target.y = scroll_to_rect.y0 - window_h + rect_height(scroll_to_rect) + scroll_padding_y;
+        } else if scroll_to_rect.y0 < viewport_rect.y0 {
+            editor.buffer_viewport_scroll_target.y = scroll_to_rect.y0 - scroll_padding_y;
         }
     }
-
 
     //
     // Scroll animation
@@ -282,7 +297,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         // TODO(jt): At least make this frame rate independent, but ideally also make it a
         // closed-form Hermite lerp, where we munge the previous animation.
-        editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.2);
+        editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.4);
         if Math.length_squared(editor.buffer_viewport_scroll_target - editor.buffer_viewport_scroll) > 0.1 {
             wants_next_frame = true;
         }
