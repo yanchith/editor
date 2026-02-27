@@ -58,6 +58,7 @@ operator*  :: Math.operator*;
 operator/  :: Math.operator/;
 operator== :: Math.operator==;
 
+#load "assert.jai";
 #load "math.jai";
 #load "platform.jai";
 #load "renderer.jai";

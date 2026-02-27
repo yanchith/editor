@@ -8,7 +8,7 @@
 // - User-given first block.
 //
 
-#module_parameters()(DEBUG := true); // TODO(jt): Eventually default this to false, once we are condi
+#module_parameters()(DEBUG := true); // TODO(jt): Eventually default this to false, once we are confident.
 
 ARENA_DEFAULT_RESERVE_SIZE: s64 : 256 << 20;
 ARENA_DEFAULT_COMMIT_SIZE:  s64 :  64 << 10;
