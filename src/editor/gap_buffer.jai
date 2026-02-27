@@ -211,7 +211,7 @@ assert_valid :: (gb: Gap_Buffer) {
 }
 
 round_up_grow_size :: (required_size: s64) -> s64 {
-    PAGE_SIZE :: 4096; // Not the actual page size on some systems, but we just need a threshold.
+    PAGE_SIZE :: 2 << 20; // Not the actual page size, just a grow multiplier threshold.
 
     if required_size < PAGE_SIZE {
         return round_up_to_power_of_two(required_size);
