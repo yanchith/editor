@@ -96,7 +96,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.perm_arena = arena_allocate(arena_procs);
 
     font_arena   := arena_allocate(arena_procs);
-    buffer_arena := arena_allocate(arena_procs);
+    buffer_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
 
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
@@ -110,7 +110,15 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.key_shift_down = false;
     editor.key_meta_down = false;
 
-    text_buffer_insert(*editor.buffer, HELLO_TEXT);
+    log("XXX making hello");
+
+    hello_text := make_large_hello_text(1 << 20,, temp);
+
+    log("XXX inserting hello");
+
+    text_buffer_insert(*editor.buffer, hello_text);
+
+    log("XXX done");
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -501,6 +509,23 @@ make_arena_procs :: (platform: Platform) -> Arena_Procs {
     };
 }
 
+make_large_hello_text :: (approx_size_in_bytes: s64) -> string {
+    result_bytes: s64 = 0;
+
+    b: String_Builder;
+    while result_bytes < approx_size_in_bytes {
+        SEPARATOR :: "\n\n\n========================================================\n\n\n";
+
+        print(*b, HELLO_TEXT);
+        print(*b, SEPARATOR);
+
+        result_bytes += HELLO_TEXT.count;
+        result_bytes += SEPARATOR.count;
+    }
+
+    return builder_to_string(*b);
+}
+
 HELLO_TEXT :: #string DONE
 YEAR OF GLAD
 I am seated in an office, surrounded by heads and bodies. My posture is consciously congruent to the shape of my hard chair.
@@ -566,7 +591,7 @@ your alumni and coaching staff, to have already justified his high seed in this 
 in it without the fat woman in the Viking hat having sung, so to speak, but of course most of all to have a chance to meet you
 gentlemen and have a look at the facilities here. Everything here is absolutely top-slot, from what he's seen.’
 There is a silence. DeLint shifts his back against the room's panelling and recenters his weight. My uncle beams and
-straightens a straight watchband. 62.5% of the room's faces are directed my way, pleasantly expectant. My chest bumps like a
+straightens a straight watchband. 62.5 percent of the room's faces are directed my way, pleasantly expectant. My chest bumps like a
 dryer with shoes in it. I compose what I project will be seen as a smile. I turn this way and that, slightly, sort of directing the
 expression to everyone in the room.
 There is a new silence. The yellow Dean's eyebrows go circumflex. The two other Deans look to the Director of Composition.

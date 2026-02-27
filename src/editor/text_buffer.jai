@@ -41,6 +41,11 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena) {
     assert_valid(buffer);
 }
 
+// XXX: @Speed Inserting large text goes to very uninteractive speeds. Slowness candidates:
+//
+// - operating on single bytes instead of u64s/SSE/AVX/etc.
+// - Memory.copy inside gap_buffer_insert, because we don't batch the thing.
+// - text_buffer_byte_count_between_cursors computes two gap buffer indices... for every newline. Can we avoid that? Can we compute gap buffer indices faster?
 text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     // TODO(jt): @Speed We currently insert things into the gap buffer byte by byte. Batch it!
 
@@ -102,6 +107,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     assert_valid(buffer);
 }
 
+// XXX: @Speed Deleting a large selection in large buffers goes to very uninteractive speeds.
 text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 
