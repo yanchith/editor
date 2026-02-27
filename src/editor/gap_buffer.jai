@@ -97,16 +97,14 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
     assert_valid(gb);
 
     if bytes.count > gb.gap_count {
-        new_count   := round_up_grow_size(gb.buffer.count + bytes.count - gb.gap_count);
-        grow_amount := new_count - gb.buffer.count;
-
-        // XXX: HERE the copy fails. Did we make an error?
-        log("XXX new size and grow amount % %", new_count, grow_amount);
+        old_count   := gb.buffer.count;
+        new_count   := round_up_grow_size(old_count + bytes.count - gb.gap_count);
+        grow_amount := new_count - old_count;
 
         array_resize(*gb.buffer, new_count);
 
         tail_data  := gb.buffer.data + gb.gap_index + gb.gap_count;
-        tail_count := gb.buffer.count - gb.gap_count - gb.gap_index;
+        tail_count := old_count - gb.gap_count - gb.gap_index;
 
         // tail_count can be zero if we started with an empty buffer, or if the gap was at the end,
         // but the copy should be fine with it.
@@ -223,7 +221,7 @@ round_up_grow_size :: (required_size: s64) -> s64 {
 }
 
 round_up_to_align :: inline (x: s64, alignment: s64) -> s64 {
-    // TODO(jt): #debug_assert This does NOT yet assert that alignment is a power of two.
+    debug_assert(alignment > 0 && is_power_of_two(alignment));
     mask := alignment - 1;
     return (x + mask) & ~mask;
 }
@@ -248,6 +246,10 @@ round_up_to_power_of_two :: inline (x: s64) -> s64 {
     x += 1;
 
     return x;
+}
+
+is_power_of_two :: inline (value: s64) -> bool {
+    return value & (value - 1) == 0;
 }
 
 Memory :: #import "Memory";
