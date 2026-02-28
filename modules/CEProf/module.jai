@@ -1,16 +1,23 @@
 #module_parameters(IMPORT_MODE := Import_Mode.METAPROGRAM) {
     Import_Mode :: enum u8 {
-        METAPROGAM :: 0;
-        RUNTIME    :: 1;
+        METAPROGRAM :: 0;
+        RUNTIME     :: 1;
     }
 }
 
 #if IMPORT_MODE == .METAPROGRAM {
+    #import "Basic";
     #import "Compiler";
-
 
     injected_final_profiling_code := false;
     next_zone_index: s64 = 1; // Zone 0 is reserved for the entire profiling scope (e.g. a frame in an application)
+
+    get_plugin :: () -> *Metaprogram_Plugin {
+        p := New(Metaprogram_Plugin);
+        p.message = message;
+
+        return p;
+    }
 
     message :: (p: *Metaprogram_Plugin, message: *Message) {
         if injected_final_profiling_code {
@@ -34,63 +41,60 @@
                 assert(!injected_final_profiling_code);
                 typechecked_message := cast(*Message_Typechecked, message);
 
-                // XXX: HERE This is not going to work, we need to modify the ZONE index after the
-                // macro has been expandedd... or something. Maybe we can do #insert? Or maybe we
-                // just replace the macro at the callsite with the actual stuff.
-                for * typechecked_message.procedure_bodies {
-                    body := it.expression;
+                for * tc: typechecked_message.procedure_bodies {
+                    body := tc.expression;
+
+                    // XXX: HERE Do the deed. Remove the original ProfileZone and replace it with __ProfileZone.
+                    new_statements: [..] *Code_Node;
+                    defer array_free(new_statements);
+
+                    // TODO(jt): Is this already modified by us? Or anyone? Maybe shouldn't reject here?
                     if body.body_flags & .ALREADY_MODIFIED {
                         continue;
                     }
 
-                    header := body.header;
-                    if !(header.procedure_flags & .MACRO) {
-                        continue;
+                    for statement: body.block.statements {
+                        if statement.kind != .PROCEDURE_CALL {
+                            continue;
+                        }
+
+                        call := cast(*Code_Procedure_Call, statement);
+                        // TODO(jt): Check resolved_procedure_expression instead?
+                        if call.procedure_expression.kind != .IDENT {
+                            continue;
+                        }
+
+                        procedure_ident := cast(*Code_Ident, call.procedure_expression);
+                        // TODO(jt): We shouldn't filter this, because it could have been renamed?
+                        if procedure_ident.name != "ProfileZone" {
+                            continue;
+                        }
+
+                        procedure_declaration := procedure_ident.resolved_declaration;
+
+                        declaration_expression := procedure_declaration.expression;
+
+                        log("XXX: decl % %", procedure_ident.name, declaration_expression.*);
+                        // if declaration_expression.kind != .PROCEDURE_HEADER {
+                        //     continue;
+                        // }
                     }
 
-                    // TODO(jt): What if the caller renamed it? We could check for notes instead?
-                    if header.name != "ProfileZone" {
-                        continue;
-                    }
 
-                    // TODO(jt): Check whether the arguments match?
-
-                    if body.block.block_type != .IMPERATIVE {
-                        continue;
-                    }
-
-                    if body.block.statements.count == 0 {
-                        continue;
-                    }
-
-                    statement := body.block.sttements[0];
-                    if statement.kind != .DECLARATION {
-                        continue;
-                    }
-
-                    declaration := cast(*Code_Declaration, statement);
-                    if !(declaration.flags & .IS_CONSTANT) {
-                        continue;
-                    }
-
-                    if program_export_name != "ZONE_INDEX" {
-                        continue;
-                    }
-
-                    declaration.value = next_zone_index;
-                    next_zone_index += 1;
-
-                    compiler_modify_procedure(message.workspace, body);
+                    // next_zone_index += 1;
+                    // compiler_modify_procedure(message.workspace, body);
                 }
             }
         }
     }
 } else {
-    System :: #import "System";
+    System :: #import "System"; // TODO(jt): This is only for read_cpu_counter. Copy it in here?
 
-    #placeholder ZONE_COUNT;
+    // XXX: Emit from metaprogram!
+    PROFILER_ZONE_COUNT :: 4096;
+    __global_profiler: Profiler;
 
-    Zone :: struct {
+    Profiler_Zone :: struct {
         elapsed_inclusive: u64;
         elapsed_exclusive: u64;
         hits: u64;
@@ -98,8 +102,8 @@
     }
 
     Profiler :: struct {
-        zones:       [ZONE_COUNT] Zone;
-        zone_labels: [ZONE_COUNT] string;
+        zones:       [PROFILER_ZONE_COUNT] Profiler_Zone;
+        zone_labels: [PROFILER_ZONE_COUNT] string;
 
         current_zone_index: s64;
     }
@@ -121,13 +125,15 @@
         }
     }
 
-    ProfileZone :: (label: string) #expand {
-        ZONE_INDEX :: -1; // This gets patched by the metaprogram.
+    // The programmer invokes the ProfileZone macro in the code.
+    ProfileZone  :: (#discard label: string) #expand {}
 
+    // The metaprogram replaces ProfileZone invocations with __ProfileZone invocations.
+    __ProfileZone :: ($zone_index: s64) #expand {
         parent_zone_index := __global_profiler.current_zone_index;
-        __global_profiler.current_zone_index = ZONE_INDEX;
+        __global_profiler.current_zone_index = zone_index;
 
-        current_zone := *__global_profiler.zones[ZONE_INDEX];
+        current_zone := *__global_profiler.zones[zone_index];
         current_zone_elapsed_inclusive := current_zone.elapsed_inclusive;
 
         start := System.read_cpu_counter();
@@ -144,5 +150,6 @@
 
             __global_profiler.current_zone_index = parent_zone_index;
         }
+
     }
 }
