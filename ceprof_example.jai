@@ -1,9 +1,12 @@
-#import,file "module.jai"(IMPORT_MODE = .RUNTIME);
+#import "CEProf"(IMPORT_MODE = .RUNTIME);
 
 main :: () {
+    ProfileFrame();
     ProfileZone("Main");
 
     result := f(1, 5);
+
+    write_string("Done");
 }
 
 f :: (a: s64, b: s64) -> s64 {
