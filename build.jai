@@ -2,10 +2,12 @@
 #import "File";
 
 build :: () {
-    do_release_build := false;
+    do_optimized_build           := false;
+    do_profiling_instrumentation := false;
 
     for get_toplevel_command_line() {
-        if it == "-release"  do_release_build = true;
+        if it == "-release"    do_optimized_build = true;
+        if it == "-optimized"  do_optimized_build = true;
     }
 
     make_directory_if_it_does_not_exist("build");
@@ -17,7 +19,7 @@ build :: () {
     options.output_path            = "build";
     options.intermediate_path      = "build/.build";
 
-    if !do_release_build {
+    if !do_optimized_build {
         // This isn't enabled yet by default for debug builds.. and maybe they will only enable it
         // for very_debug builds, so...
         options.arithmetic_overflow_check = .FATAL;
