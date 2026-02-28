@@ -9,9 +9,6 @@
     #import "Basic";
     #import "Compiler";
 
-    injected_final_profiling_code := false;
-    next_zone_index: s64 = 1; // Zone 0 is reserved for the entire profiling scope (e.g. a frame in an application)
-
     get_plugin :: () -> *Metaprogram_Plugin {
         p := New(Metaprogram_Plugin);
         p.message = message;
@@ -19,8 +16,11 @@
         return p;
     }
 
+    finalized := false;
+    zone_labels: [..] string;
+
     message :: (p: *Metaprogram_Plugin, message: *Message) {
-        if injected_final_profiling_code {
+        if finalized {
             return;
         }
 
@@ -30,69 +30,178 @@
                 phase := phase_message.phase;
 
                 if phase == .TYPECHECKED_ALL_WE_CAN {
-                    if !injected_final_profiling_code {
+                    if !finalized {
+                        zone_count := zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
 
-                        injected_final_profiling_code = true;
+                        log("[CEProf] Collected % zones", zone_count);
+
+                        // TODO(jt): @Cleanup We only import the profiler here so that we can do the poke with the final zone count. Is there a better way?
+                        s := tprint("__CEProf :: #import \"CEProf\"(IMPORT_MODE = .RUNTIME);PROFILER_ZONE_COUNT :: %; #poke_name __CEProf PROFILER_ZONE_COUNT;", zone_count);
+                        add_build_string(s, message.workspace);
+
+                        finalized = true;
                     }
                 }
             }
 
             case .TYPECHECKED; {
-                assert(!injected_final_profiling_code);
                 typechecked_message := cast(*Message_Typechecked, message);
 
                 for * tc: typechecked_message.procedure_bodies {
                     body := tc.expression;
-
-                    // XXX: HERE Do the deed. Remove the original ProfileZone and replace it with __ProfileZone.
-                    new_statements: [..] *Code_Node;
-                    defer array_free(new_statements);
 
                     // TODO(jt): Is this already modified by us? Or anyone? Maybe shouldn't reject here?
                     if body.body_flags & .ALREADY_MODIFIED {
                         continue;
                     }
 
+                    do_modify := false;
+
+                    new_statements: [..] *Code_Node;
+                    new_statements.allocator = temp;
+
                     for statement: body.block.statements {
                         if statement.kind != .PROCEDURE_CALL {
+                            array_add(*new_statements, statement);
                             continue;
                         }
-
                         call := cast(*Code_Procedure_Call, statement);
+
                         // TODO(jt): Check resolved_procedure_expression instead?
                         if call.procedure_expression.kind != .IDENT {
+                            array_add(*new_statements, statement);
                             continue;
                         }
+                        call_ident := cast(*Code_Ident, call.procedure_expression);
 
-                        procedure_ident := cast(*Code_Ident, call.procedure_expression);
-                        // TODO(jt): We shouldn't filter this, because it could have been renamed?
-                        if procedure_ident.name != "ProfileZone" {
+                        if call_ident.resolved_declaration.expression.kind != .PROCEDURE_HEADER {
+                            array_add(*new_statements, statement);
                             continue;
                         }
+                        header := cast(*Code_Procedure_Header, call_ident.resolved_declaration.expression);
 
-                        procedure_declaration := procedure_ident.resolved_declaration;
+                        // TODO(jt): We could get to the filename and import of the profiling
+                        // functions to check that they are really from this module.
 
-                        declaration_expression := procedure_declaration.expression;
+                        if header.name == {
+                            case "ProfileFrame"; {
+                                log("[CEProf] Instrumenting ProfileFrame %:%", call_ident.location.enclosing_load.fully_pathed_filename, call_ident.location.l0);
 
-                        log("XXX: decl % %", procedure_ident.name, declaration_expression.*);
-                        // if declaration_expression.kind != .PROCEDURE_HEADER {
-                        //     continue;
-                        // }
+                                literal := New(Code_Literal,, temp);
+                                literal.value_type = .STRING;
+                                literal.values._string = "__ProfileFrame();";
+                                insert := New(Code_Directive_Insert,, temp);
+                                insert.expression = literal;
+                                insert.location = body.location;
+
+                                do_modify = true;
+                                array_add(*new_statements, insert);
+                            }
+
+                            case "ProfileZone"; {
+                                call_arguments := call.arguments_unsorted;
+                                if call_arguments.count != 1 {
+                                    log("[CEProf] Skipping invalid ProfileZone %:%");
+                                    array_add(*new_statements, statement);
+                                    continue;
+                                }
+
+                                if call_arguments[0].expression.kind != .LITERAL {
+                                    log("[CEProf] Skipping invalid ProfileZone %:%");
+                                    array_add(*new_statements, statement);
+                                    continue;
+                                }
+                                argument_literal := cast(*Code_Literal, call_arguments[0].expression);
+
+                                if argument_literal.value_type != .STRING {
+                                    log("[CEProf] Skipping invalid ProfileZone %:%");
+                                    array_add(*new_statements, statement);
+                                    continue;
+                                }
+
+                                zone_index := zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
+                                array_add(*zone_labels, argument_literal._string);
+
+                                log("[CEProf] Instrumenting ProfileZone(\"%\") %:%", argument_literal._string, call_ident.location.enclosing_load.fully_pathed_filename, call_ident.location.l0);
+                                s := tprint("__ProfileZone(%);", zone_index);
+
+                                literal := New(Code_Literal,, temp);
+                                literal.value_type = .STRING;
+                                literal.values._string = s;
+                                insert := New(Code_Directive_Insert,, temp);
+                                insert.expression = literal;
+                                insert.location = body.location;
+
+                                do_modify = true;
+                                array_add(*new_statements, insert);
+                            }
+
+                            case; {
+                                array_add(*new_statements, statement);
+                            }
+                        }
                     }
 
-
-                    // next_zone_index += 1;
-                    // compiler_modify_procedure(message.workspace, body);
+                    if do_modify {
+                        body.block.statements = new_statements;
+                        compiler_modify_procedure(message.workspace, body);
+                    }
                 }
             }
         }
     }
 } else {
+    // The programmer invokes these macros in the code. They are replaced by the metaprogram to
+    // invocations of the actual macros: __ProfileFrame and __ProfileZone.
+    ProfileFrame :: () #expand { /* Generated by the metaprogram */ }
+    ProfileZone  :: ($label: string) #expand { /* Generated by the metaprogram */ }
+
+    __ProfileFrame :: () #expand {
+        start := System.read_cpu_counter();
+
+        `defer {
+            end := System.read_cpu_counter();
+            elapsed := end - start; // #wrapping ?
+
+            zone := *profiler.zones[0];
+            zone.elapsed_inclusive += elapsed;
+            zone.elapsed_exclusive += elapsed;
+            zone.hits += 1;
+        }
+    }
+
+    // The metaprogram replaces ProfileZone invocations with __ProfileZone invocations.
+    __ProfileZone :: ($zone_index: s64) #expand {
+        parent_zone_index := profiler.current_zone_index;
+        profiler.current_zone_index = zone_index;
+
+        current_zone := *profiler.zones[zone_index];
+        current_zone_elapsed_inclusive := current_zone.elapsed_inclusive;
+
+        start := System.read_cpu_counter();
+        `defer {
+            end := System.read_cpu_counter();
+            elapsed := end - start; // #wrapping ?
+
+            current_zone.elapsed_inclusive = current_zone_elapsed_inclusive + elapsed;
+            current_zone.elapsed_exclusive += elapsed; // #wrapping ?
+            current_zone.hits += 1;
+
+            parent_zone := *profiler.zones[parent_zone_index];
+            parent_zone.elapsed_exclusive -= elapsed; // #wrapping ?!!
+
+            profiler.current_zone_index = parent_zone_index;
+        }
+
+    }
+
+    #scope_module
+
     System :: #import "System"; // TODO(jt): This is only for read_cpu_counter. Copy it in here?
 
-    // XXX: Emit from metaprogram!
-    PROFILER_ZONE_COUNT :: 4096;
-    __global_profiler: Profiler;
+    #placeholder PROFILER_ZONE_COUNT; // XXX: We need to inject this "somehow".
+
+    profiler: Profiler;
 
     Profiler_Zone :: struct {
         elapsed_inclusive: u64;
@@ -106,50 +215,5 @@
         zone_labels: [PROFILER_ZONE_COUNT] string;
 
         current_zone_index: s64;
-    }
-
-    // TODO(jt): Support ProfileFrameBegin/ProfileFrameEnd for the poor people that use a
-    // callback-based platform layer? We'd have to store 'start' somewhere globally, instead of
-    // sneaking it on the stack.
-    ProfileFrame :: () #expand {
-        start := System.read_cpu_counter();
-
-        `defer {
-            end := System.read_cpu_counter();
-            elapsed := end - start; // #wrapping ?
-
-            zone := *__global_profiler.zones[0];
-            zone.elapsed_inclusive += elapsed;
-            zone.elapsed_exclusive += elapsed;
-            zone.hits += 1;
-        }
-    }
-
-    // The programmer invokes the ProfileZone macro in the code.
-    ProfileZone  :: (#discard label: string) #expand {}
-
-    // The metaprogram replaces ProfileZone invocations with __ProfileZone invocations.
-    __ProfileZone :: ($zone_index: s64) #expand {
-        parent_zone_index := __global_profiler.current_zone_index;
-        __global_profiler.current_zone_index = zone_index;
-
-        current_zone := *__global_profiler.zones[zone_index];
-        current_zone_elapsed_inclusive := current_zone.elapsed_inclusive;
-
-        start := System.read_cpu_counter();
-        `defer {
-            end := System.read_cpu_counter();
-            elapsed := end - start; // #wrapping ?
-
-            current_zone.elapsed_inclusive = current_zone_elapsed_inclusive + elapsed;
-            current_zone.elapsed_exclusive += elapsed; // #wrapping ?
-            current_zone.hits += 1;
-
-            parent_zone := *__global_profiler.zones[parent_zone_index];
-            parent_zone.elapsed_exclusive -= elapsed; // #wrapping ?!!
-
-            __global_profiler.current_zone_index = parent_zone_index;
-        }
-
     }
 }
