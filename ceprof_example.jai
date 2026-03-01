@@ -8,13 +8,15 @@ main :: () {
         frame();
     }
 
+    zones := profiler_get_zones();
+    zone_labels := profiler_get_zone_labels();
+
     print("\n\n");
-    print("profiling info for % zones:\n", PROFILER_ZONE_COUNT);
+    print("profiling info for % zones:\n", zones.count);
 
-    for profiler.zones {
-        print("[%] (%)  hits: %, inclusive: %, exclusive % \n", it_index, profiler.zone_labels[it_index], it.hits, it.elapsed_inclusive, it.elapsed_exclusive);
+    for zones {
+        print("[%] (%)  hits: %, inclusive: %, exclusive % \n", it_index, zone_labels[it_index], it.hits, it.elapsed_inclusive, it.elapsed_exclusive);
     }
-
 }
 
 frame :: () {

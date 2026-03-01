@@ -1,13 +1,13 @@
-    #module_parameters(IMPORT_MODE := Import_Mode.METAPROGRAM) {
-        Import_Mode :: enum u8 {
-            METAPROGRAM :: 0;
-            RUNTIME     :: 1;
-        }
+#module_parameters(IMPORT_MODE := Import_Mode.METAPROGRAM) {
+    Import_Mode :: enum u8 {
+        METAPROGRAM :: 0;
+        RUNTIME     :: 1;
     }
+}
 
 #if IMPORT_MODE == .METAPROGRAM {
-#import "Basic";
-#import "Compiler";
+    #import "Basic";
+    #import "Compiler";
 
     get_plugin :: () -> *Metaprogram_Plugin {
         p := New(Metaprogram_Plugin);
@@ -39,11 +39,11 @@
                             sb: String_Builder;
                             sb.allocator = temp;
 
-                            print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
+                            print(*sb, "PROFILER_ZONE_COUNT :: %;\n", zone_count);
                             print(*sb, "__init_zone_labels :: () {\n");
-                            print(*sb, "    profiler.zone_labels[0] = \"MAIN\";\n");
+                            print(*sb, "    __profiler.zone_labels[0] = \"MAIN\";\n");
                             for 0..zone_count - 2 {
-                                print(*sb, "    profiler.zone_labels[%] = \"%\";\n", it + 1, profiler_zone_labels[it]);
+                                print(*sb, "    __profiler.zone_labels[%] = \"%\";\n", it + 1, profiler_zone_labels[it]);
                             }
                             print(*sb, "}\n");
 
@@ -62,6 +62,7 @@
                 import_message := cast(*Message_Import, message);
 
                 if import_message.module_name == "CEProf" {
+                    add_build_string(RUNTIME_TO_INSERT_EARLY, message.workspace, import_message);
                     profiler_import_message = import_message;
                 }
             }
@@ -172,12 +173,28 @@
             }
         }
     }
+
+    RUNTIME_TO_INSERT_EARLY :: #string DONE
+    __profiler: Profiler;
+
+    Profiler :: struct {
+        zones:       [PROFILER_ZONE_COUNT] Profiler_Zone;
+        zone_labels: [PROFILER_ZONE_COUNT] string;
+
+        current_zone_index: s64;
+    }
+    DONE;
 } else {
+    // XXX: Instead of having to replace the macros everywhere, can we do #exists inside too? The
+    // hard part would be having to assign zone index in a #run there, or something. Maybe it is
+    // doable?
+
     // The programmer invokes these macros in the code. They are replaced by the metaprogram to
     // invocations of the actual macros: __ProfileFrame and __ProfileZone.
     ProfileFrame :: () #expand {}
     ProfileZone  :: ($label: string) #expand {}
 
+    // Currently relies on being eliminated, but we could just move it to the generated code.
     __ProfileFrame :: () #expand {
         start := System.read_cpu_counter();
 
@@ -185,19 +202,19 @@
             end := System.read_cpu_counter();
             elapsed := end - start; // #wrapping ?
 
-            zone := *profiler.zones[0];
+            zone := *__profiler.zones[0];
             zone.elapsed_inclusive += elapsed;
             zone.elapsed_exclusive += elapsed;
             zone.hits += 1;
         }
     }
 
-    // The metaprogram replaces ProfileZone invocations with __ProfileZone invocations.
+    // Currently relies on being eliminated, but we could just move it to the generated code.
     __ProfileZone :: ($zone_index: s64) #expand {
-        parent_zone_index := profiler.current_zone_index;
-        profiler.current_zone_index = zone_index;
+        parent_zone_index := __profiler.current_zone_index;
+        __profiler.current_zone_index = zone_index;
 
-        current_zone := *profiler.zones[zone_index];
+        current_zone := *__profiler.zones[zone_index];
         current_zone_elapsed_inclusive := current_zone.elapsed_inclusive;
 
         start := System.read_cpu_counter();
@@ -209,22 +226,13 @@
             current_zone.elapsed_exclusive += elapsed; // #wrapping ?
             current_zone.hits += 1;
 
-            parent_zone := *profiler.zones[parent_zone_index];
+            parent_zone := *__profiler.zones[parent_zone_index];
             parent_zone.elapsed_exclusive -= elapsed; // #wrapping ?!!
 
-            profiler.current_zone_index = parent_zone_index;
+            __profiler.current_zone_index = parent_zone_index;
         }
 
     }
-
-    // Call this to get your labels assigned to zones.
-    profiler_init :: () {
-        #if #exists(__init_zone_labels) {
-            __init_zone_labels();
-        }
-    }
-
-    profiler: Profiler;
 
     Profiler_Zone :: struct {
         elapsed_inclusive: u64;
@@ -233,28 +241,30 @@
         _padding: u64; // So that we won't straddle cache lines, but maybe we should shrink the struct instead, or SoA it?
     }
 
-    Profiler :: struct {
-        zones:       [PROFILER_ZONE_COUNT] Profiler_Zone;
-        zone_labels: [PROFILER_ZONE_COUNT] string;
-
-        current_zone_index: s64;
+    // Call this to get your labels assigned to zones.
+    profiler_init :: () {
+        #if #exists(__profiler) {
+            __init_zone_labels();
+        }
     }
 
-    #if #exists(__PROFILER_ZONE_COUNT) {
-        PROFILER_ZONE_COUNT :: __PROFILER_ZONE_COUNT;
-    } else {
-        PROFILER_ZONE_COUNT :: 1;
+    profiler_get_zones :: () -> [] Profiler_Zone {
+        #if #exists(__profiler) {
+            return __profiler.zones;
+        } else {
+            return .[];
+        }
+    }
+
+    profiler_get_zone_labels :: () -> [] string {
+        #if #exists(__profiler) {
+            return __profiler.zone_labels;
+        } else {
+            return .[];
+        }
     }
 
     #scope_module
-
-    // TODO(jt): @Cleanup add_build_string inserts into the module scope. If the placeholders were
-    // in export scope, they would not be filled. There is #exists(ident, wait_for), but I am not
-    // sure that will work.
-
-    // XXX: HERE If these don't get filled, we get cycles.
-    #placeholder __PROFILER_ZONE_COUNT; // Inserted by the metaprogram.
-    #placeholder __init_zone_labels; // Inserted by the metaprogram.
 
     System :: #import "System"; // TODO(jt): This is only for read_cpu_counter. Copy it in here?
 }
