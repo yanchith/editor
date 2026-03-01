@@ -33,7 +33,7 @@
                 if phase == .TYPECHECKED_ALL_WE_CAN {
                     if !profiler_instrumentation_finalized {
                         zone_count := profiler_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
-                        log("[CEProf] Collected % zones", zone_count);
+                        log("[Profiler] Collected % zones", zone_count);
 
                         if profiler_import_message {
                             sb: String_Builder;
@@ -50,7 +50,7 @@
                             s := builder_to_string(*sb,, temp);
                             add_build_string(s, message.workspace, profiler_import_message);
                         } else {
-                            compiler_report("[CEProf] Could not find #import for the CEProf module.");
+                            compiler_report("[Profiler] Could not find #import for the Profiler module.");
                         }
 
                         profiler_instrumentation_finalized = true;
@@ -61,7 +61,7 @@
             case .IMPORT; {
                 import_message := cast(*Message_Import, message);
 
-                if import_message.module_name == "CEProf" {
+                if import_message.module_name == "Profiler" {
                     add_build_string(RUNTIME_TO_INSERT_EARLY, message.workspace, import_message);
                     profiler_import_message = import_message;
                 }
@@ -73,10 +73,22 @@
                 for * tc: typechecked_message.procedure_bodies {
                     body := tc.expression;
 
-                    // TODO(jt): Is this already modified by us? Or anyone? Maybe shouldn't reject here?
-                    if body.body_flags & .ALREADY_MODIFIED {
-                        continue;
-                    }
+                    // We could guard against ALREDY_MODIFIED, but because we replace the macros we
+                    // invoke, it shouldn't matter if we look at the same procedure multiple times.
+
+                    // XXX: We need to recurse into anything that could have a block:
+                    // block/if/else/for/while/defer/cast-arguments/function-call-arguments/declarations.
+                    // Otherwise we won't instrument those calls.
+                    //
+                    // While Typechecked::subexpressions maybe gives us everything flattened, we
+                    // still need to submit a new procedure body at the end, so maybe there's no way
+                    // around recursing manually, replacing block bodies containing our profiling
+                    // functions.
+                    //
+                    // XXX: Uncommenting this log causes us to miss zones! Why? (We also sometimes
+                    // miss zones with it commented out as well.)
+                    //
+                    // log("XXX procedure % (% subexpressions)", body.header.name, tc.subexpressions.count);
 
                     do_modify := false;
 
@@ -108,12 +120,13 @@
                         }
                         header := cast(*Code_Procedure_Header, call_ident.resolved_declaration.expression);
 
-                        // TODO(jt): We could get to the filename and import of the profiling
-                        // functions to check that they are really from this module.
+                        // TODO(jt): We should also get the filename and import of the profiling
+                        // functions to check that they are really from this module, instead of just
+                        // checking if they are ProfileFrame/ProfileZone shaped.
 
                         if header.name == {
                             case "ProfileFrame"; {
-                                log("[CEProf] Instrumenting ProfileFrame %:%", call_ident.location.enclosing_load.fully_pathed_filename, call_ident.location.l0);
+                                log("[Profiler] Instrumenting ProfileFrame %:%", call_ident.location.enclosing_load.fully_pathed_filename, call_ident.location.l0);
 
                                 literal := New(Code_Literal,, temp);
                                 literal.value_type = .STRING;
@@ -129,20 +142,20 @@
                             case "ProfileZone"; {
                                 call_arguments := call.arguments_unsorted;
                                 if call_arguments.count != 1 {
-                                    log("[CEProf] Skipping invalid ProfileZone %:%");
+                                    log("[Profiler] Skipping invalid ProfileZone %:%");
                                     array_add(*new_statements, statement);
                                     continue;
                                 }
 
                                 if call_arguments[0].expression.kind != .LITERAL {
-                                    log("[CEProf] Skipping invalid ProfileZone %:%");
+                                    log("[Profiler] Skipping invalid ProfileZone %:%");
                                     array_add(*new_statements, statement);
                                     continue;
                                 }
                                 argument_literal := cast(*Code_Literal, call_arguments[0].expression);
 
                                 if argument_literal.value_type != .STRING {
-                                    log("[CEProf] Skipping invalid ProfileZone %:%");
+                                    log("[Profiler] Skipping invalid ProfileZone %:%");
                                     array_add(*new_statements, statement);
                                     continue;
                                 }
@@ -150,7 +163,7 @@
                                 zone_index := profiler_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
                                 array_add(*profiler_zone_labels, argument_literal._string);
 
-                                log("[CEProf] Instrumenting ProfileZone(\"%\") %:%", argument_literal._string, call_ident.location.enclosing_load.fully_pathed_filename, call_ident.location.l0);
+                                log("[Profiler] Instrumenting ProfileZone(\"%\") %:%", argument_literal._string, call_ident.location.enclosing_load.fully_pathed_filename, call_ident.location.l0);
                                 s := tprint("__ProfileZone(%);", zone_index);
 
                                 literal := New(Code_Literal,, temp);
@@ -190,16 +203,13 @@
     }
     DONE;
 } else {
-    // XXX: Instead of having to replace the macros everywhere, can we do #exists inside too? The
-    // hard part would be having to assign zone index in a #run there, or something. Maybe it is
-    // doable?
-
     // The programmer invokes these macros in the code. They are replaced by the metaprogram to
     // invocations of the actual macros: __ProfileFrame and __ProfileZone.
     ProfileFrame :: () #expand {}
     ProfileZone  :: ($label: string) #expand {}
 
-    // Currently relies on being eliminated, but we could just move it to the generated code.
+    // This macro currently relies on being eliminated if not called, but we could just move it to
+    // the generated code section.
     __ProfileFrame :: () #expand {
         start := System.read_cpu_counter();
 
@@ -214,8 +224,11 @@
         }
     }
 
-    // Currently relies on being eliminated, but we could just move it to the generated code.
-    __ProfileZone :: ($zone_index: s64) #expand {
+    // This macro currently relies on being eliminated if not called, but we could just move it to
+    // the generated code section.
+    //
+    // The macro is #no_aoc, because some subtracts can overflow. See :wrapping.
+    __ProfileZone :: ($zone_index: s64) #expand #no_aoc {
         parent_zone_index := __profiler.current_zone_index;
         __profiler.current_zone_index = zone_index;
 
@@ -225,14 +238,14 @@
         start := System.read_cpu_counter();
         `defer {
             end := System.read_cpu_counter();
-            elapsed := end - start; // #wrapping ?
+            elapsed := end - start;
 
             current_zone.elapsed_inclusive = current_zone_elapsed_inclusive + elapsed;
-            current_zone.elapsed_exclusive += elapsed; // #wrapping ?
+            current_zone.elapsed_exclusive += elapsed;
             current_zone.hits += 1;
 
             parent_zone := *__profiler.zones[parent_zone_index];
-            parent_zone.elapsed_exclusive -= elapsed; // #wrapping ?!!
+            parent_zone.elapsed_exclusive -= elapsed; // :wrapping We can subtract from parent before add.
 
             __profiler.current_zone_index = parent_zone_index;
         }
@@ -240,10 +253,10 @@
     }
 
     Profiler_Zone :: struct {
-        elapsed_inclusive: u64;
+        elapsed_inclusive: u64 #align 32; // Aligned to not straddle cache lines.
         elapsed_exclusive: u64;
         hits: u64;
-        _padding: u64; // So that we won't straddle cache lines, but maybe we should shrink the struct instead, or SoA it?
+        // u64 padding, created by #align above. Maybe we can put some useful info here?
     }
 
     // Call this to get your labels assigned to zones.
