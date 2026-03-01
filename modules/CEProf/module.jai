@@ -97,6 +97,11 @@
                         }
                         call_ident := cast(*Code_Ident, call.procedure_expression);
 
+                        if call_ident.resolved_declaration.expression == null {
+                            array_add(*new_statements, statement);
+                            continue;
+                        }
+
                         if call_ident.resolved_declaration.expression.kind != .PROCEDURE_HEADER {
                             array_add(*new_statements, statement);
                             continue;
