@@ -1,5 +1,5 @@
 #import "Basic";
-#import "CEProf"(IMPORT_MODE = .RUNTIME);
+#import "Profiler"(IMPORT_MODE = .RUNTIME);
 
 main :: () {
     profiler_init();
@@ -22,13 +22,17 @@ main :: () {
 frame :: () {
     ProfileFrame();
 
-    //XXX: We can't put it in a block, otherwise th metaprogram doesn't see it. Fix this!
-    // {
+    inner :: () {
+        ProfileZone("inner");
+        print("printing from inner\n");
+    }
+
     ProfileZone("zone");
     result := f(1, 5);
-
-    print("result is %\n", result);
-    // }
+    {
+        ProfileZone("zone a"); // XXX: This gets always missed currently.
+        print("result is %\n", result);
+    }
 }
 
 f :: (a: s64, b: s64) -> s64 {
