@@ -16,38 +16,29 @@
         return p;
     }
 
-    profiler_instrumentation_finalized := false;
-    profiler_import_message: *Message_Import;
+    profiler_late_code_inserted := false;
+    profiler_import: *Message_Import;
     profiler_zone_labels: [..] string;
-
-    Procedure_To_Instrument :: struct {
-        workspace: Workspace;
-        body: *Code_Procedure_Body;
-        statements: [] *Code_Node; // XXX: Don't forget to free the array
-        nodes_to_free: [] *Code_Node; // XXX: Don't forget to free the array.
-    }
-
-    procedures_to_instrument: [..] Procedure_To_Instrument;
 
     message :: (p: *Metaprogram_Plugin, message: *Message) {
         if message.kind == {
             case .PHASE; {
-                phase_message := cast(*Message_Phase, message);
-                phase := phase_message.phase;
+                message_phase := cast(*Message_Phase, message);
+                phase := message_phase.phase;
 
                 if phase == .TYPECHECKED_ALL_WE_CAN {
-                    log("XXX TYPECHECKED_ALL_WE_CAN %", phase_message.num_items_waiting_to_typecheck);
-                    if !profiler_instrumentation_finalized {
-                        // :RuntimeLateCode
+                    log("XXX TYPECHECKED_ALL_WE_CAN %", message_phase.num_items_waiting_to_typecheck);
+                    if !profiler_late_code_inserted {
+                        // :InsertLateCode
                         //
-                        // This is the code we insert after all code has been seen and we assigned
-                        // all zone labels. There is also RUNTIME_EARLY_CODE.
+                        // This is inserted after all code has been seen, we assigned all zone
+                        // labels and counted all the zones. There is also :InsertEarlyCode.
                         log("XXX INSERTING LATE CODE");
 
                         zone_count := profiler_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
                         log("[Profiler] Collected % zones", zone_count);
 
-                        if profiler_import_message {
+                        if profiler_import {
                             sb: String_Builder;
                             sb.allocator = temp;
 
@@ -59,18 +50,23 @@
                             }
                             print(*sb, "}\n");
 
-                            s := builder_to_string(*sb,, temp);
-                            add_build_string(s, message.workspace, profiler_import_message);
+                            PROFILER_STRUCT_CODE :: #string DONE
+                            __Profiler :: struct {
+                                zones:       [__PROFILER_ZONE_COUNT] Profiler_Zone;
+                                zone_labels: [__PROFILER_ZONE_COUNT] string;
 
-                            for procedures_to_instrument {
-                                it.body.block.statements = it.statements;
-                                compiler_modify_procedure(it.workspace, it.body);
+                                current_zone_index: s64;
                             }
+                            DONE;
+                            print(*sb, PROFILER_STRUCT_CODE);
+
+                            s := builder_to_string(*sb,, temp);
+                            add_build_string(s, message.workspace, profiler_import);
                         } else {
                             compiler_report("[Profiler] Could not find #import for the Profiler module.");
                         }
 
-                        profiler_instrumentation_finalized = true;
+                        profiler_late_code_inserted = true;
                     }
                 }
             }
@@ -80,25 +76,21 @@
 
                 if import_message.module_name == "Profiler" {
                     log("XXX INSERTING EARLY CODE");
-                    add_build_string(RUNTIME_EARLY_CODE, message.workspace, import_message);
-                    profiler_import_message = import_message;
+
+                    // :InsertEarlyCode
+                    //
+                    // This code tells the runtime part of the module that we are going to be
+                    // profiling. The module checks #exists(__profiler), so we must insert it the
+                    // first thing when we see the module being imported.
+                    add_build_string("__profiler: __Profiler;\n", message.workspace, import_message);
+                    profiler_import = import_message;
                 }
             }
 
             case .TYPECHECKED; {
-                typechecked_message := cast(*Message_Typechecked, message);
+                message_typechecked := cast(*Message_Typechecked, message);
 
-                for * tc: typechecked_message.procedure_headers {
-                    // log("XXX tc header %", tc.expression.name);
-
-                    if tc.expression.name == {
-                        case "__ProfileFrame"; #through;
-                        case "__ProfileZone";
-                        compiler_make_procedure_live(message.workspace, tc.expression);
-                    }
-                }
-
-                for * tc: typechecked_message.procedure_bodies {
+                for tc: message_typechecked.procedure_bodies {
                     body := tc.expression;
 
                     // We could guard against ALREADY_MODIFIED, but because we replace the macros we
@@ -112,19 +104,12 @@
                     // still need to submit a new procedure body at the end, so maybe there's no way
                     // around recursing manually, replacing block bodies containing our profiling
                     // functions.
-                    //
-                    // XXX: Uncommenting this log causes us to miss zones! Why? (We also sometimes
-                    // miss zones with it commented out as well.)
-                    //
-                    // log("XXX procedure % (% subexpressions)", body.header.name, tc.subexpressions.count);
 
                     do_modify := false;
 
                     new_statements: [..] *Code_Node;
 
                     for statement: body.block.statements {
-                        // log("XXX %->(%)", body.header.name, statement.kind);
-
                         if statement.kind != .PROCEDURE_CALL {
                             array_add(*new_statements, statement);
                             continue;
@@ -137,8 +122,6 @@
                             continue;
                         }
                         call_ident := cast(*Code_Ident, call.procedure_expression);
-
-                        // log("XXX %->%", body.header.name, call_ident.name);
 
                         if call_ident.resolved_declaration.expression == null {
                             array_add(*new_statements, statement);
@@ -159,10 +142,10 @@
                             case "ProfileFrame"; {
                                 log("[Profiler] Instrumenting ProfileFrame %:%", call_ident.location.enclosing_load.fully_pathed_filename, call_ident.location.l0);
 
-                                literal := New(Code_Literal/*,, temp XXX*/);
+                                literal := New(Code_Literal,, temp);
                                 literal.value_type = .STRING;
                                 literal.values._string = "__ProfileFrame();";
-                                insert := New(Code_Directive_Insert/*,, temp XXX*/);
+                                insert := New(Code_Directive_Insert,, temp);
                                 insert.expression = literal;
                                 insert.location = body.location;
 
@@ -197,10 +180,10 @@
                                 log("[Profiler] Instrumenting ProfileZone(\"%\") %:%", argument_literal._string, call_ident.location.enclosing_load.fully_pathed_filename, call_ident.location.l0);
                                 s := tprint("__ProfileZone(%);", zone_index);
 
-                                literal := New(Code_Literal/*,, temp XXX*/);
+                                literal := New(Code_Literal,, temp);
                                 literal.value_type = .STRING;
                                 literal.values._string = s;
-                                insert := New(Code_Directive_Insert/*,, temp XXX*/);
+                                insert := New(Code_Directive_Insert,, temp);
                                 insert.expression = literal;
                                 insert.location = body.location;
 
@@ -215,40 +198,18 @@
                     }
 
                     if do_modify {
-                        // XXX: So we can't do this either.
-                        // Error: Attempt to modify a procedure that has already entered the bytecode pipeline.
-                        //
-                        // p := array_add(*procedures_to_instrument);
-                        // p.workspace = message.workspace;
-                        // p.body = body;
-                        // p.statements = new_statements;
-                        // p.nodes_to_free
-
-                        // TODO(jt): We'd like to be able to do this in here directly, and not delay.
-                        //
                         body.block.statements = new_statements;
+                        // XXX: Actually modifying the procedure changes breaks something (changes
+                        // timing?) and we get a TYPECHECKED_ALL_WE_CAN with there still things
+                        // possible to typecheck. This causes us to miss zones. While we could
+                        // instrument them later, the zone count and the zone label assignment code
+                        // has already been inserted at this point.
                         compiler_modify_procedure(message.workspace, body);
                     }
                 }
             }
         }
     }
-
-    //
-    // This is the part of the implementation code we insert early (as a reaction to the import
-    // message). There is also code we insert late, when typechecking is done and have assigned zone
-    // labels and counted all the zones. See :RuntimeLateCode.
-    //
-    RUNTIME_EARLY_CODE :: #string DONE
-    __profiler: __Profiler;
-
-    __Profiler :: struct {
-        zones:       [__PROFILER_ZONE_COUNT] Profiler_Zone;
-        zone_labels: [__PROFILER_ZONE_COUNT] string;
-
-        current_zone_index: s64;
-    }
-    DONE;
 } else {
     // The programmer invokes these macros in the code. They are replaced by the metaprogram to
     // invocations of the actual macros: __ProfileFrame and __ProfileZone.
@@ -285,42 +246,46 @@
         }
     }
 
+    #if #exists(__profiler) {
+        // These actual macros that do stuff are guarded by #exists, so they aren't inserted unless
+        // we are going to be profiling, so that we don't rely on DCE for them to be ignored.
 
-    __ProfileFrame :: () #expand {
-        start := System.read_cpu_counter();
+        __ProfileFrame :: () #expand {
+            start := System.read_cpu_counter();
 
-        `defer {
-            end := System.read_cpu_counter();
-            elapsed := end - start;
+            `defer {
+                end := System.read_cpu_counter();
+                elapsed := end - start;
 
-            zone := *__profiler.zones[0];
-            zone.elapsed_inclusive += elapsed;
-            zone.elapsed_exclusive += elapsed;
-            zone.hits += 1;
+                zone := *__profiler.zones[0];
+                zone.elapsed_inclusive += elapsed;
+                zone.elapsed_exclusive += elapsed;
+                zone.hits += 1;
+            }
         }
-    }
 
-    // #no_aoc, because some subtracts can overflow. See :wrapping.
-    __ProfileZone :: ($zone_index: s64) #expand #no_aoc {
-        parent_zone_index := __profiler.current_zone_index;
-        __profiler.current_zone_index = zone_index;
+        // #no_aoc, because some subtracts can overflow. See :wrapping.
+        __ProfileZone :: ($zone_index: s64) #expand #no_aoc {
+            parent_zone_index := __profiler.current_zone_index;
+            __profiler.current_zone_index = zone_index;
 
-        current_zone := *__profiler.zones[zone_index];
-        current_zone_elapsed_inclusive := current_zone.elapsed_inclusive;
+            current_zone := *__profiler.zones[zone_index];
+            current_zone_elapsed_inclusive := current_zone.elapsed_inclusive;
 
-        start := System.read_cpu_counter();
-        `defer {
-            end := System.read_cpu_counter();
-            elapsed := end - start;
+            start := System.read_cpu_counter();
+            `defer {
+                end := System.read_cpu_counter();
+                elapsed := end - start;
 
-            current_zone.elapsed_inclusive = current_zone_elapsed_inclusive + elapsed;
-            current_zone.elapsed_exclusive += elapsed;
-            current_zone.hits += 1;
+                current_zone.elapsed_inclusive = current_zone_elapsed_inclusive + elapsed;
+                current_zone.elapsed_exclusive += elapsed;
+                current_zone.hits += 1;
 
-            parent_zone := *__profiler.zones[parent_zone_index];
-            parent_zone.elapsed_exclusive -= elapsed; // :wrapping We can subtract from parent before we add.
+                parent_zone := *__profiler.zones[parent_zone_index];
+                parent_zone.elapsed_exclusive -= elapsed; // :wrapping We can subtract from parent before we add.
 
-            __profiler.current_zone_index = parent_zone_index;
+                __profiler.current_zone_index = parent_zone_index;
+            }
         }
     }
 
