@@ -27,22 +27,23 @@
                 phase := message_phase.phase;
 
                 if phase == .TYPECHECKED_ALL_WE_CAN {
-                    log("XXX TYPECHECKED_ALL_WE_CAN %", message_phase.num_items_waiting_to_typecheck);
+                    log("[Profiler] Received TYPECHECKED_ALL_WE_CAN (num_things = %)", message_phase.num_items_waiting_to_typecheck);
                     if !profiler_late_code_inserted {
                         // :InsertLateCode
                         //
                         // This is inserted after all code has been seen, we assigned all zone
                         // labels and counted all the zones. There is also :InsertEarlyCode.
-                        log("XXX INSERTING LATE CODE");
 
                         zone_count := profiler_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
-                        log("[Profiler] Collected % zones", zone_count);
+                        log("[Profiler] Inserting late code for % zones", zone_count);
 
                         if profiler_import {
                             sb: String_Builder;
                             sb.allocator = temp;
 
-                            print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
+                            // XXX: This is temporarilly set to 10, because we don't want the compiler to stop early because it detects out of bounds, and possibly hide evidence of it not delivering messages.
+                            // print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
+                            print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", 10);
                             print(*sb, "__init_zone_labels :: () {\n");
                             print(*sb, "    __profiler.zone_labels[0] = \"__PROFILER_MAIN__\";\n");
                             for 0..zone_count - 2 {
@@ -75,7 +76,7 @@
                 import_message := cast(*Message_Import, message);
 
                 if import_message.module_name == "Profiler" {
-                    log("XXX INSERTING EARLY CODE");
+                    log("[Profiler] Inserting early code");
 
                     // :InsertEarlyCode
                     //
@@ -96,14 +97,8 @@
                     // We could guard against ALREADY_MODIFIED, but because we replace the macros we
                     // invoke, it shouldn't matter if we look at the same procedure multiple times.
 
-                    // XXX: We need to recurse into anything that could have a block:
-                    // block/if/else/for/while/defer/cast-arguments/function-call-arguments/declarations.
-                    // Otherwise we won't instrument those calls.
-                    //
-                    // While Typechecked::subexpressions maybe gives us everything flattened, we
-                    // still need to submit a new procedure body at the end, so maybe there's no way
-                    // around recursing manually, replacing block bodies containing our profiling
-                    // functions.
+                    // TODO(jt): We also need to recurse into anything that could have a block,
+                    // otherwise we won't instrument nested calls.
 
                     do_modify := false;
 
@@ -247,7 +242,7 @@
     }
 
     #if #exists(__profiler) {
-        // These actual macros that do stuff are guarded by #exists, so they aren't inserted unless
+        // The macros that actually do stuff are guarded by #exists, so they aren't inserted unless
         // we are going to be profiling, so that we don't rely on DCE for them to be ignored.
 
         __ProfileFrame :: () #expand {
