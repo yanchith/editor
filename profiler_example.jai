@@ -25,18 +25,18 @@ main :: () {
 
 one_frame :: () {
     ProfileFrame();
+    // Uncomment this line to for the compiler to modify this entire procedure before sending TYPECHECKED_ALL_WE_CAN.
+    // ProfileZone("one_frame");
 
     inner1 :: () {
         ProfileZone("inner1");
         print("printing from inner\n");
     }
 
-    ProfileZone("one_frame");
+    ProfileZone("one_frame section(a)");
     result := f(1, 5);
-    {
-        ProfileZone("one_frame section(a)"); // XXX: This gets always missed currently.
-        print("result is %\n", result);
-    }
+    ProfileZone("one_frame section(a1)"); // XXX: This gets always missed currently.
+    print("result is %\n", result);
 }
 
 f :: (a: s64, b: s64) -> s64 {
