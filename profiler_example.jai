@@ -5,21 +5,25 @@ main :: () {
     profiler_init();
 
     for 1..10 {
-        frame();
+        one_frame();
     }
 
     zones := profiler_get_zones();
     zone_labels := profiler_get_zone_labels();
 
     print("\n\n");
-    print("profiling info for % zones:\n", zones.count);
+    if zones.count {
+        print("Printing profiling info for % zones:\n", zones.count);
 
-    for zones {
-        print("[%] (%)  hits: %, inclusive: %, exclusive % \n", it_index, zone_labels[it_index], it.hits, it.elapsed_inclusive, it.elapsed_exclusive);
+        for zones {
+            print("[%] (%)  hits: %, inclusive: %, exclusive % \n", it_index, zone_labels[it_index], it.hits, it.elapsed_inclusive, it.elapsed_exclusive);
+        }
+    } else {
+        print("No profiling info available.\n");
     }
 }
 
-frame :: () {
+one_frame :: () {
     ProfileFrame();
 
     inner :: () {
@@ -27,10 +31,10 @@ frame :: () {
         print("printing from inner\n");
     }
 
-    ProfileZone("zone");
+    ProfileZone("one_frame");
     result := f(1, 5);
     {
-        ProfileZone("zone a"); // XXX: This gets always missed currently.
+        ProfileZone("one_frame a"); // XXX: This gets always missed currently.
         print("result is %\n", result);
     }
 }
