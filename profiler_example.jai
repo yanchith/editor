@@ -26,15 +26,15 @@ main :: () {
 one_frame :: () {
     ProfileFrame();
 
-    inner :: () {
-        ProfileZone("inner");
+    inner1 :: () {
+        ProfileZone("inner1");
         print("printing from inner\n");
     }
 
     ProfileZone("one_frame");
     result := f(1, 5);
     {
-        ProfileZone("one_frame a"); // XXX: This gets always missed currently.
+        ProfileZone("one_frame section(a)"); // XXX: This gets always missed currently.
         print("result is %\n", result);
     }
 }
@@ -48,4 +48,17 @@ f :: (a: s64, b: s64) -> s64 {
     }
 
     return result;
+}
+
+
+g :: () {
+    ProfileZone("g");
+    inner2 :: () {
+        ProfileZone("inner2");
+        print("printing from inner\n");
+    }
+
+    result := f(1, 5);
+    ProfileZone("g section(a)");
+    print("result is %\n", result);
 }
