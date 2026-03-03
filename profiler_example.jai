@@ -25,7 +25,7 @@ main :: () {
 
 one_frame :: () {
     ProfileFrame();
-    // Uncomment this line to for the compiler to modify this entire procedure before sending TYPECHECKED_ALL_WE_CAN.
+    // XXX: Uncomment this line to for the compiler to send the messages in the expected order.
     // ProfileZone("one_frame");
 
     inner1 :: () {
@@ -33,9 +33,9 @@ one_frame :: () {
         print("printing from inner\n");
     }
 
-    ProfileZone("one_frame section(a)");
+    ProfileZone("one_frame part(a)");
     result := f(1, 5);
-    ProfileZone("one_frame section(a1)"); // XXX: This gets always missed currently.
+    ProfileZone("one_frame part(a1)");
     print("result is %\n", result);
 }
 
@@ -59,6 +59,6 @@ g :: () {
     }
 
     result := f(1, 5);
-    ProfileZone("g section(a)");
+    ProfileZone("g part(a)");
     print("result is %\n", result);
 }
