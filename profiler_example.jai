@@ -5,7 +5,9 @@ main :: () {
     profiler_init();
 
     for 1..10 {
+        profiler_start_frame();
         one_frame();
+        time_scale := profiler_end_frame();
     }
 
     zones := profiler_get_zones();
@@ -24,7 +26,6 @@ main :: () {
 }
 
 one_frame :: () {
-    ProfileFrame();
     // XXX: Uncomment this line to for the compiler to send the messages in the expected order.
     // ProfileZone("one_frame");
 
