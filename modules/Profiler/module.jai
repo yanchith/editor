@@ -16,9 +16,9 @@
         return p;
     }
 
-    profiler_late_code_inserted := false;
+    profiler_final_code_inserted := false;
     profiler_import: *Message_Import;
-    profiler_zone_labels: [..] string;
+    profiler_colleted_zone_labels: [..] string;
 
     message :: (p: *Metaprogram_Plugin, message: *Message) {
         if message.kind == {
@@ -28,38 +28,26 @@
 
                 if phase == .TYPECHECKED_ALL_WE_CAN {
                     log("[Profiler] Received TYPECHECKED_ALL_WE_CAN (num_things = %)", message_phase.num_items_waiting_to_typecheck);
-                    if !profiler_late_code_inserted {
-                        // :InsertLateCode
+                    if !profiler_final_code_inserted {
+                        // :InsertFinalCode
                         //
-                        // This is inserted after all code has been seen, we assigned all zone
-                        // labels and counted all the zones. There is also :InsertEarlyCode.
+                        // This is inserted after all user-level code has been seen, we assigned all
+                        // zone labels and counted all the zones. There is also :InsertFirstCode.
 
-                        zone_count := profiler_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
-                        log("[Profiler] Inserting late code for % zones", zone_count);
+                        zone_count := profiler_colleted_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
+                        log("[Profiler] Inserting final code for % zones.", zone_count);
 
                         if profiler_import {
                             sb: String_Builder;
                             sb.allocator = temp;
 
-                            // XXX: This is temporarilly set to 10, because we don't want the compiler to stop early because it detects out of bounds, and possibly hide evidence of it not delivering messages.
-                            // print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
-                            print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", 10);
+                            print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
                             print(*sb, "__init_zone_labels :: () {\n");
-                            print(*sb, "    __profiler.zone_labels[0] = \"__PROFILER_MAIN__\";\n");
+                            print(*sb, "    __profiler.zone_labels[0] = \"FRAME\";\n");
                             for 0..zone_count - 2 {
-                                print(*sb, "    __profiler.zone_labels[%] = \"%\";\n", it + 1, profiler_zone_labels[it]);
+                                print(*sb, "    __profiler.zone_labels[%] = \"%\";\n", it + 1, profiler_colleted_zone_labels[it]);
                             }
                             print(*sb, "}\n");
-
-                            PROFILER_STRUCT_CODE :: #string DONE
-                            __Profiler :: struct {
-                                zones:       [__PROFILER_ZONE_COUNT] Profiler_Zone;
-                                zone_labels: [__PROFILER_ZONE_COUNT] string;
-
-                                current_zone_index: s64;
-                            }
-                            DONE;
-                            print(*sb, PROFILER_STRUCT_CODE);
 
                             s := builder_to_string(*sb,, temp);
                             add_build_string(s, message.workspace, profiler_import);
@@ -67,7 +55,7 @@
                             compiler_report("[Profiler] Could not find #import for the Profiler module.");
                         }
 
-                        profiler_late_code_inserted = true;
+                        profiler_final_code_inserted = true;
                     }
                 }
             }
@@ -78,11 +66,12 @@
                 if import_message.module_name == "Profiler" {
                     log("[Profiler] Inserting early code");
 
-                    // :InsertEarlyCode
+                    // :InsertFirstCode
                     //
-                    // This code tells the runtime part of the module that we are going to be
-                    // profiling. The module checks #exists(__profiler), so we must insert it the
-                    // first thing when we see the module being imported.
+                    // This code tells the runtime-imported part of the module that we are going to
+                    // be profiling. The module checks #exists(__profiler), so we insert it the
+                    // first thing when we see the module being imported. (Hopefully this is early
+                    // enough and #exists at least waits for being blocked.)
                     add_build_string("__profiler: __Profiler;\n", message.workspace, import_message);
                     profiler_import = import_message;
                 }
@@ -133,9 +122,17 @@
                         // functions to check that they are really from this module, instead of just
                         // checking if they are ProfileFrame/ProfileZone shaped.
 
+                        invocation_file := call_ident.location.enclosing_load.fully_pathed_filename;
+                        invocation_line := call_ident.location.l0;
+                        invocation_char := call_ident.location.c0;
+
                         if header.name == {
                             case "ProfileFrame"; {
-                                log("[Profiler] Instrumenting ProfileFrame %:%", call_ident.location.enclosing_load.fully_pathed_filename, call_ident.location.l0);
+                                if profiler_final_code_inserted {
+                                    compiler_report(invocation_file, invocation_line, invocation_char, "Can not instrument. Final profiling code has already been added. This is either a bug in the +Profiler metaprogram plugin, or in the compiler.");
+                                }
+
+                                log("[Profiler] Instrumenting ProfileFrame");
 
                                 literal := New(Code_Literal,, temp);
                                 literal.value_type = .STRING;
@@ -151,28 +148,32 @@
                             case "ProfileZone"; {
                                 call_arguments := call.arguments_unsorted;
                                 if call_arguments.count != 1 {
-                                    log("[Profiler] Skipping invalid ProfileZone %:%");
+                                    log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
                                     array_add(*new_statements, statement);
                                     continue;
                                 }
 
                                 if call_arguments[0].expression.kind != .LITERAL {
-                                    log("[Profiler] Skipping invalid ProfileZone %:%");
+                                    log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
                                     array_add(*new_statements, statement);
                                     continue;
                                 }
                                 argument_literal := cast(*Code_Literal, call_arguments[0].expression);
 
                                 if argument_literal.value_type != .STRING {
-                                    log("[Profiler] Skipping invalid ProfileZone %:%");
+                                    log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
                                     array_add(*new_statements, statement);
                                     continue;
                                 }
 
-                                zone_index := profiler_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
-                                array_add(*profiler_zone_labels, argument_literal._string);
+                                if profiler_final_code_inserted {
+                                    compiler_report(invocation_file, invocation_line, invocation_char, "Can not instrument. Final profiling code has already been added. This is either a bug in the +Profiler metaprogram plugin, or in the compiler.");
+                                }
 
-                                log("[Profiler] Instrumenting ProfileZone(\"%\") %:%", argument_literal._string, call_ident.location.enclosing_load.fully_pathed_filename, call_ident.location.l0);
+                                zone_index := profiler_colleted_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
+                                array_add(*profiler_colleted_zone_labels, argument_literal._string);
+
+                                log("[Profiler] Instrumenting ProfileZone(\"%\")", argument_literal._string);
                                 s := tprint("__ProfileZone(%);", zone_index);
 
                                 literal := New(Code_Literal,, temp);
@@ -194,11 +195,12 @@
 
                     if do_modify {
                         body.block.statements = new_statements;
-                        // XXX: Actually modifying the procedure changes breaks something (changes
-                        // timing?) and we get a TYPECHECKED_ALL_WE_CAN with there still things
-                        // possible to typecheck. This causes us to miss zones. While we could
-                        // instrument them later, the zone count and the zone label assignment code
-                        // has already been inserted at this point.
+                        // XXX: Actually modifying the procedure changes something (timing?
+                        // synchronization?) and we get a TYPECHECKED_ALL_WE_CAN while there are
+                        // still things possible to typecheck. This causes us to not see all the
+                        // zones before adding the final profiling code.
+                        //
+                        // Comment out this line to see the timing issue disappear.
                         compiler_modify_procedure(message.workspace, body);
                     }
                 }
@@ -218,13 +220,15 @@
         // u64 padding, created by #align above. Maybe we can put some useful info here?
     }
 
-    // Call this to get your labels assigned to zones.
+    // Call this to get your labels assigned to zones. You technically don't need to.
     profiler_init :: () {
         #if #exists(__profiler) {
             __init_zone_labels();
         }
     }
 
+    // Get the raw profiling data. You'll likely have to sort or otherwise process it. Call
+    // profiler_get_zone_labels to get corresponding labels.
     profiler_get_zones :: () -> [] Profiler_Zone {
         #if #exists(__profiler) {
             return __profiler.zones;
@@ -242,8 +246,14 @@
     }
 
     #if #exists(__profiler) {
-        // The macros that actually do stuff are guarded by #exists, so they aren't inserted unless
-        // we are going to be profiling, so that we don't rely on DCE for them to be ignored.
+        __Profiler :: struct {
+            // Labels are stored out of band, because we don't need to touch them them when
+            // profiling and they would increase the zone size to 40 bytes.
+            zones:       [__PROFILER_ZONE_COUNT] Profiler_Zone;
+            zone_labels: [__PROFILER_ZONE_COUNT] string;
+
+            current_zone_index: s64;
+        }
 
         __ProfileFrame :: () #expand {
             start := System.read_cpu_counter();
@@ -259,7 +269,7 @@
             }
         }
 
-        // #no_aoc, because some subtracts can overflow. See :wrapping.
+        // #no_aoc, because some subtracts can overflow. See :Wrapping.
         __ProfileZone :: ($zone_index: s64) #expand #no_aoc {
             parent_zone_index := __profiler.current_zone_index;
             __profiler.current_zone_index = zone_index;
@@ -277,7 +287,7 @@
                 current_zone.hits += 1;
 
                 parent_zone := *__profiler.zones[parent_zone_index];
-                parent_zone.elapsed_exclusive -= elapsed; // :wrapping We can subtract from parent before we add.
+                parent_zone.elapsed_exclusive -= elapsed; // We can subtract from parent before we add. :Wrapping
 
                 __profiler.current_zone_index = parent_zone_index;
             }
