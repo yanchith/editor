@@ -42,6 +42,7 @@ f64 :: float64;
 #import "Basic";
 #import "Arena";
 #import "Hash_Table";
+#import "Profiler"(IMPORT_MODE = .RUNTIME);
 
 String  :: #import "String";
 Math    :: #import "Math";
@@ -59,6 +60,7 @@ operator/  :: Math.operator/;
 operator== :: Math.operator==;
 
 #load "assert.jai";
+#load "string.jai";
 #load "math.jai";
 #load "platform.jai";
 #load "renderer.jai";
@@ -92,6 +94,10 @@ Editor :: struct {
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
+    profiler_init();
+
+    profiler_start_frame();
+
     arena_procs := make_arena_procs(platform);
     editor.perm_arena = arena_allocate(arena_procs);
 
@@ -126,6 +132,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
         editor.font.glyph_atlas_height,
         editor.font.glyph_atlas,
     );
+
+    time_scale := profiler_end_frame();
+    print_frame_profile(time_scale);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
@@ -507,6 +516,30 @@ make_arena_procs :: (platform: Platform) -> Arena_Procs {
         platform.mem_commit,
         platform.mem_decommit,
     };
+}
+
+print_frame_profile :: (time_scale: f64) {
+    zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
+    if zones.count {
+        print("\n\n");
+        print("Printing profiling info for % zones:\n", zones.count);
+
+        for zones {
+            // TODO(jt): @Hack This is here to filter unassigined values because of the compiler bug. Remove.
+            if it.hits == 0 && zone_labels[it_index] == "" {
+                continue;
+            }
+
+            print(
+                "[%] % hits: %, inclusive: % seconds, exclusive % seconds \n",
+                it_index,
+                temp_right_pad(zone_labels[it_index], 50),
+                formatInt(it.hits, minimum_digits = 10, padding = #char " "),
+                formatFloat(time_scale * it.elapsed_inclusive, width = 10, trailing_width = 6),
+                formatFloat(time_scale * it.elapsed_exclusive, width = 10, trailing_width = 6),
+            );
+        }
+    }
 }
 
 make_large_hello_text :: (approx_size_in_bytes: s64) -> string {

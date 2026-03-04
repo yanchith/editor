@@ -47,6 +47,8 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena) {
 // - Memory.copy inside gap_buffer_insert, because we don't batch the thing.
 // - text_buffer_byte_count_between_cursors computes two gap buffer indices... for every newline. Can we avoid that? Can we compute gap buffer indices faster?
 text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
+    ProfileZone("text_buffer_insert");
+
     // TODO(jt): @Speed We currently insert things into the gap buffer byte by byte. Batch it!
 
     assert_valid(buffer);
@@ -299,6 +301,8 @@ text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cu
 }
 
 text_buffer_byte_count_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor) -> s64 {
+    ProfileZone("text_buffer_byte_count_between_cursors");
+
     assert_cursor_valid(buffer, _start);
     assert_cursor_valid(buffer, _end);
 
@@ -320,6 +324,8 @@ text_buffer_byte_count_between_cursors :: (buffer: Text_Buffer, _start: Cursor, 
 }
 
 text_buffer_make_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
+    ProfileZone("text_buffer_make_view_between_cursors");
+
     assert_cursor_valid(buffer, _start);
     assert_cursor_valid(buffer, _end);
 
@@ -704,6 +710,8 @@ text_buffer_get_max_cursor :: (buffer: Text_Buffer) -> Cursor {
 }
 
 text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cursor) -> s64 {
+    ProfileZone("text_buffer_get_gap_buffer_index_for_cursor");
+
     assert_cursor_valid(buffer, cursor);
 
     line_index := cursor.y;
