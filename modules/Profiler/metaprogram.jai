@@ -3,7 +3,7 @@
 
 get_plugin :: () -> *Metaprogram_Plugin {
     p := New(Metaprogram_Plugin);
-    p.message = message;
+    p.message = handle_message;
 
     return p;
 }
@@ -12,7 +12,13 @@ profiler_final_code_inserted := false;
 profiler_import: *Message_Import;
 profiler_colleted_zone_labels: [..] string;
 
-message :: (p: *Metaprogram_Plugin, message: *Message) {
+// At the moment we don't actually store anything on the plugin itself, so we also provide a
+// pluginless overload.
+handle_message :: (p: *Metaprogram_Plugin, message: *Message) {
+    handle_message(message);
+}
+
+handle_message :: (message: *Message) {
     if message.kind == {
         case .PHASE; {
             message_phase := cast(*Message_Phase, message);

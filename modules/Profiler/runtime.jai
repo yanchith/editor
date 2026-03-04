@@ -50,9 +50,12 @@ profiler_end_frame :: () -> cpu_counter_scale: float64 {
         elapsed_tsc := end_tsc - __profiler.frame_start_tsc;
 
         zone := *__profiler.zones[0];
-        zone.elapsed_inclusive += elapsed_tsc;
-        zone.elapsed_exclusive += elapsed_tsc;
-        zone.hits += 1;
+        // TODO(jt): @Audit We had to add #no_aoc here, but I am not sure it makes sense.
+        #no_aoc {
+            zone.elapsed_inclusive += elapsed_tsc;
+            zone.elapsed_exclusive += elapsed_tsc;
+            zone.hits += 1;
+        }
 
         return cast(float64, elapsed_time) / cast(float64, elapsed_tsc);
     } else {
@@ -123,8 +126,7 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
         frame_start_tsc:  u64;
     }
 
-    // #no_aoc, because some subtracts can overflow. See :Wrapping.
-    __ProfileZone :: ($zone_index: s64) #expand #no_aoc {
+    __ProfileZone :: ($zone_index: s64) #expand {
         parent_zone_index := __profiler.current_zone_index;
         __profiler.current_zone_index = zone_index;
 
@@ -136,12 +138,18 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
             end := System.read_cpu_counter();
             elapsed := end - start;
 
-            current_zone.elapsed_inclusive = current_zone_elapsed_inclusive + elapsed;
-            current_zone.elapsed_exclusive += elapsed;
-            current_zone.hits += 1;
+            // TODO(jt): @Audit We had to add #no_aoc here, but I am not sure it makes sense.
+            #no_aoc {
+                current_zone.elapsed_inclusive = current_zone_elapsed_inclusive + elapsed;
+                current_zone.elapsed_exclusive += elapsed;
+                current_zone.hits += 1;
+            }
 
             parent_zone := *__profiler.zones[parent_zone_index];
-            parent_zone.elapsed_exclusive -= elapsed; // We can subtract from parent before we add. :Wrapping
+            #no_aoc {
+                // #no_aoc, because we subtract from parent before we add.
+                parent_zone.elapsed_exclusive -= elapsed;
+            }
 
             __profiler.current_zone_index = parent_zone_index;
         }
