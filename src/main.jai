@@ -35,6 +35,9 @@ random_get_zero_to_one :: Random.random_get_zero_to_one;
 
 IRect :: Editor.IRect;
 
+// TODO(jt): @Cleanup We borrow this file from editor. But maybe this file shouldn't exist at all.
+#load "editor/string.jai";
+
 // TODO(jt): These globals are fine for now, but maybe we want to pass userdata through the renderer API?
 renderer_textures: Table(Editor.Texture_ID, Simp.Texture);
 renderer_shader: Simp.Shader;
@@ -449,32 +452,6 @@ Context_Logger_Data :: struct {
 }
 
 context_logger :: (message: string, data: *void, info: Log_Info) {
-    left_pad :: (s: string, length: s64) -> string {
-        builder: String_Builder;
-        builder.allocator = temp;
-
-        for s.count..length - 1 {
-            append(*builder, " ");
-        }
-
-        append(*builder, s);
-
-        return builder_to_string(*builder,, temp);
-    }
-
-    right_pad :: (s: string, length: s64) -> string {
-        builder: String_Builder;
-        builder.allocator = temp;
-
-        append(*builder, s);
-
-        for s.count..length - 1 {
-            append(*builder, " ");
-        }
-
-        return builder_to_string(*builder,, temp);
-    }
-
     if !message {
         return;
     }
@@ -486,7 +463,7 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
     time_now             := current_time_monotonic();
     time_since_start     := time_now - time_start;
     time_since_start_str := tprint("% ", formatFloat(to_float64_seconds(time_since_start), trailing_width = 6, zero_removal = .NO));
-    time_prefix          := left_pad(time_since_start_str, 12);
+    time_prefix          := temp_left_pad(time_since_start_str, 12);
 
     // Add log level.
     log_level_prefix := " INFO ";
@@ -508,7 +485,7 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
             source_prefix = basename_with_extension;
         }
 
-        source_prefix = right_pad(source_prefix, LENGTH + 1);
+        source_prefix = temp_right_pad(source_prefix, LENGTH + 1);
     }
 
     write_strings(time_prefix, log_level_prefix, source_prefix, message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
