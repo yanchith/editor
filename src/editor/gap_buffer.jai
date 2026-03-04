@@ -94,6 +94,8 @@ gap_buffer_insert :: (gb: *Gap_Buffer, text: string) {
 
 // Inserts at the gap, advancing the gap index.
 gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
+    ProfileZone("gap_buffer_insert");
+
     assert_valid(gb);
 
     if bytes.count > gb.gap_count {
