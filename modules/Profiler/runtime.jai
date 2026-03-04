@@ -1,13 +1,15 @@
 //
-// This file is incomplete. When compiling a profiling build, the metaprogram inserts a few missing pieces of code.
+// This file is not the complete profiling source code. When compiling a profiling build, the
+// metaprogram inserts a few missing pieces of code:
 //
-// __profiler global varialble is inserted when this module is imported. Also used inside this
+// The __profiler global variable is inserted when this module is imported. It is used inside this
 // module to detect whether this is a profiling build with #exists.
 //
-// __init_zone_labels procedure and __PROFILER_ZONE_COUNT constant are inserted when we get a TYPECHECKED_ALL_WE_CAN
-// message. The values of these depend on what the metaprogram saw during compilation.
+// The __init_zone_labels procedure and __PROFILER_ZONE_COUNT constant are inserted when we get a
+// TYPECHECKED_ALL_WE_CAN message. The values of these depend on what the metaprogram saw during
+// compilation.
 
-// The programmer invokes this macros in the code. They are replaced by the metaprogram to
+// The programmer invokes the ProfileZone macro in the code. It is replaced by the metaprogram to
 // invocations of the actual macro: __ProfileZone.
 ProfileZone  :: ($label: string) #expand {}
 
@@ -18,14 +20,14 @@ Profiler_Zone :: struct {
     // u64 padding, created by #align above. Maybe we can put some useful info here?
 }
 
-// Call this to get your labels assigned to zones. You technically don't need to.
+// Call this to get your labels assigned to zones.
 profiler_init :: () {
     #if #exists(__profiler) {
         __init_zone_labels();
     }
 }
 
-// Call this at the start of the frame.
+// Call this at the start of the frame or the section of code you want to profile.
 profiler_start_frame :: () {
     #if #exists(__profiler) {
         memset(__profiler.zones.data, 0, size_of(Profiler_Zone) * __profiler.zones.count);
@@ -35,7 +37,9 @@ profiler_start_frame :: () {
     }
 }
 
-// Call this at the end of the frame. Returns the time scale of the counter used.
+// Call this at the end of the frame or the section of code you want to profile. Returns the time
+// scale of the counter used.
+//
 // TODO(jt): We should probably extract the timestamp frequency out of this function.
 profiler_end_frame :: () -> cpu_counter_scale: float64 {
     #if #exists(__profiler) {
@@ -50,27 +54,59 @@ profiler_end_frame :: () -> cpu_counter_scale: float64 {
         zone.elapsed_exclusive += elapsed_tsc;
         zone.hits += 1;
 
-        return cast(float64, elapsed_tsc) / cast(float64, elapsed_time);
+        return cast(float64, elapsed_time) / cast(float64, elapsed_tsc);
     } else {
         return 0;
     }
 }
 
-// Get the raw profiling data. You'll likely have to sort and otherwise process it. The timestamp
-// frequency is returned from profiler_end_frame. Call profiler_get_zone_labels to get corresponding labels.
-profiler_get_zones :: () -> [] Profiler_Zone {
-    #if #exists(__profiler) {
-        return __profiler.zones;
-    } else {
-        return .[];
-    }
+Sort_Mode :: enum {
+    INCLUSIVE_TIME;
+    EXCLUSIVE_TIME;
+    HITS;
 }
 
-profiler_get_zone_labels :: () -> [] string {
+// Get profiling data. You'll have to sort it and scale it by the frequency obtained from
+// profiler_end_frame. The resulting arrays are allocated with context.allocator if we are profiling
+// and in static storage if not. Pass in temp if you don't want to care.
+profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
     #if #exists(__profiler) {
-        return __profiler.zone_labels;
+        get :: (zone: Profiler_Zone, sort_mode: Sort_Mode) -> u64 {
+            if sort_mode == {
+                case .INCLUSIVE_TIME; return zone.elapsed_inclusive;
+                case .EXCLUSIVE_TIME; return zone.elapsed_exclusive;
+                case .HITS;           return zone.hits;
+            }
+
+            return zone.elapsed_inclusive;
+        }
+
+        zones := Basic.array_copy(__profiler.zones);
+        zone_labels := Basic.array_copy(__profiler.zone_labels);
+
+        // TODO(jt): @Speed Yes, this is bubble sort. Fix this.
+        swapped := true;
+        while swapped {
+            swapped = false;
+
+            for i: 1..zones.count - 1 {
+                i0 := i - 1;
+                i1 := i;
+
+                v0 := get(zones[i0], sort_mode);
+                v1 := get(zones[i1], sort_mode);
+
+                if v0 < v1 { // V0 less than V1, because we want the largest zones first.
+                    Basic.swap(*zones[i0], *zones[i1]);
+                    Basic.swap(*zone_labels[i0], *zone_labels[i1]);
+                    swapped = true;
+                }
+            }
+        }
+
+        return zones, zone_labels;
     } else {
-        return .[];
+        return .[], .[];
     }
 }
 
