@@ -33,9 +33,9 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
                         sb: String_Builder;
                         sb.allocator = temp;
 
-                        // XXX: @Hack This is just to get something running, before the message
-                        // ordering is resolved. The array will be sufficiently sized, but some
-                        // zones will be ignored.
+                        // TODO(jt): @CompilerBug @Hack This is just to get something running,
+                        // before the message ordering is resolved. The array will be sufficiently
+                        // sized, but some zones will be ignored.
                         //
                         // print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
                         print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", 32);
@@ -128,8 +128,8 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
                     invocation_line := call_ident.location.l0;
                     invocation_char := call_ident.location.c0;
 
-                    // XXX: @Hack This check is disabled, so that we at least instrument the zone,
-                    // even if the label is hosed. Enable the check back, once the message ordering
+                    // TODO(jt): @CompilerBug @Hack This check is disabled, so that we at least instrument the zone,
+                    // even if the label is hosed. Enable the check back, once the message ordering bug
                     // is resolved.
                     //
                     // if profiler_final_code_inserted {
@@ -175,12 +175,6 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
 
                 if do_modify {
                     body.block.statements = new_statements;
-                    // XXX: Actually modifying the procedure changes something (timing?
-                    // synchronization?) and we get a TYPECHECKED_ALL_WE_CAN while there are
-                    // still things possible to typecheck. This causes us to not see all the
-                    // zones before adding the final profiling code.
-                    //
-                    // Comment out this line to see the timing issue disappear.
                     compiler_modify_procedure(message.workspace, body);
                 }
             }
