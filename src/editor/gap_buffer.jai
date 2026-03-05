@@ -126,20 +126,20 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
 }
 
 // Deletes at the gap, moving forward. Returns view of deleted bytes.
-gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> [] u8 /* Pointing to this buffer */ {
+gap_buffer_delete_forward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* Pointing to this buffer */ {
     ProfileZone("gap_buffer_delete_forward");
 
     assert_valid(gb);
 
     max_delete_count := gb.buffer.count - gb.gap_index - gb.gap_count; // Everything after the gap.
-    delete_count = min(delete_count, max_delete_count);
-
-    gb.count -= delete_count;
-    gb.gap_count += delete_count;
+    delete_count := min(_delete_count, max_delete_count);
 
     view: [] u8;
     view.count = delete_count;
-    view.data = gb.buffer.data + gb.gap_index;
+    view.data = gb.buffer.data + gb.gap_index + gb.gap_count;
+
+    gb.count -= delete_count;
+    gb.gap_count += delete_count;
 
     return view;
 }
