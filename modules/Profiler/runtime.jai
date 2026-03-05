@@ -28,8 +28,10 @@ profiler_init :: () {
 }
 
 // Call this at the start of the frame or the section of code you want to profile.
-profiler_start_frame :: () {
+profiler_start_frame :: (label := "frame") {
     #if #exists(__profiler) {
+        __profiler.zone_labels[0] = label;
+
         memset(__profiler.zones.data, 0, size_of(Profiler_Zone) * __profiler.zones.count);
         __profiler.current_zone_index = 0;
         __profiler.frame_start_time = Basic.current_time_monotonic();

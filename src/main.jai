@@ -412,16 +412,11 @@ main :: () {
 
             Simp.clear_render_target(1, 1, 1, 1);
 
-            time_update_start := current_time_monotonic();
-
             wants_quit, wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
             wants_next_frame |= should_fuzz;
             if wants_quit {
                 should_run = false;
             }
-
-            time_update_done := current_time_monotonic();
-            log("Update: % ms, Frame: % ms, wants_next_frame: %", 1000 * to_float64_seconds(time_update_done - time_update_start), 1000 * to_float64_seconds(time_update_done - time_frame_start), wants_next_frame);
 
             Simp.swap_buffers(window);
 
