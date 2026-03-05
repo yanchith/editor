@@ -83,91 +83,10 @@ handle_message :: (message: *Message) {
                 // We could guard against ALREADY_MODIFIED, but because we replace the macros we
                 // invoke, it shouldn't matter if we look at the same procedure multiple times.
 
-                // XXX: We also need to recurse into anything that could have a block, otherwise we
-                // won't instrument that.
-
-                do_modify := false;
-
                 new_statements: [..] *Code_Node;
+                new_statements.allocator = temp; // Is it okay to temp this? Will the compiler copy it to its own memory?
 
-                for statement: body.block.statements {
-                    if statement.kind != .PROCEDURE_CALL {
-                        array_add(*new_statements, statement);
-                        continue;
-                    }
-                    call := cast(*Code_Procedure_Call, statement);
-
-                    // TODO(jt): Check resolved_procedure_expression instead?
-                    if call.procedure_expression.kind != .IDENT {
-                        array_add(*new_statements, statement);
-                        continue;
-                    }
-                    call_ident := cast(*Code_Ident, call.procedure_expression);
-
-                    if call_ident.resolved_declaration.expression == null {
-                        array_add(*new_statements, statement);
-                        continue;
-                    }
-
-                    if call_ident.resolved_declaration.expression.kind != .PROCEDURE_HEADER {
-                        array_add(*new_statements, statement);
-                        continue;
-                    }
-                    header := cast(*Code_Procedure_Header, call_ident.resolved_declaration.expression);
-
-                    // TODO(jt): We should also get the filename and import of the profiling
-                    // functions to check that they are really from this module, instead of just
-                    // checking if they are ProfileFrame/ProfileZone shaped.
-
-                    if header.name != "ProfileZone" {
-                        array_add(*new_statements, statement);
-                        continue;
-                    }
-
-                    invocation_file := call_ident.location.enclosing_load.fully_pathed_filename;
-                    invocation_line := call_ident.location.l0;
-                    invocation_char := call_ident.location.c0;
-
-                    if profiler_final_code_inserted {
-                        compiler_report(invocation_file, invocation_line, invocation_char, "Can not instrument. Final profiling code has already been added. This is either a bug in the +Profiler metaprogram plugin, or in the compiler.");
-                    }
-
-                    call_arguments := call.arguments_unsorted;
-                    if call_arguments.count != 1 {
-                        log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
-                        array_add(*new_statements, statement);
-                        continue;
-                    }
-
-                    if call_arguments[0].expression.kind != .LITERAL {
-                        log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
-                        array_add(*new_statements, statement);
-                        continue;
-                    }
-                    argument_literal := cast(*Code_Literal, call_arguments[0].expression);
-
-                    if argument_literal.value_type != .STRING {
-                        log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
-                        array_add(*new_statements, statement);
-                        continue;
-                    }
-
-                    zone_index := profiler_colleted_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
-                    array_add(*profiler_colleted_zone_labels, argument_literal._string);
-
-                    log("[Profiler] Instrumenting ProfileZone(\"%\")", argument_literal._string);
-                    s := tprint("__ProfileZone(%);", zone_index);
-
-                    literal := New(Code_Literal,, temp);
-                    literal.value_type = .STRING;
-                    literal.values._string = s;
-                    insert := New(Code_Directive_Insert,, temp);
-                    insert.expression = literal;
-                    insert.location = body.location;
-
-                    do_modify = true;
-                    array_add(*new_statements, insert);
-                }
+                do_modify := maybe_instrument_statements(*new_statements, body.block.statements);
 
                 if do_modify {
                     body.block.statements = new_statements;
@@ -176,4 +95,153 @@ handle_message :: (message: *Message) {
             }
         }
     }
+}
+
+maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: [] *Code_Node) -> instrumented: bool {
+    instrumented := false;
+
+    for statement: statements {
+        // We can either recurse into a block, or search for a procedure call statement.
+
+        blocks_to_recurse: [..] *Code_Block;
+        blocks_to_recurse.allocator = temp;
+
+        if statement.kind == {
+            // XXX: HERE Something is fucked if we uncomment these.
+
+            // case .BLOCK; {
+            //     block := cast(*Code_Block, statement);
+            //     array_add(*blocks_to_recurse, block);
+            // }
+            // case .FOR; {
+            //     for_statement := cast(*Code_For, statement);
+            //     array_add(*blocks_to_recurse, for_statement.block);
+            // }
+            // case .WHILE; {
+            //     while_statement := cast(*Code_While, statement);
+            //     if while_statement.block {
+            //         array_add(*blocks_to_recurse, while_statement.block);
+            //     }
+            // }
+            // case .IF; {
+            //     if_statement := cast(*Code_If, statement);
+            //     array_add(*blocks_to_recurse, if_statement.then_block);
+            //     if if_statement.else_block {
+            //         array_add(*blocks_to_recurse, if_statement.else_block);
+            //     }
+            // }
+            case .CASE; {
+                case_statement := cast(*Code_Case, statement);
+                array_add(*blocks_to_recurse, case_statement.then_block);
+            }
+            case .DEFER; {
+                defer_statement := cast(*Code_Defer, statement);
+                array_add(*blocks_to_recurse, defer_statement.block);
+            }
+            case .PUSH_CONTEXT; {
+                push_context_statement := cast(*Code_Push_Context, statement);
+                array_add(*blocks_to_recurse, push_context_statement.block);
+            }
+        }
+
+        if blocks_to_recurse.count {
+            for block: blocks_to_recurse {
+                block_new_statements: [..] *Code_Node;
+                block_new_statements.allocator = temp;
+
+                block_instrumented := maybe_instrument_statements(*block_new_statements, block.statements);
+
+                if block_instrumented {
+                    block.statements = block_new_statements;
+                    instrumented = true;
+                }
+            }
+
+            continue;
+        }
+
+        if statement.kind != .PROCEDURE_CALL {
+            array_add(new_statements, statement);
+            continue;
+        }
+        call := cast(*Code_Procedure_Call, statement);
+
+        // TODO(jt): Check resolved_procedure_expression instead?
+        if call.procedure_expression.kind != .IDENT {
+            array_add(new_statements, statement);
+            continue;
+        }
+        call_ident := cast(*Code_Ident, call.procedure_expression);
+
+        if call_ident.resolved_declaration == null {
+            array_add(new_statements, statement);
+            continue;
+        }
+
+        if call_ident.resolved_declaration.expression == null {
+            array_add(new_statements, statement);
+            continue;
+        }
+
+        if call_ident.resolved_declaration.expression.kind != .PROCEDURE_HEADER {
+            array_add(new_statements, statement);
+            continue;
+        }
+        header := cast(*Code_Procedure_Header, call_ident.resolved_declaration.expression);
+
+        // TODO(jt): We should also get the filename and import of the profiling
+        // functions to check that they are really from this module, instead of just
+        // checking if they are ProfileFrame/ProfileZone shaped.
+
+        if header.name != "ProfileZone" {
+            array_add(new_statements, statement);
+            continue;
+        }
+
+        invocation_file := call_ident.location.enclosing_load.fully_pathed_filename;
+        invocation_line := call_ident.location.l0;
+        invocation_char := call_ident.location.c0;
+
+        if profiler_final_code_inserted {
+            compiler_report(invocation_file, invocation_line, invocation_char, "Can not instrument. Final profiling code has already been added. This is either a bug in the +Profiler metaprogram plugin, or in the compiler.");
+        }
+
+        call_arguments := call.arguments_unsorted;
+        if call_arguments.count != 1 {
+            log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
+            array_add(new_statements, statement);
+            continue;
+        }
+
+        if call_arguments[0].expression.kind != .LITERAL {
+            log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
+            array_add(new_statements, statement);
+            continue;
+        }
+        argument_literal := cast(*Code_Literal, call_arguments[0].expression);
+
+        if argument_literal.value_type != .STRING {
+            log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
+            array_add(new_statements, statement);
+            continue;
+        }
+
+        zone_index := profiler_colleted_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
+        array_add(*profiler_colleted_zone_labels, argument_literal._string);
+
+        log("[Profiler] Instrumenting ProfileZone(\"%\")", argument_literal._string);
+        s := tprint("__ProfileZone(%);", zone_index);
+
+        literal := New(Code_Literal,, temp);
+        literal.value_type = .STRING;
+        literal.values._string = s;
+        insert := New(Code_Directive_Insert,, temp);
+        insert.expression = literal;
+        insert.location = call.location;
+
+        instrumented = true;
+        array_add(new_statements, insert);
+    }
+
+    return instrumented;
 }
