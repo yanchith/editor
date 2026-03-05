@@ -39,7 +39,7 @@ A: Pass an allocator for each lifetime. Fortunately, these situations are rare.
 
 */
 
-DEBUG :: true; // Extra debugging features enabled for now.
+#module_parameters()(DEBUG := false);
 
 f32 :: float32;
 f64 :: float64;

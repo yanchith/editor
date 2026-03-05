@@ -1,6 +1,12 @@
 f32 :: float32;
 f64 :: float64;
 
+#if #exists(DEVELOPER_BUILD) {
+    DEBUG :: DEVELOPER_BUILD;
+} else {
+    DEBUG :: false;
+}
+
 #if OS == .WINDOWS {
     #import "Windows";
 
@@ -26,7 +32,7 @@ File   :: #import "File";
 Window :: #import "Window_Creation";
 Input  :: #import "Input";
 Simp   :: #import "Simp";
-Editor :: #import,file "editor/editor.jai";
+Editor :: #import,file "editor/editor.jai"()(DEBUG = DEBUG);
 
 Random_State           :: Random.Random_State;
 random_seed            :: Random.random_seed;

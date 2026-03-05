@@ -33,7 +33,7 @@ handle_message :: (message: *Message) {
                     // zone labels and counted all the zones. There is also :InsertEarlyCode.
 
                     zone_count := profiler_colleted_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
-                    log("[Profiler] Inserting final code for % zones.", zone_count);
+                    log("[Profiler] Inserting final code for % zones into Profiler module", zone_count);
 
                     if profiler_import {
                         sb: String_Builder;
@@ -61,7 +61,7 @@ handle_message :: (message: *Message) {
             import_message := cast(*Message_Import, message);
 
             if import_message.module_name == "Profiler" {
-                log("[Profiler] Inserting early code");
+                log("[Profiler] Inserting early code into Profiler module");
 
                 // :InsertEarlyCode
                 //

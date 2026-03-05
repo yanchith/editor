@@ -776,23 +776,26 @@ assert_valid :: (buffer: Text_Buffer) {
     assert_cursor_valid(buffer, buffer.cursor0);
     assert_cursor_valid(buffer, buffer.cursor1);
 
-    byte_count := 0;
-    for 0..buffer.lines.count - 2 {
-        assert(buffer.lines[it].char_count >= 0);
-        assert(buffer.lines[it].byte_count >= 0);
+    // This is too expensive to do in shipping builds.
+    #if DEBUG {
+        byte_count := 0;
+        for 0..buffer.lines.count - 2 {
+            assert(buffer.lines[it].char_count >= 0);
+            assert(buffer.lines[it].byte_count >= 0);
 
-        byte_count += buffer.lines[it].byte_count;
+            byte_count += buffer.lines[it].byte_count;
 
-        // This should also work for \r\n newlines.
-        assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) == "\n");
+            // This should also work for \r\n newlines.
+            assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) == "\n");
+        }
+
+        if buffer.lines[buffer.lines.count - 1].byte_count > 0 {
+            byte_count += buffer.lines[buffer.lines.count - 1].byte_count;
+            assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) != "\n");
+        }
+
+        assert(byte_count == buffer.gb.count);
     }
-
-    if buffer.lines[buffer.lines.count - 1].byte_count > 0 {
-        byte_count += buffer.lines[buffer.lines.count - 1].byte_count;
-        assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) != "\n");
-    }
-
-    assert(byte_count == buffer.gb.count);
 }
 
 assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
