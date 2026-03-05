@@ -4,16 +4,20 @@ TODO(jt): Stuff to do:
 
 - [X] Implement Arena, or use Flat_Pool.
 - [X] Display text on screen
+- [ ] Nice font rendering. Subpixel/SDF/Slug
 - [ ] Font Kerning
 
-- [ ] Gap Buffer (or other text datastructure)
+- [X] Gap Buffer (or other text datastructure)
 
+- [X] Basic file navigation
+- [X] Basic file editing
 - [ ] Load file/Save file
-- [ ] Basic file navigation
-- [ ] Basic file editing
+
+- [ ] Read only mode. Automatically on for files that had to undergo load fixups.
 
 - [ ] Sytax Highlighting
 - [ ] Indentation
+- [ ] Git integration?
 
 - [ ] Customization and plugins
 

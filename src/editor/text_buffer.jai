@@ -125,7 +125,6 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     assert_valid(buffer);
 }
 
-// XXX: HERE @Bug This is fucked since we made it faster.
 text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _end: Cursor) {
     ProfileZone("text_buffer_delete_between_cursors");
 
@@ -139,14 +138,7 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _en
 
     start := _start;
     end   := _end;
-
-    if start.y > end.y {
-        swap(*start, *end);
-    }
-
-    if start.y == end.y && start.x > end.x {
-        swap(*start.x, *end.x);
-    }
+    sort_cursors(*start, *end);
 
     start_gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start);
     end_gb_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end);
@@ -348,14 +340,7 @@ text_buffer_byte_count_between_cursors :: (buffer: Text_Buffer, _start: Cursor, 
 
     start := _start;
     end   := _end;
-
-    if start.y > end.y {
-        swap(*start, *end);
-    }
-
-    if start.y == end.y && start.x > end.x {
-        swap(*start.x, *end.x);
-    }
+    sort_cursors(*start, *end);
 
     start_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start);
     end_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end);
@@ -371,14 +356,7 @@ text_buffer_make_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _
 
     start := _start;
     end   := _end;
-
-    if start.y > end.y {
-        swap(*start, *end);
-    }
-
-    if start.y == end.y && start.x > end.x {
-        swap(*start.x, *end.x);
-    }
+    sort_cursors(*start, *end);
 
     start_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start);
     end_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end);
@@ -809,6 +787,16 @@ assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
         assert(cursor.x >= 0 && cursor.x <= buffer.lines[cursor.y].char_count);
     } else {
         assert(cursor.x >= 0 && cursor.x < buffer.lines[cursor.y].char_count);
+    }
+}
+
+sort_cursors :: (start: *Cursor, end: *Cursor) {
+    if start.y > end.y {
+        swap(start, end);
+    }
+
+    if start.y == end.y && start.x > end.x {
+        swap(*start.x, *end.x);
     }
 }
 
