@@ -123,7 +123,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.key_shift_down = false;
     editor.key_meta_down = false;
 
-    hello_text := make_large_hello_text(256 << 20,, temp);
+    hello_text := make_large_hello_text(1 << 20,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
     editor.buffer_clamp_scroll_to_cursor = true;
 
