@@ -205,7 +205,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
         return;
     }
 
-    gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, text_buffer_get_min_cursor(buffer));
+    gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, buffer.cursor0);
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
 
     bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
@@ -260,7 +260,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
         return;
     }
 
-    gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, text_buffer_get_min_cursor(buffer));
+    gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, buffer.cursor0);
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
 
     bytes := gap_buffer_get_bytes_before_gap(buffer.gb);
@@ -367,6 +367,8 @@ text_buffer_make_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _
 }
 
 text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool) {
+    ProfileZone("text_buffer_move_cursor_x");
+
     assert_valid(buffer);
 
     if delta > 0 {
@@ -407,6 +409,8 @@ text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
 }
 
 text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool) {
+    ProfileZone("text_buffer_move_cursor_y");
+
     assert_valid(buffer);
 
     // Cursor can not be past the last line
@@ -427,6 +431,8 @@ text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
 }
 
 text_buffer_move_cursor_to_start_of_line :: (buffer: *Text_Buffer, selecting: bool)  {
+    ProfileZone("text_buffer_move_cursor_to_start_of_line");
+
     assert_valid(buffer);
 
     line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
@@ -456,6 +462,8 @@ text_buffer_move_cursor_to_start_of_line :: (buffer: *Text_Buffer, selecting: bo
 }
 
 text_buffer_move_cursor_to_end_of_line :: (buffer: *Text_Buffer, selecting: bool)  {
+    ProfileZone("text_buffer_move_cursor_to_end_of_line");
+
     assert_valid(buffer);
 
     buffer.cursor0 = text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
@@ -468,6 +476,8 @@ text_buffer_move_cursor_to_end_of_line :: (buffer: *Text_Buffer, selecting: bool
 }
 
 text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, selecting: bool) -> y_changed: bool {
+    ProfileZone("text_buffer_move_cursor_to_previous_word_boundary");
+
     assert_valid(buffer);
 
     y_changed := false;
@@ -545,6 +555,8 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
 }
 
 text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selecting: bool) -> y_changed: bool {
+    ProfileZone("text_buffer_move_cursor_to_next_word_boundary");
+
     assert_valid(buffer);
 
     y_changed := false;
@@ -622,6 +634,8 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
 }
 
 text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecting: bool) {
+    ProfileZone("text_buffer_move_cursor_to_previous_blank_line");
+
     assert_valid(buffer);
 
     found := false;
@@ -661,6 +675,8 @@ text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecti
 }
 
 text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: bool) {
+    ProfileZone("text_buffer_move_cursor_to_next_blank_line");
+
     assert_valid(buffer);
 
     found := false;
@@ -775,8 +791,6 @@ assert_valid :: (buffer: Text_Buffer) {
         byte_count += buffer.lines[buffer.lines.count - 1].byte_count;
         assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) != "\n");
     }
-
-    // TODO(jt): Recompute metadata and compare to current instead?
 
     assert(byte_count == buffer.gb.count);
 }

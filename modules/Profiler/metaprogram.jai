@@ -83,8 +83,8 @@ handle_message :: (message: *Message) {
                 // We could guard against ALREADY_MODIFIED, but because we replace the macros we
                 // invoke, it shouldn't matter if we look at the same procedure multiple times.
 
-                // TODO(jt): We also need to recurse into anything that could have a block,
-                // otherwise we won't instrument nested calls.
+                // XXX: We also need to recurse into anything that could have a block, otherwise we
+                // won't instrument that.
 
                 do_modify := false;
 
