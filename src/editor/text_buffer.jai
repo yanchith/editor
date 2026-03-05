@@ -49,7 +49,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_between_cursors(buffer);
+        text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
         assert(buffer.cursor0 == buffer.cursor1);
     }
 
@@ -125,33 +125,44 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     assert_valid(buffer);
 }
 
-// XXX: @Speed Deleting a large selection in large buffers goes to very uninteractive speeds. This
-// is because we don't call gap_buffer_delete_xyz just once.
-text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
+// XXX: HERE @Bug This is fucked since we made it faster.
+text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _end: Cursor) {
     ProfileZone("text_buffer_delete_between_cursors");
 
     assert_valid(buffer);
+    assert_cursor_valid(buffer, _start);
+    assert_cursor_valid(buffer, _end);
 
-    if buffer.cursor0 == buffer.cursor1 {
+    if _start == _end {
         return;
     }
 
-    start_cursor := text_buffer_get_min_cursor(buffer);
-    end_cursor   := text_buffer_get_max_cursor(buffer);
+    start := _start;
+    end   := _end;
 
-    start_gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start_cursor);
-    end_gb_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end_cursor);
+    if start.y > end.y {
+        swap(*start, *end);
+    }
+
+    if start.y == end.y && start.x > end.x {
+        swap(*start.x, *end.x);
+    }
+
+    start_gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start);
+    end_gb_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end);
+    delete_count := end_gb_index - start_gb_index;
 
     gap_buffer_move_gap_to(*buffer.gb, start_gb_index);
+    deleted_bytes := gap_buffer_delete_forward(*buffer.gb, delete_count);
 
-    buffer.cursor0 = start_cursor;
-    buffer.cursor1 = start_cursor;
+    // gap_buffer clamps, but we should have calculated the indices correctly in this case.
+    assert(deleted_bytes.count == delete_count);
 
-    bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
+    buffer.cursor0 = start;
+    buffer.cursor1 = start;
 
-    delete_count := end_gb_index - start_gb_index;
-    while delete_count > 0 {
-        newline, newline_advance := string_starts_with_newline(bytes);
+    while deleted_bytes.count > 0 {
+        newline, newline_advance := string_starts_with_newline(deleted_bytes);
         if newline {
             if buffer.cursor0.y == buffer.lines.count - 1 {
                 assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count);
@@ -163,28 +174,24 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
             // We treat \r\n as one character, if it happens to be in there.
             buffer.lines[buffer.cursor0.y].char_count -= 1;
             buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
+            debug_assert(buffer.lines[buffer.cursor0.y].char_count >= 0);
+            debug_assert(buffer.lines[buffer.cursor0.y].byte_count >= 0);
 
             buffer.lines[buffer.cursor0.y].char_count += buffer.lines[buffer.cursor0.y + 1].char_count;
             buffer.lines[buffer.cursor0.y].byte_count += buffer.lines[buffer.cursor0.y + 1].byte_count;
 
             array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y + 1);
 
-            deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
-            assert(newline_advance == deleted);
-
-            bytes = array_view(bytes, newline_advance);
-            delete_count -= newline_advance;
+            deleted_bytes = array_view(deleted_bytes, newline_advance);
         } else {
-            _, codepoint_advance := find_next_utf8_character_boundary(bytes, 0);
+            _, codepoint_advance := find_next_utf8_character_boundary(deleted_bytes, 0);
             if codepoint_advance {
                 buffer.lines[buffer.cursor0.y].char_count -= 1;
                 buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
+                debug_assert(buffer.lines[buffer.cursor0.y].char_count >= 0);
+                debug_assert(buffer.lines[buffer.cursor0.y].byte_count >= 0);
 
-                deleted := gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
-                assert(codepoint_advance == deleted);
-
-                bytes = array_view(bytes, codepoint_advance);
-                delete_count -= codepoint_advance;
+                deleted_bytes = array_view(deleted_bytes, codepoint_advance);
             }
         }
     }
@@ -192,13 +199,15 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
+// TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
+// text_buffer_delete_between_cursors does.
 text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_delete_forward");
 
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_between_cursors(buffer);
+        text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
         assert(buffer.cursor0 == buffer.cursor1);
 
         return;
@@ -228,7 +237,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
         array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y + 1);
 
         deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
-        assert(newline_advance == deleted);
+        assert(newline_advance == deleted.count);
     } else {
         _, codepoint_advance := find_next_utf8_character_boundary(bytes, 0);
         if codepoint_advance {
@@ -236,7 +245,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
             buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
 
             deleted := gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
-            assert(codepoint_advance == deleted);
+            assert(codepoint_advance == deleted.count);
         }
     }
 
@@ -245,13 +254,15 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
+// TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
+// text_buffer_delete_between_cursors does.
 text_buffer_delete_backward :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_delete_backward");
 
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_between_cursors(buffer);
+        text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
         assert(buffer.cursor0 == buffer.cursor1);
 
         return;
@@ -307,18 +318,24 @@ text_buffer_get_start_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) 
     return start;
 }
 
-text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false) -> Cursor {
+text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline_at_the_end := false) -> Cursor {
     assert(line_index < buffer.lines.count);
     line := buffer.lines[line_index];
-    endx := ifx line_index == buffer.lines.count - 1 then line.char_count else line.char_count - 1;
-    end:   Cursor = { endx, line_index };
+    endx: s64;
+    if include_newline_at_the_end || line_index == buffer.lines.count - 1 {
+        endx = line.char_count;
+    } else {
+        endx = line.char_count - 1;
+    }
+
+    end: Cursor = { endx, line_index };
 
     return end;
 }
 
-text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cursor, Cursor {
+text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline_at_the_end := false) -> Cursor, Cursor {
     start: Cursor = text_buffer_get_start_cursor_for_line(buffer, line_index);
-    end:   Cursor = text_buffer_get_end_cursor_for_line(buffer, line_index);
+    end:   Cursor = text_buffer_get_end_cursor_for_line(buffer, line_index, include_newline_at_the_end);
 
     return start, end;
 }
