@@ -41,7 +41,6 @@ handle_message :: (message: *Message) {
 
                         print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
                         print(*sb, "__init_zone_labels :: () {\n");
-                        print(*sb, "    __profiler.zone_labels[0] = \"FRAME\";\n");
                         for 0..zone_count - 2 {
                             print(*sb, "    __profiler.zone_labels[%] = \"%\";\n", it + 1, profiler_colleted_zone_labels[it]);
                         }
