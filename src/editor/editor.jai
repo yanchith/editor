@@ -12,6 +12,7 @@ TODO(jt): Stuff to do:
 - [X] Basic file navigation
 - [X] Basic file editing
 - [ ] Load file/Save file
+- [ ] Undo!
 
 - [ ] Read only mode. Automatically on for files that had to undergo load fixups.
 
@@ -122,7 +123,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.key_shift_down = false;
     editor.key_meta_down = false;
 
-    hello_text := make_large_hello_text(1 << 10,, temp);
+    hello_text := make_large_hello_text(256 << 20,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
     editor.buffer_clamp_scroll_to_cursor = true;
 
@@ -313,6 +314,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Scroll buffer to cursor, if buffer changed
     //
     if clamp_scroll_to_cursor || clamp_scroll_to_start_of_line || clamp_scroll_to_end_of_line {
+        ProfileZone(":ClampScroll");
         window_w := cast(f32, input.window_size.x);
         window_h := cast(f32, input.window_size.y);
 
@@ -356,8 +358,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // TODO(jt): At least make this frame rate independent, but ideally also make it a
         // closed-form Hermite lerp, where we munge the previous animation.
         editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.4);
-        if Math.length_squared(editor.buffer_viewport_scroll_target - editor.buffer_viewport_scroll) > 0.1 {
+        if Math.length(editor.buffer_viewport_scroll_target - editor.buffer_viewport_scroll) > 1.0 {
             wants_next_frame = true;
+        } else {
+            editor.buffer_viewport_scroll = editor.buffer_viewport_scroll_target;
         }
     }
 
@@ -365,6 +369,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Layout and draw selection
     //
     if editor.buffer.cursor0 != editor.buffer.cursor1 {
+        ProfileZone(":DrawSelectionHighlight");
+
         cursor_start := text_buffer_get_min_cursor(editor.buffer);
         cursor_end   := text_buffer_get_max_cursor(editor.buffer);
 
@@ -477,6 +483,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Layout and draw text
     //
     {
+        ProfileZone(":DrawText");
+
         // This does very simple vertical culling by doing layout and draw only on visible
         // lines. If the lines are long, we do a lot of layout and draw.
         //
@@ -568,13 +576,13 @@ print_profile_if_frame_time_above :: (threshold_millis: f64, time_scale: f64) {
         if frame_time >= threshold_millis {
             print("\nFrame took more than % millis. Printing profiling info for % zones:\n\n", threshold_millis, zones.count);
 
-            print("      zone                                                          hits    inclusive millis    exclusive millis\n");
-            print("----------------------------------------------------------------------------------------------------------------\n");
+            print("      zone                                                               hits    inclusive millis    exclusive millis\n");
+            print("---------------------------------------------------------------------------------------------------------------------\n");
             for zones {
                 print(
                     "% %      %     %     %\n",
                     temp_right_pad(tprint("[%]", it_index), 5),
-                    temp_right_pad(zone_labels[it_index], 45),
+                    temp_right_pad(zone_labels[it_index], 50),
                     formatInt(it.hits, minimum_digits = 15, padding = #char " "),
                     formatFloat(1000 * time_scale * it.elapsed_inclusive, width = 15, trailing_width = 3),
                     formatFloat(1000 * time_scale * it.elapsed_exclusive, width = 15, trailing_width = 3),
