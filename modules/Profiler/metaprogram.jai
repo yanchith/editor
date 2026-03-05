@@ -39,12 +39,7 @@ handle_message :: (message: *Message) {
                         sb: String_Builder;
                         sb.allocator = temp;
 
-                        // TODO(jt): @CompilerBug @Hack This is just to get something running,
-                        // before the message ordering is resolved. The array will be sufficiently
-                        // sized, but some zones will be ignored.
-                        //
-                        // print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
-                        print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", 32);
+                        print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
                         print(*sb, "__init_zone_labels :: () {\n");
                         print(*sb, "    __profiler.zone_labels[0] = \"FRAME\";\n");
                         for 0..zone_count - 2 {
@@ -134,13 +129,9 @@ handle_message :: (message: *Message) {
                     invocation_line := call_ident.location.l0;
                     invocation_char := call_ident.location.c0;
 
-                    // TODO(jt): @CompilerBug @Hack This check is disabled, so that we at least instrument the zone,
-                    // even if the label is hosed. Enable the check back, once the message ordering bug
-                    // is resolved.
-                    //
-                    // if profiler_final_code_inserted {
-                    //     compiler_report(invocation_file, invocation_line, invocation_char, "Can not instrument. Final profiling code has already been added. This is either a bug in the +Profiler metaprogram plugin, or in the compiler.");
-                    // }
+                    if profiler_final_code_inserted {
+                        compiler_report(invocation_file, invocation_line, invocation_char, "Can not instrument. Final profiling code has already been added. This is either a bug in the +Profiler metaprogram plugin, or in the compiler.");
+                    }
 
                     call_arguments := call.arguments_unsorted;
                     if call_arguments.count != 1 {
