@@ -166,8 +166,8 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _en
             // We treat \r\n as one character, if it happens to be in there.
             buffer.lines[buffer.cursor0.y].char_count -= 1;
             buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
-            debug_assert(buffer.lines[buffer.cursor0.y].char_count >= 0);
-            debug_assert(buffer.lines[buffer.cursor0.y].byte_count >= 0);
+            assert(buffer.lines[buffer.cursor0.y].char_count >= 0);
+            assert(buffer.lines[buffer.cursor0.y].byte_count >= 0);
 
             buffer.lines[buffer.cursor0.y].char_count += buffer.lines[buffer.cursor0.y + 1].char_count;
             buffer.lines[buffer.cursor0.y].byte_count += buffer.lines[buffer.cursor0.y + 1].byte_count;
@@ -180,8 +180,8 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _en
             if codepoint_advance {
                 buffer.lines[buffer.cursor0.y].char_count -= 1;
                 buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
-                debug_assert(buffer.lines[buffer.cursor0.y].char_count >= 0);
-                debug_assert(buffer.lines[buffer.cursor0.y].byte_count >= 0);
+                assert(buffer.lines[buffer.cursor0.y].char_count >= 0);
+                assert(buffer.lines[buffer.cursor0.y].byte_count >= 0);
 
                 deleted_bytes = array_view(deleted_bytes, codepoint_advance);
             }
@@ -783,11 +783,9 @@ assert_valid :: (buffer: Text_Buffer) {
 
 assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
     assert(cursor.y >= 0 && cursor.y < buffer.lines.count);
-    if cursor.y == buffer.lines.count - 1 {
-        assert(cursor.x >= 0 && cursor.x <= buffer.lines[cursor.y].char_count);
-    } else {
-        assert(cursor.x >= 0 && cursor.x < buffer.lines[cursor.y].char_count);
-    }
+    // The cursor can go past the last non-newline character, or past the last character on the last
+    // line, where there is no newline at the end.
+    assert(cursor.x >= 0 && cursor.x <= buffer.lines[cursor.y].char_count);
 }
 
 sort_cursors :: (start: *Cursor, end: *Cursor) {

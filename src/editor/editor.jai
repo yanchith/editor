@@ -225,8 +225,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 }
 
                                 if is_only_whitespace {
-                                    line_end_including_newline := text_buffer_get_end_cursor_for_line(editor.buffer, editor.buffer.cursor0.y, include_newline_at_the_end = true);
-                                    text_buffer_delete_between_cursors(*editor.buffer, editor.buffer.cursor0, line_end_including_newline);
+                                    line_end := text_buffer_get_end_cursor_for_line(editor.buffer, editor.buffer.cursor0.y, include_newline_at_the_end = true);
+                                    text_buffer_delete_between_cursors(*editor.buffer, editor.buffer.cursor0, line_end);
                                 } else {
                                     text_buffer_delete_between_cursors(*editor.buffer, editor.buffer.cursor0, line_end);
                                 }
