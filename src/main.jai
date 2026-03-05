@@ -421,7 +421,7 @@ main :: () {
             }
 
             time_update_done := current_time_monotonic();
-            log("Update: % ms, Frame: % ms", 1000 * to_float64_seconds(time_update_done - time_update_start), 1000 * to_float64_seconds(time_update_done - time_frame_start));
+            log("Update: % ms, Frame: % ms, wants_next_frame: %", 1000 * to_float64_seconds(time_update_done - time_update_start), 1000 * to_float64_seconds(time_update_done - time_frame_start), wants_next_frame);
 
             Simp.swap_buffers(window);
 

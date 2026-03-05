@@ -84,6 +84,7 @@ Editor :: struct {
 
     buffer: Text_Buffer;
     buffer_selecting: bool;
+    // TODO(jt): For large buffers, we actually do run into precision issues. Represent scroll in integers+f32 offsets?
     buffer_viewport_scroll: Vector2;
     buffer_viewport_scroll_target: Vector2;
 
@@ -116,15 +117,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.key_shift_down = false;
     editor.key_meta_down = false;
 
-    log("XXX making hello");
-
-    hello_text := make_large_hello_text(1 << 20,, temp);
-
-    log("XXX inserting hello");
-
+    hello_text := make_large_hello_text(128 << 20,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
-
-    log("XXX done");
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -134,10 +128,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     );
 
     time_scale := profiler_end_frame();
-    print_frame_profile(time_scale);
+    print_profile_if_frame_time_above(0.3, time_scale);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
+    profiler_start_frame();
+
     wants_quit       := false;
     wants_next_frame := false;
 
@@ -463,6 +459,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
     renderer.draw_rects(render_rects);
 
+    time_scale := profiler_end_frame();
+    print_profile_if_frame_time_above(0.3, time_scale);
+
     return wants_quit, wants_next_frame;
 }
 
@@ -518,28 +517,32 @@ make_arena_procs :: (platform: Platform) -> Arena_Procs {
     };
 }
 
-print_frame_profile :: (time_scale: f64) {
+print_profile_if_frame_time_above :: (threshold_seconds: f64, time_scale: f64) {
     zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
     if zones.count {
-        print("\n\n");
-        print("Printing profiling info for % zones:\n", zones.count);
+        frame_time := zones[0].elapsed_inclusive * time_scale;
+        if frame_time >= threshold_seconds {
+            print("\n\n");
+            print("Frame took more than % seconds. Printing profiling info for % zones:\n", zones.count);
 
-        for zones {
-            // TODO(jt): @Hack This is here to filter unassigined values because of the compiler bug. Remove.
-            if it.hits == 0 && zone_labels[it_index] == "" {
-                continue;
+            for zones {
+                // TODO(jt): @Hack This is here to filter unassigined values because of the compiler bug. Remove.
+                if it.hits == 0 && zone_labels[it_index] == "" {
+                    continue;
+                }
+
+                print(
+                    "[%] % hits: %, inclusive: % seconds, exclusive % seconds \n",
+                    it_index,
+                    temp_right_pad(zone_labels[it_index], 50),
+                    formatInt(it.hits, minimum_digits = 10, padding = #char " "),
+                    formatFloat(time_scale * it.elapsed_inclusive, width = 10, trailing_width = 6),
+                    formatFloat(time_scale * it.elapsed_exclusive, width = 10, trailing_width = 6),
+                );
             }
-
-            print(
-                "[%] % hits: %, inclusive: % seconds, exclusive % seconds \n",
-                it_index,
-                temp_right_pad(zone_labels[it_index], 50),
-                formatInt(it.hits, minimum_digits = 10, padding = #char " "),
-                formatFloat(time_scale * it.elapsed_inclusive, width = 10, trailing_width = 6),
-                formatFloat(time_scale * it.elapsed_exclusive, width = 10, trailing_width = 6),
-            );
         }
     }
+
 }
 
 make_large_hello_text :: (approx_size_in_bytes: s64) -> string {
