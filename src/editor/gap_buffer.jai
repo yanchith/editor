@@ -130,6 +130,8 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
 // Deletes at the gap, moving forward. Returns number of actually deleted bytes.
 // TODO(jt): Think about returning the array view to deleted content instead (and not clearing the gap).
 gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
+    ProfileZone("gap_buffer_delete_forward");
+
     assert_valid(gb);
 
     max_delete_count := gb.buffer.count - gb.gap_index - gb.gap_count; // Everything after the gap.
@@ -148,6 +150,8 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
 // Deletes at the gap, moving backward. Returns number of actually deleted bytes.
 // TODO(jt): Think about returning the array view to deleted content instead (and not clearing the gap).
 gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
+    ProfileZone("gap_buffer_delete_backward");
+
     assert_valid(gb);
 
     max_delete_count := gb.gap_index;
