@@ -41,15 +41,12 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena) {
     assert_valid(buffer);
 }
 
-// XXX: @Speed Inserting large text goes to very uninteractive speeds. Slowness candidates:
+// TODO(jt): @Speed Inserting large text is slow. Slowness candidates:
 //
-// - operating on single bytes instead of u64s/SSE/AVX/etc.
-// - Memory.copy inside gap_buffer_insert, because we don't batch the thing.
 // - text_buffer_byte_count_between_cursors computes two gap buffer indices... for every newline. Can we avoid that? Can we compute gap buffer indices faster?
+// - Parsing the unicode byte by byte instead of doing SIMD.
 text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     ProfileZone("text_buffer_insert");
-
-    // TODO(jt): @Speed We currently insert things into the gap buffer byte by byte. Batch it!
 
     assert_valid(buffer);
 
@@ -58,8 +55,14 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
         assert(buffer.cursor0 == buffer.cursor1);
     }
 
+    // So we insert the text into the gap buffer regardless, and then process the string to update
+    // our navigation strucutures. If we detect invalid unicode, we just assert for now, but we
+    // should eventually fix that, and patch those sequences of bytes with unicode replacement
+    // chararacters.
+
     gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, text_buffer_get_min_cursor(buffer));
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
+    gap_buffer_insert(*buffer.gb, text);
 
     while text.count {
         newline, newline_advance := string_starts_with_newline(text);
@@ -70,7 +73,6 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
             char_count_after_cursor := buffer.lines[buffer.cursor0.y].char_count - buffer.cursor0.x;
             byte_count_after_cursor := buffer.lines[buffer.cursor0.y].byte_count - bytes_before_cursor;
 
-            gap_buffer_insert(*buffer.gb, String.slice(text, 0, newline_advance));
             advance(*text, newline_advance);
 
             // We treat \r\n as one character, if it happens to be in there.
@@ -93,10 +95,12 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
         // incorrect unicode coming in and prevent it getting into the buffer. If we are ingesting a
         // new file, we should probably check ahead for encoding or something. If we are in
         // interactive mode, maybe it is okay to not insert.
+        //
+        // UPDATE: Also shouldn't be an assert, because we have already inserted stuff into the gap
+        // buffer, so maybe we want to revert that.
         _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
         assert(codepoint_advance == codepoint_advance_check);
 
-        gap_buffer_insert(*buffer.gb, String.slice(text, 0, codepoint_advance));
         advance(*text, codepoint_advance);
 
         buffer.lines[buffer.cursor0.y].char_count += 1;
