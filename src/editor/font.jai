@@ -120,6 +120,8 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
 }
 
 font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, scroll: Vector2, is_new_frame := false) {
+    ProfileZone("font_layout_and_draw_text");
+
     // TODO(jt): @Cleanup Consider having the user update the stamp manually?
     if is_new_frame {
         font.glyph_cache_stamp += 1;
@@ -242,6 +244,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 }
 
 font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64) -> f32 {
+    ProfileZone("font_compute_position_on_line");
+
     // TODO(jt): @Cleanup Early exit to prevent utf8_iter accessing the first byte of a 0-length
     // string. Can remove after the fix is incorporated.
     if line_text.count == 0 {
