@@ -15,7 +15,7 @@ main :: () {
             print("Printing profiling info for % zones:\n", zones.count);
 
             for zones {
-                // TODO(jt): @Hack This is here to filter unassigined values because of the compiler bug. Remove.
+                // TODO(jt): @CompilerBug @Hack This is here to filter unassigined values because of the compiler bug. Remove.
                 if it.hits == 0 && zone_labels[it_index] == "" {
                     continue;
                 }

@@ -51,7 +51,7 @@ gap_buffer_get_bytes_after_gap :: (gb: Gap_Buffer) -> [] u8 {
     view.count = gb.buffer.count - gb.gap_index - gb.gap_count;
     view.data = gb.buffer.data + gb.gap_index + gb.gap_count;
 
-    // TODO(jt): @CompilerError This autocasts the integer to pointer.
+    // TODO(jt): @CompilerBug This autocasts the integer to pointer.
     // view.data = gb.gap_index + gb.gap_count;
 
     return view;
