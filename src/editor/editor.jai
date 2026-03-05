@@ -87,6 +87,7 @@ Editor :: struct {
     // TODO(jt): For large buffers, we actually do run into precision issues. Represent scroll in integers+f32 offsets?
     buffer_viewport_scroll: Vector2;
     buffer_viewport_scroll_target: Vector2;
+    buffer_clamp_scroll_to_cursor: bool;
 
     key_ctrl_down: bool;
     key_alt_down: bool;
@@ -97,7 +98,7 @@ Editor :: struct {
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     profiler_init();
 
-    profiler_start_frame();
+    profiler_start_frame("init");
 
     arena_procs := make_arena_procs(platform);
     editor.perm_arena = arena_allocate(arena_procs);
@@ -117,8 +118,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.key_shift_down = false;
     editor.key_meta_down = false;
 
-    hello_text := make_large_hello_text(128 << 20,, temp);
+    hello_text := make_large_hello_text(4 << 20,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
+    editor.buffer_clamp_scroll_to_cursor = true;
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -128,11 +130,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     );
 
     time_scale := profiler_end_frame();
-    print_profile_if_frame_time_above(0.3, time_scale);
+    print_profile_if_frame_time_above(100, time_scale);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
-    profiler_start_frame();
+    profiler_start_frame("update_and_render");
 
     wants_quit       := false;
     wants_next_frame := false;
@@ -142,9 +144,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions: [..] IRect;
     update_regions.allocator = temp;
 
-    clamp_scroll_to_cursor := false;
+    clamp_scroll_to_cursor := editor.buffer_clamp_scroll_to_cursor;
     clamp_scroll_to_start_of_line := false;
     clamp_scroll_to_end_of_line := false;
+
+    editor.buffer_clamp_scroll_to_cursor = false;
 
     for input.events {
         if it.type == {
@@ -460,7 +464,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     renderer.draw_rects(render_rects);
 
     time_scale := profiler_end_frame();
-    print_profile_if_frame_time_above(0.3, time_scale);
+    print_profile_if_frame_time_above(100, time_scale);
 
     return wants_quit, wants_next_frame;
 }
@@ -517,32 +521,27 @@ make_arena_procs :: (platform: Platform) -> Arena_Procs {
     };
 }
 
-print_profile_if_frame_time_above :: (threshold_seconds: f64, time_scale: f64) {
+print_profile_if_frame_time_above :: (threshold_millis: f64, time_scale: f64) {
     zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
     if zones.count {
-        frame_time := zones[0].elapsed_inclusive * time_scale;
-        if frame_time >= threshold_seconds {
-            print("\n\n");
-            print("Frame took more than % seconds. Printing profiling info for % zones:\n", zones.count);
+        frame_time := 1000.0 * time_scale * zones[0].elapsed_inclusive;
+        if frame_time >= threshold_millis {
+            print("\nFrame took more than % millis. Printing profiling info for % zones:\n\n", threshold_millis, zones.count);
 
+            print("      zone                                                          hits    inclusive millis    exclusive millis\n");
+            print("----------------------------------------------------------------------------------------------------------------\n");
             for zones {
-                // TODO(jt): @Hack This is here to filter unassigined values because of the compiler bug. Remove.
-                if it.hits == 0 && zone_labels[it_index] == "" {
-                    continue;
-                }
-
                 print(
-                    "[%] % hits: %, inclusive: % seconds, exclusive % seconds \n",
-                    it_index,
-                    temp_right_pad(zone_labels[it_index], 50),
-                    formatInt(it.hits, minimum_digits = 10, padding = #char " "),
-                    formatFloat(time_scale * it.elapsed_inclusive, width = 10, trailing_width = 6),
-                    formatFloat(time_scale * it.elapsed_exclusive, width = 10, trailing_width = 6),
+                    "% %      %     %     %\n",
+                    temp_right_pad(tprint("[%]", it_index), 5),
+                    temp_right_pad(zone_labels[it_index], 45),
+                    formatInt(it.hits, minimum_digits = 15, padding = #char " "),
+                    formatFloat(1000 * time_scale * it.elapsed_inclusive, width = 15, trailing_width = 3),
+                    formatFloat(1000 * time_scale * it.elapsed_exclusive, width = 15, trailing_width = 3),
                 );
             }
         }
     }
-
 }
 
 make_large_hello_text :: (approx_size_in_bytes: s64) -> string {
@@ -550,7 +549,7 @@ make_large_hello_text :: (approx_size_in_bytes: s64) -> string {
 
     b: String_Builder;
     while result_bytes < approx_size_in_bytes {
-        SEPARATOR :: "\n\n\n========================================================\n\n\n";
+        SEPARATOR :: "\n========================================================\n";
 
         print(*b, HELLO_TEXT);
         print(*b, SEPARATOR);
