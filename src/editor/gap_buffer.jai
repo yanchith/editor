@@ -14,15 +14,13 @@ Gap_Buffer :: struct {
 }
 
 // You don't have to call gap_buffer_init. It only helps you pre-allocate the internal buffer.
-gap_buffer_init :: (gb: *Gap_Buffer, initial_gap_count := 4) {
+gap_buffer_init :: (gb: *Gap_Buffer, initial_gap_count := 256) {
     assert_valid(gb);
 
-    // TODO(jt): initial_gap_count is intentionally low for now to test this. Eventually increase to 4kb.
     gb.gap_count = initial_gap_count;
     array_resize(*gb.buffer, initial_gap_count);
 }
 
-// Gets a byte out of the underlying buffer, skipping the gap bytes.
 gap_buffer_get_nongap_byte :: (gb: Gap_Buffer, index: s64) -> u8 {
     assert_valid(gb);
 
@@ -127,9 +125,8 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
     }
 }
 
-// Deletes at the gap, moving forward. Returns number of actually deleted bytes.
-// TODO(jt): Think about returning the array view to deleted content instead (and not clearing the gap).
-gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
+// Deletes at the gap, moving forward. Returns view of deleted bytes.
+gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> [] u8 /* Pointing to this buffer */ {
     ProfileZone("gap_buffer_delete_forward");
 
     assert_valid(gb);
@@ -140,11 +137,11 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     gb.count -= delete_count;
     gb.gap_count += delete_count;
 
-    #if DEBUG {
-        memset(gb.buffer.data + gb.gap_index, 0xff, gb.gap_count);
-    }
+    view: [] u8;
+    view.count = delete_count;
+    view.data = gb.buffer.data + gb.gap_index;
 
-    return delete_count;
+    return view;
 }
 
 // Deletes at the gap, moving backward. Returns number of actually deleted bytes.
