@@ -56,6 +56,8 @@ gap_buffer_get_bytes_after_gap :: (gb: Gap_Buffer) -> [] u8 {
 }
 
 gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
+    ProfileZone("gap_buffer_move_gap_to");
+
     assert_valid(gb);
 
     assert(index >= 0 && index <= gb.count);
@@ -145,7 +147,7 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* P
 }
 
 // Deletes at the gap, moving backward. Returns number of actually deleted bytes.
-// TODO(jt): Think about returning the array view to deleted content instead (and not clearing the gap).
+// TODO(jt): Retur view of deleted content.
 gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     ProfileZone("gap_buffer_delete_backward");
 
@@ -158,22 +160,15 @@ gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     gb.gap_index -= delete_count;
     gb.gap_count += delete_count;
 
-    #if DEBUG {
-        memset(gb.buffer.data + gb.gap_index, 0xff, gb.gap_count);
-    }
-
     return delete_count;
-}
-
-gap_buffer_replace :: (gb: *Gap_Buffer, delete_count: s64, insert_text: string) {
-    gap_buffer_delete_forward(gb, delete_count);
-    gap_buffer_insert(gb, insert_text);
 }
 
 // Returns either view of original data or new array in the context allocator. Note that if you are
 // making a large view, you are negating the copy-avoidance benefits of the gap buffer, so this
 // should be used to get screen-sized chunks of text, not the entire buffer.
 gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
+    ProfileZone("gap_buffer_make_contiguous_view");
+
     assert_valid(gb);
 
     assert(index <= gb.count);
