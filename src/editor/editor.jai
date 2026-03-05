@@ -118,7 +118,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.key_shift_down = false;
     editor.key_meta_down = false;
 
-    hello_text := make_large_hello_text(4 << 20,, temp);
+    hello_text := make_large_hello_text(1 << 10,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
     editor.buffer_clamp_scroll_to_cursor = true;
 
@@ -200,11 +200,47 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "B";  text_buffer_move_cursor_x(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char "F";  text_buffer_move_cursor_x(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char "A";  text_buffer_move_cursor_to_start_of_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
                             case #char "L";  recenter_viewport(editor, input);
                             case #char "V";  scroll_viewport_down(editor, input);
+
                             case .SPACEBAR;  editor.buffer_selecting = true;  text_buffer_join_cursors(*editor.buffer);
                             case #char "G";  editor.buffer_selecting = false; text_buffer_join_cursors(*editor.buffer);
+
+                            case #char "K"; {
+                                editor.buffer_selecting = false;
+                                line_end := text_buffer_get_end_cursor_for_line(editor.buffer, editor.buffer.cursor0.y);
+                                view     := text_buffer_make_view_between_cursors(editor.buffer, editor.buffer.cursor0, line_end,, temp);
+
+                                is_only_whitespace := true;
+                                for view {
+                                    if !is_space(it) {
+                                        is_only_whitespace = false;
+                                        break;
+                                    }
+                                }
+
+                                if is_only_whitespace {
+                                    line_end_including_newline := text_buffer_get_end_cursor_for_line(editor.buffer, editor.buffer.cursor0.y, include_newline_at_the_end = true);
+                                    text_buffer_delete_between_cursors(*editor.buffer, editor.buffer.cursor0, line_end_including_newline);
+                                } else {
+                                    text_buffer_delete_between_cursors(*editor.buffer, editor.buffer.cursor0, line_end);
+                                }
+                            }
+                            case #char "D";  editor.buffer_selecting = false; text_buffer_delete_forward(*editor.buffer);
+
+                            // TODO(jt): Preserve CRLF in CRLF-only documents.
+                            case #char "M"; {
+                                editor.buffer_selecting = false;
+                                text_buffer_insert(*editor.buffer, "\n");
+                                clamp_scroll_to_cursor = true;
+                            }
+                            case #char "O"; {
+                                editor.buffer_selecting = false;
+                                text_buffer_insert(*editor.buffer, "\n");
+                                text_buffer_move_cursor_y(*editor.buffer, -1, false);
+                                text_buffer_move_cursor_to_end_of_line(*editor.buffer, false);
+                            }
                         }
                     } else if editor.key_alt_down {
                         if it.data.codepoint == {
