@@ -41,10 +41,8 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena) {
     assert_valid(buffer);
 }
 
-// TODO(jt): @Speed Inserting large text is slow. Slowness candidates:
-//
-// - text_buffer_byte_count_between_cursors computes two gap buffer indices... for every newline. Can we avoid that? Can we compute gap buffer indices faster?
-// - Parsing the unicode byte by byte instead of doing SIMD.
+// TODO(jt): @Speed Inserting large text could be sped up by parsing the text with SIMD. We
+// currently parse byte by byte. We currently insert a 1GB text file in around 5-6 seconds.
 text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     ProfileZone("text_buffer_insert");
 
@@ -55,23 +53,31 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
         assert(buffer.cursor0 == buffer.cursor1);
     }
 
-    // So we insert the text into the gap buffer regardless, and then process the string to update
-    // our navigation strucutures. If we detect invalid unicode, we just assert for now, but we
-    // should eventually fix that, and patch those sequences of bytes with unicode replacement
-    // chararacters.
+    // TODO(jt): So we insert the text into the gap buffer regardless of whether its valid, and then
+    // process the string to update our navigation structures. If we detect invalid unicode, we just
+    // assert for now, but we should eventually patch the invalid sequences with unicode replacement
+    // chararacters. (And go to read-only mode?)
 
     gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, text_buffer_get_min_cursor(buffer));
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     gap_buffer_insert(*buffer.gb, text);
 
+    // While we could compute bytes_on_line_before_cursor by asking our procedure to do that for
+    // every line, that procedure has to iterate our navigation structures, and it would result in
+    // quadractic behavior (observable once the file is at about 1MB). Therefore, we ask the
+    // procedure to compute it once in the beginning, where we don't know the initial state, and
+    // update it ourselves throughout the rest of the insert.
+    bytes_on_line_before_cursor: s64;
+    {
+        line_start := text_buffer_get_start_cursor_for_line(buffer, buffer.cursor0.y);
+        bytes_on_line_before_cursor = text_buffer_byte_count_between_cursors(buffer, line_start, buffer.cursor0);
+    }
+
     while text.count {
         newline, newline_advance := string_starts_with_newline(text);
         if newline {
-            line_start := text_buffer_get_start_cursor_for_line(buffer, buffer.cursor0.y);
-            bytes_before_cursor := text_buffer_byte_count_between_cursors(buffer, line_start, buffer.cursor0);
-
             char_count_after_cursor := buffer.lines[buffer.cursor0.y].char_count - buffer.cursor0.x;
-            byte_count_after_cursor := buffer.lines[buffer.cursor0.y].byte_count - bytes_before_cursor;
+            byte_count_after_cursor := buffer.lines[buffer.cursor0.y].byte_count - bytes_on_line_before_cursor;
 
             advance(*text, newline_advance);
 
@@ -79,10 +85,14 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
             buffer.lines[buffer.cursor0.y].char_count += 1 - char_count_after_cursor;
             buffer.lines[buffer.cursor0.y].byte_count += newline_advance - byte_count_after_cursor;
 
+            // TODO(jt): @Speed We do this in a loop. Could we at least do the reserve and copy
+            // first and then fill one by one?
             array_insert_at(*buffer.lines, { char_count_after_cursor, byte_count_after_cursor }, buffer.cursor0.y + 1);
 
             buffer.cursor0.y += 1;
             buffer.cursor0.x = 0;
+
+            bytes_on_line_before_cursor = 0;
 
             continue;
         }
@@ -106,6 +116,8 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
         buffer.lines[buffer.cursor0.y].char_count += 1;
         buffer.lines[buffer.cursor0.y].byte_count += codepoint_advance;
         buffer.cursor0.x += 1;
+
+        bytes_on_line_before_cursor += codepoint_advance;
     }
 
     buffer.cursor1 = buffer.cursor0;
@@ -113,8 +125,11 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     assert_valid(buffer);
 }
 
-// XXX: @Speed Deleting a large selection in large buffers goes to very uninteractive speeds.
+// XXX: @Speed Deleting a large selection in large buffers goes to very uninteractive speeds. This
+// is because we don't call gap_buffer_delete_xyz just once.
 text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
+    ProfileZone("text_buffer_delete_between_cursors");
+
     assert_valid(buffer);
 
     if buffer.cursor0 == buffer.cursor1 {
@@ -178,6 +193,8 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
 }
 
 text_buffer_delete_forward :: (buffer: *Text_Buffer) {
+    ProfileZone("text_buffer_delete_forward");
+
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
@@ -229,6 +246,8 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 }
 
 text_buffer_delete_backward :: (buffer: *Text_Buffer) {
+    ProfileZone("text_buffer_delete_backward");
+
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
