@@ -107,29 +107,27 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
         blocks_to_recurse.allocator = temp;
 
         if statement.kind == {
-            // XXX: HERE Something is fucked if we uncomment these.
-
-            // case .BLOCK; {
-            //     block := cast(*Code_Block, statement);
-            //     array_add(*blocks_to_recurse, block);
-            // }
-            // case .FOR; {
-            //     for_statement := cast(*Code_For, statement);
-            //     array_add(*blocks_to_recurse, for_statement.block);
-            // }
-            // case .WHILE; {
-            //     while_statement := cast(*Code_While, statement);
-            //     if while_statement.block {
-            //         array_add(*blocks_to_recurse, while_statement.block);
-            //     }
-            // }
-            // case .IF; {
-            //     if_statement := cast(*Code_If, statement);
-            //     array_add(*blocks_to_recurse, if_statement.then_block);
-            //     if if_statement.else_block {
-            //         array_add(*blocks_to_recurse, if_statement.else_block);
-            //     }
-            // }
+            case .BLOCK; {
+                block := cast(*Code_Block, statement);
+                array_add(*blocks_to_recurse, block);
+            }
+            case .FOR; {
+                for_statement := cast(*Code_For, statement);
+                array_add(*blocks_to_recurse, for_statement.block);
+            }
+            case .WHILE; {
+                while_statement := cast(*Code_While, statement);
+                if while_statement.block {
+                    array_add(*blocks_to_recurse, while_statement.block);
+                }
+            }
+            case .IF; {
+                if_statement := cast(*Code_If, statement);
+                array_add(*blocks_to_recurse, if_statement.then_block);
+                if if_statement.else_block {
+                    array_add(*blocks_to_recurse, if_statement.else_block);
+                }
+            }
             case .CASE; {
                 case_statement := cast(*Code_Case, statement);
                 array_add(*blocks_to_recurse, case_statement.then_block);
@@ -157,6 +155,7 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
                 }
             }
 
+            array_add(new_statements, statement);
             continue;
         }
 
