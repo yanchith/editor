@@ -83,7 +83,7 @@ gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
 
     gb.gap_index = index;
 
-    #if DEBUG {
+    #if SANITY {
         memset(gb.buffer.data + gb.gap_index, 0xff, gb.gap_count);
     }
 }
@@ -122,7 +122,7 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
 
     gb.count += bytes.count;
 
-    #if DEBUG {
+    #if SANITY {
         memset(gb.buffer.data + gb.gap_index, 0xff, gb.gap_count);
     }
 }
@@ -221,7 +221,7 @@ round_up_grow_size :: (required_size: s64) -> s64 {
 }
 
 round_up_to_align :: inline (x: s64, alignment: s64) -> s64 {
-    debug_assert(alignment > 0 && is_power_of_two(alignment));
+    sanity_assert(alignment > 0 && is_power_of_two(alignment));
     mask := alignment - 1;
     return (x + mask) & ~mask;
 }
