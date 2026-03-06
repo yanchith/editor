@@ -39,7 +39,7 @@ A: Pass an allocator for each lifetime. Fortunately, these situations are rare.
 
 */
 
-#module_parameters()(DEBUG := false);
+#module_parameters()(SANITY := false);
 
 f32 :: float32;
 f64 :: float64;
@@ -82,6 +82,8 @@ TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 
 COLOR_CURSOR    : Vector4 : { 0.7, 0.8, 0.7, 1.0 };
 COLOR_SELECTION : Vector4 : { 0.7, 0.8, 0.7, 0.3 };
+
+PROFILE_PRINT_THRESHOLD_MILLIS : f64 : 1000.0 * 4.0 / 60.0;
 
 Editor :: struct {
     perm_arena: *Arena;
@@ -135,7 +137,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     );
 
     time_scale := profiler_end_frame();
-    print_profile_if_frame_time_above(100, time_scale);
+    print_profile_if_frame_time_above(PROFILE_PRINT_THRESHOLD_MILLIS, time_scale);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
@@ -369,12 +371,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Layout and draw selection
     //
     if editor.buffer.cursor0 != editor.buffer.cursor1 {
-        ProfileZone(":DrawSelectionHighlight");
-
         cursor_start := text_buffer_get_min_cursor(editor.buffer);
         cursor_end   := text_buffer_get_max_cursor(editor.buffer);
 
         if cursor_start.y == cursor_end.y {
+            ProfileZone(":DrawSelectionHighlightSingleLine");
+
             line_start := text_buffer_get_start_cursor_for_line(editor.buffer, cursor_start.y);
 
             view_before_cursor   := text_buffer_make_view_between_cursors(editor.buffer, line_start, cursor_start,, temp);
@@ -391,6 +393,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             selection.texture_id = TEXTURE_ID_NONE;
             selection.color = COLOR_SELECTION;
         } else {
+            ProfileZone(":DrawSelectionHighlightMultiLine");
+
             // This does very simple vertical culling by doing layout and draw only on visible
             // lines. If the lines are long, we do a lot of layout and draw.
             //
@@ -433,8 +437,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     continue;
                 }
 
-                line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, it);
-                line_view            := text_buffer_make_view_between_cursors(editor.buffer, line_start, line_end,, temp);
+                line_end  := text_buffer_get_end_cursor_for_line(editor.buffer, it);
+                line_view := text_buffer_make_view_for_line(editor.buffer, it,, temp);
                 selection_x0 := 0.0;
                 selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x);
                 selection_y0 := it * buffer_cell_h;
@@ -512,7 +516,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     renderer.draw_rects(render_rects);
 
     time_scale := profiler_end_frame();
-    print_profile_if_frame_time_above(100, time_scale);
+    print_profile_if_frame_time_above(PROFILE_PRINT_THRESHOLD_MILLIS, time_scale);
 
     return wants_quit, wants_next_frame;
 }

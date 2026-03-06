@@ -6,7 +6,7 @@ Profiler :: #import "Profiler"(IMPORT_MODE = .METAPROGRAM);
 build :: () {
     do_optimized_build := false;
     do_profiling_build := false;
-    do_developer_build := true;  // Will eventually default to false.
+    do_sanity_build    := true;  // Will eventually default to false.
 
     for get_toplevel_command_line() {
         if it == "-release"    do_optimized_build = true;
@@ -20,10 +20,10 @@ build :: () {
         // would cause the Default_Metaprogram to inject stuff here, where we import the profiler as
         // a metaprogram plugin and not a runtime module. We could maybe do something about it so
         // that it would work anyway, but maybe it's best to not cause more confusion.
-        if it == "-profile"       do_profiling_build = true;
-        if it == "-no-profile"    do_profiling_build = false;
-        if it == "-developer"     do_developer_build = true;
-        if it == "-no-developer"  do_developer_build = false;
+        if it == "-profile"     do_profiling_build = true;
+        if it == "-no-profile"  do_profiling_build = false;
+        if it == "-sanity"      do_sanity_build = true;
+        if it == "-no-sanity"   do_sanity_build = false;
     }
 
     make_directory_if_it_does_not_exist("build");
@@ -47,8 +47,8 @@ build :: () {
         compiler_begin_intercept(w);
     }
 
-    if do_developer_build {
-        add_build_string("DEVELOPER_BUILD :: true;\n", w);
+    if do_sanity_build {
+        add_build_string("__SANITY :: true;\n", w);
     }
 
     add_build_file("src/main.jai", w);
