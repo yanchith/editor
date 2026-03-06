@@ -83,7 +83,7 @@ TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 COLOR_CURSOR    : Vector4 : { 0.7, 0.8, 0.7, 1.0 };
 COLOR_SELECTION : Vector4 : { 0.7, 0.8, 0.7, 0.3 };
 
-PROFILE_PRINT_THRESHOLD_MILLIS : f64 : 1000.0 * 4.0 / 60.0;
+SLOW_FRAME_THRESHOLD_MILLIS : f64 : 1000.0 * 4.0 / 60.0;
 
 Editor :: struct {
     perm_arena: *Arena;
@@ -91,7 +91,9 @@ Editor :: struct {
 
     buffer: Text_Buffer;
     buffer_selecting: bool;
-    // TODO(jt): For large buffers, we actually do run into precision issues. Represent scroll in integers+f32 offsets?
+    // TODO(jt): We run into floating point precision issues in large buffers (above 128MB). Change
+    // scroll into integer coordinates + floating point offset and do careful computations such that
+    // if we map something into floats, it is already small.
     buffer_viewport_scroll: Vector2;
     buffer_viewport_scroll_target: Vector2;
     buffer_clamp_scroll_to_cursor: bool;
@@ -125,7 +127,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.key_shift_down = false;
     editor.key_meta_down = false;
 
-    hello_text := make_large_hello_text(256 << 20,, temp);
+    hello_text := make_large_hello_text(1024 << 20,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
     editor.buffer_clamp_scroll_to_cursor = true;
 
@@ -137,7 +139,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     );
 
     time_scale := profiler_end_frame();
-    print_profile_if_frame_time_above(PROFILE_PRINT_THRESHOLD_MILLIS, time_scale);
+    print_profile_for_slow_frames(SLOW_FRAME_THRESHOLD_MILLIS, time_scale);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
@@ -509,6 +511,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         scroll_offset.x = editor.buffer_viewport_scroll.x;
         scroll_offset.y = viewport_y0 - buffer_cell_h * viewport_line_index_start;
 
+        // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
+        // to the left of the screen, but we don't have to emit render rects for it.
         font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, scroll_offset, is_new_frame = true);
     }
 
@@ -516,7 +520,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     renderer.draw_rects(render_rects);
 
     time_scale := profiler_end_frame();
-    print_profile_if_frame_time_above(PROFILE_PRINT_THRESHOLD_MILLIS, time_scale);
+    print_profile_for_slow_frames(SLOW_FRAME_THRESHOLD_MILLIS, time_scale);
 
     return wants_quit, wants_next_frame;
 }
@@ -573,7 +577,7 @@ make_arena_procs :: (platform: Platform) -> Arena_Procs {
     };
 }
 
-print_profile_if_frame_time_above :: (threshold_millis: f64, time_scale: f64) {
+print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
     zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
     if zones.count {
         frame_time := 1000.0 * time_scale * zones[0].elapsed_inclusive;
