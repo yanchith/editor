@@ -243,7 +243,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
     }
 }
 
-font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64) -> f32 {
+font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64) -> f64 {
     ProfileZone("font_compute_position_on_line");
 
     // TODO(jt): @Cleanup Early exit to prevent utf8_iter accessing the first byte of a 0-length
@@ -264,7 +264,8 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
         advance += glyph_metrics.advance;
     }
 
-    scaled_advance := advance * font.font_scale;
+    // Return f64, because in theory lines could be pretty long. We use f64s for absulute pixel coordinates in the editor.
+    scaled_advance := advance * cast(f64, font.font_scale);
 
     return scaled_advance;
 }

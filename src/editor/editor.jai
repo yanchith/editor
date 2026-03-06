@@ -53,16 +53,19 @@ String  :: #import "String";
 Math    :: #import "Math";
 Unicode :: #import "Unicode";
 
-Vector2    :: Math.Vector2;
-Vector4    :: Math.Vector4;
-floor      :: Math.floor;
-ceil       :: Math.ceil;
-lerp       :: Math.lerp;
-operator+  :: Math.operator+;
-operator-  :: Math.operator-;
-operator*  :: Math.operator*;
-operator/  :: Math.operator/;
-operator== :: Math.operator==;
+Vector2        :: Math.Vector2;
+Vector4        :: Math.Vector4;
+floor          :: Math.floor;
+ceil           :: Math.ceil;
+sqrt           :: Math.sqrt;
+lerp           :: Math.lerp;
+length         :: Math.length;
+length_squared :: Math.length_squared;
+operator+      :: Math.operator+;
+operator-      :: Math.operator-;
+operator*      :: Math.operator*;
+operator/      :: Math.operator/;
+operator==     :: Math.operator==;
 
 #load "assert.jai";
 #load "string.jai";
@@ -91,11 +94,13 @@ Editor :: struct {
 
     buffer: Text_Buffer;
     buffer_selecting: bool;
-    // TODO(jt): We run into floating point precision issues in large buffers (above 128MB). Change
-    // scroll into integer coordinates + floating point offset and do careful computations such that
-    // if we map something into floats, it is already small.
-    buffer_viewport_scroll: Vector2;
-    buffer_viewport_scroll_target: Vector2;
+    // Scroll vectors are in f64s, because buffers can be large and we actually ran into precision
+    // issues. Doubles are fine for now (verified up to 1GB of prose), but maybe we should do our
+    // own numeric type that's s64 + f32 offset.
+    //
+    // :FloatPrecision
+    buffer_viewport_scroll: DVector2;
+    buffer_viewport_scroll_target: DVector2;
     buffer_clamp_scroll_to_cursor: bool;
 
     key_ctrl_down: bool;
@@ -191,9 +196,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                         case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
 
-                        // TODO(jt): Move screen up or down.
-                        case .PAGE_UP;      editor.buffer_viewport_scroll_target.y -= 10;
-                        case .PAGE_DOWN;    editor.buffer_viewport_scroll_target.y += 10;
+                        case .PAGE_UP;      scroll_viewport_up(editor, input);
+                        case .PAGE_DOWN;    scroll_viewport_down(editor, input);
 
                         // TODO(jt): Move screen to the beginning and end of buffer.
                         case .HOME;
@@ -301,10 +305,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    buffer_cell_w := editor.font.max_glyph_width_in_scaled_pixels;
-    buffer_cell_h := editor.font.line_height_in_scaled_pixels;
-    buffer_cursor0_position: Vector2;
-    buffer_cursor0_line_end_x: f32;
+    // Upcast to f64 here, because we later multiply them with lines/columns, and we don't want to
+    // accidentally do the multiply in f32, which is not precise enough in large buffers.
+    buffer_cell_w := cast(f64, editor.font.max_glyph_width_in_scaled_pixels);
+    buffer_cell_h := cast(f64, editor.font.line_height_in_scaled_pixels);
+    buffer_cursor0_position: DVector2;
+    buffer_cursor0_line_end_x: f64;
     {
         c0_line_start, c0_line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor0.y);
         c0_line_view := text_buffer_make_view_between_cursors(editor.buffer, c0_line_start, c0_line_end,, temp);
@@ -324,29 +330,29 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         SCROLL_PADDING_CELLS_X :: 0; // TODO(jt): #config Make this configurable. I don't like having this, so I turned it off.
         SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): #config Make this configurable. I don't like having this, so I turned it off.
-        scroll_padding_x := min(window_w * 0.25, buffer_cell_w * SCROLL_PADDING_CELLS_X);
-        scroll_padding_y := min(window_h * 0.25, buffer_cell_h * SCROLL_PADDING_CELLS_Y);
+        scroll_padding_x := min(window_w * 0.25, cast(f32, buffer_cell_w) * SCROLL_PADDING_CELLS_X);
+        scroll_padding_y := min(window_h * 0.25, cast(f32, buffer_cell_h) * SCROLL_PADDING_CELLS_Y);
 
         cursor0 := editor.buffer.cursor0;
 
-        viewport_rect := rect_from_point_and_size(editor.buffer_viewport_scroll_target.x, editor.buffer_viewport_scroll_target.y, window_w, window_h);
-        scroll_to_rect: Rect;
+        viewport_rect := drect_from_point_and_size(editor.buffer_viewport_scroll_target.x, editor.buffer_viewport_scroll_target.y, window_w, window_h);
+        scroll_to_rect: DRect;
         if clamp_scroll_to_start_of_line {
-            scroll_to_rect = rect_from_point_and_size(0, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
+            scroll_to_rect = drect_from_point_and_size(0, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
         } else if clamp_scroll_to_end_of_line {
-            scroll_to_rect = rect_from_point_and_size(buffer_cursor0_line_end_x, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
+            scroll_to_rect = drect_from_point_and_size(buffer_cursor0_line_end_x, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
         } else {
-             scroll_to_rect = rect_from_point_and_size(buffer_cursor0_position.x, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
+            scroll_to_rect = drect_from_point_and_size(buffer_cursor0_position.x, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
         }
 
         if scroll_to_rect.x1 > viewport_rect.x1 {
-            editor.buffer_viewport_scroll_target.x = scroll_to_rect.x0 - window_w + rect_width(scroll_to_rect) + scroll_padding_x;
+            editor.buffer_viewport_scroll_target.x = scroll_to_rect.x0 - window_w + drect_width(scroll_to_rect) + scroll_padding_x;
         } else if scroll_to_rect.x0 < viewport_rect.x0 {
             editor.buffer_viewport_scroll_target.x = scroll_to_rect.x0 - scroll_padding_x;
         }
 
         if scroll_to_rect.y1 > viewport_rect.y1 {
-            editor.buffer_viewport_scroll_target.y = scroll_to_rect.y0 - window_h + rect_height(scroll_to_rect) + scroll_padding_y;
+            editor.buffer_viewport_scroll_target.y = scroll_to_rect.y0 - window_h + drect_height(scroll_to_rect) + scroll_padding_y;
         } else if scroll_to_rect.y0 < viewport_rect.y0 {
             editor.buffer_viewport_scroll_target.y = scroll_to_rect.y0 - scroll_padding_y;
         }
@@ -356,13 +362,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Scroll animation
     //
     {
-        editor.buffer_viewport_scroll_target.x = max(0.0, editor.buffer_viewport_scroll_target.x);
-        editor.buffer_viewport_scroll_target.y = max(0.0, editor.buffer_viewport_scroll_target.y);
+        editor.buffer_viewport_scroll_target.x = max(editor.buffer_viewport_scroll_target.x, 0.0);
+        editor.buffer_viewport_scroll_target.y = max(editor.buffer_viewport_scroll_target.y, 0.0);
 
         // TODO(jt): At least make this frame rate independent, but ideally also make it a
         // closed-form Hermite lerp, where we munge the previous animation.
         editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.4);
-        if Math.length(editor.buffer_viewport_scroll_target - editor.buffer_viewport_scroll) > 1.0 {
+        if length(editor.buffer_viewport_scroll_target - editor.buffer_viewport_scroll) > 1.0 {
             wants_next_frame = true;
         } else {
             editor.buffer_viewport_scroll = editor.buffer_viewport_scroll_target;
@@ -388,9 +394,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             selection_x1 := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x) + selection_x0;
             selection_y0 := cursor_start.y * buffer_cell_h;
             selection_y1 := selection_y0 + buffer_cell_h;
+            selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
             selection := array_add(*render_rects);
-            selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
+            selection.rect = drect_to_rect(selection_rect - editor.buffer_viewport_scroll);
             selection.texture_rect = { 0, 0, 0, 0 };
             selection.texture_id = TEXTURE_ID_NONE;
             selection.color = COLOR_SELECTION;
@@ -407,11 +414,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / buffer_cell_h)), 0, editor.buffer.lines.count - 1);
             viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / buffer_cell_h)), 0, editor.buffer.lines.count - 1);
 
-            // Because we start the layout just before the current viewport, the rendering scroll offset
+            // Because we start the layout just before the current viewport, the rendering scroll Y offset
             // is just the fractional part of the cell.
+            //
+            // Because we expect scroll_offset to be small, we keep it in f32.
             scroll_offset: Vector2;
-            scroll_offset.x = editor.buffer_viewport_scroll.x;
-            scroll_offset.y = viewport_y0 - buffer_cell_h * viewport_line_index_start;
+            scroll_offset.x = cast(f32, editor.buffer_viewport_scroll.x);
+            scroll_offset.y = cast(f32, viewport_y0 - buffer_cell_h * viewport_line_index_start);
 
             // First line, if in viewport
             if cursor_start.y >= viewport_line_index_start && cursor_start.y <= viewport_line_index_end {
@@ -424,9 +433,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection_x1 := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x) + selection_x0;
                 selection_y0 := cursor_start.y * buffer_cell_h;
                 selection_y1 := selection_y0 + buffer_cell_h;
+                selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
                 selection := array_add(*render_rects);
-                selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
+                selection.rect = drect_to_rect(selection_rect - editor.buffer_viewport_scroll);
                 selection.texture_rect = { 0, 0, 0, 0 };
                 selection.texture_id = TEXTURE_ID_NONE;
                 selection.color = COLOR_SELECTION;
@@ -445,9 +455,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x);
                 selection_y0 := it * buffer_cell_h;
                 selection_y1 := selection_y0 + buffer_cell_h;
+                selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
+
 
                 selection := array_add(*render_rects);
-                selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
+                selection.rect = drect_to_rect(selection_rect - editor.buffer_viewport_scroll);
                 selection.texture_rect = { 0, 0, 0, 0 };
                 selection.texture_id = TEXTURE_ID_NONE;
                 selection.color = COLOR_SELECTION;
@@ -462,9 +474,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection_x1 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x);
                 selection_y0 := cursor_end.y * buffer_cell_h;
                 selection_y1 := selection_y0 + buffer_cell_h;
+                selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
                 selection := array_add(*render_rects);
-                selection.rect = { selection_x0, selection_y0, selection_x1, selection_y1 } - editor.buffer_viewport_scroll;
+                selection.rect = drect_to_rect(selection_rect - editor.buffer_viewport_scroll);
                 selection.texture_rect = { 0, 0, 0, 0 };
                 selection.texture_id = TEXTURE_ID_NONE;
                 selection.color = COLOR_SELECTION;
@@ -478,8 +491,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     {
         position := buffer_cursor0_position;
 
+        cursor_rect := drect_from_point_and_size(position.x, position.y, buffer_cell_w, buffer_cell_h);
+
         cursor := array_add(*render_rects);
-        cursor.rect = rect_from_point_and_size(position.x, position.y, buffer_cell_w, buffer_cell_h) - editor.buffer_viewport_scroll;
+        cursor.rect = drect_to_rect(cursor_rect - editor.buffer_viewport_scroll);
         cursor.texture_rect = { 0, 0, 0, 0 };
         cursor.texture_id = TEXTURE_ID_NONE;
         cursor.color = COLOR_CURSOR;
@@ -505,11 +520,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         viewport_end   := text_buffer_get_end_cursor_for_line(editor.buffer, viewport_line_index_end);
         viewport_view  := text_buffer_make_view_between_cursors(editor.buffer, viewport_start, viewport_end,, temp);
 
-        // Because we start the layout just before the current viewport, the rendering scroll offset
+        // Because we start the layout just before the current viewport, the rendering scroll Y offset
         // is just the fractional part of the cell.
+        //
+        // Because we expect scroll_offset to be small, we keep it in f32.
         scroll_offset: Vector2;
-        scroll_offset.x = editor.buffer_viewport_scroll.x;
-        scroll_offset.y = viewport_y0 - buffer_cell_h * viewport_line_index_start;
+        scroll_offset.x = cast(f32, editor.buffer_viewport_scroll.x);
+        scroll_offset.y = cast(f32, viewport_y0 - buffer_cell_h * viewport_line_index_start);
 
         // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
         // to the left of the screen, but we don't have to emit render rects for it.
