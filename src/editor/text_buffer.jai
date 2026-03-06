@@ -304,14 +304,16 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 }
 
 text_buffer_get_start_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cursor {
-    assert(line_index < buffer.lines.count);
+    assert_line_valid(buffer, line_index);
+
     start: Cursor = { 0, line_index };
 
     return start;
 }
 
 text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline_at_the_end := false) -> Cursor {
-    assert(line_index < buffer.lines.count);
+    assert_line_valid(buffer, line_index);
+
     line := buffer.lines[line_index];
     endx: s64;
     if include_newline_at_the_end || line_index == buffer.lines.count - 1 {
@@ -330,6 +332,25 @@ text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64, inclu
     end:   Cursor = text_buffer_get_end_cursor_for_line(buffer, line_index, include_newline_at_the_end);
 
     return start, end;
+}
+
+// A 2x-ish faster, specialized version of text_buffer_make_view_between_cursors. Use if you can.
+text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline_at_the_end := false) -> string /* Pointing to the internal gap bufffer, or allocated with context.allocator */ {
+    ProfileZone("text_buffer_make_view_for_line");
+
+    assert_line_valid(buffer, line_index);
+
+    line := buffer.lines[line_index];
+
+    start_index := text_buffer_get_gap_buffer_index_for_line(buffer, line_index);
+    view        := gap_buffer_make_contiguous_view(buffer.gb, start_index, line.byte_count);
+
+    if !include_newline_at_the_end {
+        _, newline_length := string_ends_with_newline(view);
+        view.count -= newline_length;
+    }
+
+    return cast(string, view);
 }
 
 text_buffer_byte_count_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor) -> s64 {
@@ -743,6 +764,24 @@ text_buffer_get_max_cursor :: (buffer: Text_Buffer) -> Cursor {
     }
 }
 
+text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s64) -> s64 {
+    ProfileZone("text_buffer_get_gap_buffer_index_for_line");
+
+    assert_line_valid(buffer, line_index);
+
+    if line_index >= buffer.lines.count {
+        // We are past the last line. Return index past the last byte in the gap buffer.
+        return buffer.gb.count;
+    }
+
+    index := 0;
+    for 0..line_index - 1 {
+        index += buffer.lines[it].byte_count;
+    }
+
+    return index;
+}
+
 text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cursor) -> s64 {
     ProfileZone("text_buffer_get_gap_buffer_index_for_cursor");
 
@@ -777,7 +816,7 @@ assert_valid :: (buffer: Text_Buffer) {
     assert_cursor_valid(buffer, buffer.cursor1);
 
     // This is too expensive to do in shipping builds.
-    #if DEBUG {
+    #if SANITY {
         byte_count := 0;
         for 0..buffer.lines.count - 2 {
             assert(buffer.lines[it].char_count >= 0);
@@ -796,6 +835,10 @@ assert_valid :: (buffer: Text_Buffer) {
 
         assert(byte_count == buffer.gb.count);
     }
+}
+
+assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
+    assert(line_index < buffer.lines.count);
 }
 
 assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
