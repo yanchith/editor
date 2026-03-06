@@ -1,9 +1,82 @@
 //
-// Floating point vectors
+// Float vectors
 //
 //
-// TODO(jt): We are currently using the ones from JAI's math, becuase Simp uses them.
+// TODO(jt): For float vectors, we are currently using JAI's math, becuase Simp uses them.
 //
+
+//
+// Double vectors
+//
+// We use double vectors as a hack to have more precision for 100MB+ text buffers for stuff that is
+// not mapped into the screen's coordinate system. We should maybe eventually switch to something
+// even more robust, like s64 + f32 offset.
+//
+// :FloatPrecision
+//
+
+DVector2 :: struct {
+    x: f64;
+    y: f64;
+
+    #overlay (x) component: [2] f64 = ---;
+}
+
+operator == :: (a: DVector2, b: DVector2) -> bool {
+    return a.x == b.x && a.y == b.y;
+}
+
+operator + :: (a: DVector2, b: DVector2) -> DVector2 {
+    return { a.x + b.x, a.y + b.y };
+}
+
+operator - :: (a: DVector2) -> DVector2 {
+    return { -a.x, -a.y };
+}
+
+operator - :: (a: DVector2, b: DVector2) -> DVector2 {
+    return { a.x - b.x, a.y - b.y };
+}
+
+operator * :: (a: DVector2, b: f64) -> DVector2 #symmetric {
+    return { a.x * b, a.y * b };
+}
+
+operator * :: (a: DVector2, b: DVector2) -> DVector2 {
+    return { a.x * b.x, a.y * b.y };
+}
+
+operator / :: (a: DVector2, b: f64) -> DVector2 {
+    return { a.x / b, a.y / b };
+}
+
+operator / :: (a: DVector2, b: DVector2) -> DVector2 {
+    return { a.x / b.x, a.y / b.y };
+}
+
+min :: inline (a: DVector2, b: DVector2) -> DVector2 {
+    return { min(a.x, b.x), min(a.y, b.y) };
+}
+
+max :: inline (a: DVector2, b: DVector2) -> DVector2 {
+    return { max(a.x, b.x), max(a.y, b.y) };
+}
+
+dot_product :: inline (a: DVector2, b: DVector2) -> f64 {
+    return a.x * b.x + a.y * b.y;
+}
+
+lerp :: inline (a: DVector2, b: DVector2, t: f64) -> DVector2 {
+    return a + (b - a) * t;
+}
+
+length :: inline (a: DVector2) -> f64 {
+    return sqrt(a.x * a.x + a.y * a.y);
+}
+
+length_squared :: inline (a: DVector2) -> f64 {
+    return a.x * a.x + a.y * a.y;
+}
 
 //
 // Integer vectors
@@ -55,11 +128,11 @@ operator / :: (a: IVector2, b: IVector2) -> IVector2 {
     return { a.x / b.x, a.y / b.y };
 }
 
-min :: (a: IVector2, b: IVector2) -> IVector2 {
+min :: inline (a: IVector2, b: IVector2) -> IVector2 {
     return { min(a.x, b.x), min(a.y, b.y) };
 }
 
-max :: (a: IVector2, b: IVector2) -> IVector2 {
+max :: inline (a: IVector2, b: IVector2) -> IVector2 {
     return { max(a.x, b.x), max(a.y, b.y) };
 }
 
@@ -68,7 +141,7 @@ ivector_to_vector :: inline (a: IVector2) -> Vector2 {
 }
 
 //
-// Floating point rects
+// Float rect
 //
 
 Rect :: struct {
@@ -120,8 +193,6 @@ rect_height :: inline (r: Rect) -> f32 {
     }
 }
 
-// TODO(jt): @Speed If we use this a lot and it generates bad code, we can try and do the inplace
-// version as an overload.
 rect_fixup :: (r: Rect) -> Rect {
     p0 := rect_min(r);
     p1 := rect_max(r);
@@ -144,7 +215,87 @@ operator - :: (r: Rect, v: Vector2) -> Rect {
 }
 
 //
-// Integer rects
+// Double rect
+//
+// See :FloatPrecision.
+//
+
+DRect :: struct {
+    // Points are not necessarily ordered. See rect_min, rect_max, rect_fixup.
+    x0: f64;
+    y0: f64;
+
+    x1: f64;
+    y1: f64;
+
+    #overlay (x0) p0: DVector2;
+    #overlay (x1) p1: DVector2;
+}
+
+drect_from_point_and_size :: inline (x0: f64, y0: f64, width: f64, height: f64) -> DRect {
+    p0: DVector2 = { x0, y0 };
+    p1: DVector2 = { x0 + width, y0 + height};
+
+    return { p0.x, p0.y, p1.x, p1.y };
+}
+
+drect_min :: inline (r: DRect) -> DVector2 {
+    x := ifx x0 < x1 then x0 else x1;
+    y := ifx y0 < y1 then y0 else y1;
+
+    return { x, y };
+}
+
+drect_max :: inline (r: DRect) -> DVector2 {
+    x := ifx x0 > x1 then x0 else x1;
+    y := ifx y0 > y1 then y0 else y1;
+
+    return { x, y };
+}
+
+drect_width :: inline (r: DRect) -> f64 {
+    if r.x0 < r.x1 {
+        return r.x1 - r.x0;
+    } else {
+        return r.x0 - r.x1;
+    }
+}
+
+drect_height :: inline (r: DRect) -> f64 {
+    if r.y0 < r.y1 {
+        return r.y1 - r.y0;
+    } else {
+        return r.y0 - r.y1;
+    }
+}
+
+drect_fixup :: (r: DRect) -> DRect {
+    p0 := rect_min(r);
+    p1 := rect_max(r);
+
+    return make_rect(p0, p1);
+}
+
+operator + :: (r: DRect, v: DVector2) -> DRect {
+    result: DRect = ---;
+    result.p0 = r.p0 + v;
+    result.p1 = r.p1 + v;
+    return result;
+}
+
+operator - :: (r: DRect, v: DVector2) -> DRect {
+    result: DRect = ---;
+    result.p0 = r.p0 - v;
+    result.p1 = r.p1 - v;
+    return result;
+}
+
+drect_to_rect :: (r: DRect) -> Rect {
+    return { cast(f32, r.x0), cast(f32, r.y0), cast(f32, r.x1), cast(f32, r.y1) };
+}
+
+//
+// Integer rect
 //
 
 IRect :: struct {
@@ -182,8 +333,6 @@ irect_max :: inline (r: IRect) -> IVector2 {
 
 // TODO(jt): Add irect_width and irect_height that do check for flip.
 
-// TODO(jt): @Speed If we use this a lot and it generates bad code, we can try and do the inplace
-// version as an overload.
 irect_fixup :: (r: IRect) -> IRect {
     p0 := irect_min(r);
     p1 := irect_max(r);
