@@ -8,7 +8,7 @@
 // - User-given first block.
 //
 
-#module_parameters()(DEBUG := true); // TODO(jt): Eventually default this to false, once we are confident.
+#module_parameters()(SANITY := true); // TODO(jt): Eventually default this to false, once we are confident.
 
 ARENA_DEFAULT_RESERVE_SIZE: s64 : 256 << 20;
 ARENA_DEFAULT_COMMIT_SIZE:  s64 :  64 << 10;
@@ -223,7 +223,7 @@ arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
 }
 
 arena_pop_to_mark :: (arena: *Arena, mark: Arena_Mark, overwrite_memory := false) {
-    debug_assert(arena.allocated >= mark.allocated);
+    sanity_assert(arena.allocated >= mark.allocated);
     if overwrite_memory && arena.allocated > mark.allocated {
         STAMP :: 0xcc;
         overwrite_base := arena.memory_start + mark.allocated;
@@ -241,9 +241,9 @@ arena_pop_to_mark :: (arena: *Arena, mark: Arena_Mark, overwrite_memory := false
         }
 
         if decommit_size {
-            debug_assert(is_aligned(decommit_size, arena.procs.page_size));
+            sanity_assert(is_aligned(decommit_size, arena.procs.page_size));
             decommit_base := arena.memory_start + arena.committed - decommit_size;
-            debug_assert(is_aligned(decommit_base, arena.procs.page_size));
+            sanity_assert(is_aligned(decommit_base, arena.procs.page_size));
 
             arena.procs.mem_decommit(decommit_base, decommit_size);
 
@@ -282,7 +282,7 @@ align_of :: ($T: Type) -> s64 #expand {
 }
 
 align :: inline (address: s64, alignment: s64) -> s64 {
-    debug_assert(alignment > 0 && is_power_of_two(alignment));
+    sanity_assert(alignment > 0 && is_power_of_two(alignment));
     mask := alignment - 1;
     return (address + mask) & ~mask;
 }
@@ -292,7 +292,7 @@ align :: inline (pointer: *void, alignment: s64) -> *void {
 }
 
 is_aligned :: inline (address: s64, alignment: s64) -> bool {
-    debug_assert(alignment > 0 && is_power_of_two(alignment));
+    sanity_assert(alignment > 0 && is_power_of_two(alignment));
     mask := alignment - 1;
     return address == address & ~mask;
 }
@@ -305,10 +305,10 @@ is_power_of_two :: inline (value: s64) -> bool {
     return value & (value - 1) == 0;
 }
 
-#if DEBUG {
-    debug_assert :: (arg: bool, message := "", args: .. Any, loc := #caller_location) #no_debug #expand {
+#if SANITY {
+    sanity_assert :: (arg: bool, message := "", args: .. Any, loc := #caller_location) #no_debug #expand {
         assert(arg, message, args, loc);
     }
 } else {
-    debug_assert :: (#discard arg: bool, #discard message := "", #discard args: .. Any, #discard loc := #caller_location) #expand {}
+    sanity_assert :: (#discard arg: bool, #discard message := "", #discard args: .. Any, #discard loc := #caller_location) #expand {}
 }
