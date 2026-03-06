@@ -1,10 +1,11 @@
 f32 :: float32;
 f64 :: float64;
 
-#if #exists(DEVELOPER_BUILD) {
-    DEBUG :: DEVELOPER_BUILD;
+// SANITY enables additional costly asserts for operations.
+#if #exists(__SANITY) {
+    SANITY :: __SANITY;
 } else {
-    DEBUG :: false;
+    SANITY :: false;
 }
 
 #if OS == .WINDOWS {
@@ -32,7 +33,7 @@ File   :: #import "File";
 Window :: #import "Window_Creation";
 Input  :: #import "Input";
 Simp   :: #import "Simp";
-Editor :: #import,file "editor/editor.jai"()(DEBUG = DEBUG);
+Editor :: #import,file "editor/editor.jai"()(SANITY = SANITY);
 
 Random_State           :: Random.Random_State;
 random_seed            :: Random.random_seed;
