@@ -33,16 +33,13 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena) {
     buffer.gb.buffer.allocator = arena_allocator(arena);
     buffer.lines.allocator     = arena_allocator(arena);
 
-    // TODO(jt): @Cleanup We currently have a implicit newline at the end of the file. Consider
-    // making it explicit-but-undeletable (and adding/stripping it where necessary) to make stuff
-    // here simpler. Look for 'buffer.lines.count - 1' to find code that detects it.
     array_add(*buffer.lines);
 
     assert_valid(buffer);
 }
 
-// TODO(jt): @Speed Inserting large text could be sped up by parsing the text with SIMD. We
-// currently parse byte by byte. We currently insert a 1GB text file in around 5-6 seconds.
+// TODO(jt): @Speed Inserting 1GB of prose takes almost 6 seconds, most of which is spent parsing
+// unicode and updating the line metadata. We could do it SIMD?
 text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     ProfileZone("text_buffer_insert");
 
@@ -654,6 +651,8 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
     return y_changed;
 }
 
+// TODO(jt): @Speed Searching through 45 lines towards the end of a 1GB file takes about 350
+// milliseconds. Most of that time is spent in text_buffer_make_view_for_line.
 text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecting: bool) {
     ProfileZone("text_buffer_move_cursor_to_previous_blank_line");
 
@@ -694,6 +693,8 @@ text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecti
     assert_valid(buffer);
 }
 
+// TODO(jt): @Speed Searching through 45 lines towards the end of a 1GB file takes about 350
+// milliseconds. Most of that time is spent in text_buffer_make_view_for_line.
 text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: bool) {
     ProfileZone("text_buffer_move_cursor_to_next_blank_line");
 
@@ -762,6 +763,10 @@ text_buffer_get_max_cursor :: (buffer: Text_Buffer) -> Cursor {
     }
 }
 
+// TODO(jt): @Speed For 1GB files of regular prose, this takes too long, especially if called tens
+// or hundreds of times per frame. Can we do something about it? Maintain a list of "paragraphs"
+// that have a stable mapping to lines that we could use to skip over most lines? The mapping would
+// have to survive adding and deleting lines - we don't want to update every below the edit.
 text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s64) -> s64 {
     ProfileZone("text_buffer_get_gap_buffer_index_for_line");
 
