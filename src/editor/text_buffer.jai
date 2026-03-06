@@ -664,8 +664,7 @@ text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecti
     {
         line_index := buffer.cursor0.y - 1;
         while !found && line_index >= 0 {
-            line_start, line_end := text_buffer_get_cursors_for_line(buffer, line_index);
-            line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
+            line_view := text_buffer_make_view_for_line(buffer, line_index,, temp);
 
             // We can avoid utf8 parsing, because we are looking strictly for whitespace-only lines
             // and we scan them whole.
@@ -705,8 +704,7 @@ text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: 
     {
         line_index := buffer.cursor0.y + 1;
         while !found && line_index < buffer.lines.count {
-            line_start, line_end := text_buffer_get_cursors_for_line(buffer, line_index);
-            line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
+            line_view := text_buffer_make_view_for_line(buffer, line_index,, temp);
 
             // We can avoid utf8 parsing, because we are looking strictly for whitespace-only lines
             // and we scan them whole.
