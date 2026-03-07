@@ -169,7 +169,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     editor.mb_left_pressed = false;
 
-    clamp_cursor_to_scroll := false;
     clamp_scroll_to_cursor := editor.buffer_clamp_scroll_to_cursor;
     clamp_scroll_to_start_of_line := false;
     clamp_scroll_to_end_of_line := false;
@@ -186,8 +185,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .MOUSE_BUTTON_LEFT;  editor.mb_left_down = cast(bool, it.flags & .KEY_PRESSED); if it.flags & .KEY_PRESSED then editor.mb_left_pressed = true;
             }
         }
-
-        // TODO(jt): Mouse selection scrolling.
 
         if it.flags & .KEY_PRESSED {
             if it.type == {
@@ -315,24 +312,47 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    if input.mouse_wheel_delta != 0 {
-        // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
-        editor.buffer_viewport_scroll_target.y -= cast(f64, input.mouse_wheel_delta);
-        editor.buffer_viewport_scroll = editor.buffer_viewport_scroll_target;
-
-        clamp_cursor_to_scroll = true;
-    }
-
     // Upcast to f64 here, because we later multiply them with lines/columns, and we don't want to
     // accidentally do the multiply in f32, which is not precise enough in large buffers.
     buffer_cell_w := cast(f64, editor.font.max_glyph_width_in_scaled_pixels);
     buffer_cell_h := cast(f64, editor.font.line_height_in_scaled_pixels);
+
+    if input.mouse_wheel_delta != 0 {
+        // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
+        editor.buffer_viewport_scroll_target.y -= cast(f64, input.mouse_wheel_delta);
+        editor.buffer_viewport_scroll_target.y = clamp(editor.buffer_viewport_scroll_target.y, 0, buffer_cell_h * (editor.buffer.lines.count - 1));
+
+        editor.buffer_viewport_scroll = editor.buffer_viewport_scroll_target;
+    }
 
     //
     // Mouse Selection
     //
     if editor.mb_left_down {
         mouse := input.mouse_position;
+
+        SCROLL_SPEED : f64 : 10.0; // TODO(jt): Make dependent on how far the mouse is beyond the threshold.
+
+        if mouse.x < 0 {
+            editor.buffer_viewport_scroll_target.x -= SCROLL_SPEED;
+            editor.buffer_viewport_scroll_target.x = max(editor.buffer_viewport_scroll_target.x, 0);
+        } else if mouse.x > cast(f32, input.window_size.x) {
+            apron := 10 * buffer_cell_w; // XXX: Tune apron.
+
+            line_view := text_buffer_make_view_for_line(editor.buffer, editor.buffer.cursor0.y,, temp);
+            max_x := font_compute_position_on_line(editor.font, line_view, editor.buffer.cursor0.x) - input.window_size.x + apron;
+
+            editor.buffer_viewport_scroll_target.x += SCROLL_SPEED;
+            editor.buffer_viewport_scroll_target.x = min(editor.buffer_viewport_scroll_target.x, max_x);
+        }
+
+        if mouse.y < 0 {
+            editor.buffer_viewport_scroll_target.y -= SCROLL_SPEED;
+            editor.buffer_viewport_scroll_target.y = max(editor.buffer_viewport_scroll_target.y, 0);
+        } else if mouse.y > cast(f32, input.window_size.y) {
+            editor.buffer_viewport_scroll_target.y += SCROLL_SPEED;
+            editor.buffer_viewport_scroll_target.y = min(editor.buffer_viewport_scroll_target.y, buffer_cell_h * (editor.buffer.lines.count - 1));
+        }
 
         row := cast(s64, floor((mouse.y + editor.buffer_viewport_scroll.y) / buffer_cell_h));
         col := 0;
@@ -365,17 +385,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     //
-    // Move cursor to buffer, if scroll changed without moving cursor. Cursor takes precedence, however.
-    //
-    if clamp_scroll_to_cursor {
-        clamp_cursor_to_scroll = false;
-    }
-    if clamp_cursor_to_scroll {
-        // XXX: Find topmost and bottommost line we can move the cursor to and do it.
-    }
-
-    //
-    // Scroll buffer to cursor, if buffer changed
+    // Scroll buffer to cursor, if buffer changed. Clamp cursor to buffer, if buffer scrolled.
     //
     if clamp_scroll_to_cursor || clamp_scroll_to_start_of_line || clamp_scroll_to_end_of_line {
         ProfileZone(":ClampScroll");
