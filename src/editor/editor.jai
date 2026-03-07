@@ -107,6 +107,8 @@ Editor :: struct {
     key_alt_down: bool;
     key_shift_down: bool;
     key_meta_down: bool;
+
+    mb_left_down: bool;
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
@@ -132,7 +134,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.key_shift_down = false;
     editor.key_meta_down = false;
 
-    hello_text := make_large_hello_text(1024 << 20,, temp);
+    editor.mb_left_down = false;
+
+    hello_text := make_hello_text(4 << 10,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
     editor.buffer_clamp_scroll_to_cursor = true;
 
@@ -158,6 +162,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions: [..] IRect;
     update_regions.allocator = temp;
 
+    // TODO(jt): If we do more stuff like this, maybe we should have our usual input_state thing.
+    mb_left_pressed := false;
+
     clamp_scroll_to_cursor := editor.buffer_clamp_scroll_to_cursor;
     clamp_scroll_to_start_of_line := false;
     clamp_scroll_to_end_of_line := false;
@@ -167,25 +174,41 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     for input.events {
         if it.type == {
             case .KEY; if it.data.key == {
-                case .CTRL;   editor.key_ctrl_down = cast(bool, it.flags & .KEY_PRESSED);
-                case .ALT;    editor.key_alt_down = cast(bool, it.flags & .KEY_PRESSED);
+                case .CTRL;               editor.key_ctrl_down = cast(bool, it.flags & .KEY_PRESSED);
+                case .ALT;                editor.key_alt_down = cast(bool, it.flags & .KEY_PRESSED);
                 case .SHIFT; {
                     editor.key_shift_down = cast(bool, it.flags & .KEY_PRESSED);
-
                     if editor.key_shift_down {
-                        // If we were already selecting (because of C-SPACE), flush that.
+                        // If we were already selecting because of C-SPC or mouse, flush that.
                         if editor.buffer_selecting {
                             text_buffer_join_cursors(*editor.buffer);
                         }
                         editor.buffer_selecting = true;
                     } else {
-                        editor.buffer_selecting = false;
+                        editor.buffer_selecting = editor.mb_left_down; // Nobody cares, but we could still be selecting with mouse.
                     }
-
                 }
-                case .META;   editor.key_meta_down = cast(bool, it.flags & .KEY_PRESSED);
+                case .META;               editor.key_meta_down = cast(bool, it.flags & .KEY_PRESSED);
+                case .MOUSE_BUTTON_LEFT; {
+                    editor.mb_left_down = cast(bool, it.flags & .KEY_PRESSED);
+                    if editor.mb_left_down {
+                        // If we were already selecting because of C-SPC or shift, flush that.
+                        if editor.buffer_selecting {
+                            text_buffer_join_cursors(*editor.buffer);
+                        }
+
+                        mb_left_pressed = true;
+                        editor.buffer_selecting = true;
+                    } else {
+                        editor.buffer_selecting = editor.key_shift_down; // Nobody cares, but we could still be selecting with shift.
+                    }
+                }
             }
         }
+
+        // TODO(jt): Mouse wheel scrolling.
+        // TODO(jt): Touchpad scrolling.
+        // TODO(jt): Mouse selection scrolling.
 
         if it.flags & .KEY_PRESSED {
             if it.type == {
@@ -199,9 +222,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .PAGE_UP;      scroll_viewport_up(editor, input);
                         case .PAGE_DOWN;    scroll_viewport_down(editor, input);
 
-                        // TODO(jt): Move screen to the beginning and end of buffer.
-                        case .HOME;
-                        case .END;
+
+                        case .HOME;         text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                        case .END;          text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
                     }
                 }
 
@@ -256,6 +279,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             }
                         }
                     } else if editor.key_alt_down {
+                        log("XXX: %", it.data.codepoint);
+
                         if it.data.codepoint == {
                             case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
@@ -266,6 +291,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 clamp_scroll_to_start_of_line |= text_buffer_move_cursor_to_next_word_boundary(*editor.buffer, editor.buffer_selecting);
                                 clamp_scroll_to_cursor = true;
                             case #char "V";  scroll_viewport_up(editor, input);
+
+                            // XXX: Again we have the thing where macOS sends something else when alt is down.
+                            case #char "<";  text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char ">";  text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
                         }
                     } else {
                         editor.buffer_selecting = false;
@@ -309,6 +338,32 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // accidentally do the multiply in f32, which is not precise enough in large buffers.
     buffer_cell_w := cast(f64, editor.font.max_glyph_width_in_scaled_pixels);
     buffer_cell_h := cast(f64, editor.font.line_height_in_scaled_pixels);
+
+    //
+    // Mouse Selection
+    //
+    if editor.mb_left_down {
+        mouse := input.mouse_position;
+
+        row := cast(s64, floor((mouse.y + editor.buffer_viewport_scroll.y) / buffer_cell_h));
+        col := 0;
+
+        if row < 0 {
+            row = 0;
+            col = 0;
+        } else if row > editor.buffer.lines.count - 1 {
+            row = editor.buffer.lines.count - 1;
+
+            line_view := text_buffer_make_view_for_line(editor.buffer, row,, temp);
+            col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + editor.buffer_viewport_scroll.x);
+        } else {
+            line_view := text_buffer_make_view_for_line(editor.buffer, row,, temp);
+            col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + editor.buffer_viewport_scroll.x);
+        }
+
+        text_buffer_move_cursor_to(*editor.buffer, col, row, !mb_left_pressed && editor.buffer_selecting);
+    }
+
     buffer_cursor0_position: DVector2;
     buffer_cursor0_line_end_x: f64;
     {
@@ -328,8 +383,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         window_w := cast(f32, input.window_size.x);
         window_h := cast(f32, input.window_size.y);
 
-        SCROLL_PADDING_CELLS_X :: 0; // TODO(jt): #config Make this configurable. I don't like having this, so I turned it off.
-        SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): #config Make this configurable. I don't like having this, so I turned it off.
+        SCROLL_PADDING_CELLS_X :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
+        SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
         scroll_padding_x := min(window_w * 0.25, cast(f32, buffer_cell_w) * SCROLL_PADDING_CELLS_X);
         scroll_padding_y := min(window_h * 0.25, cast(f32, buffer_cell_h) * SCROLL_PADDING_CELLS_Y);
 
@@ -617,7 +672,7 @@ print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
     }
 }
 
-make_large_hello_text :: (approx_size_in_bytes: s64) -> string {
+make_hello_text :: (approx_size_in_bytes: s64) -> string {
     result_bytes: s64 = 0;
 
     b: String_Builder;
