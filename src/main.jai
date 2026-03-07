@@ -433,7 +433,7 @@ main :: () {
                     // #WaitForEvents
                     //
                     // On Windows (TM), we wait for new events with WaitMessage.
-                    WaitMessage();
+                    WaitMessage(); // XXX: Sometimes on Windows we don't exit properly (the window closes, but the process stays). Is it related to this?
                 }
 
                 #if OS == .MACOS {
