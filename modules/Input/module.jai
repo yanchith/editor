@@ -1,5 +1,11 @@
-// This modules/Input is slighly modified. On macOS, we make a text event from a key event using
-// NSEvent.charactersIgnoringModifiers instead of NSEvent.characters.
+// This modules/Input is slighly modified.
+//
+// On macOS, we make a text event from a key event using NSEvent.charactersIgnoringModifiers instead
+// of NSEvent.characters, because we need to receive the original character before macOS modifies it
+// with Alt.
+//
+// On Windows, we make sure a text event is even generated, if Alt is pressed by creating it when we
+// receive a WM_SYSCHAR.
 //
 // For now, also X11 and Android backends are deleted.
 //
