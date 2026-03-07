@@ -5,23 +5,25 @@ TODO(jt): Stuff to do:
 - [X] Implement Arena, or use Flat_Pool.
 - [X] Display text on screen
 - [ ] Nice font rendering. Subpixel/SDF/Slug
-- [ ] Font Kerning
 
 - [X] Gap Buffer (or other text datastructure)
 
 - [X] Basic file navigation
 - [X] Basic file editing
 - [ ] Load file/Save file
-- [ ] Undo!
+- [ ] Cut/Copy/Paste (also kill ring?)
+- [ ] Undo! (Emacs-like?)
 
-- [ ] Read only mode. Automatically on for files that had to undergo load fixups.
+TODO(jt): Fancy stuff to do:
 
 - [ ] Sytax Highlighting
-- [ ] Indentation
-- [ ] Git integration?
+- [ ] Automatic indentation (C-i)
+- [ ] Read only mode. Automatically on for files that had to undergo load fixups.
+- [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
+- [ ] Font Kerning
+- [ ] Git integration
 
 - [ ] Customization and plugins
-
 
 TODO(jt): Decide whether we want to be using context.allocator. The problem is that it is not always
 clear without carefully reading a procedure's code, if that procedure *actively* expects the context
