@@ -104,6 +104,26 @@ MyWindowProc :: (hwnd: HWND, message: u32,
           case WM_SYSCHAR;
               // This is here to prevent beeps when a Alt key combo is pressed. If we don't return 0, windows helpfully emits a beep sound to
               // indicate the user that the key wasn't handled.
+            //
+            // NOTE(jt): In addition to not forwarding this to DefWindowProc, we generate a text
+            // event, because otherwise we'd have no way of getting Alt+key.
+            //
+            // :ModifiedInputModule
+            //
+            // TODO(jt): @Cleanup Is this a hack? Should this be another event type? In the editor,
+            // we look for Alt being pressed and do not treat this as a text input, but I don't know.
+            keycode := wParam;
+
+            if keycode > 31 {
+                // Control characters generate key codes < 32, but these are redundant
+                // with KEYDOWN events and are also ambiguous (ctrl-m generates 13, but
+                // so does RETURN.)
+                event: Event;
+                event.type = .TEXT_INPUT;
+                event.utf32 = xx keycode;
+
+                array_add(*events_this_frame, event);
+            }
 
           case WM_CHAR;
             keycode := wParam;

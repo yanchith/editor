@@ -317,7 +317,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     if input.mouse_wheel_delta != 0 {
         // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
-        editor.buffer_viewport_scroll_target.y += cast(f64, input.mouse_wheel_delta);
+        editor.buffer_viewport_scroll_target.y -= cast(f64, input.mouse_wheel_delta);
         editor.buffer_viewport_scroll = editor.buffer_viewport_scroll_target;
 
         clamp_cursor_to_scroll = true;

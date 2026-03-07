@@ -297,6 +297,12 @@ update_cocoa_window_events :: () {
                 array_add(*events_this_frame, event);
             case NSEventTypeKeyDown;
                 keycode := NSEvent.keyCode(nsevent);
+
+                // NOTE(jt): We get the characters ignoring modifiers, because we want to receive
+                // e.g. M->, which on macOS would be translated to something else, if we didn't
+                // ignore them.
+                //
+                // :ModifiedInputModule
                 characters := NSEvent.charactersIgnoringModifiers(nsevent);
                 modifiers := NSEvent.modifierFlags(nsevent);
 
