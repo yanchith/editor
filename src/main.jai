@@ -182,7 +182,6 @@ main :: () {
             // draw command instead of looping and binding per iteration. If they for some reason
             // don't fit into one texture, we'd flush thhe pipeline.
             for render_rects {
-
                 texture := table_find_pointer(*renderer_textures, it.texture_id);
                 if texture {
                     // NOTE(jt): This is where we'd normally call
@@ -413,6 +412,7 @@ main :: () {
             if success {
                 input.mouse_position = .{ cast(f32, mouse_x), cast(f32, mouse_y) };
             }
+            input.mouse_wheel_delta = Input.mouse_delta_z;
 
             input.events = input_events;
 
