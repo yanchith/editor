@@ -449,6 +449,8 @@ text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
 }
 
 text_buffer_move_cursor_to :: (buffer: *Text_Buffer, _x: s64, _y: s64, selecting: bool) {
+    assert_valid(buffer);
+
     y := clamp(_y, 0, buffer.lines.count);
     x := clamp(_x, 0, buffer.lines[y].char_count);
 
@@ -457,23 +459,34 @@ text_buffer_move_cursor_to :: (buffer: *Text_Buffer, _x: s64, _y: s64, selecting
     if !selecting {
         buffer.cursor1 = buffer.cursor0;
     }
+
+    assert_valid(buffer);
 }
 
 text_buffer_move_cursor_to_start :: (buffer: *Text_Buffer, selecting: bool) {
-    buffer.cursor0 = { 0, 0, };
+    assert_valid(buffer);
+
+    buffer.cursor0 = { 0, 0 };
 
     if !selecting {
         buffer.cursor1 = buffer.cursor0;
     }
+
+    assert_valid(buffer);
 }
 
 text_buffer_move_cursor_to_end :: (buffer: *Text_Buffer, selecting: bool) {
+    assert_valid(buffer);
+
     y := buffer.lines.count - 1;
-    x := buffer.lines[y].char_count - 1;
+    x := buffer.lines[y].char_count;
+    buffer.cursor0 = { x, y };
 
     if !selecting {
         buffer.cursor1 = buffer.cursor0;
     }
+
+    assert_valid(buffer);
 }
 
 text_buffer_move_cursor_to_start_of_line :: (buffer: *Text_Buffer, selecting: bool)  {
