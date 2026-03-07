@@ -169,6 +169,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     editor.mb_left_pressed = false;
 
+    clamp_cursor_to_scroll := false;
     clamp_scroll_to_cursor := editor.buffer_clamp_scroll_to_cursor;
     clamp_scroll_to_start_of_line := false;
     clamp_scroll_to_end_of_line := false;
@@ -186,8 +187,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
         }
 
-        // TODO(jt): Mouse wheel scrolling.
-        // TODO(jt): Touchpad scrolling.
         // TODO(jt): Mouse selection scrolling.
 
         if it.flags & .KEY_PRESSED {
@@ -316,6 +315,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
+    if input.mouse_wheel_delta != 0 {
+        // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
+        editor.buffer_viewport_scroll_target.y += cast(f64, input.mouse_wheel_delta);
+        editor.buffer_viewport_scroll = editor.buffer_viewport_scroll_target;
+
+        clamp_cursor_to_scroll = true;
+    }
+
     // Upcast to f64 here, because we later multiply them with lines/columns, and we don't want to
     // accidentally do the multiply in f32, which is not precise enough in large buffers.
     buffer_cell_w := cast(f64, editor.font.max_glyph_width_in_scaled_pixels);
@@ -355,6 +362,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, editor.buffer.cursor0.x);
         buffer_cursor0_position.y = editor.buffer.cursor0.y * buffer_cell_h;
         buffer_cursor0_line_end_x = font_compute_position_on_line(editor.font, c0_line_view, c0_line_end.x);
+    }
+
+    //
+    // Move cursor to buffer, if scroll changed without moving cursor. Cursor takes precedence, however.
+    //
+    if clamp_scroll_to_cursor {
+        clamp_cursor_to_scroll = false;
+    }
+    if clamp_cursor_to_scroll {
+        // XXX: Find topmost and bottommost line we can move the cursor to and do it.
     }
 
     //

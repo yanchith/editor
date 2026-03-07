@@ -2,8 +2,10 @@ Input :: struct {
     time:  Apollo_Time;
     dtime: Apollo_Time;
 
-    window_size:    IVector2;
-    mouse_position: Vector2;
+    window_size: IVector2;
+
+    mouse_position:    Vector2;
+    mouse_wheel_delta: s64;
 
     // TODO(jt): For now we can do what the input module gives us, but we'll have to grow beyond
     // that to be usable. We need a stream of pressed keys? Do we want to get Unicode codepoints?
