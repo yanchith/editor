@@ -111,6 +111,8 @@ Editor :: struct {
     key_meta_down: bool;
 
     mb_left_down: bool;
+    // TODO(jt): If we do more stuff like this, maybe we should have our usual input_state thing.
+    mb_left_pressed: bool;
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
@@ -137,6 +139,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.key_meta_down = false;
 
     editor.mb_left_down = false;
+    editor.mb_left_pressed = false;
 
     hello_text := make_hello_text(4 << 10,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
@@ -164,8 +167,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions: [..] IRect;
     update_regions.allocator = temp;
 
-    // TODO(jt): If we do more stuff like this, maybe we should have our usual input_state thing.
-    mb_left_pressed := false;
+    editor.mb_left_pressed = false;
 
     clamp_scroll_to_cursor := editor.buffer_clamp_scroll_to_cursor;
     clamp_scroll_to_start_of_line := false;
@@ -178,33 +180,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             case .KEY; if it.data.key == {
                 case .CTRL;               editor.key_ctrl_down = cast(bool, it.flags & .KEY_PRESSED);
                 case .ALT;                editor.key_alt_down = cast(bool, it.flags & .KEY_PRESSED);
-                case .SHIFT; {
-                    editor.key_shift_down = cast(bool, it.flags & .KEY_PRESSED);
-                    if editor.key_shift_down {
-                        // If we were already selecting because of C-SPC or mouse, flush that.
-                        if editor.buffer_selecting {
-                            text_buffer_join_cursors(*editor.buffer);
-                        }
-                        editor.buffer_selecting = true;
-                    } else {
-                        editor.buffer_selecting = editor.mb_left_down; // Nobody cares, but we could still be selecting with mouse.
-                    }
-                }
+                case .SHIFT;              editor.key_shift_down = cast(bool, it.flags & .KEY_PRESSED);
                 case .META;               editor.key_meta_down = cast(bool, it.flags & .KEY_PRESSED);
-                case .MOUSE_BUTTON_LEFT; {
-                    editor.mb_left_down = cast(bool, it.flags & .KEY_PRESSED);
-                    if editor.mb_left_down {
-                        // If we were already selecting because of C-SPC or shift, flush that.
-                        if editor.buffer_selecting {
-                            text_buffer_join_cursors(*editor.buffer);
-                        }
-
-                        mb_left_pressed = true;
-                        editor.buffer_selecting = true;
-                    } else {
-                        editor.buffer_selecting = editor.key_shift_down; // Nobody cares, but we could still be selecting with shift.
-                    }
-                }
+                case .MOUSE_BUTTON_LEFT;  editor.mb_left_down = cast(bool, it.flags & .KEY_PRESSED); if it.flags & .KEY_PRESSED then editor.mb_left_pressed = true;
             }
         }
 
@@ -215,15 +193,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if it.flags & .KEY_PRESSED {
             if it.type == {
                 case .KEY; {
+                    // We can't go into global selecting mode if shift is down, because many
+                    // Emacs-like shortcuts require shift. Therefore we only enable it for arrow
+                    // keys. If we selected something using shift selecting, we also turn off global
+                    // buffer selecting.
+                    shift_selecting := editor.key_shift_down;
+
                     if it.data.key == {
-                        case .ARROW_UP;     text_buffer_move_cursor_y(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                        case .ARROW_DOWN;   text_buffer_move_cursor_y(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                        case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                        case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                        case .ARROW_UP;     text_buffer_move_cursor_y(*editor.buffer, -1, shift_selecting || editor.buffer_selecting); clamp_scroll_to_cursor = true; if shift_selecting then editor.buffer_selecting = false;
+                        case .ARROW_DOWN;   text_buffer_move_cursor_y(*editor.buffer,  1, shift_selecting || editor.buffer_selecting); clamp_scroll_to_cursor = true; if shift_selecting then editor.buffer_selecting = false;
+                        case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, shift_selecting || editor.buffer_selecting); clamp_scroll_to_cursor = true; if shift_selecting then editor.buffer_selecting = false;
+                        case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, shift_selecting || editor.buffer_selecting); clamp_scroll_to_cursor = true; if shift_selecting then editor.buffer_selecting = false;
 
                         case .PAGE_UP;      scroll_viewport_up(editor, input);
                         case .PAGE_DOWN;    scroll_viewport_down(editor, input);
-
 
                         case .HOME;         text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                         case .END;          text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
@@ -281,8 +264,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             }
                         }
                     } else if editor.key_alt_down {
-                        log("XXX: %", it.data.codepoint);
-
                         if it.data.codepoint == {
                             case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
@@ -294,7 +275,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 clamp_scroll_to_cursor = true;
                             case #char "V";  scroll_viewport_up(editor, input);
 
-                            // XXX: Again we have the thing where macOS sends something else when alt is down.
                             case #char "<";  text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char ">";  text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
                         }
@@ -363,7 +343,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + editor.buffer_viewport_scroll.x);
         }
 
-        text_buffer_move_cursor_to(*editor.buffer, col, row, !mb_left_pressed && editor.buffer_selecting);
+        text_buffer_move_cursor_to(*editor.buffer, col, row, !editor.mb_left_pressed);
     }
 
     buffer_cursor0_position: DVector2;

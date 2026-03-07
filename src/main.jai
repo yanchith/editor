@@ -31,7 +31,7 @@ Random :: #import "Random";
 String :: #import "String";
 File   :: #import "File";
 Window :: #import "Window_Creation";
-Input  :: #import "Input";
+Input  :: #import "Input"; // This is our modified version. See :ModifiedInputModule.
 Simp   :: #import "Simp";
 Editor :: #import,file "editor/editor.jai"()(SANITY = SANITY);
 
@@ -137,7 +137,6 @@ main :: () {
 
             return success, cast([] u8, data);
         }
-
 
         renderer_shader.gl_handle = Simp.get_shader_program(SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL);
         renderer_shader.alpha_blend = true;
