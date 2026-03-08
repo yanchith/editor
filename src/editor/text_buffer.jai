@@ -308,12 +308,12 @@ text_buffer_get_start_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) 
     return start;
 }
 
-text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline_at_the_end := false) -> Cursor {
+text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false) -> Cursor {
     assert_line_valid(buffer, line_index);
 
     line := buffer.lines[line_index];
     endx: s64;
-    if include_newline_at_the_end || line_index == buffer.lines.count - 1 {
+    if include_newline || line_index == buffer.lines.count - 1 {
         endx = line.char_count;
     } else {
         endx = line.char_count - 1;
@@ -324,15 +324,15 @@ text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64, in
     return end;
 }
 
-text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline_at_the_end := false) -> Cursor, Cursor {
+text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false) -> Cursor, Cursor {
     start: Cursor = text_buffer_get_start_cursor_for_line(buffer, line_index);
-    end:   Cursor = text_buffer_get_end_cursor_for_line(buffer, line_index, include_newline_at_the_end);
+    end:   Cursor = text_buffer_get_end_cursor_for_line(buffer, line_index, include_newline);
 
     return start, end;
 }
 
 // A 2x-ish faster, specialized version of text_buffer_make_view_between_cursors. Use if you can.
-text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline_at_the_end := false) -> string /* Pointing to the internal gap bufffer, or allocated with context.allocator */ {
+text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false) -> string /* Pointing to the internal gap bufffer, or allocated with context.allocator */ {
     ProfileZone("text_buffer_make_view_for_line");
 
     assert_line_valid(buffer, line_index);
@@ -342,7 +342,7 @@ text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include
     start_index := text_buffer_get_gap_buffer_index_for_line(buffer, line_index);
     view        := gap_buffer_make_contiguous_view(buffer.gb, start_index, line.byte_count);
 
-    if !include_newline_at_the_end {
+    if !include_newline {
         _, newline_length := string_ends_with_newline(view);
         view.count -= newline_length;
     }
