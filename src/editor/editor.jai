@@ -159,6 +159,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
     profiler_start_frame("update_and_render");
 
+    dt := to_float64_seconds(input.dtime);
+
     wants_quit       := false;
     wants_next_frame := false;
 
@@ -326,34 +328,54 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     //
-    // Mouse Selection
+    // Mouse Selection and mouse selection scrolling
+    //
+    // TODO(jt): Double click to select word.
+    // TODO(jt): Triple click to select line.
     //
     if editor.mb_left_down {
         mouse := input.mouse_position;
 
-        SCROLL_APRON : f32 :  5.0;
-        SCROLL_SPEED : f64 : 10.0; // TODO(jt): Make dependent on how far the mouse is beyond the threshold.
+        SCROLL_APRON : f32 :  50.0;
+        SCROLL_SPEED : f64 :  10.0;
+        SCROLL_BOOST : f64 :   5.0;
 
         if mouse.x < SCROLL_APRON {
-            editor.buffer_viewport_scroll_target.x -= SCROLL_SPEED;
+            boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
+
+            editor.buffer_viewport_scroll_target.x -= SCROLL_SPEED * boost * dt;
             editor.buffer_viewport_scroll_target.x = max(editor.buffer_viewport_scroll_target.x, 0);
+
+            wants_next_frame = true;
         } else if mouse.x > cast(f32, input.window_size.x) - SCROLL_APRON {
+            boost := (mouse.x - (cast(f32, input.window_size.x) - SCROLL_APRON)) * SCROLL_BOOST;
+
             // Apron contains the newline (if present) and one additional horizontal cell.
             apron := 2 * buffer_cell_w;
 
             line_view := text_buffer_make_view_for_line(editor.buffer, editor.buffer.cursor0.y,, temp);
             max_x := font_compute_position_on_line(editor.font, line_view, editor.buffer.cursor0.x) - input.window_size.x + apron;
 
-            editor.buffer_viewport_scroll_target.x += SCROLL_SPEED;
+            editor.buffer_viewport_scroll_target.x += SCROLL_SPEED * boost * dt;
             editor.buffer_viewport_scroll_target.x = min(editor.buffer_viewport_scroll_target.x, max_x);
+
+            wants_next_frame = true;
         }
 
         if mouse.y < SCROLL_APRON {
-            editor.buffer_viewport_scroll_target.y -= SCROLL_SPEED;
+            boost := (SCROLL_APRON - mouse.y) * SCROLL_BOOST;
+
+            editor.buffer_viewport_scroll_target.y -= SCROLL_SPEED * boost * dt;
             editor.buffer_viewport_scroll_target.y = max(editor.buffer_viewport_scroll_target.y, 0);
+
+            wants_next_frame = true;
         } else if mouse.y > cast(f32, input.window_size.y) - SCROLL_APRON {
-            editor.buffer_viewport_scroll_target.y += SCROLL_SPEED;
+            boost := (mouse.y - (cast(f32, input.window_size.y) - SCROLL_APRON)) * SCROLL_BOOST;
+
+            editor.buffer_viewport_scroll_target.y += SCROLL_SPEED * boost * dt;
             editor.buffer_viewport_scroll_target.y = min(editor.buffer_viewport_scroll_target.y, buffer_cell_h * (editor.buffer.lines.count - 1));
+
+            wants_next_frame = true;
         }
 
         row := cast(s64, floor((mouse.y + editor.buffer_viewport_scroll.y) / buffer_cell_h));
