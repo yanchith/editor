@@ -1,24 +1,14 @@
-// A gap buffer operating on bytes. The bytes are assumed to be utf8, but this module does not
-// handle Unicode at all. The calling code has to do utf8 parsing and provide proper byte
-// indices.
-//
-// TODO(jt): @Speed Gap Buffers have (theoretical?) problems with multiple cursors. Maybe we
-// eventually want something more complicated?
+// A gap buffer operating on bytes. The bytes can be utf8, but this module does not care at all. The
+// calling code has to do utf8 parsing and provide proper byte indices.
 Gap_Buffer :: struct {
-    count: s64; // Stored here for the caller's convenience. Always buffer.count - gap_count.
+    buffer: [..] u8; // You can modify the allocator before you use the gap buffer.
+
+    // Read only properties below.
+
+    count: s64; // Here for the caller's convenience. Always buffer.count - gap_count.
 
     gap_index: s64;
     gap_count: s64;
-
-    buffer: [..] u8;
-}
-
-// You don't have to call gap_buffer_init. It only helps you pre-allocate the internal buffer.
-gap_buffer_init :: (gb: *Gap_Buffer, initial_gap_count := 256) {
-    assert_valid(gb);
-
-    gb.gap_count = initial_gap_count;
-    array_resize(*gb.buffer, initial_gap_count);
 }
 
 gap_buffer_get_nongap_byte :: (gb: Gap_Buffer, index: s64) -> u8 {
@@ -147,7 +137,7 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* P
 }
 
 // Deletes at the gap, moving backward. Returns number of actually deleted bytes.
-// TODO(jt): Retur view of deleted content.
+// TODO(jt): Return view of deleted bytes, like delete forward does.
 gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
     ProfileZone("gap_buffer_delete_backward");
 

@@ -77,8 +77,8 @@ operator==     :: Math.operator==;
 #load "platform.jai";
 #load "renderer.jai";
 #load "input.jai";
-#load "gap_buffer.jai";
 #load "font.jai";
+#load "gap_buffer.jai";
 #load "text_buffer.jai";
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
