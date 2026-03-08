@@ -6,15 +6,13 @@ Layer 2: Emacs-like editing experience
 
 - emacs-like editing experience
 - split panes
-- moving around (next, previous, forward, backwards, jump to next/prev empty line)
-- kill/yank
 - swiper
 
 - find/replace
 - project-wide find/replace
 - project-wide swiper (rg)
 
-- indentation and highlighting based on syntax (single generic parser with keywords and parentheses defines)
+- indentation and highlighting based on syntax
 
 - multiple cursors (although maybe it isn't worth it?)
 
