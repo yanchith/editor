@@ -16,9 +16,11 @@ TODO(jt): Stuff to do:
 
 TODO(jt): Fancy stuff to do:
 
-- [ ] Sytax Highlighting
+- [ ] Syntax Highlighting
+- [ ] Themes
 - [ ] Automatic indentation (C-i)
-- [ ] Read only mode. Automatically on for files that had to undergo load fixups.
+- [ ] Lister panels
+- [ ] Read only mode. Automatically on for files that had to undergo load fixups, as well as lister panels.
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
 - [ ] Git integration
