@@ -8,8 +8,11 @@ Text_Buffer :: struct {
 
     gb: Gap_Buffer;   // Stores the UTF-8 bytes.
     lines: [..] Line; // Stores line navigation data. Always at least one.
+    patches: [..] Patch; // Patches store undo history.
 
-    patches: [..] Patch; // Stores undo history.
+    // This arena stores the actual patch texts. This way, we can actually pop/decommit it at least
+    // sometimes? Maybe this is overthinking it too much.
+    patch_text_arena: *Arena;
 }
 
 Cursor :: struct {
@@ -32,19 +35,19 @@ Patch :: struct {
 
     cursor0_before: Cursor;
     cursor0_after:  Cursor;
-    // TODO(jt): Preserve cursor1?
+    cursor1_before: Cursor;
+    cursor1_after:  Cursor;
 
     type: Patch_Type;
     flags: Patch_Flags;
 
     Patch_Type :: enum u32 {
-        INSERT :: 0; // Text was inserted. Delete when undoing. Insert when redoing.
-        DELETE :: 1; // Text was deleted. Insert when undoing. Delete when redoing.
+        // We could have emulated delete backward with moving the cursor and deleting forward or
+        // vice versa, but for now we haven't, so both these operations appear in undo.
 
-        // XXX: What about delete forward vs delete backward? Should we even care about delete
-        // backward? We could just emulate it by moving the cursor back first and then doing delete
-        // forward, if that doesn't generate more complexity (we need to account for the
-        // delete_count parameter when thinking about this).
+        INSERT          :: 0; // Text was inserted. Delete backward when undoing. Insert when redoing.
+        DELETE_FORWARD  :: 1; // Text was deleted forward. Insert when undoing. Delete forward when redoing.
+        DELETE_BACKWARD :: 2; // Text was deleted backward. Insert when undoing. Delete backward when redoing.
     }
 
     Patch_Flags :: enum_flags u32 {
@@ -54,15 +57,16 @@ Patch :: struct {
 }
 
 // Init has to be called currently (or someone must do its equivalent). We might redesign it.
-text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena) {
+text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, patch_text_arena: *Arena) {
     buffer.* = {};
 
     buffer.arena = arena;
 
     buffer.gb.buffer.allocator = arena_allocator(arena);
     buffer.lines.allocator     = arena_allocator(arena);
+    buffer.patches.allocator   = arena_allocator(arena);
 
-    buffer.patches.allocator = arena_allocator(arena);
+    buffer.patch_text_arena = patch_text_arena;
 
     array_add(*buffer.lines);
 
@@ -77,11 +81,11 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
+        text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1, mark_patch_through = true);
         assert(buffer.cursor0 == buffer.cursor1);
     }
 
-    // TODO(jt): So we insert the text into the gap buffer regardless of whether its valid, and then
+    // TODO(jt): So we insert the text into the gap buffer regardless of whether it is valid, and then
     // process the string to update our navigation structures. If we detect invalid unicode, we just
     // assert for now, but we should eventually patch the invalid sequences with unicode replacement
     // chararacters. (And go to read-only mode?)
@@ -89,6 +93,18 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, text_buffer_get_min_cursor(buffer));
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     gap_buffer_insert(*buffer.gb, text);
+
+    patch := array_add(*buffer.patches);
+    patch.text = copy_string(text,, arena_allocator(buffer.patch_text_arena));
+    patch.gb_index = gb_index;
+    patch.cursor0_before = buffer.cursor0;
+    // patch.cursor0_after is set at the end of this function.
+    patch.cursor1_before = buffer.cursor1;
+    // patch.cursor1_after is set at the end of this function.
+    patch.type = .INSERT;
+    if text.count == 1 {
+        patch.flags |= .THROUGH;
+    }
 
     // While we could compute bytes_on_line_before_cursor by asking our procedure to do that for
     // every line, that procedure has to iterate our navigation structures, and it would result in
@@ -148,12 +164,15 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
         bytes_on_line_before_cursor += codepoint_advance;
     }
 
+    patch.cursor0_after = buffer.cursor0;
+    patch.cursor1_after = buffer.cursor0;
+
     buffer.cursor1 = buffer.cursor0;
 
     assert_valid(buffer);
 }
 
-text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _end: Cursor) {
+text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _end: Cursor, mark_patch_through := false) {
     ProfileZone("text_buffer_delete_between_cursors");
 
     assert_valid(buffer);
@@ -180,6 +199,18 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _en
 
     buffer.cursor0 = start;
     buffer.cursor1 = start;
+
+    patch := array_add(*buffer.patches);
+    patch.text = copy_string(cast(string, deleted_bytes),, arena_allocator(buffer.patch_text_arena));
+    patch.gb_index = start_gb_index;
+    patch.cursor0_before = start;
+    patch.cursor0_after = start;
+    patch.cursor1_before = end;
+    patch.cursor1_after = start;
+    patch.type = .DELETE_FORWARD;
+    if mark_patch_through {
+        patch.flags = .THROUGH;
+    }
 
     while deleted_bytes.count > 0 {
         newline, newline_advance := string_starts_with_newline(deleted_bytes);
