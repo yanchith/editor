@@ -459,11 +459,17 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
                 buffer.cursor0 = patch.cursor0_after;
                 buffer.cursor1 = patch.cursor1_after;
 
-                // XXX: HERE We want to say the byte count to delete_backwards, but that's actually
-                // a whole different procedure, because the current one scans UTF to determine how
-                // much to delete in bytes.
-                //
-                // text_buffer_delete_backward(buffer, patch.text.count);
+                gap_buffer_move_gap_to(*buffer.gb, patch.gb_index_after);
+                deleted_bytes := gap_buffer_delete_backward(*buffer.gb, patch.text.count);
+
+                sanity_assert(cast(string, deleted_bytes) == patch.text);
+
+                // XXX: HERE Parse text and move navigation data. We should probably make a routine
+                // out of this and also use it in the regular delete backward routine.
+                for < :Unicode.utf8_iter cast(string, deleted_bytes) {
+                    // XXX: If the iterator doesn't recognize \r\n, we can't use it and have to do
+                    // our own approach of detecting that.
+                }
 
                 sanity_assert(buffer.cursor0 == patch.cursor0_before);
                 sanity_assert(buffer.cursor1 == patch.cursor1_before);
@@ -478,8 +484,6 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
             break;
         }
     }
-
-
 }
 
 text_buffer_redo_edit :: (buffer: *Text_Buffer) {
