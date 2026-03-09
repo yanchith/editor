@@ -1,0 +1,1 @@
+UX: Commit everything if nothing is staged (like VS Code does?)
