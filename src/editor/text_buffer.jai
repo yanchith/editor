@@ -60,7 +60,7 @@ Patch :: struct {
     }
 }
 
-// Init has to be called currently (or someone must do its equivalent). We might redesign it.
+// text_buffer_init has to be called, or someone must do its equivalent. We might redesign this.
 text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, patch_text_arena: *Arena) {
     buffer.* = {};
 
