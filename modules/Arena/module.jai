@@ -135,7 +135,6 @@ arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZ
 
 arena_init :: (arena: *Arena) {
     assert(arena.procs.page_size > 0 && is_power_of_two(arena.procs.page_size));
-    // TODO(jt): Should we assert some more things here?
 
     arena.reserve_size = align(max(1, arena.reserve_size), arena.procs.page_size);
     arena.commit_size  = align(max(1, arena.commit_size), arena.procs.page_size);
@@ -222,6 +221,55 @@ arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
     return pointer;
 }
 
+arena_push_array :: (arena: *Arena, $T: Type, count: s64) -> [] T {
+    assert(count > 0, "Can not push empty arrays");
+
+    pointer := arena_push(arena, size_of(T) * count, align_of(T));
+
+    result: [] T;
+    result.count = count;
+    result.data = pointer;
+
+    initializer :: initializer_of(T);
+    #if initializer {
+        for * result {
+            initializer(it);
+        }
+    } else {
+        memset(result.data, 0, size_of(T) * result.count);
+    }
+
+    return result;
+}
+
+arena_push_array :: (arena: *Arena, a: [] $T) -> [] T {
+    assert(a.count > 0, "Can not push empty arrays");
+
+    pointer := arena_push(arena, size_of(T) * a.count, align_of(T));
+
+    memcpy(pointer, s.data, s.count);
+
+    result: [] T;
+    result.count = a.count;
+    result.data = pointer;
+
+    return result;
+}
+
+arena_push_string :: (arena: *Arena, s: string) -> string {
+    assert(s.count > 0, "Can not push empty strings");
+
+    pointer := arena_push(arena, s.count, 1);
+
+    memcpy(pointer, s.data, s.count);
+
+    result: string;
+    result.count = s.count;
+    result.data = pointer;
+
+    return result;
+}
+
 arena_pop_to_mark :: (arena: *Arena, mark: Arena_Mark, overwrite_memory := false) {
     sanity_assert(arena.allocated >= mark.allocated);
     if overwrite_memory && arena.allocated > mark.allocated {
@@ -272,8 +320,8 @@ log_error :: Basic.log_error;
 
 CAPS_VERSION_STRING :: "modules/Arena";
 
-// TODO(jt): @Cleanup Provided by shwa from the Secret Beta discord, but hopefully the language
-// gives us a way of doing it without a run directive and we can remove?
+// TODO(jt): @Cleanup Provided by shwa (Joshua Manton) from the Secret Beta discord, but hopefully
+// the language gives us a way of doing it without a run directive and we can remove?
 align_of :: ($T: Type) -> s64 #expand {
     return #run -> s64 {
         info := type_info(struct { p: u8; t: T; });
