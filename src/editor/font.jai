@@ -283,13 +283,13 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) 
 
     advance: s64 = 0; // In font integers. We scale at the end to avoid rounding errors.
     for :Unicode.utf8_iter line_text {
-        character_index = it_index;
-
         // Return f64, because in theory lines could be pretty long. We use f64s for absulute pixel coordinates in the editor.
         scaled_advance := advance * cast(f64, font.font_scale);
         if scaled_advance >= x {
             break;
         }
+
+        character_index = it_index;
 
         glyph_index   := get_glyph_index(font.info, it);
         glyph_metrics := get_glyph_hmetrics(font.info, glyph_index);
