@@ -252,17 +252,24 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             }
                             case #char "D";  editor.buffer_selecting = false; text_buffer_delete_forward(*editor.buffer);
 
-                            // TODO(jt): Preserve CRLF in CRLF-only documents.
                             case #char "M"; {
+                                // TODO(jt): Preserve CRLF in CRLF-only documents.
                                 editor.buffer_selecting = false;
                                 text_buffer_insert(*editor.buffer, "\n");
                                 clamp_scroll_to_cursor = true;
                             }
                             case #char "O"; {
+                                // TODO(jt): Preserve CRLF in CRLF-only documents.
                                 editor.buffer_selecting = false;
                                 text_buffer_insert(*editor.buffer, "\n");
                                 text_buffer_move_cursor_y(*editor.buffer, -1, false);
                                 text_buffer_move_cursor_to_end_of_line(*editor.buffer, false);
+                            }
+
+                            // TODO(jt): Bind redo.
+                            case #char "/"; {
+                                text_buffer_undo_edit(*editor.buffer);
+                                editor.buffer_selecting = editor.buffer.cursor0 != editor.buffer.cursor1;
                             }
                         }
                     } else if editor.key_alt_down {

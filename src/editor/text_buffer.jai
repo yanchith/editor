@@ -8,8 +8,9 @@ Text_Buffer :: struct {
 
     gb: Gap_Buffer;   // Stores the UTF-8 bytes.
     lines: [..] Line; // Stores line navigation data. Always at least one.
-    patches: [..] Patch; // Patches store undo history.
 
+    patches: [..] Patch; // Patches store edit history.
+    applied_patch_count: s64;    // Undoing decreases this. Redoing increses. When editing, this is the same as patches.count.
     // This arena stores the actual patch texts. This way, we can actually pop/decommit it at least
     // sometimes? Maybe this is overthinking it too much.
     patch_text_arena: *Arena;
@@ -30,8 +31,11 @@ Line :: struct {
 }
 
 Patch :: struct {
-    text: string; // XXX: Should we put it in its own arena, so we can pop?
-    gb_index: s64;
+    text: string;
+    text_mark: Arena_Mark; // Marks the restore point after the text of this patch has been inserted.
+
+    gb_index_before: s64;
+    gb_index_after:  s64;
 
     cursor0_before: Cursor;
     cursor0_after:  Cursor;
@@ -47,7 +51,7 @@ Patch :: struct {
 
         INSERT          :: 0; // Text was inserted. Delete backward when undoing. Insert when redoing.
         DELETE_FORWARD  :: 1; // Text was deleted forward. Insert when undoing. Delete forward when redoing.
-        DELETE_BACKWARD :: 2; // Text was deleted backward. Insert when undoing. Delete backward when redoing.
+        DELETE_BACKWARD :: 2; // Text was deleted backward. Insert (and reset cursor!) when undoing. Delete backward when redoing.
     }
 
     Patch_Flags :: enum_flags u32 {
@@ -81,8 +85,12 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1, mark_patch_through = true);
+        text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1, mark_patch_through = text.count != 0);
         assert(buffer.cursor0 == buffer.cursor1);
+    }
+
+    if text.count == 0 {
+        return;
     }
 
     // TODO(jt): So we insert the text into the gap buffer regardless of whether it is valid, and then
@@ -94,17 +102,23 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     gap_buffer_insert(*buffer.gb, text);
 
+    text_buffer_discard_unapplied_patches(buffer);
     patch := array_add(*buffer.patches);
-    patch.text = copy_string(text,, arena_allocator(buffer.patch_text_arena));
-    patch.gb_index = gb_index;
+    patch.text = arena_push_string(buffer.patch_text_arena, text);
+    patch.text_mark = arena_get_mark(buffer.patch_text_arena);
+    patch.gb_index_before = gb_index;
+    patch.gb_index_after = gb_index + text.count; sanity_assert(patch.gb_index_after == buffer.gb.gap_index);
     patch.cursor0_before = buffer.cursor0;
     // patch.cursor0_after is set at the end of this function.
     patch.cursor1_before = buffer.cursor1;
     // patch.cursor1_after is set at the end of this function.
     patch.type = .INSERT;
+    // TODO(jt): Make it THROUGH for a single character, not single byte.
     if text.count == 1 {
         patch.flags |= .THROUGH;
     }
+
+    buffer.applied_patch_count = buffer.patches.count;
 
     // While we could compute bytes_on_line_before_cursor by asking our procedure to do that for
     // every line, that procedure has to iterate our navigation structures, and it would result in
@@ -200,17 +214,22 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _en
     buffer.cursor0 = start;
     buffer.cursor1 = start;
 
+    text_buffer_discard_unapplied_patches(buffer);
     patch := array_add(*buffer.patches);
-    patch.text = copy_string(cast(string, deleted_bytes),, arena_allocator(buffer.patch_text_arena));
-    patch.gb_index = start_gb_index;
+    patch.text = arena_push_string(buffer.patch_text_arena, cast(string, deleted_bytes));
+    patch.text_mark = arena_get_mark(buffer.patch_text_arena);
+    patch.gb_index_before = start_gb_index;
+    patch.gb_index_after = start_gb_index; sanity_assert(patch.gb_index_after == buffer.gb.gap_index);
     patch.cursor0_before = start;
     patch.cursor0_after = start;
     patch.cursor1_before = end;
     patch.cursor1_after = start;
     patch.type = .DELETE_FORWARD;
     if mark_patch_through {
-        patch.flags = .THROUGH;
+        patch.flags |= .THROUGH;
     }
+
+    buffer.applied_patch_count = buffer.patches.count;
 
     while deleted_bytes.count > 0 {
         newline, newline_advance := string_starts_with_newline(deleted_bytes);
@@ -289,6 +308,21 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 
         deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
         assert(newline_advance == deleted.count);
+
+        text_buffer_discard_unapplied_patches(buffer);
+        patch := array_add(*buffer.patches);
+        patch.text = arena_push_string(buffer.patch_text_arena, cast(string, deleted));
+        patch.text_mark = arena_get_mark(buffer.patch_text_arena);
+        patch.gb_index_before = gb_index;
+        patch.gb_index_after = gb_index; sanity_assert(patch.gb_index_after == buffer.gb.gap_index);
+        patch.cursor0_before = buffer.cursor0;
+        patch.cursor0_after = buffer.cursor0;
+        patch.cursor1_before = buffer.cursor0;
+        patch.cursor1_after = buffer.cursor0;
+        patch.type = .DELETE_FORWARD;
+        patch.flags = .THROUGH;
+
+        buffer.applied_patch_count = buffer.patches.count;
     } else {
         _, codepoint_advance := find_next_utf8_character_boundary(bytes, 0);
         if codepoint_advance {
@@ -297,6 +331,21 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 
             deleted := gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
             assert(codepoint_advance == deleted.count);
+
+            text_buffer_discard_unapplied_patches(buffer);
+            patch := array_add(*buffer.patches);
+            patch.text = arena_push_string(buffer.patch_text_arena, cast(string, deleted));
+            patch.text_mark = arena_get_mark(buffer.patch_text_arena);
+            patch.gb_index_before = gb_index;
+            patch.gb_index_after = gb_index; sanity_assert(patch.gb_index_after == buffer.gb.gap_index);
+            patch.cursor0_before = buffer.cursor0;
+            patch.cursor0_after = buffer.cursor0;
+            patch.cursor1_before = buffer.cursor0;
+            patch.cursor1_after = buffer.cursor0;
+            patch.type = .DELETE_FORWARD;
+            patch.flags = .THROUGH;
+
+            buffer.applied_patch_count = buffer.patches.count;
         }
     }
 
@@ -339,27 +388,114 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 
         array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y);
 
+        old_cursor := buffer.cursor0;
+
         buffer.cursor0.x = new_cursor_x;
         buffer.cursor0.y -= 1;
 
         deleted := gap_buffer_delete_backward(*buffer.gb, newline_advance);
-        assert(newline_advance == deleted);
+        assert(newline_advance == deleted.count);
+
+        text_buffer_discard_unapplied_patches(buffer);
+        patch := array_add(*buffer.patches);
+        patch.text = arena_push_string(buffer.patch_text_arena, cast(string, deleted));
+        patch.text_mark = arena_get_mark(buffer.patch_text_arena);
+        patch.gb_index_before = gb_index;
+        patch.gb_index_after = gb_index - deleted.count; sanity_assert(patch.gb_index_after == buffer.gb.gap_index);
+        patch.cursor0_before = old_cursor;
+        patch.cursor0_after = buffer.cursor0;
+        patch.cursor1_before = old_cursor;
+        patch.cursor1_after = buffer.cursor0;
+        patch.type = .DELETE_BACKWARD;
+        patch.flags = .THROUGH;
+
+        buffer.applied_patch_count = buffer.patches.count;
     } else {
         _, codepoint_advance := find_previous_utf8_character_boundary(bytes, bytes.count);
         if codepoint_advance {
             buffer.lines[buffer.cursor0.y].char_count -= 1;
             buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
 
+            old_cursor := buffer.cursor0;
+
             buffer.cursor0.x -= 1;
 
             deleted := gap_buffer_delete_backward(*buffer.gb, codepoint_advance);
-            assert(codepoint_advance == deleted);
+            assert(codepoint_advance == deleted.count);
+
+            text_buffer_discard_unapplied_patches(buffer);
+            patch := array_add(*buffer.patches);
+            patch.text = arena_push_string(buffer.patch_text_arena, cast(string, deleted));
+            patch.text_mark = arena_get_mark(buffer.patch_text_arena);
+            patch.gb_index_before = gb_index;
+            patch.gb_index_after = gb_index - deleted.count; sanity_assert(patch.gb_index_after == buffer.gb.gap_index);
+            patch.cursor0_before = old_cursor;
+            patch.cursor0_after = buffer.cursor0;
+            patch.cursor1_before = old_cursor;
+            patch.cursor1_after = buffer.cursor0;
+            patch.type = .DELETE_BACKWARD;
+            patch.flags = .THROUGH;
+
+            buffer.applied_patch_count = buffer.patches.count;
         }
     }
 
     buffer.cursor1 = buffer.cursor0;
 
     assert_valid(buffer);
+}
+
+text_buffer_undo_edit :: (buffer: *Text_Buffer) {
+    if buffer.applied_patch_count == 0 {
+        return;
+    }
+
+    applied_patch_count := buffer.applied_patch_count;
+    for < 0..applied_patch_count - 1 {
+        patch := buffer.patches[it];
+
+        if patch.type == {
+            case .INSERT; {
+                buffer.cursor0 = patch.cursor0_after;
+                buffer.cursor1 = patch.cursor1_after;
+
+                // XXX: HERE We want to say the byte count to delete_backwards, but that's actually
+                // a whole different procedure, because the current one scans UTF to determine how
+                // much to delete in bytes.
+                //
+                // text_buffer_delete_backward(buffer, patch.text.count);
+
+                sanity_assert(buffer.cursor0 == patch.cursor0_before);
+                sanity_assert(buffer.cursor1 == patch.cursor1_before);
+                sanity_assert(buffer.gb.gap_index == patch.gb_index_before);
+            }
+            case .DELETE_FORWARD;
+            case .DELETE_BACKWARD;
+        };
+
+        buffer.applied_patch_count -= 1;
+        if !(patch.flags & .THROUGH) {
+            break;
+        }
+    }
+
+
+}
+
+text_buffer_redo_edit :: (buffer: *Text_Buffer) {
+
+}
+
+text_buffer_discard_unapplied_patches :: (buffer: *Text_Buffer) {
+    if buffer.applied_patch_count < buffer.patches.count {
+        patch := buffer.patches[buffer.applied_patch_count];
+
+        // Patch texts are allocated in order they were created. If we are hosing everything beyond
+        // a certain point, we can just use the restore mark from the beginning of the chain.
+        arena_pop_to_mark(buffer.patch_text_arena, patch.text_mark);
+
+        buffer.patches.count = buffer.applied_patch_count;
+    }
 }
 
 text_buffer_get_start_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cursor {
