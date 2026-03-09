@@ -126,14 +126,17 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.perm_arena = arena_allocate(arena_procs);
 
     font_arena   := arena_allocate(arena_procs);
-    buffer_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
-
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
+    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS);
 
-    editor.font   = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS);
-    text_buffer_init(*editor.buffer, buffer_arena);
+    buffer_arena := arena_allocate(arena_procs, reserve_size = 4 << 30);
+    buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = 4 << 30);
+    text_buffer_init(*editor.buffer, buffer_arena, buffer_patch_text_arena);
+
+    editor.buffer_viewport_scroll_target = { 0, 0 };
     editor.buffer_viewport_scroll = { 0, 0 };
+    editor.buffer_clamp_scroll_to_cursor = true;
 
     editor.key_ctrl_down = false;
     editor.key_alt_down = false;
@@ -145,7 +148,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
 
     hello_text := make_hello_text(4 << 10,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
-    editor.buffer_clamp_scroll_to_cursor = true;
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
