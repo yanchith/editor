@@ -138,19 +138,23 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* P
 
 // Deletes at the gap, moving backward. Returns number of actually deleted bytes.
 // TODO(jt): Return view of deleted bytes, like delete forward does.
-gap_buffer_delete_backward :: (gb: *Gap_Buffer, delete_count: s64) -> s64 {
+gap_buffer_delete_backward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* Pointing to this buffer */ {
     ProfileZone("gap_buffer_delete_backward");
 
     assert_valid(gb);
 
     max_delete_count := gb.gap_index;
-    delete_count = min(delete_count, max_delete_count);
+    delete_count := min(_delete_count, max_delete_count);
 
     gb.count -= delete_count;
     gb.gap_index -= delete_count;
     gb.gap_count += delete_count;
 
-    return delete_count;
+    view: [] u8;
+    view.count = delete_count;
+    view.data = gb.buffer.data + gb.gap_index;
+
+    return view;
 }
 
 // Returns either view of original data or new array in the context allocator. Note that if you are
