@@ -22,17 +22,28 @@ arena_allocator :: (arena: *Arena) -> Allocator {
 // there is no underlying/hardware reason to care and it was all just LLVM crap?
 arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64, old_memory: *void, allocator_data: *void) -> *void {
     if #complete mode == {
-        // TODO(jt): Try shrinking in-place with arena_maybe_modify_last_push.
-        case .FREE;   return null;
+        case .FREE; {
+            // NOTE(jt): As of 0.2.026, Basic.free sets requested_size and old_size to zero. That is
+            // completely valid, because general purpose allocators in C land don't get to know
+            // old_size and have to deal. However, if we did know old-size, we could could actually
+            // reclaim memory here with arena_maybe_modify. Datastructures like dynamic array or
+            // hash table could fill in the size, if they wanted to.
+            return null;
+        }
 
         case .RESIZE; {
-            // TODO(jt): Try growing/shrinking in-place with arena_maybe_modify_last_push
-            if requested_size <= old_size {
+            arena := cast(*Arena, allocator_data);
+            assert(arena != null);
+
+            if arena_maybe_modify(arena, old_memory, old_size, requested_size) {
                 return old_memory;
             }
 
-            arena := cast(*Arena, allocator_data);
-            assert(arena != null);
+            // arena_maybe_modify could have said no to a shrink operation, in which case
+            // we don't want to allocate a new spot within the same arena.
+            if requested_size <= old_size {
+                return old_memory;
+            }
 
             result := arena_push(arena, requested_size);
             if result && old_size {
@@ -51,23 +62,26 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
             return result;
         }
 
-        case .STARTUP;      #through;
-        case .SHUTDOWN;
-        return null;
+        case .STARTUP; #through;
+        case .SHUTDOWN; {
+            return null;
+        }
 
         case .THREAD_START; #through;
-        case .THREAD_STOP;
-        assert(false, "Multithreaded access is not supported by arena_allocator_proc.\n");
-        return null;
+        case .THREAD_STOP; {
+            assert(false, "Multithreaded access is not supported by arena_allocator_proc.\n");
+            return null;
+        }
 
-        case .CREATE_HEAP;  #through;
-        case .DESTROY_HEAP;
-        assert(false, "Create/Destroy heap are not supported by arena_allocator_proc\n");
-        return null;
+        case .CREATE_HEAP; #through;
+        case .DESTROY_HEAP; {
+            assert(false, "Create/Destroy heap are not supported by arena_allocator_proc\n");
+            return null;
+        }
 
         case .IS_THIS_YOURS; {
             arena := cast(*Arena, allocator_data);
-            result := old_memory >= arena.memory_start && old_memory < arena.memory_start + arena.allocated;
+            result := arena_is_this_yours(arena, old_memory);
 
             return cast(*void, cast(s64, result));
         }
@@ -172,6 +186,10 @@ arena_get_mark :: (arena: Arena) -> Arena_Mark {
     return { arena.allocated };
 }
 
+arena_is_this_yours :: (arena: Arena, pointer: *void) -> bool {
+    return pointer >= arena.memory_start && pointer < arena.memory_start + arena.allocated;
+}
+
 arena_push :: (arena: *Arena, $T: Type) -> *T {
     result := arena_push(arena, size_of(T), align_of(T));
 
@@ -268,6 +286,31 @@ arena_push_string :: (arena: *Arena, s: string) -> string {
     result.data = pointer;
 
     return result;
+}
+
+// Tries to modify the allocation. Can only succeed if the allocation is the last allocation. (And
+// even then it sometimes won't because of alignment of subsequent allocations). Speaking of
+// alignment, you can't change it here.
+arena_maybe_modify :: (arena: *Arena, pointer: *void, old_size: s64, new_size: s64, overwrite_memory := false) -> success: bool {
+    if !arena.memory_start {
+        arena_init(arena);
+    }
+
+    if pointer + old_size != arena.memory_start + arena.allocated {
+        return false; // This is not the last allocation. (May be a false negative.)
+    }
+
+    if old_size < new_size {
+        additional_size := new_size - old_size;
+        result := arena_push(arena, additional_size, 1);
+        return  result != null;
+    } else if old_size > new_size {
+        mark := arena.allocated - (old_size - new_size);
+        arena_pop_to_mark(arena, { mark }, overwrite_memory);
+        return true;
+    } else {
+        return true;
+    }
 }
 
 arena_pop_to_mark :: (arena: *Arena, mark: Arena_Mark, overwrite_memory := false) {
