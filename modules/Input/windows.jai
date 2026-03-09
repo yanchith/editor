@@ -87,8 +87,8 @@ MyWindowProc :: (hwnd: HWND, message: u32,
                     }
                 }
             }
-            
-	        return DefWindowProcW(hwnd, message, wParam, lParam);
+
+            return DefWindowProcW(hwnd, message, wParam, lParam);
 
           case WM_SYSKEYDOWN; #through;
           case WM_KEYDOWN;
@@ -102,8 +102,8 @@ MyWindowProc :: (hwnd: HWND, message: u32,
             maybe_send_vkey_event(wParam, false);
 
           case WM_SYSCHAR;
-              // This is here to prevent beeps when a Alt key combo is pressed. If we don't return 0, windows helpfully emits a beep sound to
-              // indicate the user that the key wasn't handled.
+            // This is here to prevent beeps when a Alt key combo is pressed. If we don't return 0, windows helpfully emits a beep sound to
+            // indicate the user that the key wasn't handled.
             //
             // NOTE(jt): In addition to not forwarding this to DefWindowProc, we generate a text
             // event, because otherwise we'd have no way of getting Alt+key.
@@ -144,8 +144,8 @@ MyWindowProc :: (hwnd: HWND, message: u32,
           case WM_KILLFOCUS;
             input_application_has_focus = false;
           case WM_PAINT;
-		    ValidateRect(hwnd, null);
-	        return DefWindowProcW(hwnd, message, wParam, lParam);
+            ValidateRect(hwnd, null);
+            return DefWindowProcW(hwnd, message, wParam, lParam);
 
           case WM_LBUTTONDOWN; #through;
           case WM_LBUTTONUP;
@@ -187,7 +187,7 @@ MyWindowProc :: (hwnd: HWND, message: u32,
 
           case WM_XBUTTONUP; #through;
           case WM_XBUTTONDOWN;
-            // Handle mouse "thumb" buttons. 
+            // Handle mouse "thumb" buttons.
             //
             // NOTE(Charles): These buttons are typically used for a programs "forward" and "backward" operations. There is also
             // the WM_APPCOMMAND message that will give us APPCOMMAND_BROWSER_BACKWARD/FORWARD, maybe they are better to use?
@@ -218,7 +218,7 @@ MyWindowProc :: (hwnd: HWND, message: u32,
             event: Event;
             event.type = .QUIT;
             array_add(*events_this_frame, event);
-	        return DefWindowProcW(hwnd, message, wParam, lParam);
+            return DefWindowProcW(hwnd, message, wParam, lParam);
 
           case WM_INPUT;
             extra := GetMessageExtraInfo();
@@ -263,42 +263,42 @@ MyWindowProc :: (hwnd: HWND, message: u32,
             SetWindowPos(hwnd, HWND_TOPMOST, rect.left, rect.top, w, h, SWP_NOACTIVATE|SWP_NOZORDER);
             return 0;
           case WM_DROPFILES;
- 	  	    drop := cast(HDROP) wParam;
- 	 	    // If "0xFFFFFFFF" as the second parameter: return the count of files dropped.
- 	 	    file_paths_count := DragQueryFileW(drop, 0xFFFFFFFF, null, 0);
+            drop := cast(HDROP) wParam;
+            // If "0xFFFFFFFF" as the second parameter: return the count of files dropped.
+            file_paths_count := DragQueryFileW(drop, 0xFFFFFFFF, null, 0);
             assert(file_paths_count > 0);
 
             allocator := context.input_handler.window_proc_allocator;
             if !allocator.proc  allocator = context.default_allocator;
-            
+
             files: [..] string;
             files.allocator = allocator;
             array_reserve(*files, file_paths_count);
 
- 	 	    for i: 0..file_paths_count-1 {
- 	 	        // If null as the third parameter: return the length of the path, not counting the trailing '\0'.
- 	 	        file_name_wide_count := DragQueryFileW(drop, i, null, 0) + 2;
- 	 	        assert(file_name_wide_count > 0);
+            for i: 0..file_paths_count-1 {
+                // If null as the third parameter: return the length of the path, not counting the trailing '\0'.
+                file_name_wide_count := DragQueryFileW(drop, i, null, 0) + 2;
+                assert(file_name_wide_count > 0);
 
                 file_name_wide := cast(*u16) alloc(file_name_wide_count * size_of(u16),, temp);
- 	 	        ok := DragQueryFileW(drop, i, file_name_wide, file_name_wide_count);
- 	 	        assert(ok > 0); // means success
+                ok := DragQueryFileW(drop, i, file_name_wide, file_name_wide_count);
+                assert(ok > 0); // means success
 
- 	  	        file_name := wide_to_utf8(file_name_wide,, allocator);
- 	 	        array_add(*files, file_name);
- 	 	    }
+                file_name := wide_to_utf8(file_name_wide,, allocator);
+                array_add(*files, file_name);
+            }
 
- 	 	    DragFinish(drop);
+            DragFinish(drop);
 
- 	  	    event: Event;
- 	 	    event.type  = .DRAG_AND_DROP_FILES;
+            event: Event;
+            event.type  = .DRAG_AND_DROP_FILES;
             event.files = files;
- 	 	    array_add(*events_this_frame, event);
+            array_add(*events_this_frame, event);
             return 0;
 
           case WM_SETCURSOR;
             if windows_ignore_setcursor_messages return 0;
-	        else return DefWindowProcW(hwnd, message, wParam, lParam);
+            else return DefWindowProcW(hwnd, message, wParam, lParam);
 
           // WM_TOUCH is currently used for touch input. There is a newer POINTER api, eg WM_POINTERDOWN that combines
           // pen, touch, mouse together that might be worth considering in the future.
@@ -372,7 +372,7 @@ MyWindowProc :: (hwnd: HWND, message: u32,
             SetupDiDestroyDeviceInfoList(dev);
 
 
-        
+
           case WM_DEVICECHANGE;
             hdr := cast(*DEV_BROADCAST_HDR)lParam;
             if !hdr || hdr.dbch_devicetype != DBT_DEVTYP_DEVICEINTERFACE return DefWindowProcW(hwnd, message, wParam, lParam);
@@ -387,8 +387,8 @@ MyWindowProc :: (hwnd: HWND, message: u32,
             }
 
           case;
-	        return DefWindowProcW(hwnd, message, wParam, lParam);
-	    }
+            return DefWindowProcW(hwnd, message, wParam, lParam);
+        }
 
         return 0;
     }
@@ -477,7 +477,7 @@ the_rawinput_handler: (product_id: u16, device_id: u16, handle: HANDLE, data: *u
 #scope_file
 
 xbox_connect :: (wide_path: *u16) {
-    path := wide_to_utf8(wide_path); 
+    path := wide_to_utf8(wide_path);
     // SetupDi* and WM_DEVICECHANGE use different case paths.
     // The example code I saw used _wcsicmp, a wide char case-insensitive comparison function in the crt.
     // However, that depends on the locale of the program, so I don't want to do this.
@@ -501,7 +501,7 @@ xbox_connect :: (wide_path: *u16) {
 }
 
 xbox_disconnect :: (wide_path: *u16) {
-    path := wide_to_utf8(wide_path,, temp); 
+    path := wide_to_utf8(wide_path,, temp);
     to_lower_in_place(path);
 
     for * xbox_devices {
@@ -554,7 +554,7 @@ process_raw_input :: (handle: HRAWINPUT) {
     GetRawInputData(handle, RID_INPUT, null, *dwSize, size_of(RAWINPUTHEADER));
 
     set_array_count(*raw_input_buffer, dwSize);
-	written_bytes := GetRawInputData(handle, RID_INPUT, raw_input_buffer.data, *dwSize, size_of(RAWINPUTHEADER));
+    written_bytes := GetRawInputData(handle, RID_INPUT, raw_input_buffer.data, *dwSize, size_of(RAWINPUTHEADER));
     if written_bytes == 0xffff_ffff return; // Error. Steam Input causes this to happen sometimes.
     assert(written_bytes <= dwSize);        // note that GetRawInputData() is allowed to request a buffer size and then write less bytes than the size
 
@@ -620,7 +620,7 @@ process_raw_input :: (handle: HRAWINPUT) {
                 hid:      RID_DEVICE_INFO_HID;
             }
         }
-        
+
         RIDI_DEVICEINFO :: 0x2000000b;
 
         device_info: RID_DEVICE_INFO;
@@ -662,7 +662,7 @@ init_input_system :: () {
            usUsage     = HID_USAGE_GENERIC_GAMEPAD
          }
     ];
-    
+
     if RegisterRawInputDevices(rid.data, rid.count, size_of(RAWINPUTDEVICE)) == 1 {
         // Do nothing.
     } else {
@@ -882,7 +882,7 @@ init_key_code_tables :: () {
         delta := i - VK_NUMPAD0;
         add_code(xx i, xx (#char "0" + delta));
     }
-    
+
     // Entries defined by the array in this file:
     for vk_to_key_code_array {
         add_code(it.vk, it.key_code);
