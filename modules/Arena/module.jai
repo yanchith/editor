@@ -190,19 +190,6 @@ arena_is_this_yours :: (arena: Arena, pointer: *void) -> bool {
     return pointer >= arena.memory_start && pointer < arena.memory_start + arena.allocated;
 }
 
-arena_push :: (arena: *Arena, $T: Type) -> *T {
-    result := arena_push(arena, size_of(T), align_of(T));
-
-    initializer :: initializer_of(T);
-    #if initializer {
-        initializer(result);
-    } else {
-        memset(result, 0, size_of(T));
-    }
-
-    return result;
-}
-
 arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
     assert(size > 0);
     assert(alignment > 0 && is_power_of_two(alignment));
@@ -239,10 +226,30 @@ arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
     return pointer;
 }
 
+arena_push :: (arena: *Arena, $T: Type) -> *T {
+    pointer := arena_push(arena, size_of(T), align_of(T));
+    if pointer == null {
+        return null;
+    }
+
+    initializer :: initializer_of(T);
+    #if initializer {
+        initializer(pointer);
+    } else {
+        memset(pointer, 0, size_of(T));
+    }
+
+    return pointer;
+}
+
 arena_push_array :: (arena: *Arena, $T: Type, count: s64) -> [] T {
     assert(count > 0, "Can not push empty arrays");
 
     pointer := arena_push(arena, size_of(T) * count, align_of(T));
+    if pointer == null {
+        result: [] T;
+        return result;
+    }
 
     result: [] T;
     result.count = count;
@@ -264,8 +271,12 @@ arena_push_array :: (arena: *Arena, a: [] $T) -> [] T {
     assert(a.count > 0, "Can not push empty arrays");
 
     pointer := arena_push(arena, size_of(T) * a.count, align_of(T));
+    if pointer == null {
+        result: [] T;
+        return result;
+    }
 
-    memcpy(pointer, s.data, s.count);
+    memcpy(pointer, a.data, size_of(T) * a.count);
 
     result: [] T;
     result.count = a.count;
@@ -278,6 +289,10 @@ arena_push_string :: (arena: *Arena, s: string) -> string {
     assert(s.count > 0, "Can not push empty strings");
 
     pointer := arena_push(arena, s.count, 1);
+    if pointer == null {
+        result: string;
+        return result;
+    }
 
     memcpy(pointer, s.data, s.count);
 
@@ -314,6 +329,10 @@ arena_maybe_modify :: (arena: *Arena, pointer: *void, old_size: s64, new_size: s
 }
 
 arena_pop_to_mark :: (arena: *Arena, mark: Arena_Mark, overwrite_memory := false) {
+    if !arena.memory_start {
+        arena_init(arena);
+    }
+
     sanity_assert(arena.allocated >= mark.allocated);
     if overwrite_memory && arena.allocated > mark.allocated {
         STAMP :: 0xcc;
