@@ -8,6 +8,9 @@
 // The __init_zone_labels procedure and __PROFILER_ZONE_COUNT constant are inserted when we get a
 // TYPECHECKED_ALL_WE_CAN message. The values of these depend on what the metaprogram saw during
 // compilation.
+//
+// WARNING: The profiler is not thread-safe. Don't call it from multiple threads.
+//
 
 // The programmer invokes the ProfileZone macro in the code. It is replaced by the metaprogram to
 // invocations of the actual macro: __ProfileZone.
@@ -76,9 +79,9 @@ Sort_Mode :: enum {
     HITS;
 }
 
-// Get profiling data. You'll have to sort it and scale it by the frequency obtained from
-// profiler_end_frame. The resulting arrays are allocated with context.allocator if we are profiling
-// and in static storage if not. Pass in temp if you don't want to care.
+// Get profiling data. You'll have to sort it and scale it by the time scale obtained from
+// profiler_end_frame. The resulting arrays are allocated with context.allocator if in profiling
+// builds and in static storage otherwise. Pass in temporary allocator if you don't want to care.
 profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
     #if #exists(__profiler) {
         get :: (zone: Profiler_Zone, sort_mode: Sort_Mode) -> u64 {
