@@ -168,7 +168,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     //
     // Both of the above do not seem like arena issues. At least not an issue with reserve, because
     // that we properly error-report before crashing. It may be an issue with commit.
-    hello_text := make_hello_text(2 << 30,, temp);
+    hello_text := make_hello_text(1 << 30,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
 
     renderer.create_texture_r8unorm(
