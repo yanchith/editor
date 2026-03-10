@@ -39,10 +39,8 @@ profiler_start_frame :: (label := "frame") {
     }
 }
 
-// Call this at the end of the frame or the section of code you want to profile. Returns the time
-// scale of the counter used.
-//
-// TODO(jt): We should probably extract the timestamp frequency out of this function.
+// Call this at the end of the frame or the section of code you want to profile. Returns time scale
+// (1 / frequency) of the counter used.
 profiler_end_frame :: () -> cpu_counter_scale: float64 {
     #if #exists(__profiler) {
         end_tsc := System.read_cpu_counter();
@@ -58,7 +56,8 @@ profiler_end_frame :: () -> cpu_counter_scale: float64 {
         }
 
         zone := *__profiler.zones[0];
-        // TODO(jt): @Audit We had to add #no_aoc here, but I am not sure it makes sense.
+        // TODO(jt): @Audit We had to add #no_aoc here, but I am not sure it makes sense. It might
+        // be related to the elapsed #no_aoc above?
         #no_aoc {
             zone.elapsed_inclusive += elapsed_tsc;
             zone.elapsed_exclusive += elapsed_tsc;
@@ -95,7 +94,8 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
         zones := Basic.array_copy(__profiler.zones);
         zone_labels := Basic.array_copy(__profiler.zone_labels);
 
-        // TODO(jt): @Speed Yes, this is bubble sort. Fix this.
+        // @Speed Yes, this is bubble sort. We use it to sort two arrays arrays at once. We could do
+        // a modified version of quicksort to do that, but let's see if it becomes a problem first.
         swapped := true;
         while swapped {
             swapped = false;
@@ -153,7 +153,8 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
                 elapsed = end - start;
             }
 
-            // TODO(jt): @Audit We had to add #no_aoc here, but I am not sure it makes sense.
+            // TODO(jt): @Audit We had to add #no_aoc here, but I am not sure it makes sense. It
+            // might be related to the elapsed #no_aoc above?
             #no_aoc {
                 current_zone.elapsed_inclusive = current_zone_elapsed_inclusive + elapsed;
                 current_zone.elapsed_exclusive += elapsed;
@@ -162,7 +163,7 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
 
             parent_zone := *__profiler.zones[parent_zone_index];
             #no_aoc {
-                // #no_aoc, because we subtract from parent before we add.
+                // #no_aoc, because we subtract from parent before we add. This always triggers.
                 parent_zone.elapsed_exclusive -= elapsed;
             }
 
@@ -173,6 +174,8 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
 
 #scope_module
 
-Basic  :: #import "Basic";  // TODO(jt): This is just for getting current time. Copy it here?
-System :: #import "System"; // TODO(jt): This is only for read_cpu_counter. Copy it in here?
-// TODO(jt): We also need a better timer for arm macOS: "mrs {t}, cntvct_el0". Can we do it with #bytes?
+Basic  :: #import "Basic";
+
+// TODO(jt): modules/System is imported only for read_cpu_counter. Copy it in here? We also need a
+// better timer for arm macOS: "mrs {t}, cntvct_el0". Can we do it with #bytes?
+System :: #import "System";
