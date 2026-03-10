@@ -128,6 +128,26 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
         frame_start_tsc:  u64;
     }
 
+    // XXX: @Bug? Sometimes, if the zone takes a long time, we get garbage timings (see examples
+    // below)? This happened on macOS, but maybe it happens on Windows/x64 too? Is this some kind of overlow?
+    //
+    //          zone                                                               hits    inclusive millis    exclusive millis
+    //---------------------------------------------------------------------------------------------------------------------
+    //[0]   text_buffer_insert                                                    1     285910950383220.5       285910950382490.062
+    //[1]   init                                                                  1            2137.938            3987.68
+    //[2]   gap_buffer_insert                                                     1             730.434             730.434
+    //[3]   text_buffer_byte_count_between_cursors                                1               0.003               0.002
+    //[4]   text_buffer_get_gap_buffer_index_for_cursor                           3               0.001               0.001
+    //
+    //          zone                                                               hits    inclusive millis    exclusive millis
+    //---------------------------------------------------------------------------------------------------------------------
+    //[0]   text_buffer_insert                                                    1           12177.291           10710.565
+    //[1]   init                                                                  1            4264.88      297014267560290.25
+    //[2]   gap_buffer_insert                                                     1            1466.721            1466.721
+    //[3]   text_buffer_byte_count_between_cursors                                1               0.004               0.004
+    //[4]   gap_buffer_move_gap_to                                                1               0.001               0.001
+
+
     __ProfileZone :: ($zone_index: s64) #expand {
         parent_zone_index := __profiler.current_zone_index;
         __profiler.current_zone_index = zone_index;
