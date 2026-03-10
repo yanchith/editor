@@ -114,7 +114,8 @@ Editor :: struct {
 
     mb_left_down: bool;
     // TODO(jt): If we do more stuff like this, maybe we should have our usual input_state thing.
-    mb_left_pressed: bool;
+    mb_left_pressed: bool;                    // True the first frame the button is down.
+    mb_left_last_pressed_inside_window: bool; // Keeps previous value until the button is pressed again.
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
@@ -130,8 +131,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     assert(success);
     editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS);
 
-    buffer_arena := arena_allocate(arena_procs, reserve_size = 4 << 30);
-    buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = 4 << 30);
+    buffer_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
+    buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
     text_buffer_init(*editor.buffer, buffer_arena, buffer_patch_text_arena);
 
     editor.buffer_viewport_scroll_target = { 0, 0 };
@@ -145,6 +146,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
 
     editor.mb_left_down = false;
     editor.mb_left_pressed = false;
+    editor.mb_left_last_pressed_inside_window = false;
 
     hello_text := make_hello_text(4 << 10,, temp);
     text_buffer_insert(*editor.buffer, hello_text);
@@ -174,6 +176,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions.allocator = temp;
 
     editor.mb_left_pressed = false;
+    // editor.mb_left_last_pressed_inside_window is not cleared to false on purpose here. We
+    // want to preserve this info until next click.
 
     clamp_scroll_to_cursor := editor.buffer_clamp_scroll_to_cursor;
     clamp_scroll_to_start_of_line := false;
@@ -188,7 +192,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .ALT;                editor.key_alt_down = cast(bool, it.flags & .KEY_PRESSED);
                 case .SHIFT;              editor.key_shift_down = cast(bool, it.flags & .KEY_PRESSED);
                 case .META;               editor.key_meta_down = cast(bool, it.flags & .KEY_PRESSED);
-                case .MOUSE_BUTTON_LEFT;  editor.mb_left_down = cast(bool, it.flags & .KEY_PRESSED); if it.flags & .KEY_PRESSED then editor.mb_left_pressed = true;
+                case .MOUSE_BUTTON_LEFT; {
+                    editor.mb_left_down = cast(bool, it.flags & .KEY_PRESSED);
+                    if it.flags & .KEY_PRESSED {
+                        editor.mb_left_pressed = true;
+
+                        window_client_rect := rect_from_point_and_size(0, 0, cast(f32, input.window_size.x), cast(f32, input.window_size.y));
+                        editor.mb_left_last_pressed_inside_window = rect_contains(window_client_rect, input.mouse_position);
+                    }
+                }
             }
         }
 
@@ -339,7 +351,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     //
-    // Mouse Selection and mouse selection scrolling
+    // Mouse Selection
     //
     // TODO(jt): Double click to select word.
     // TODO(jt): Triple click to select line.
@@ -347,46 +359,51 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     if editor.mb_left_down {
         mouse := input.mouse_position;
 
-        SCROLL_APRON : f32 :  50.0;
-        SCROLL_SPEED : f64 :  10.0;
-        SCROLL_BOOST : f64 :   5.0;
+        //
+        // Mouse selection scrolling
+        //
+        if editor.mb_left_last_pressed_inside_window {
+            SCROLL_APRON : f32 :  50.0;
+            SCROLL_SPEED : f64 :  10.0;
+            SCROLL_BOOST : f64 :   5.0;
 
-        if mouse.x < SCROLL_APRON {
-            boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
+            if mouse.x < SCROLL_APRON {
+                boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
 
-            editor.buffer_viewport_scroll_target.x -= SCROLL_SPEED * boost * dt;
-            editor.buffer_viewport_scroll_target.x = max(editor.buffer_viewport_scroll_target.x, 0);
+                editor.buffer_viewport_scroll_target.x -= SCROLL_SPEED * boost * dt;
+                editor.buffer_viewport_scroll_target.x = max(editor.buffer_viewport_scroll_target.x, 0);
 
-            wants_next_frame = true;
-        } else if mouse.x > cast(f32, input.window_size.x) - SCROLL_APRON {
-            boost := (mouse.x - (cast(f32, input.window_size.x) - SCROLL_APRON)) * SCROLL_BOOST;
+                wants_next_frame = true;
+            } else if mouse.x > cast(f32, input.window_size.x) - SCROLL_APRON {
+                boost := (mouse.x - (cast(f32, input.window_size.x) - SCROLL_APRON)) * SCROLL_BOOST;
 
-            // Apron contains the newline (if present) and one additional horizontal cell.
-            apron := 2 * buffer_cell_w;
+                // Apron contains the newline (if present) and one additional horizontal cell.
+                apron := 2 * buffer_cell_w;
 
-            line_view := text_buffer_make_view_for_line(editor.buffer, editor.buffer.cursor0.y,, temp);
-            max_x := font_compute_position_on_line(editor.font, line_view, editor.buffer.cursor0.x) - input.window_size.x + apron;
+                line_view := text_buffer_make_view_for_line(editor.buffer, editor.buffer.cursor0.y,, temp);
+                max_x := font_compute_position_on_line(editor.font, line_view, editor.buffer.cursor0.x) - input.window_size.x + apron;
 
-            editor.buffer_viewport_scroll_target.x += SCROLL_SPEED * boost * dt;
-            editor.buffer_viewport_scroll_target.x = min(editor.buffer_viewport_scroll_target.x, max_x);
+                editor.buffer_viewport_scroll_target.x += SCROLL_SPEED * boost * dt;
+                editor.buffer_viewport_scroll_target.x = min(editor.buffer_viewport_scroll_target.x, max_x);
 
-            wants_next_frame = true;
-        }
+                wants_next_frame = true;
+            }
 
-        if mouse.y < SCROLL_APRON {
-            boost := (SCROLL_APRON - mouse.y) * SCROLL_BOOST;
+            if mouse.y < SCROLL_APRON {
+                boost := (SCROLL_APRON - mouse.y) * SCROLL_BOOST;
 
-            editor.buffer_viewport_scroll_target.y -= SCROLL_SPEED * boost * dt;
-            editor.buffer_viewport_scroll_target.y = max(editor.buffer_viewport_scroll_target.y, 0);
+                editor.buffer_viewport_scroll_target.y -= SCROLL_SPEED * boost * dt;
+                editor.buffer_viewport_scroll_target.y = max(editor.buffer_viewport_scroll_target.y, 0);
 
-            wants_next_frame = true;
-        } else if mouse.y > cast(f32, input.window_size.y) - SCROLL_APRON {
-            boost := (mouse.y - (cast(f32, input.window_size.y) - SCROLL_APRON)) * SCROLL_BOOST;
+                wants_next_frame = true;
+            } else if mouse.y > cast(f32, input.window_size.y) - SCROLL_APRON {
+                boost := (mouse.y - (cast(f32, input.window_size.y) - SCROLL_APRON)) * SCROLL_BOOST;
 
-            editor.buffer_viewport_scroll_target.y += SCROLL_SPEED * boost * dt;
-            editor.buffer_viewport_scroll_target.y = min(editor.buffer_viewport_scroll_target.y, buffer_cell_h * (editor.buffer.lines.count - 1));
+                editor.buffer_viewport_scroll_target.y += SCROLL_SPEED * boost * dt;
+                editor.buffer_viewport_scroll_target.y = min(editor.buffer_viewport_scroll_target.y, buffer_cell_h * (editor.buffer.lines.count - 1));
 
-            wants_next_frame = true;
+                wants_next_frame = true;
+            }
         }
 
         row := cast(s64, floor((mouse.y + editor.buffer_viewport_scroll.y) / buffer_cell_h));

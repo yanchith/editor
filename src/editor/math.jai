@@ -193,6 +193,13 @@ rect_height :: inline (r: Rect) -> f32 {
     }
 }
 
+rect_contains :: inline (r: Rect, v: Vector2) -> bool {
+    contains_x := v.x >= r.x0 && v.x < r.x1;
+    contains_y := v.y >= r.y0 && v.y < r.y1;
+
+    return contains_x && contains_y;
+}
+
 rect_fixup :: (r: Rect) -> Rect {
     p0 := rect_min(r);
     p1 := rect_max(r);
