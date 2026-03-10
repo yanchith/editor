@@ -110,13 +110,13 @@ Arena_Procs :: struct {
 }
 
 Arena :: struct {
-    // Things given by the caller before arena_init or new_arena. At least procs must be manually set. Don't change them after init.
+    // Things given by the caller before arena_init as arguments to arena_allocate. At least procs must be set, because they don't have a default. Don't change them after init.
     procs: Arena_Procs;
     reserve_size := ARENA_DEFAULT_RESERVE_SIZE; // How much memory we reserve, aligned to page size. Can't get more.
     commit_size  := ARENA_DEFAULT_COMMIT_SIZE;  // The minimal size that is committed, aligned to page size.
     keep_size    := ARENA_DEFAULT_KEEP_SIZE;    // The minimal size that is not decommitted once it has been committed, aligned to page size.
 
-    // Internal stuff...
+    // Internal stuff. Don't write to these yourself.
 
     memory_start: *void;
     memory_end:   *void;
@@ -173,13 +173,18 @@ arena_release :: (arena: *Arena) {
         return;
     }
 
-    arena.procs.mem_release(arena.memory_start, arena.memory_end - arena.memory_start);
+    // Stored on the side, because if the arena was created with arena_allocated, we can't access
+    // these after mem_release.
+    memory_start := arena.memory_start;
+    memory_end   := arena.memory_end;
 
     arena.memory_start = null;
     arena.memory_end   = null;
 
     arena.allocated = 0;
     arena.committed = 0;
+
+    arena.procs.mem_release(memory_start, memory_end - memory_start);
 }
 
 arena_get_mark :: (arena: Arena) -> Arena_Mark {
