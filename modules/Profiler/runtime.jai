@@ -49,7 +49,13 @@ profiler_end_frame :: () -> cpu_counter_scale: float64 {
         end_time := Basic.current_time_monotonic();
 
         elapsed_time := Basic.to_float64_seconds(end_time) - Basic.to_float64_seconds(__profiler.frame_start_time);
-        elapsed_tsc := end_tsc - __profiler.frame_start_tsc;
+
+        // TODO(jt): @Cleanup System.read_cpu_counter() goes to clock_gettime on UNIX. On macOS, the
+        // following subtraction underflows. This probably wouldn't happen if we used cntvcr_el0.
+        elapsed_tsc: u64 = ---;
+        #no_aoc {
+            elapsed_tsc = end_tsc - __profiler.frame_start_tsc;
+        }
 
         zone := *__profiler.zones[0];
         // TODO(jt): @Audit We had to add #no_aoc here, but I am not sure it makes sense.
@@ -158,7 +164,14 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
         start := System.read_cpu_counter();
         `defer {
             end := System.read_cpu_counter();
-            elapsed := end - start;
+
+            // TODO(jt): @Cleanup System.read_cpu_counter() goes to clock_gettime on UNIX. On macOS,
+            // the following subtraction underflows. This probably wouldn't happen if we used
+            // cntvcr_el0.
+            elapsed: u64 = ---;
+            #no_aoc {
+                elapsed = end - start;
+            }
 
             // TODO(jt): @Audit We had to add #no_aoc here, but I am not sure it makes sense.
             #no_aoc {
