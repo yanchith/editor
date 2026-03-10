@@ -182,3 +182,4 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
 
 Basic  :: #import "Basic";  // TODO(jt): This is just for getting current time. Copy it here?
 System :: #import "System"; // TODO(jt): This is only for read_cpu_counter. Copy it in here?
+// TODO(jt): We also need a better timer for arm macOS: "mrs {t}, cntvct_el0". Can we do it with #bytes?
