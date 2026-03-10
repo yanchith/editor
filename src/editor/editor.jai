@@ -148,28 +148,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.mb_left_pressed = false;
     editor.mb_left_last_pressed_inside_window = false;
 
-    // XXX: @Bug?
-    //
-    // On macOS, 2GB crashes with:
-    //
-    // Got signal 10. Stack trace:
-    // 0   editor                              0x0000000104d2109c handle_signal_b000001d9 + 1592
-    // 1   libsystem_platform.dylib            0x000000019cc416a4 _sigtramp + 56
-    // 2   editor                              0x0000000104d2e14c __procedure_1100000296 + 356
-    // 3   editor                              0x0000000104d30470 init_700000380 + 1644
-    // 4   editor                              0x0000000104d34778 __program_main + 1140
-    // 5   editor                              0x0000000104d1e2d4 main + 608
-    // 6   dyld                                0x000000019c866b98 start + 6076
-    //
-    // On macOS, 3GB crashes with message after showing the window and running a few frames.
-    //
-    // editor(52377,0x20aba2240) malloc: Region cookie corrupted for region 0xb6c000000 (value is 0)[0xb6c0081fc]
-    // editor(52377,0x20aba2240) malloc: *** set a breakpoint in malloc_error_break to debug
-    //
-    // Both of the above do not seem like arena issues. At least not an issue with reserve, because
-    // that we properly error-report before crashing. It may be an issue with commit.
-    hello_text := make_hello_text(1 << 30,, temp);
+    HELLO_SIZE : s64 : 1 << 20;
+    // Also reserve slop for arena header and hello text that grew above the threshold.
+    hello_arena := arena_allocate(arena_procs, reserve_size = HELLO_SIZE + (1 << 20));
+    hello_text := make_hello_text(hello_arena, HELLO_SIZE);
     text_buffer_insert(*editor.buffer, hello_text);
+    arena_release(hello_arena);
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -755,21 +739,56 @@ print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
     }
 }
 
-make_hello_text :: (approx_size_in_bytes: s64) -> string {
+make_hello_text :: (arena: *Arena, approx_size_in_bytes: s64) -> string {
+    // TODO(jt): @CompilerBug (or Temporary_Storage bug) When we were making hello text more naively
+    // (String_Builder + temp), we got crashes on macOS (Windows wasn't tested). Since then we
+    // started making it in its own virtual memory arena.
+    //
+    // 2GB hello text crashed with:
+    //
+    // Got signal 10. Stack trace:
+    // 0   editor                              0x0000000104d2109c handle_signal_b000001d9 + 1592
+    // 1   libsystem_platform.dylib            0x000000019cc416a4 _sigtramp + 56
+    // 2   editor                              0x0000000104d2e14c __procedure_1100000296 + 356
+    // 3   editor                              0x0000000104d30470 init_700000380 + 1644
+    // 4   editor                              0x0000000104d34778 __program_main + 1140
+    // 5   editor                              0x0000000104d1e2d4 main + 608
+    // 6   dyld                                0x000000019c866b98 start + 6076
+    //
+    // 3GB crashed with this message after showing the window and running a few frames.
+    //
+    // editor(52377,0x20aba2240) malloc: Region cookie corrupted for region 0xb6c000000 (value is 0)[0xb6c0081fc]
+    // editor(52377,0x20aba2240) malloc: *** set a breakpoint in malloc_error_break to debug
+
     result_bytes: s64 = 0;
 
-    b: String_Builder;
+    s := arena_push_string(arena, HELLO_TEXT);
+    assert(s.count > 0);
+    assert(s.data != null);
+
+    result_bytes += s.count;
+
     while result_bytes < approx_size_in_bytes {
         SEPARATOR :: "\n========================================================\n";
 
-        print(*b, HELLO_TEXT);
-        print(*b, SEPARATOR);
+        _s: string;
 
-        result_bytes += HELLO_TEXT.count;
+        _s = arena_push_string(arena, SEPARATOR);
+        assert(_s.count > 0);
+        assert(_s.data != null);
         result_bytes += SEPARATOR.count;
+
+        _s = arena_push_string(arena, HELLO_TEXT);
+        assert(_s.count > 0);
+        assert(_s.data != null);
+        result_bytes += HELLO_TEXT.count;
     }
 
-    return builder_to_string(*b);
+    result: string;
+    result.count = result_bytes;
+    result.data = s.data;
+
+    return result;
 }
 
 HELLO_TEXT :: #string DONE
