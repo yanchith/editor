@@ -1,5 +1,6 @@
 #import "Basic";
-#import "Profiler"(IMPORT_MODE = .RUNTIME);
+#import,file "module.jai"(IMPORT_MODE = .RUNTIME);
+// XXX: How to see this module.jai as Profiler in the metaprogram?
 
 main :: () {
     profiler_init();
