@@ -450,8 +450,7 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
         return;
     }
 
-    applied_patch_count := buffer.applied_patch_count;
-    for < 0..applied_patch_count - 1 {
+    for < 0..buffer.applied_patch_count - 1 {
         patch := buffer.patches[it];
 
         if patch.type == {
