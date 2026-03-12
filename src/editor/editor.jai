@@ -284,6 +284,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                             // TODO(jt): Bind redo.
                             case #char "/"; {
+                                log("XXX TOP LEVEL UNDO");
                                 text_buffer_undo_edit(*editor.buffer);
                                 editor.buffer_selecting = editor.buffer.cursor0 != editor.buffer.cursor1;
                             }

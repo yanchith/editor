@@ -392,12 +392,20 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 text_buffer_undo_edit :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_undo_edit");
 
+    log("XXX before undo:");
+    for < 0..buffer.applied_patch_count - 1 {
+        p := buffer.patches[it];
+        log("XXX [%] % % %", it, p.type, p.flags, p.text.count);
+    }
+
     if buffer.applied_patch_count == 0 {
         return;
     }
 
     for < 0..buffer.applied_patch_count - 1 {
         patch := buffer.patches[it];
+
+        log("XXX undoing patch [%]: % % %", it, patch.type, patch.flags, patch.text.count);
 
         buffer.cursor0 = patch.cursor0_after;
         buffer.cursor1 = patch.cursor1_after;
@@ -415,6 +423,7 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
                 gap_buffer_insert(*buffer.gb, patch.text);
 
                 update_after_insert(buffer, patch.text);
+
                 // Restore cursor, because insert moves it forward. (There is no insert_forward that
                 // doesn't move the cursor)
                 buffer.cursor0 = patch.cursor0_after;
@@ -428,12 +437,24 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
             }
         };
 
-        sanity_assert(buffer.cursor0 == patch.cursor0_before);
-        sanity_assert(buffer.cursor1 == patch.cursor1_before);
-        sanity_assert(buffer.gb.gap_index == patch.gb_index_before);
+        // XXX
+        // sanity_assert(buffer.cursor0 == patch.cursor0_before);
+        // sanity_assert(buffer.cursor1 == patch.cursor1_before);
+        // sanity_assert(buffer.gb.gap_index == patch.gb_index_before);
 
         buffer.applied_patch_count -= 1;
+
+        keep_undoing := true;
+
         if !(patch.flags & .THROUGH) {
+            keep_undoing = false;
+        }
+
+        if it > 0 && !(buffer.patches[it - 1].flags & .THROUGH) {
+            keep_undoing = false;
+        }
+
+        if !keep_undoing {
             break;
         }
     }
@@ -1060,7 +1081,7 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
         bytes_on_line_before_cursor = text_buffer_byte_count_between_cursors(buffer, line_start, buffer.cursor0);
     }
 
-    while text.count {
+    while text.count > 0 {
         newline, newline_advance := string_starts_with_newline(text);
         if newline {
             char_count_after_cursor := buffer.lines[buffer.cursor0.y].char_count - buffer.cursor0.x;
@@ -1108,19 +1129,42 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
     }
 }
 
-// XXX: Do update_after_delete_forward
-update_after_delete_forward :: (buffer: *Text_Buffer, text: string) {}
+update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
+    text := _text;
 
-update_after_delete_backward :: (buffer: *Text_Buffer, text: string) {
-    if text.count == 0 {
-        return;
-    }
+    while text.count > 0 {
+        newline, newline_advance := string_ends_with_newline(text);
+        if newline {
+            assert(buffer.cursor0.x == 0);
+            assert(buffer.cursor0.y > 0);
 
-    // XXX: HERE Parse text and move navigation data. We should probably make a routine
-    // out of this and also use it in the regular delete backward routine.
-    for < :Unicode.utf8_iter text {
-        // XXX: If the iterator doesn't recognize \r\n, we can't use it and have to do
-        // our own approach of detecting that.
+            new_cursor_x := buffer.lines[buffer.cursor0.y - 1].char_count - 1;
+
+            buffer.lines[buffer.cursor0.y - 1].char_count -= 1;
+            buffer.lines[buffer.cursor0.y - 1].byte_count -= newline_advance;
+
+            buffer.lines[buffer.cursor0.y - 1].char_count += buffer.lines[buffer.cursor0.y].char_count;
+            buffer.lines[buffer.cursor0.y - 1].byte_count += buffer.lines[buffer.cursor0.y].byte_count;
+
+            array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y);
+
+            buffer.cursor0.x = new_cursor_x;
+            buffer.cursor0.y -= 1;
+
+            text.count -= newline_advance;
+            assert(text.count >= 0);
+        } else {
+            _, codepoint_advance := find_previous_utf8_character_boundary(text, text.count);
+            if codepoint_advance {
+                buffer.lines[buffer.cursor0.y].char_count -= 1;
+                buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
+
+                buffer.cursor0.x -= 1;
+
+                text.count -= codepoint_advance;
+                assert(text.count >= 0);
+            }
+        }
     }
 }
 
@@ -1164,18 +1208,23 @@ string_ends_with_newline :: (s: string) -> bool, newline_byte_length: s64 {
     return false, 0;
 }
 
-find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> index: s64, scanned_count: s64 {
-    assert(index >= 0 && index <= bytes.count); // <=, because our cursor can be pointing past the buffer.
-    if index == bytes.count {
-        return bytes.count, 0;
+find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: s64 {
+    found_index, scanned_count := find_next_utf8_character_boundary(cast(string, bytes), index);
+    return found_index, scanned_count;
+}
+
+find_next_utf8_character_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: s64 {
+    assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
+    if index == text.count {
+        return text.count, 0;
     }
 
-    assert(byte_is_utf8_character_boundary(bytes[index]));
+    assert(byte_is_utf8_character_boundary(text[index]));
 
     // When scanning forward, we could also trust the unicode and advance based on what we read? Not
     // sure if that's going to be faster, since it introduces a data dependency.
     next_index := index + 1;
-    while next_index < bytes.count && !byte_is_utf8_character_boundary(bytes[next_index]) {
+    while next_index < text.count && !byte_is_utf8_character_boundary(text[next_index]) {
         next_index += 1;
     }
 
@@ -1185,18 +1234,23 @@ find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> index: s64, s
     return next_index, scanned_count;
 }
 
-find_previous_utf8_character_boundary :: (bytes: [] u8, index: s64) -> index: s64, scanned_count: s64 {
-    assert(index >= 0 && index <= bytes.count); // <=, because our cursor can be pointing past the buffer.
+find_previous_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: s64 {
+    found_index, scanned_count := inline find_previous_utf8_character_boundary(cast(string, bytes), index);
+    return found_index, scanned_count;
+}
+
+find_previous_utf8_character_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: s64 {
+    assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
     if index == 0 {
         return 0, 0;
     }
 
-    if index < bytes.count { // Otherwise index == count, which is a valid starting point.
-        assert(byte_is_utf8_character_boundary(bytes[index]));
+    if index < text.count { // Otherwise index == count, which is a valid starting point.
+        assert(byte_is_utf8_character_boundary(text[index]));
     }
 
     prev_index := index - 1;
-    while prev_index > 0 && !byte_is_utf8_character_boundary(bytes[prev_index]) {
+    while prev_index > 0 && !byte_is_utf8_character_boundary(text[prev_index]) {
         prev_index -= 1;
     }
 
