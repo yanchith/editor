@@ -325,7 +325,10 @@ main :: () {
                                 // are hacking around modules/Input.
                                 //
                                 // Likewise for alt, but that gets remapped to alternative characters on macOS.
+                                log("XXX % %", it.key_code, flags);
+
                                 if (it.ctrl_pressed || it.alt_pressed) && it.key_code >= .SPACEBAR && it.key_code <= .DELETE {
+                                    log("XXX adding");
                                     array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });
                                 }
                             }
@@ -338,6 +341,8 @@ main :: () {
 
                         data: Editor.Input_Event.Data;
                         data.codepoint = cast(Editor.Codepoint, it.utf32);
+
+                        log("XXX % %", it.utf32, flags);
 
                         array_add(*input_events, { .CODEPOINT, flags, data });
                     }
