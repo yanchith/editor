@@ -1,5 +1,13 @@
 #import "Basic";
 #import "Compiler";
+#import "String";
+
+//
+// This metaprogram plugin works with the Default_Metaprogram by supplying the +Profiler argument.
+//
+// It can also be used from custom metaprograms by importing it in the .METAPROGRAM mode and calling
+// handle_message manually in the message loop.
+//
 
 get_plugin :: () -> *Metaprogram_Plugin {
     p := New(Metaprogram_Plugin);
@@ -13,7 +21,7 @@ profiler_import: *Message_Import;
 profiler_colleted_zone_labels: [..] string;
 
 // At the moment we don't actually store anything on the plugin itself, so we also provide a
-// pluginless overload.
+// pluginless overload for handling messages tha can be called from custom metaprograms.
 handle_message :: (p: *Metaprogram_Plugin, message: *Message) {
     handle_message(message);
 }
@@ -60,7 +68,18 @@ handle_message :: (message: *Message) {
         case .IMPORT; {
             import_message := cast(*Message_Import, message);
 
+            is_profiler_import := false;
+
             if import_message.module_name == "Profiler" {
+                is_profiler_import = true;
+            }
+
+            // Support #import,file "module.jai" of the profiler example that's inside the module.
+            if import_message.module_name == "module.jai" && ends_with(import_message.fully_pathed_filename, "Profiler/module.jai") {
+                is_profiler_import = true;
+            }
+
+            if is_profiler_import {
                 log("[Profiler] Inserting early code into Profiler module");
 
                 // :InsertEarlyCode
