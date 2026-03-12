@@ -1,6 +1,10 @@
 #import "Basic";
+
+// Build this example from project root:  jai ./modules/Profiler/example.jai +Profiler
+//
+// Otherwise +Profiler won't be visible to the compiler. This could be fixed with -import_dir, but
+// currently that parameter resolves way too late to have an effect for plugin initialization.
 #import,file "module.jai"(IMPORT_MODE = .RUNTIME);
-// XXX: How to see this module.jai as Profiler in the metaprogram?
 
 main :: () {
     profiler_init();
