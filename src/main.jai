@@ -251,6 +251,7 @@ main :: () {
                         should_run = false;
                     }
 
+                    // XXX: On macOS, we should ignore keys pressed with the Cmd modifier.
                     // XXX: On macOS at least, we are missing combined accented characters, like 'e -> = é
                     case .KEYBOARD; {
                         #if OS == .WINDOWS {

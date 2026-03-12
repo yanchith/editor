@@ -120,63 +120,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
 
     buffer.applied_patch_count = buffer.patches.count;
 
-    // While we could compute bytes_on_line_before_cursor by asking our procedure to do that for
-    // every line, that procedure has to iterate our navigation structures, and it would result in
-    // quadractic behavior (observable once the file is at about 1MB). Therefore, we ask the
-    // procedure to compute it once in the beginning, where we don't know the initial state, and
-    // update it ourselves throughout the rest of the insert.
-    bytes_on_line_before_cursor: s64;
-    {
-        line_start := text_buffer_get_start_cursor_for_line(buffer, buffer.cursor0.y);
-        bytes_on_line_before_cursor = text_buffer_byte_count_between_cursors(buffer, line_start, buffer.cursor0);
-    }
-
-    while text.count {
-        newline, newline_advance := string_starts_with_newline(text);
-        if newline {
-            char_count_after_cursor := buffer.lines[buffer.cursor0.y].char_count - buffer.cursor0.x;
-            byte_count_after_cursor := buffer.lines[buffer.cursor0.y].byte_count - bytes_on_line_before_cursor;
-
-            advance(*text, newline_advance);
-
-            // We treat \r\n as one character, if it happens to be in there.
-            buffer.lines[buffer.cursor0.y].char_count += 1 - char_count_after_cursor;
-            buffer.lines[buffer.cursor0.y].byte_count += newline_advance - byte_count_after_cursor;
-
-            // TODO(jt): @Speed We do this in a loop. Could we at least do the reserve and copy
-            // first and then fill one by one?
-            array_insert_at(*buffer.lines, { char_count_after_cursor, byte_count_after_cursor }, buffer.cursor0.y + 1);
-
-            buffer.cursor0.y += 1;
-            buffer.cursor0.x = 0;
-
-            bytes_on_line_before_cursor = 0;
-
-            continue;
-        }
-
-        // TODO(jt): The Unicode module actually doesn't clamp this by itself and it can be as much
-        // as 6 (this was valid in older specs?). Cleanup?
-        codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
-
-        // TODO(jt): This probably shouldn't be an assert, but we need to do something about
-        // incorrect unicode coming in and prevent it getting into the buffer. If we are ingesting a
-        // new file, we should probably check ahead for encoding or something. If we are in
-        // interactive mode, maybe it is okay to not insert.
-        //
-        // UPDATE: Also shouldn't be an assert, because we have already inserted stuff into the gap
-        // buffer, so maybe we want to revert that.
-        _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
-        assert(codepoint_advance == codepoint_advance_check);
-
-        advance(*text, codepoint_advance);
-
-        buffer.lines[buffer.cursor0.y].char_count += 1;
-        buffer.lines[buffer.cursor0.y].byte_count += codepoint_advance;
-        buffer.cursor0.x += 1;
-
-        bytes_on_line_before_cursor += codepoint_advance;
-    }
+    update_after_insert(buffer, text);
 
     patch.cursor0_after = buffer.cursor0;
     patch.cursor1_after = buffer.cursor0;
@@ -446,6 +390,8 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 }
 
 text_buffer_undo_edit :: (buffer: *Text_Buffer) {
+    ProfileZone("text_buffer_undo_edit");
+
     if buffer.applied_patch_count == 0 {
         return;
     }
@@ -453,30 +399,38 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
     for < 0..buffer.applied_patch_count - 1 {
         patch := buffer.patches[it];
 
+        buffer.cursor0 = patch.cursor0_after;
+        buffer.cursor1 = patch.cursor1_after;
+        gap_buffer_move_gap_to(*buffer.gb, patch.gb_index_after);
+
         if patch.type == {
             case .INSERT; {
-                buffer.cursor0 = patch.cursor0_after;
-                buffer.cursor1 = patch.cursor1_after;
-
-                gap_buffer_move_gap_to(*buffer.gb, patch.gb_index_after);
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, patch.text.count);
-
                 sanity_assert(cast(string, deleted_bytes) == patch.text);
 
-                // XXX: HERE Parse text and move navigation data. We should probably make a routine
-                // out of this and also use it in the regular delete backward routine.
-                for < :Unicode.utf8_iter cast(string, deleted_bytes) {
-                    // XXX: If the iterator doesn't recognize \r\n, we can't use it and have to do
-                    // our own approach of detecting that.
-                }
-
-                sanity_assert(buffer.cursor0 == patch.cursor0_before);
-                sanity_assert(buffer.cursor1 == patch.cursor1_before);
-                sanity_assert(buffer.gb.gap_index == patch.gb_index_before);
+                update_after_delete_backward(buffer, cast(string, deleted_bytes));
             }
-            case .DELETE_FORWARD;
-            case .DELETE_BACKWARD;
+
+            case .DELETE_FORWARD; {
+                gap_buffer_insert(*buffer.gb, patch.text);
+
+                update_after_insert(buffer, patch.text);
+                // Restore cursor, because insert moves it forward. (There is no insert_forward that
+                // doesn't move the cursor)
+                buffer.cursor0 = patch.cursor0_after;
+                buffer.cursor1 = patch.cursor1_after;
+            }
+
+            case .DELETE_BACKWARD; {
+                gap_buffer_insert(*buffer.gb, patch.text);
+
+                update_after_insert(buffer, patch.text);
+            }
         };
+
+        sanity_assert(buffer.cursor0 == patch.cursor0_before);
+        sanity_assert(buffer.cursor1 == patch.cursor1_before);
+        sanity_assert(buffer.gb.gap_index == patch.gb_index_before);
 
         buffer.applied_patch_count -= 1;
         if !(patch.flags & .THROUGH) {
@@ -1091,6 +1045,83 @@ assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
     // The cursor can go past the last non-newline character, or past the last character on the last
     // line, where there is no newline at the end.
     assert(cursor.x >= 0 && cursor.x <= buffer.lines[cursor.y].char_count);
+}
+
+update_after_insert :: (buffer: *Text_Buffer, text: string) {
+    ProfileZone("update_after_insert");
+    // While we could compute bytes_on_line_before_cursor by asking our procedure to do that for
+    // every line, that procedure has to iterate the lines array, and it would result in quadractic
+    // behavior (observable once the file is at about 1MB). Therefore, we ask the procedure to
+    // compute it once in the beginning, where we don't know the initial state, and update it
+    // ourselves throughout the rest of the insert.
+    bytes_on_line_before_cursor: s64;
+    {
+        line_start := text_buffer_get_start_cursor_for_line(buffer, buffer.cursor0.y);
+        bytes_on_line_before_cursor = text_buffer_byte_count_between_cursors(buffer, line_start, buffer.cursor0);
+    }
+
+    while text.count {
+        newline, newline_advance := string_starts_with_newline(text);
+        if newline {
+            char_count_after_cursor := buffer.lines[buffer.cursor0.y].char_count - buffer.cursor0.x;
+            byte_count_after_cursor := buffer.lines[buffer.cursor0.y].byte_count - bytes_on_line_before_cursor;
+
+            advance(*text, newline_advance);
+
+            // We treat \r\n as one character, if it happens to be in there.
+            buffer.lines[buffer.cursor0.y].char_count += 1 - char_count_after_cursor;
+            buffer.lines[buffer.cursor0.y].byte_count += newline_advance - byte_count_after_cursor;
+
+            // TODO(jt): @Speed We do this in a loop. Could we at least do the reserve and copy
+            // first and then fill one by one?
+            array_insert_at(*buffer.lines, { char_count_after_cursor, byte_count_after_cursor }, buffer.cursor0.y + 1);
+
+            buffer.cursor0.y += 1;
+            buffer.cursor0.x = 0;
+
+            bytes_on_line_before_cursor = 0;
+
+            continue;
+        }
+
+        // TODO(jt): The Unicode module actually doesn't clamp this by itself and it can be as much
+        // as 6 (this was valid in older specs?). Cleanup?
+        codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
+
+        // TODO(jt): This probably shouldn't be an assert, but we need to do something about
+        // incorrect unicode coming in and prevent it getting into the buffer. If we are ingesting a
+        // new file, we should probably check ahead for encoding or something. If we are in
+        // interactive mode, maybe it is okay to not insert.
+        //
+        // UPDATE: Also shouldn't be an assert, because we have already inserted stuff into the gap
+        // buffer, so maybe we want to revert that.
+        _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
+        assert(codepoint_advance == codepoint_advance_check);
+
+        advance(*text, codepoint_advance);
+
+        buffer.lines[buffer.cursor0.y].char_count += 1;
+        buffer.lines[buffer.cursor0.y].byte_count += codepoint_advance;
+        buffer.cursor0.x += 1;
+
+        bytes_on_line_before_cursor += codepoint_advance;
+    }
+}
+
+// XXX: Do update_after_delete_forward
+update_after_delete_forward :: (buffer: *Text_Buffer, text: string) {}
+
+update_after_delete_backward :: (buffer: *Text_Buffer, text: string) {
+    if text.count == 0 {
+        return;
+    }
+
+    // XXX: HERE Parse text and move navigation data. We should probably make a routine
+    // out of this and also use it in the regular delete backward routine.
+    for < :Unicode.utf8_iter text {
+        // XXX: If the iterator doesn't recognize \r\n, we can't use it and have to do
+        // our own approach of detecting that.
+    }
 }
 
 sort_cursors :: (start: *Cursor, end: *Cursor) {
