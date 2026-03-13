@@ -234,18 +234,28 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .CODEPOINT; {
                     if editor.key_ctrl_down {
                         if it.data.codepoint == {
+                            case #char "p";  #through;
                             case #char "P";  text_buffer_move_cursor_y(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "n";  #through;
                             case #char "N";  text_buffer_move_cursor_y(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "b";  #through;
                             case #char "B";  text_buffer_move_cursor_x(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "f";  #through;
                             case #char "F";  text_buffer_move_cursor_x(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "a";  #through;
                             case #char "A";  text_buffer_move_cursor_to_start_of_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "e";  #through;
                             case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
+                            case #char "l";  #through;
                             case #char "L";  recenter_viewport(editor, input);
+                            case #char "v";  #through;
                             case #char "V";  scroll_viewport_down(editor, input);
 
                             case .SPACEBAR;  editor.buffer_selecting = true;  text_buffer_join_cursors(*editor.buffer);
+                            case #char "g";  #through;
                             case #char "G";  editor.buffer_selecting = false; text_buffer_join_cursors(*editor.buffer);
 
+                            case #char "k";  #through;
                             case #char "K"; {
                                 editor.buffer_selecting = false;
                                 line_end := text_buffer_get_end_cursor_for_line(editor.buffer, editor.buffer.cursor0.y);
@@ -266,14 +276,17 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                     text_buffer_delete_between_cursors(*editor.buffer, editor.buffer.cursor0, line_end);
                                 }
                             }
+                            case #char "d";  #through;
                             case #char "D";  editor.buffer_selecting = false; text_buffer_delete_forward(*editor.buffer);
 
+                            case #char "m";  #through;
                             case #char "M"; {
                                 // TODO(jt): Preserve CRLF in CRLF-only documents.
                                 editor.buffer_selecting = false;
                                 text_buffer_insert(*editor.buffer, "\n");
                                 clamp_scroll_to_cursor = true;
                             }
+                            case #char "o";  #through;
                             case #char "O"; {
                                 // TODO(jt): Preserve CRLF in CRLF-only documents.
                                 editor.buffer_selecting = false;
@@ -291,14 +304,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         }
                     } else if editor.key_alt_down {
                         if it.data.codepoint == {
+                            case #char "p";  #through;
                             case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "n";  #through;
                             case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
+                            case #char "b";  #through;
                             case #char "B";
                                 clamp_scroll_to_end_of_line |= text_buffer_move_cursor_to_previous_word_boundary(*editor.buffer, editor.buffer_selecting);
                                 clamp_scroll_to_cursor = true;
+                            case #char "f";  #through;
                             case #char "F";
                                 clamp_scroll_to_start_of_line |= text_buffer_move_cursor_to_next_word_boundary(*editor.buffer, editor.buffer_selecting);
                                 clamp_scroll_to_cursor = true;
+                            case #char "v";  #through;
                             case #char "V";  scroll_viewport_up(editor, input);
 
                             case #char "<";  text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
