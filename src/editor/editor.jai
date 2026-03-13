@@ -258,23 +258,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "k";  #through;
                             case #char "K"; {
                                 editor.buffer_selecting = false;
-                                line_end := text_buffer_get_end_cursor_for_line(editor.buffer, editor.buffer.cursor0.y);
-                                view     := text_buffer_make_view_between_cursors(editor.buffer, editor.buffer.cursor0, line_end,, temp);
-
-                                is_only_whitespace := true;
-                                for view {
-                                    if !is_space(it) {
-                                        is_only_whitespace = false;
-                                        break;
-                                    }
-                                }
-
-                                if is_only_whitespace {
-                                    line_end := text_buffer_get_end_cursor_for_line(editor.buffer, editor.buffer.cursor0.y, include_newline = true);
-                                    text_buffer_delete_between_cursors(*editor.buffer, editor.buffer.cursor0, line_end);
-                                } else {
-                                    text_buffer_delete_between_cursors(*editor.buffer, editor.buffer.cursor0, line_end);
-                                }
+                                text_buffer_delete_line(*editor.buffer);
                             }
                             case #char "d";  #through;
                             case #char "D";  editor.buffer_selecting = false; text_buffer_delete_forward(*editor.buffer);
