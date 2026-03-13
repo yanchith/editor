@@ -280,10 +280,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             }
 
                             // TODO(jt): Bind redo.
-                            case #char "/"; {
-                                text_buffer_undo_edit(*editor.buffer);
-                                editor.buffer_selecting = editor.buffer.cursor0 != editor.buffer.cursor1;
-                            }
+                            case #char "/";  text_buffer_undo_edit(*editor.buffer);
                         }
                     } else if editor.key_alt_down {
                         if it.data.codepoint == {
@@ -292,13 +289,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "n";  #through;
                             case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char "b";  #through;
-                            case #char "B";
+                            case #char "B"; {
                                 clamp_scroll_to_end_of_line |= text_buffer_move_cursor_to_previous_word_boundary(*editor.buffer, editor.buffer_selecting);
                                 clamp_scroll_to_cursor = true;
+                            }
                             case #char "f";  #through;
-                            case #char "F";
+                            case #char "F"; {
                                 clamp_scroll_to_start_of_line |= text_buffer_move_cursor_to_next_word_boundary(*editor.buffer, editor.buffer_selecting);
                                 clamp_scroll_to_cursor = true;
+                            }
                             case #char "v";  #through;
                             case #char "V";  scroll_viewport_up(editor, input);
 
