@@ -251,7 +251,6 @@ main :: () {
                         should_run = false;
                     }
 
-                    // XXX: On macOS, we should ignore keys pressed with the Cmd modifier.
                     // XXX: On macOS at least, we are missing combined accented characters, like 'e -> = é
                     case .KEYBOARD; {
                         #if OS == .WINDOWS {
@@ -317,18 +316,25 @@ main :: () {
                             case .MOUSE_BUTTON_MIDDLE;     array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_MIDDLE } });
 
                             case; {
-                                // TODO(jt): @Cleanup @Hack Both Windows and macOS don't send these
-                                // key codes as TEXT_INPUT, if ctrl is held down, so we listen for
-                                // them here. More accurately, text_input_count is nonzero and it
-                                // sends weird control characters, but they get filtered
-                                // out. Probably there is a better way of doing this, but for now we
-                                // are hacking around modules/Input.
+                                // TODO(jt): @Cleanup @Hack Both Windows and macOS have their quirks
+                                // with translating keyboard events to text events.
                                 //
-                                // Likewise for alt, but that gets remapped to alternative characters on macOS.
-                                log("XXX % %", it.key_code, flags);
+                                // On macOS, Alt + key usually remaps the codepoint in the text
+                                // event into an exotic character, but for us it is important to
+                                // have Alt be part of keyboard shortcuts.
+                                //
+                                // On Windows (and macOS sometimes?), holding down control
+                                // suppresses the text event, so we emit it here.
+                                //
+                                // This is a temporary hack. We should eventually rewrite the
+                                // platform layers for both and do the minimal necessary hacks
+                                // there.
 
-                                if (it.ctrl_pressed || it.alt_pressed) && it.key_code >= .SPACEBAR && it.key_code <= .DELETE {
-                                    log("XXX adding");
+                                if it.alt_pressed && it.key_code >= .SPACEBAR && it.key_code <= .DELETE {
+                                    array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });
+                                }
+
+                                if it.ctrl_pressed && it.text_input_count == 0 {
                                     array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });
                                 }
                             }
@@ -341,8 +347,6 @@ main :: () {
 
                         data: Editor.Input_Event.Data;
                         data.codepoint = cast(Editor.Codepoint, it.utf32);
-
-                        log("XXX % %", it.utf32, flags);
 
                         array_add(*input_events, { .CODEPOINT, flags, data });
                     }
