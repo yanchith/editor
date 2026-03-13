@@ -136,13 +136,15 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
 }
 
 text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
-    /*inline*/ text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
+    inline text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
 }
 
-text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _end: Cursor) {
+text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, __start: Cursor, __end: Cursor) {
     ProfileZone("text_buffer_delete_between_cursors");
 
-    log("XXX 0 _start %  _end %", _start, _end);
+    // Force copy to avoid "maybe by reference" aliasing.
+    _start := __start;
+    _end := __end;
 
     assert_valid(buffer);
     assert_cursor_valid(buffer, _start);
@@ -151,14 +153,6 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _en
     if _start == _end {
         return;
     }
-
-    // start: *Cursor = New(Cursor);
-    // start.x = _start.x;
-    // start.y = _start.y;
-    // end: *Cursor = New(Cursor);
-    // end.x = _end.x;
-    // end.y = _end.y;
-    // swapped := sort_cursors(start, end);
 
     start := _start;
     end   := _end;
@@ -184,10 +178,9 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _en
     patch.gb_index_before = start_gb_index;
     patch.gb_index_after = start_gb_index; sanity_assert(patch.gb_index_after == buffer.gb.gap_index);
 
-    log("XXX 1 _start %  _end %", _start, _end);
-    patch.cursor0_before = ifx swapped then _end else _start;
+    patch.cursor0_before = _start;
     patch.cursor0_after = start;
-    patch.cursor1_before = ifx swapped then _start else _end;
+    patch.cursor1_before = _end;
     patch.cursor1_after = start;
     patch.type = .DELETE_FORWARD;
     patch.flags = .NONE;
