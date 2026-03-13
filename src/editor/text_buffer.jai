@@ -392,12 +392,6 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 text_buffer_undo_edit :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_undo_edit");
 
-    log("XXX before undo:");
-    for < 0..buffer.applied_patch_count - 1 {
-        p := buffer.patches[it];
-        log("XXX [%] % % %", it, p.type, p.flags, p.text.count);
-    }
-
     if buffer.applied_patch_count == 0 {
         return;
     }
@@ -437,10 +431,9 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
             }
         };
 
-        // XXX
-        // sanity_assert(buffer.cursor0 == patch.cursor0_before);
-        // sanity_assert(buffer.cursor1 == patch.cursor1_before);
-        // sanity_assert(buffer.gb.gap_index == patch.gb_index_before);
+        sanity_assert(buffer.cursor0 == patch.cursor0_before);
+        sanity_assert(buffer.cursor1 == patch.cursor1_before);
+        sanity_assert(buffer.gb.gap_index == patch.gb_index_before);
 
         buffer.applied_patch_count -= 1;
 
