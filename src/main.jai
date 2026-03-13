@@ -330,8 +330,10 @@ main :: () {
                                 // platform layers for both and do the minimal necessary hacks
                                 // there.
 
-                                if it.alt_pressed && it.key_code >= .SPACEBAR && it.key_code <= .DELETE {
-                                    array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });
+                                #if OS == .MACOS {
+                                    if it.alt_pressed && it.key_code >= .SPACEBAR && it.key_code <= .DELETE {
+                                        array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });
+                                    }
                                 }
 
                                 if it.ctrl_pressed && it.text_input_count == 0 {
