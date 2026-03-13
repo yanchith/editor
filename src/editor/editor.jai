@@ -279,7 +279,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 text_buffer_move_cursor_to_end_of_line(*editor.buffer, false);
                             }
 
-                            // TODO(jt): Bind redo.
                             case #char "/";  text_buffer_undo_edit(*editor.buffer);
                         }
                     } else if editor.key_alt_down {
@@ -303,6 +302,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                             case #char "<";  text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char ">";  text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
+
+                            case #char "/";  text_buffer_redo_edit(*editor.buffer);
                         }
                     } else if editor.key_meta_down {
                         // Nothing for now.
@@ -772,7 +773,7 @@ make_hello_text :: (arena: *Arena, approx_size_in_bytes: s64) -> string {
     result_bytes += s.count;
 
     while result_bytes < approx_size_in_bytes {
-        SEPARATOR :: "\n========================================================\n";
+        SEPARATOR :: "\n========================================================\n\n";
 
         _s: string;
 
