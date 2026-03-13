@@ -321,7 +321,9 @@ main :: () {
                                 //
                                 // On macOS, Alt + key usually remaps the codepoint in the text
                                 // event into an exotic character, but for us it is important to
-                                // have Alt be part of keyboard shortcuts.
+                                // have Alt be part of keyboard shortcuts. For this reason, we
+                                // modified modules/Input to ignore modifiers when extracting the
+                                // text event characters. See :ModifiefInputModule.
                                 //
                                 // On Windows (and macOS sometimes?), holding down control
                                 // suppresses the text event, so we emit it here.
@@ -329,12 +331,6 @@ main :: () {
                                 // This is a temporary hack. We should eventually rewrite the
                                 // platform layers for both and do the minimal necessary hacks
                                 // there.
-
-                                #if OS == .MACOS {
-                                    if it.alt_pressed && it.key_code >= .SPACEBAR && it.key_code <= .DELETE {
-                                        array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });
-                                    }
-                                }
 
                                 if it.ctrl_pressed && it.text_input_count == 0 {
                                     array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });

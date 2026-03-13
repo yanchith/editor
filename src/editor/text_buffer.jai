@@ -433,9 +433,6 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
     for < 0..buffer.applied_patch_count - 1 {
         patch := buffer.patches[it];
 
-        log("XXX undoing patch [%]: % % %", it, patch.type, patch.flags, patch.text.count);
-        log("XXX before % % after % %", patch.cursor0_before, patch.cursor1_before, patch.cursor0_after, patch.cursor1_after);
-
         buffer.cursor0 = patch.cursor0_after;
         buffer.cursor1 = patch.cursor1_after;
         gap_buffer_move_gap_to(*buffer.gb, patch.gb_index_after);
