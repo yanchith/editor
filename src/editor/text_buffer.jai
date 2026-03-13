@@ -490,8 +490,67 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
     buffer.applied_patch_count -= applied_count;
 }
 
+// XXX: Fix this!
 text_buffer_redo_edit :: (buffer: *Text_Buffer) {
+    ProfileZone("text_buffer_undo_edit");
 
+    if buffer.applied_patch_count == buffer.patches.count {
+        return;
+    }
+
+    applied_count := 0;
+    for buffer.applied_patch_count..buffer.patches.count - 1 {
+        patch := buffer.patches[it];
+
+        buffer.cursor0 = patch.cursor0_after;
+        buffer.cursor1 = patch.cursor1_after;
+        gap_buffer_move_gap_to(*buffer.gb, patch.gb_index_after);
+
+        if patch.type == {
+            case .INSERT; {
+                gap_buffer_insert(*buffer.gb, patch.text);
+                update_after_insert(buffer, patch.text);
+            }
+
+            case .DELETE_FORWARD; {
+                deleted_bytes := gap_buffer_delete_backward(*buffer.gb, patch.text.count);
+                sanity_assert(cast(string, deleted_bytes) == patch.text);
+
+                update_after_delete_forward(buffer, cast(string, deleted_bytes));
+            }
+
+            case .DELETE_BACKWARD; {
+                deleted_bytes := gap_buffer_delete_backward(*buffer.gb, patch.text.count);
+                sanity_assert(cast(string, deleted_bytes) == patch.text);
+
+                update_after_delete_backward(buffer, cast(string, deleted_bytes));
+            }
+        };
+
+        buffer.cursor0 = patch.cursor0_before;
+        buffer.cursor1 = patch.cursor1_before;
+
+        applied_count += 1;
+
+        keep_redoing := true;
+        if it > 0 {
+            previous_patch := buffer.patches[it - 1];
+
+            if !(previous_patch.flags & .THROUGH) {
+                keep_redoing = false;
+            }
+
+            if previous_patch.type != patch.type {
+                keep_redoing = false;
+            }
+        }
+
+        if !keep_redoing {
+            break;
+        }
+    }
+
+    buffer.applied_patch_count += applied_count;
 }
 
 text_buffer_discard_unapplied_patches :: (buffer: *Text_Buffer) {
@@ -1156,6 +1215,44 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
         buffer.cursor0.x += 1;
 
         bytes_on_line_before_cursor += codepoint_advance;
+    }
+
+    // Cursor 1 has to be updated by whomever this is called.
+}
+
+update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
+    text := _text;
+
+    while text.count > 0 {
+        newline, newline_advance := string_starts_with_newline(text);
+        if newline {
+            if buffer.cursor0.y == buffer.lines.count - 1 {
+                assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count);
+            } else {
+                assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1);
+            }
+            assert(buffer.cursor0.y + 1 < buffer.lines.count);
+
+            buffer.lines[buffer.cursor0.y - 1].char_count -= 1;
+            buffer.lines[buffer.cursor0.y - 1].byte_count -= newline_advance;
+
+            buffer.lines[buffer.cursor0.y - 1].char_count += buffer.lines[buffer.cursor0.y].char_count;
+            buffer.lines[buffer.cursor0.y - 1].byte_count += buffer.lines[buffer.cursor0.y].byte_count;
+
+            array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y);
+
+            advance(*text, newline_advance);
+            assert(text.count >= 0);
+        } else {
+            _, codepoint_advance := find_previous_utf8_character_boundary(text, text.count);
+            if codepoint_advance {
+                buffer.lines[buffer.cursor0.y].char_count -= 1;
+                buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
+
+                advance(*text, newline_advance);
+                assert(text.count >= 0);
+            }
+        }
     }
 
     // Cursor 1 has to be updated by whomever this is called.
