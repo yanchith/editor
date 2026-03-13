@@ -113,14 +113,10 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     patch.cursor1_before = buffer.cursor1;
     // patch.cursor1_after is set at the end of this function.
     patch.type = .INSERT;
-
     patch.flags = .NONE;
-    if text != " " && text != "\n" && text != "\r\n" {
-        trailing_bytes := Unicode.trailingBytesForUTF8[text[0]];
-        if text.count == 1 + trailing_bytes {
-            // TODO(jt): Also don't add through, if the patch timestamps were too far apart.
-            patch.flags |= .THROUGH;
-        }
+    if is_through_patch(text) {
+        // TODO(jt): Also don't add through, if the patch timestamps were too far apart.
+        patch.flags |= .THROUGH;
     }
 
     buffer.applied_patch_count = buffer.patches.count;
@@ -276,7 +272,10 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
         patch.cursor1_before = buffer.cursor0;
         patch.cursor1_after = buffer.cursor0;
         patch.type = .DELETE_FORWARD;
-        patch.flags = .THROUGH;
+        patch.flags = .NONE;
+        if is_through_patch(cast(string, deleted)) {
+            patch.flags |= .THROUGH;
+        }
 
         buffer.applied_patch_count = buffer.patches.count;
     } else {
@@ -299,7 +298,10 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
             patch.cursor1_before = buffer.cursor0;
             patch.cursor1_after = buffer.cursor0;
             patch.type = .DELETE_FORWARD;
-            patch.flags = .THROUGH;
+            patch.flags = .NONE;
+            if is_through_patch(cast(string, deleted)) {
+                patch.flags |= .THROUGH;
+            }
 
             buffer.applied_patch_count = buffer.patches.count;
         }
@@ -363,7 +365,10 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
         patch.cursor1_before = old_cursor;
         patch.cursor1_after = buffer.cursor0;
         patch.type = .DELETE_BACKWARD;
-        patch.flags = .THROUGH;
+        patch.flags = .NONE;
+        if is_through_patch(cast(string, deleted)) {
+            patch.flags |= .THROUGH;
+        }
 
         buffer.applied_patch_count = buffer.patches.count;
     } else {
@@ -390,7 +395,10 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
             patch.cursor1_before = old_cursor;
             patch.cursor1_after = buffer.cursor0;
             patch.type = .DELETE_BACKWARD;
-            patch.flags = .THROUGH;
+            patch.flags = .NONE;
+            if is_through_patch(cast(string, deleted)) {
+                patch.flags |= .THROUGH;
+            }
 
             buffer.applied_patch_count = buffer.patches.count;
         }
@@ -462,11 +470,6 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
         applied_count += 1;
 
         keep_undoing := true;
-
-        if !(patch.flags & .THROUGH) {
-            keep_undoing = false;
-        }
-
         if it > 0 {
             previous_patch := buffer.patches[it - 1];
 
@@ -1197,6 +1200,17 @@ update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
     }
 
     // Cursor 1 has to be updated by whomever this is called.
+}
+
+is_through_patch :: (text: string) -> bool {
+    if text != " " && text != "\n" && text != "\r\n" {
+        trailing_bytes := Unicode.trailingBytesForUTF8[text[0]];
+        if text.count == 1 + trailing_bytes {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 sort_cursors :: (start: *Cursor, end: *Cursor) -> swapped: bool {
