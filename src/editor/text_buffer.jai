@@ -136,11 +136,13 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
 }
 
 text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) {
-    inline text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
+    /*inline*/ text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
 }
 
 text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _end: Cursor) {
     ProfileZone("text_buffer_delete_between_cursors");
+
+    log("XXX 0 _start %  _end %", _start, _end);
 
     assert_valid(buffer);
     assert_cursor_valid(buffer, _start);
@@ -149,6 +151,14 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _en
     if _start == _end {
         return;
     }
+
+    // start: *Cursor = New(Cursor);
+    // start.x = _start.x;
+    // start.y = _start.y;
+    // end: *Cursor = New(Cursor);
+    // end.x = _end.x;
+    // end.y = _end.y;
+    // swapped := sort_cursors(start, end);
 
     start := _start;
     end   := _end;
@@ -173,11 +183,13 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, _start: Cursor, _en
     patch.text_mark = arena_get_mark(buffer.patch_text_arena);
     patch.gb_index_before = start_gb_index;
     patch.gb_index_after = start_gb_index; sanity_assert(patch.gb_index_after == buffer.gb.gap_index);
-    patch.cursor0_before = _start;
-    patch.cursor0_after = _start;
-    patch.cursor1_before = _end;
-    patch.cursor1_after = _start;
-    patch.type = ifx swapped then .DELETE_BACKWARD else .DELETE_FORWARD;
+
+    log("XXX 1 _start %  _end %", _start, _end);
+    patch.cursor0_before = ifx swapped then _end else _start;
+    patch.cursor0_after = start;
+    patch.cursor1_before = ifx swapped then _start else _end;
+    patch.cursor1_after = start;
+    patch.type = .DELETE_FORWARD;
     patch.flags = .NONE;
 
     buffer.applied_patch_count = buffer.patches.count;
@@ -228,7 +240,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
+        text_buffer_delete_between_cursors(buffer);
         assert(buffer.cursor0 == buffer.cursor1);
 
         return;
@@ -313,7 +325,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
+        text_buffer_delete_between_cursors(buffer);
         assert(buffer.cursor0 == buffer.cursor1);
 
         return;
@@ -424,10 +436,12 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
         return;
     }
 
+    applied_count := 0;
     for < 0..buffer.applied_patch_count - 1 {
         patch := buffer.patches[it];
 
         log("XXX undoing patch [%]: % % %", it, patch.type, patch.flags, patch.text.count);
+        log("XXX before % % after % %", patch.cursor0_before, patch.cursor1_before, patch.cursor0_after, patch.cursor1_after);
 
         buffer.cursor0 = patch.cursor0_after;
         buffer.cursor1 = patch.cursor1_after;
@@ -443,27 +457,19 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
 
             case .DELETE_FORWARD; {
                 gap_buffer_insert(*buffer.gb, patch.text);
-
                 update_after_insert(buffer, patch.text);
-
-                // Restore cursor, because insert moves it forward. (There is no insert_forward that
-                // doesn't move the cursor)
-                buffer.cursor0 = patch.cursor0_after;
-                buffer.cursor1 = patch.cursor1_after;
             }
 
             case .DELETE_BACKWARD; {
                 gap_buffer_insert(*buffer.gb, patch.text);
-
                 update_after_insert(buffer, patch.text);
             }
         };
 
-        sanity_assert(buffer.cursor0 == patch.cursor0_before);
-        sanity_assert(buffer.cursor1 == patch.cursor1_before);
-        sanity_assert(buffer.gb.gap_index == patch.gb_index_before);
+        buffer.cursor0 = patch.cursor0_before;
+        buffer.cursor1 = patch.cursor1_before;
 
-        buffer.applied_patch_count -= 1;
+        applied_count += 1;
 
         keep_undoing := true;
 
@@ -471,14 +477,24 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
             keep_undoing = false;
         }
 
-        if it > 0 && !(buffer.patches[it - 1].flags & .THROUGH) {
-            keep_undoing = false;
+        if it > 0 {
+            previous_patch := buffer.patches[it - 1];
+
+            if !(previous_patch.flags & .THROUGH) {
+                keep_undoing = false;
+            }
+
+            if previous_patch.type != patch.type {
+                keep_undoing = false;
+            }
         }
 
         if !keep_undoing {
             break;
         }
     }
+
+    buffer.applied_patch_count -= applied_count;
 }
 
 text_buffer_redo_edit :: (buffer: *Text_Buffer) {
@@ -1148,6 +1164,8 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
 
         bytes_on_line_before_cursor += codepoint_advance;
     }
+
+    // Cursor 1 has to be updated by whomever this is called.
 }
 
 update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
@@ -1188,7 +1206,7 @@ update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
         }
     }
 
-    buffer.cursor1 = buffer.cursor0;
+    // Cursor 1 has to be updated by whomever this is called.
 }
 
 sort_cursors :: (start: *Cursor, end: *Cursor) -> swapped: bool {
