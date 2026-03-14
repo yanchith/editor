@@ -492,7 +492,7 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
 
 // XXX: Fix this!
 text_buffer_redo_edit :: (buffer: *Text_Buffer) {
-    ProfileZone("text_buffer_undo_edit");
+    ProfileZone("text_buffer_redo_edit");
 
     if buffer.applied_patch_count == buffer.patches.count {
         return;
@@ -502,9 +502,9 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
     for buffer.applied_patch_count..buffer.patches.count - 1 {
         patch := buffer.patches[it];
 
-        buffer.cursor0 = patch.cursor0_after;
-        buffer.cursor1 = patch.cursor1_after;
-        gap_buffer_move_gap_to(*buffer.gb, patch.gb_index_after);
+        buffer.cursor0 = patch.cursor0_before;
+        buffer.cursor1 = patch.cursor1_before;
+        gap_buffer_move_gap_to(*buffer.gb, patch.gb_index_before);
 
         if patch.type == {
             case .INSERT; {
@@ -513,7 +513,7 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
             }
 
             case .DELETE_FORWARD; {
-                deleted_bytes := gap_buffer_delete_backward(*buffer.gb, patch.text.count);
+                deleted_bytes := gap_buffer_delete_forward(*buffer.gb, patch.text.count);
                 sanity_assert(cast(string, deleted_bytes) == patch.text);
 
                 update_after_delete_forward(buffer, cast(string, deleted_bytes));
@@ -527,20 +527,22 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
             }
         };
 
-        buffer.cursor0 = patch.cursor0_before;
-        buffer.cursor1 = patch.cursor1_before;
+        sanity_assert(buffer.cursor0 == patch.cursor0_after);
+        sanity_assert(buffer.cursor1 == patch.cursor1_after);
+        buffer.cursor0 = patch.cursor0_after;
+        buffer.cursor1 = patch.cursor1_after;
 
         applied_count += 1;
 
         keep_redoing := true;
-        if it > 0 {
-            previous_patch := buffer.patches[it - 1];
+        if it < buffer.patches.count - 1 {
+            next_patch := buffer.patches[it + 1];
 
-            if !(previous_patch.flags & .THROUGH) {
+            if !(next_patch.flags & .THROUGH) {
                 keep_redoing = false;
             }
 
-            if previous_patch.type != patch.type {
+            if next_patch.type != patch.type {
                 keep_redoing = false;
             }
         }
@@ -1170,7 +1172,7 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
         bytes_on_line_before_cursor = text_buffer_byte_count_between_cursors(buffer, line_start, buffer.cursor0);
     }
 
-    while text.count > 0 {
+    while text.count {
         newline, newline_advance := string_starts_with_newline(text);
         if newline {
             char_count_after_cursor := buffer.lines[buffer.cursor0.y].char_count - buffer.cursor0.x;
@@ -1221,9 +1223,11 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
 }
 
 update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
+    ProfileZone("update_after_delete_forward");
+
     text := _text;
 
-    while text.count > 0 {
+    while text.count {
         newline, newline_advance := string_starts_with_newline(text);
         if newline {
             if buffer.cursor0.y == buffer.lines.count - 1 {
@@ -1244,12 +1248,12 @@ update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
             advance(*text, newline_advance);
             assert(text.count >= 0);
         } else {
-            _, codepoint_advance := find_previous_utf8_character_boundary(text, text.count);
+            _, codepoint_advance := find_next_utf8_character_boundary(text, 0);
             if codepoint_advance {
                 buffer.lines[buffer.cursor0.y].char_count -= 1;
                 buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
 
-                advance(*text, newline_advance);
+                advance(*text, codepoint_advance);
                 assert(text.count >= 0);
             }
         }
@@ -1259,9 +1263,11 @@ update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
 }
 
 update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
+    ProfileZone("update_after_delete_backward");
+
     text := _text;
 
-    while text.count > 0 {
+    while text.count {
         newline, newline_advance := string_ends_with_newline(text);
         if newline {
             assert(buffer.cursor0.x == 0);
