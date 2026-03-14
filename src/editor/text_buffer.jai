@@ -517,6 +517,7 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
                 sanity_assert(cast(string, deleted_bytes) == patch.text);
 
                 update_after_delete_forward(buffer, cast(string, deleted_bytes));
+                buffer.cursor1 = buffer.cursor0;
             }
 
             case .DELETE_BACKWARD; {
@@ -524,6 +525,7 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
                 sanity_assert(cast(string, deleted_bytes) == patch.text);
 
                 update_after_delete_backward(buffer, cast(string, deleted_bytes));
+                buffer.cursor1 = buffer.cursor0;
             }
         };
 
@@ -1146,6 +1148,27 @@ assert_valid :: (buffer: Text_Buffer) {
 
         assert(byte_count == buffer.gb.count);
     }
+
+    // This is also too expensive to do in shipping builds.
+    #if SANITY {
+        lines: [..] Line;
+        lines.allocator = temp;
+        array_add(*lines);
+
+        for 0..buffer.gb.count - 1 {
+            b := gap_buffer_get_nongap_byte(buffer.gb, it);
+            lines[lines.count - 1].byte_count += 1;
+            if b == "\n" {
+                array_add(*lines);
+            }
+        }
+
+        assert(lines.count == buffer.lines.count);
+        for lines {
+            // TODO(jt): Compare character count, but for that we need to parse characters.
+            assert(it.byte_count == buffer.lines[it_index].byte_count);
+        }
+    }
 }
 
 assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
@@ -1230,10 +1253,11 @@ update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
     while text.count {
         newline, newline_advance := string_starts_with_newline(text);
         if newline {
+            log("XXX nl % %", newline_advance, text.count);
             if buffer.cursor0.y == buffer.lines.count - 1 {
                 assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count);
             } else {
-                assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1);
+                assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1, "XXX % == %", buffer.cursor0.x, buffer.lines[buffer.cursor0.y].char_count - 1);
             }
             assert(buffer.cursor0.y + 1 < buffer.lines.count);
 
@@ -1250,6 +1274,7 @@ update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
         } else {
             _, codepoint_advance := find_next_utf8_character_boundary(text, 0);
             if codepoint_advance {
+                log("XXX cp % %", codepoint_advance, text.count);
                 buffer.lines[buffer.cursor0.y].char_count -= 1;
                 buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
 
