@@ -351,37 +351,92 @@ main :: () {
                 }
             }
 
+            // TODO(jt): Generate all possible actions from a keymap.
             if should_fuzz {
                 MOVES   :: Editor.Key.[.ARROW_UP, .ARROW_DOWN, .ARROW_LEFT, .ARROW_RIGHT];
                 ADDS    :: Editor.Codepoint.[.ENTER, .SPACEBAR, .TAB, #char "A", #char "B", #char "C", #char "D", #char "E", #char "F", #char "š", #char "č", #char "ť", #char "か", #char "わ", #char "い", #char "可", #char "愛"];
                 DELETES :: Editor.Codepoint.[.BACKSPACE, .DELETE];
 
-                for 0..1000 {
+                for 0..10 {
                     r := random_get_zero_to_one(*fuzz_rng);
 
                     if r < 0.2 {
-                        e := array_add(*input_events);
-                        e.type = .KEY;
-                        e.flags |= .KEY_PRESSED;
+                        for 0..20 {
+                            e := array_add(*input_events);
+                            e.type = .KEY;
+                            e.flags |= .KEY_PRESSED;
 
-                        index := random_get(*fuzz_rng) % MOVES.count;
-                        e.data.key = MOVES[index];
+                            index := random_get(*fuzz_rng) % MOVES.count;
+                            e.data.key = MOVES[index];
+                        }
+                    } else if r < 0.4 {
+                        for 0..20 {
+                            e := array_add(*input_events);
+                            e.type = .CODEPOINT;
+                            e.flags |= .KEY_PRESSED;
+
+                            index := random_get(*fuzz_rng) % ADDS.count;
+                            e.data.codepoint = ADDS[index];
+                        }
+                    } else if r < 0.6 {
+                        for 0..20 {
+                            e := array_add(*input_events);
+                            e.type = .CODEPOINT;
+                            e.flags |= .KEY_PRESSED;
+
+                            index := random_get(*fuzz_rng) % DELETES.count;
+                            e.data.codepoint = DELETES[index];
+                        }
+                    } else if r < 0.7 {
+                        // C-g select
+                        ctrl_press := array_add(*input_events);
+                        ctrl_press.type = .KEY;
+                        ctrl_press.flags |= .KEY_PRESSED;
+                        ctrl_press.data.key = .CTRL;
+
+                        e := array_add(*input_events);
+                        e.type = .CODEPOINT;
+                        e.flags |= .KEY_PRESSED;
+                        e.data.codepoint = .SPACEBAR;
+
+                        ctrl_release := array_add(*input_events);
+                        ctrl_release.type = .KEY;
+                        ctrl_release.flags = .NONE;
+                        ctrl_release.data.key = .CTRL;
+                    } else if r < 0.75 {
+                        // Undo
+                        ctrl_press := array_add(*input_events);
+                        ctrl_press.type = .KEY;
+                        ctrl_press.flags |= .KEY_PRESSED;
+                        ctrl_press.data.key = .CTRL;
+
+                        e := array_add(*input_events);
+                        e.type = .CODEPOINT;
+                        e.flags |= .KEY_PRESSED;
+                        e.data.codepoint = #char "/";
+
+                        ctrl_release := array_add(*input_events);
+                        ctrl_release.type = .KEY;
+                        ctrl_release.flags = .NONE;
+                        ctrl_release.data.key = .CTRL;
                     } else if r < 0.8 {
+                        // Redo
+                        alt_press := array_add(*input_events);
+                        alt_press.type = .KEY;
+                        alt_press.flags |= .KEY_PRESSED;
+                        alt_press.data.key = .ALT;
+
                         e := array_add(*input_events);
                         e.type = .CODEPOINT;
                         e.flags |= .KEY_PRESSED;
+                        e.data.codepoint = #char "/";
 
-                        index := random_get(*fuzz_rng) % ADDS.count;
-                        e.data.codepoint = ADDS[index];
-                    } else if r < 0.99 {
-                        e := array_add(*input_events);
-                        e.type = .CODEPOINT;
-                        e.flags |= .KEY_PRESSED;
-
-                        index := random_get(*fuzz_rng) % DELETES.count;
-                        e.data.codepoint = DELETES[index];
-                    } else if r < 0.995 {
-                        for 0..100 {
+                        alt_release := array_add(*input_events);
+                        alt_release.type = .KEY;
+                        alt_release.flags = .NONE;
+                        alt_release.data.key = .ALT;
+                    } else if r < 0.9 {
+                        for 0..20 {
                             e := array_add(*input_events);
                             e.type = .KEY;
                             e.flags |= .KEY_PRESSED;
@@ -389,15 +444,15 @@ main :: () {
                             e.data.key = .ARROW_RIGHT;
                         }
 
-                        for 0..100 {
+                        for 0..20 {
                             e := array_add(*input_events);
                             e.type = .CODEPOINT;
                             e.flags |= .KEY_PRESSED;
 
                             e.data.codepoint = .BACKSPACE;
                         }
-                    } else {
-                        for 0..100 {
+                    } else if r < 1.0 {
+                        for 0..20 {
                             e := array_add(*input_events);
                             e.type = .KEY;
                             e.flags |= .KEY_PRESSED;
@@ -405,7 +460,7 @@ main :: () {
                             e.data.key = .ARROW_LEFT;
                         }
 
-                        for 0..100 {
+                        for 0..20 {
                             e := array_add(*input_events);
                             e.type = .CODEPOINT;
                             e.flags |= .KEY_PRESSED;
@@ -418,7 +473,7 @@ main :: () {
 
             mouse_x, mouse_y, success := Window.get_mouse_pointer_position();
             if success {
-                input.mouse_position = .{ cast(f32, mouse_x), cast(f32, mouse_y) };
+                input.mouse_position = { cast(f32, mouse_x), cast(f32, mouse_y) };
             }
             input.mouse_wheel_delta = Input.mouse_delta_z;
 
