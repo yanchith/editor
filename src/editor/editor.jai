@@ -279,7 +279,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 text_buffer_move_cursor_to_end_of_line(*editor.buffer, false);
                             }
 
-                            case #char "/";  text_buffer_undo_edit(*editor.buffer);
+                            case #char "/";  text_buffer_undo_edit(*editor.buffer); clamp_scroll_to_cursor = true;
                         }
                     } else if editor.key_alt_down {
                         if it.data.codepoint == {
@@ -308,7 +308,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "<";  text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char ">";  text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
 
-                            case #char "/";  text_buffer_redo_edit(*editor.buffer);
+                            case #char "/";  text_buffer_redo_edit(*editor.buffer); clamp_scroll_to_cursor = true;
                         }
                     } else if editor.key_meta_down {
                         // Nothing for now.
