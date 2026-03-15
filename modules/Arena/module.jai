@@ -158,14 +158,11 @@ arena_init :: (arena: *Arena) {
     arena.commit_size  = align(max(arena.commit_size, 1), arena.procs.page_size);
     arena.keep_size    = align(max(arena.keep_size, 1), arena.procs.page_size);
 
-    // Clamp commit and keep size so the caller can control all three sizes with just reserve size in simple scenarios.
+    // Clamp commit and keep size so the caller can control all three sizes with just reserve size
+    // in simple scenarios. Note that this won't help when the actual allocation pushes the commit
+    // size above our reserved range.
     arena.commit_size = min(arena.commit_size, arena.reserve_size);
     arena.keep_size   = min(arena.keep_size, arena.reserve_size);
-
-    while arena.reserve_size % arena.commit_size != 0 {
-        arena.commit_size = arena.commit_size >> 1;
-        sanity_assert(arena.commit_size > 0 && is_power_of_two(arena.commit_size));
-    }
 
     if given_reserve != arena.reserve_size || given_commit != arena.commit_size || given_keep != arena.keep_size {
         log_error(
@@ -217,8 +214,8 @@ arena_is_this_yours :: (arena: Arena, pointer: *void) -> bool {
     return pointer >= arena.memory_start && pointer < arena.memory_start + arena.allocated;
 }
 
-arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
-    assert(size > 0);
+arena_push :: (arena: *Arena, _size: s64, alignment: s64 = 16) -> *void {
+    assert(_size > 0);
     assert(alignment > 0 && is_power_of_two(alignment));
 
     if !arena.memory_start {
@@ -226,9 +223,11 @@ arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
     }
 
     pointer := align(arena.memory_start + arena.allocated, alignment);
-    padding_size := cast(s64, pointer) - cast(s64, arena.memory_start + arena.allocated);
+    padding := cast(s64, pointer) - cast(s64, arena.memory_start + arena.allocated);
 
-    arena.allocated += padding_size + size;
+    size := padding + _size;
+
+    arena.allocated += size;
 
     if arena.memory_start + arena.allocated > arena.memory_end {
         // Nothing we can do here. We return null so that the user notices the error sooner.
@@ -239,6 +238,13 @@ arena_push :: (arena: *Arena, size: s64, alignment: s64 = 16) -> *void {
     if arena.allocated > arena.committed {
         commit_base := arena.memory_start + arena.committed;
         commit_size := max(align(size, arena.procs.page_size), arena.commit_size);
+
+        // We can get here, if we passed the reserve check above, but rounding up to commit size
+        // would take us above the reserved space. We detect this to give a better error message.
+        if commit_base + commit_size > arena.memory_end {
+            log_error("Arena ran out of reserved space committing % bytes", commit_size);
+            return null;
+        }
 
         result := arena.procs.mem_commit(commit_base, commit_size);
         if !result {
