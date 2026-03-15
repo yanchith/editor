@@ -26,7 +26,7 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
             // NOTE(jt): As of 0.2.026, Basic.free sets requested_size and old_size to zero. That is
             // completely valid, because general purpose allocators in C land don't get to know
             // old_size and have to deal. However, if we did know old-size, we could could actually
-            // reclaim memory here with arena_maybe_modify. Datastructures like dynamic array or
+            // reclaim memory here with arena_maybe_modify_last_push. Datastructures like dynamic array or
             // hash table could fill in the size, if they wanted to.
             return null;
         }
@@ -35,11 +35,11 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
             arena := cast(*Arena, allocator_data);
             assert(arena != null);
 
-            if arena_maybe_modify(arena, old_memory, old_size, requested_size) {
+            if arena_maybe_modify_last_push(arena, old_memory, old_size, requested_size) {
                 return old_memory;
             }
 
-            // arena_maybe_modify could have said no to a shrink operation, in which case
+            // arena_maybe_modify_last_push could have said no to a shrink operation, in which case
             // we don't want to allocate a new spot within the same arena.
             if requested_size <= old_size {
                 return old_memory;
@@ -150,9 +150,31 @@ arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZ
 arena_init :: (arena: *Arena) {
     assert(arena.procs.page_size > 0 && is_power_of_two(arena.procs.page_size));
 
-    arena.reserve_size = align(max(1, arena.reserve_size), arena.procs.page_size);
-    arena.commit_size  = align(max(1, arena.commit_size), arena.procs.page_size);
-    arena.keep_size    = align(max(1, arena.keep_size), arena.procs.page_size);
+    given_reserve := arena.reserve_size;
+    given_commit  := arena.commit_size;
+    given_keep    := arena.keep_size;
+
+    arena.reserve_size = align(max(arena.reserve_size, 1), arena.procs.page_size);
+    arena.commit_size  = align(max(arena.commit_size, 1), arena.procs.page_size);
+    arena.keep_size    = align(max(arena.keep_size, 1), arena.procs.page_size);
+
+    // Clamp commit and keep size so the caller can control all three sizes with just reserve size in simple scenarios.
+    arena.commit_size = min(arena.commit_size, arena.reserve_size);
+    arena.keep_size   = min(arena.keep_size, arena.reserve_size);
+
+    while arena.reserve_size % arena.commit_size != 0 {
+        arena.commit_size = arena.commit_size >> 1;
+        sanity_assert(arena.commit_size > 0 && is_power_of_two(arena.commit_size));
+    }
+
+    if given_reserve != arena.reserve_size || given_commit != arena.commit_size || given_keep != arena.keep_size {
+        log_error(
+            "Arena sizes modified: RESERVE % -> %; COMMIT % -> %; KEEP % -> %;",
+            given_reserve, arena.reserve_size,
+            given_commit, arena.commit_size,
+            given_keep, arena.keep_size,
+        );
+    }
 
     start := arena.procs.mem_reserve(arena.reserve_size);
     assert(is_aligned(start, arena.procs.page_size));
@@ -173,7 +195,7 @@ arena_release :: (arena: *Arena) {
         return;
     }
 
-    // Stored on the side, because if the arena was created with arena_allocated, we can't access
+    // Store on the side, because if the arena was created with arena_allocate, we can't access
     // these after mem_release.
     memory_start := arena.memory_start;
     memory_end   := arena.memory_end;
@@ -308,10 +330,11 @@ arena_push_string :: (arena: *Arena, s: string) -> string {
     return result;
 }
 
-// Tries to modify the allocation. Can only succeed if the allocation is the last allocation. (And
-// even then it sometimes won't because of alignment of subsequent allocations). Speaking of
+// Tries to modify the last allocation in the arena. Can only succeed if the allocation is the last
+// allocation. (And even then it sometimes won't because of alignment of subsequent allocations, but
+// it is guaranteed to succeed if you just made the last allocation right now). Speaking of
 // alignment, you can't change it here.
-arena_maybe_modify :: (arena: *Arena, pointer: *void, old_size: s64, new_size: s64, overwrite_memory := false) -> success: bool {
+arena_maybe_modify_last_push :: (arena: *Arena, pointer: *void, old_size: s64, new_size: s64, overwrite_memory := false) -> success: bool {
     if !arena.memory_start {
         arena_init(arena);
     }
@@ -382,6 +405,7 @@ ArenaAutoPop :: (arena: *Arena) #expand {
 Basic  :: #import "Basic";
 
 assert    :: Basic.assert;
+min       :: Basic.min;
 max       :: Basic.max;
 log_error :: Basic.log_error;
 
