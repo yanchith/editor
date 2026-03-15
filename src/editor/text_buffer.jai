@@ -1165,10 +1165,11 @@ assert_valid :: (buffer: Text_Buffer) {
         lines.allocator = temp;
         array_add(*lines);
 
-        for 0..buffer.gb.count - 1 {
-            b := gap_buffer_get_nongap_byte(buffer.gb, it);
+        // XXX: Fill in character counts! Remove previous sanity.
+        view := gap_buffer_make_contiguous_view(buffer.gb, 0, buffer.gb.count,, temp);
+        for view {
             lines[lines.count - 1].byte_count += 1;
-            if b == "\n" {
+            if it == "\n" {
                 array_add(*lines);
             }
         }
