@@ -37,6 +37,7 @@ Patch :: struct {
     gb_index_before: s64;
     gb_index_after:  s64;
 
+    // The actual positions the cursors were before and after the operation. They are not sorted!
     cursor0_before: Cursor;
     cursor0_after:  Cursor;
     cursor1_before: Cursor;
@@ -46,12 +47,14 @@ Patch :: struct {
     flags: Patch_Flags;
 
     Patch_Type :: enum u32 {
-        // We could have emulated delete backward with moving the cursor and deleting forward or
-        // vice versa, but for now we haven't, so both these operations appear in undo.
-
-        INSERT          :: 0; // Text was inserted. Delete backward when undoing. Insert when redoing.
-        DELETE_FORWARD  :: 1; // Text was deleted forward. Insert when undoing. Delete forward when redoing.
-        DELETE_BACKWARD :: 2; // Text was deleted backward. Insert (and reset cursor!) when undoing. Delete backward when redoing.
+        // All of these operations restore cursors to the values defined by the patch. Patching
+        // forward always collapses cursors (because that's what mutating text does), but patching
+        // backward restores cursors in case of DELETE_SELECTION. The cursor restoration is
+        // automatic (the patch values are taken).
+        INSERT           :: 0;
+        DELETE_SELECTION :: 1;
+        DELETE_FORWARD   :: 2;
+        DELETE_BACKWARD  :: 3;
     }
 
     Patch_Flags :: enum_flags u32 {
@@ -87,6 +90,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     if buffer.cursor0 != buffer.cursor1 {
         text_buffer_delete_between_cursors(buffer);
         assert(buffer.cursor0 == buffer.cursor1);
+        // Fallthrough!
     }
 
     if text.count == 0 {
@@ -102,7 +106,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string) {
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     gap_buffer_insert(*buffer.gb, text);
 
-    text_buffer_discard_unapplied_patches(buffer);
+    discard_unapplied_patches(buffer);
     patch := array_add(*buffer.patches);
     patch.text = arena_push_string(buffer.patch_text_arena, text);
     patch.text_mark = arena_get_mark(buffer.patch_text_arena);
@@ -152,7 +156,7 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, __start: Cursor, __
 
     start := _start;
     end   := _end;
-    swapped := sort_cursors(*start, *end);
+    sort_cursors(*start, *end);
 
     start_gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start);
     end_gb_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end);
@@ -167,7 +171,7 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, __start: Cursor, __
     buffer.cursor0 = start;
     buffer.cursor1 = start;
 
-    text_buffer_discard_unapplied_patches(buffer);
+    discard_unapplied_patches(buffer);
     patch := array_add(*buffer.patches);
     patch.text = arena_push_string(buffer.patch_text_arena, cast(string, deleted_bytes));
     patch.text_mark = arena_get_mark(buffer.patch_text_arena);
@@ -178,51 +182,18 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, __start: Cursor, __
     patch.cursor0_after = start;
     patch.cursor1_before = _end;
     patch.cursor1_after = start;
-    patch.type = .DELETE_FORWARD;
+    patch.type = .DELETE_SELECTION;
     patch.flags = .NONE;
 
     buffer.applied_patch_count = buffer.patches.count;
 
-    while deleted_bytes.count > 0 {
-        newline, newline_advance := string_starts_with_newline(deleted_bytes);
-        if newline {
-            if buffer.cursor0.y == buffer.lines.count - 1 {
-                assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count);
-            } else {
-                assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1);
-            }
-            assert(buffer.cursor0.y + 1 < buffer.lines.count);
-
-            // We treat \r\n as one character, if it happens to be in there.
-            buffer.lines[buffer.cursor0.y].char_count -= 1;
-            buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
-            assert(buffer.lines[buffer.cursor0.y].char_count >= 0);
-            assert(buffer.lines[buffer.cursor0.y].byte_count >= 0);
-
-            buffer.lines[buffer.cursor0.y].char_count += buffer.lines[buffer.cursor0.y + 1].char_count;
-            buffer.lines[buffer.cursor0.y].byte_count += buffer.lines[buffer.cursor0.y + 1].byte_count;
-
-            array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y + 1);
-
-            deleted_bytes = array_view(deleted_bytes, newline_advance);
-        } else {
-            _, codepoint_advance := find_next_utf8_character_boundary(deleted_bytes, 0);
-            if codepoint_advance {
-                buffer.lines[buffer.cursor0.y].char_count -= 1;
-                buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
-                assert(buffer.lines[buffer.cursor0.y].char_count >= 0);
-                assert(buffer.lines[buffer.cursor0.y].byte_count >= 0);
-
-                deleted_bytes = array_view(deleted_bytes, codepoint_advance);
-            }
-        }
-    }
+    update_after_delete_selection(buffer, cast(string, deleted_bytes));
 
     assert_valid(buffer);
 }
 
 // TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
-// text_buffer_delete_between_cursors does.
+// text_buffer_delete_between_cursors does. There's also an update function we can call.
 text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_delete_forward");
 
@@ -242,12 +213,8 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 
     newline, newline_advance := string_starts_with_newline(bytes);
     if newline {
-        if buffer.cursor0.y == buffer.lines.count - 1 {
-            assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count);
-        } else {
-            assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1);
-        }
-        assert(buffer.cursor0.y + 1 < buffer.lines.count);
+        assert(buffer.cursor0.y < buffer.lines.count - 1);                         // The last line can't have a newline.
+        assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1); // The newline has to be the last char.
 
         // We treat \r\n as one character, if it happens to be in there.
         buffer.lines[buffer.cursor0.y].char_count -= 1;
@@ -261,7 +228,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
         deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
         assert(newline_advance == deleted.count);
 
-        text_buffer_discard_unapplied_patches(buffer);
+        discard_unapplied_patches(buffer);
         patch := array_add(*buffer.patches);
         patch.text = arena_push_string(buffer.patch_text_arena, cast(string, deleted));
         patch.text_mark = arena_get_mark(buffer.patch_text_arena);
@@ -287,7 +254,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
             deleted := gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
             assert(codepoint_advance == deleted.count);
 
-            text_buffer_discard_unapplied_patches(buffer);
+            discard_unapplied_patches(buffer);
             patch := array_add(*buffer.patches);
             patch.text = arena_push_string(buffer.patch_text_arena, cast(string, deleted));
             patch.text_mark = arena_get_mark(buffer.patch_text_arena);
@@ -313,7 +280,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 }
 
 // TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
-// text_buffer_delete_between_cursors does.
+// text_buffer_delete_between_cursors does. There's also an update function we can call.
 text_buffer_delete_backward :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_delete_backward");
 
@@ -354,7 +321,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
         deleted := gap_buffer_delete_backward(*buffer.gb, newline_advance);
         assert(newline_advance == deleted.count);
 
-        text_buffer_discard_unapplied_patches(buffer);
+        discard_unapplied_patches(buffer);
         patch := array_add(*buffer.patches);
         patch.text = arena_push_string(buffer.patch_text_arena, cast(string, deleted));
         patch.text_mark = arena_get_mark(buffer.patch_text_arena);
@@ -384,7 +351,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
             deleted := gap_buffer_delete_backward(*buffer.gb, codepoint_advance);
             assert(codepoint_advance == deleted.count);
 
-            text_buffer_discard_unapplied_patches(buffer);
+            discard_unapplied_patches(buffer);
             patch := array_add(*buffer.patches);
             patch.text = arena_push_string(buffer.patch_text_arena, cast(string, deleted));
             patch.text_mark = arena_get_mark(buffer.patch_text_arena);
@@ -435,6 +402,8 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) {
 text_buffer_undo_edit :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_undo_edit");
 
+    assert_valid(buffer);
+
     if buffer.applied_patch_count == 0 {
         return;
     }
@@ -453,6 +422,11 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
                 sanity_assert(cast(string, deleted_bytes) == patch.text);
 
                 update_after_delete_backward(buffer, cast(string, deleted_bytes));
+            }
+
+            case .DELETE_SELECTION; {
+                gap_buffer_insert(*buffer.gb, patch.text);
+                update_after_insert(buffer, patch.text);
             }
 
             case .DELETE_FORWARD; {
@@ -490,11 +464,14 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
     }
 
     buffer.applied_patch_count -= applied_count;
+
+    assert_valid(buffer);
 }
 
-// XXX: Fix this!
 text_buffer_redo_edit :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_redo_edit");
+
+    assert_valid(buffer);
 
     if buffer.applied_patch_count == buffer.patches.count {
         return;
@@ -514,12 +491,18 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
                 update_after_insert(buffer, patch.text);
             }
 
+            case .DELETE_SELECTION; {
+                deleted_bytes := gap_buffer_delete_forward(*buffer.gb, patch.text.count);
+                sanity_assert(cast(string, deleted_bytes) == patch.text);
+
+                update_after_delete_selection(buffer, cast(string, deleted_bytes));
+            }
+
             case .DELETE_FORWARD; {
                 deleted_bytes := gap_buffer_delete_forward(*buffer.gb, patch.text.count);
                 sanity_assert(cast(string, deleted_bytes) == patch.text);
 
                 update_after_delete_forward(buffer, cast(string, deleted_bytes));
-                buffer.cursor1 = buffer.cursor0;
             }
 
             case .DELETE_BACKWARD; {
@@ -527,12 +510,9 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
                 sanity_assert(cast(string, deleted_bytes) == patch.text);
 
                 update_after_delete_backward(buffer, cast(string, deleted_bytes));
-                buffer.cursor1 = buffer.cursor0;
             }
         };
 
-        sanity_assert(buffer.cursor0 == patch.cursor0_after);
-        sanity_assert(buffer.cursor1 == patch.cursor1_after);
         buffer.cursor0 = patch.cursor0_after;
         buffer.cursor1 = patch.cursor1_after;
 
@@ -557,18 +537,8 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
     }
 
     buffer.applied_patch_count += applied_count;
-}
 
-text_buffer_discard_unapplied_patches :: (buffer: *Text_Buffer) {
-    if buffer.applied_patch_count < buffer.patches.count {
-        patch := buffer.patches[buffer.applied_patch_count];
-
-        // Patch texts are allocated in order they were created. If we are hosing everything beyond
-        // a certain point, we can just use the restore mark from the beginning of the chain.
-        arena_pop_to_mark(buffer.patch_text_arena, patch.text_mark);
-
-        buffer.patches.count = buffer.applied_patch_count;
-    }
+    assert_valid(buffer);
 }
 
 text_buffer_get_start_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cursor {
@@ -1193,8 +1163,24 @@ assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
     assert(cursor.x >= 0 && cursor.x <= buffer.lines[cursor.y].char_count);
 }
 
+discard_unapplied_patches :: (buffer: *Text_Buffer) {
+    if buffer.applied_patch_count < buffer.patches.count {
+        patch := buffer.patches[buffer.applied_patch_count];
+
+        // Patch texts are allocated in order they were created. If we are hosing everything beyond
+        // a certain point, we can just use the restore mark from the beginning of the chain.
+        arena_pop_to_mark(buffer.patch_text_arena, patch.text_mark);
+
+        buffer.patches.count = buffer.applied_patch_count;
+    }
+}
+
 update_after_insert :: (buffer: *Text_Buffer, text: string) {
     ProfileZone("update_after_insert");
+
+    // Insert never happens for spread cursors.
+    assert(buffer.cursor0 == buffer.cursor1);
+
     // While we could compute bytes_on_line_before_cursor by asking our procedure to do that for
     // every line, that procedure has to iterate the lines array, and it would result in quadractic
     // behavior (observable once the file is at about 1MB). Therefore, we ask the procedure to
@@ -1254,39 +1240,38 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
         bytes_on_line_before_cursor += codepoint_advance;
     }
 
-    // Cursor 1 has to be updated by whomever this is called.
+    // The calling code must manage cursor1
 }
 
-update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
+// TODO(jt): @Cleanup delete_selection is almost like delete_forward, but it accepts and sorts
+// spread cursors. Maybe we should unify?
+update_after_delete_selection :: (buffer: *Text_Buffer, _text: string) {
     ProfileZone("update_after_delete_forward");
 
-    text := _text;
+    // The selection delete sorts cursors, and so must we.
+    sort_cursors(*buffer.cursor0, *buffer.cursor1);
 
+    text := _text;
     while text.count {
+
         newline, newline_advance := string_starts_with_newline(text);
         if newline {
-            log("XXX nl % %", newline_advance, text.count);
-            if buffer.cursor0.y == buffer.lines.count - 1 {
-                assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count);
-            } else {
-                assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1, "XXX % == %", buffer.cursor0.x, buffer.lines[buffer.cursor0.y].char_count - 1);
-            }
-            assert(buffer.cursor0.y + 1 < buffer.lines.count);
+            assert(buffer.cursor0.y < buffer.lines.count - 1);                         // The last line can't have a newline.
+            assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1); // The newline has to be the last char.
 
-            buffer.lines[buffer.cursor0.y - 1].char_count -= 1;
-            buffer.lines[buffer.cursor0.y - 1].byte_count -= newline_advance;
+            buffer.lines[buffer.cursor0.y].char_count -= 1;
+            buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
 
-            buffer.lines[buffer.cursor0.y - 1].char_count += buffer.lines[buffer.cursor0.y].char_count;
-            buffer.lines[buffer.cursor0.y - 1].byte_count += buffer.lines[buffer.cursor0.y].byte_count;
+            buffer.lines[buffer.cursor0.y].char_count += buffer.lines[buffer.cursor0.y + 1].char_count;
+            buffer.lines[buffer.cursor0.y].byte_count += buffer.lines[buffer.cursor0.y + 1].byte_count;
 
-            array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y);
+            array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y + 1);
 
             advance(*text, newline_advance);
             assert(text.count >= 0);
         } else {
             _, codepoint_advance := find_next_utf8_character_boundary(text, 0);
             if codepoint_advance {
-                log("XXX cp % %", codepoint_advance, text.count);
                 buffer.lines[buffer.cursor0.y].char_count -= 1;
                 buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
 
@@ -1296,13 +1281,54 @@ update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
         }
     }
 
-    // Cursor 1 has to be updated by whomever this is called.
+    // The calling code must manage cursor1
+}
+
+update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
+    ProfileZone("update_after_delete_forward");
+
+    // Delete forward never happens for spread cursors.
+    assert(buffer.cursor0 == buffer.cursor1);
+
+    text := _text;
+    while text.count {
+        newline, newline_advance := string_starts_with_newline(text);
+        if newline {
+            assert(buffer.cursor0.y < buffer.lines.count - 1);                         // The last line can't have a newline.
+            assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1); // The newline has to be the last char.
+
+            buffer.lines[buffer.cursor0.y].char_count -= 1;
+            buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
+
+            buffer.lines[buffer.cursor0.y].char_count += buffer.lines[buffer.cursor0.y + 1].char_count;
+            buffer.lines[buffer.cursor0.y].byte_count += buffer.lines[buffer.cursor0.y + 1].byte_count;
+
+            array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y + 1);
+
+            advance(*text, newline_advance);
+            assert(text.count >= 0);
+        } else {
+            _, codepoint_advance := find_next_utf8_character_boundary(text, 0);
+            if codepoint_advance {
+                buffer.lines[buffer.cursor0.y].char_count -= 1;
+                buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
+
+                advance(*text, codepoint_advance);
+                assert(text.count >= 0);
+            }
+        }
+    }
+
+    // The calling code must manage cursor1
 }
 
 update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
     ProfileZone("update_after_delete_backward");
 
     text := _text;
+
+    // Delete backward never happens for spread cursors.
+    assert(buffer.cursor0 == buffer.cursor1);
 
     while text.count {
         newline, newline_advance := string_ends_with_newline(text);
@@ -1339,7 +1365,7 @@ update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
         }
     }
 
-    // Cursor 1 has to be updated by whomever this is called.
+    // The calling code must manage cursor1
 }
 
 is_through_patch :: (text: string) -> bool {
@@ -1353,18 +1379,12 @@ is_through_patch :: (text: string) -> bool {
     return false;
 }
 
-sort_cursors :: (start: *Cursor, end: *Cursor) -> swapped: bool {
+sort_cursors :: (start: *Cursor, end: *Cursor) {
     if start.y > end.y {
         swap(start, end);
-        return true;
-    }
-
-    if start.y == end.y && start.x > end.x {
+    } else if start.y == end.y && start.x > end.x {
         swap(start, end);
-        return true;
     }
-
-    return false;
 }
 
 string_starts_with_newline :: (bytes: [] u8) -> bool, newline_byte_length: s64 {
