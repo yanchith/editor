@@ -12,13 +12,14 @@ TODO(jt): Stuff to do:
 - [X] Basic file editing
 - [ ] Load file/Save file
 - [ ] Cut/Copy/Paste (also kill ring?)
-- [ ] Undo! (Emacs-like?)
+- [X] Undo!
 
 TODO(jt): Fancy stuff to do:
 
 - [ ] Syntax Highlighting
 - [ ] Themes
 - [ ] Automatic indentation (C-i)
+- [ ] Emacs-like undo?
 - [ ] Lister panels
 - [ ] Read only mode. Automatically on for files that had to undergo load fixups, as well as lister panels.
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
@@ -90,7 +91,7 @@ TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 COLOR_CURSOR    : Vector4 : { 0.7, 0.8, 0.7, 1.0 };
 COLOR_SELECTION : Vector4 : { 0.7, 0.8, 0.7, 0.3 };
 
-SLOW_FRAME_THRESHOLD_MILLIS : f64 : 1000.0 * 4.0 / 60.0;
+SLOW_FRAME_THRESHOLD_MILLIS : f64 : 10;
 
 Editor :: struct {
     perm_arena: *Arena;
@@ -148,9 +149,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.mb_left_pressed = false;
     editor.mb_left_last_pressed_inside_window = false;
 
-    HELLO_SIZE : s64 : 64 << 10;
-    // Also reserve slop for arena header and hello text that grew above the threshold.
-    hello_arena := arena_allocate(arena_procs, reserve_size = HELLO_SIZE + HELLO_TEXT.count + size_of(Arena));
+    HELLO_SIZE : s64 : 1 << 20;
+    hello_arena := arena_allocate(arena_procs, reserve_size = 1 << 16);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
     text_buffer_insert(*editor.buffer, hello_text);
     arena_release(hello_arena);
@@ -664,11 +664,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, scroll_offset, is_new_frame = true);
     }
 
-    renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
-    renderer.draw_rects(render_rects);
-
+    // Moved above the rendering code below, because OpenGL blocks and waits for surface, and we
+    // don't want to time that. When we switch to a better driver, we can move this to the bottom.
     time_scale := profiler_end_frame();
     print_profile_for_slow_frames(SLOW_FRAME_THRESHOLD_MILLIS, time_scale);
+
+    {
+        renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
+        renderer.draw_rects(render_rects);
+    }
 
     return wants_quit, wants_next_frame;
 }
@@ -778,14 +782,12 @@ make_hello_text :: (arena: *Arena, approx_size_in_bytes: s64) -> string {
     result_bytes += s.count;
 
     while result_bytes < approx_size_in_bytes {
-        SEPARATOR :: "\n========================================================\n\n";
-
         _s: string;
 
-        _s = arena_push_string(arena, SEPARATOR);
+        _s = arena_push_string(arena, HELLO_SEPARATOR);
         assert(_s.count > 0);
         assert(_s.data != null);
-        result_bytes += SEPARATOR.count;
+        result_bytes += HELLO_SEPARATOR.count;
 
         _s = arena_push_string(arena, HELLO_TEXT);
         assert(_s.count > 0);
@@ -799,6 +801,8 @@ make_hello_text :: (arena: *Arena, approx_size_in_bytes: s64) -> string {
 
     return result;
 }
+
+HELLO_SEPARATOR :: "\n========================================================\n\n";
 
 HELLO_TEXT :: #string DONE
 YEAR OF GLAD
