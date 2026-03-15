@@ -1138,46 +1138,46 @@ assert_valid :: (buffer: Text_Buffer) {
     assert_cursor_valid(buffer, buffer.cursor0);
     assert_cursor_valid(buffer, buffer.cursor1);
 
-    // This is too expensive to do in shipping builds.
-    #if SANITY {
-        byte_count := 0;
-        for 0..buffer.lines.count - 2 {
-            assert(buffer.lines[it].char_count >= 0);
-            assert(buffer.lines[it].byte_count >= 0);
-
-            byte_count += buffer.lines[it].byte_count;
-
-            // This should also work for \r\n newlines.
-            assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) == "\n");
-        }
-
-        if buffer.lines[buffer.lines.count - 1].byte_count > 0 {
-            byte_count += buffer.lines[buffer.lines.count - 1].byte_count;
-            assert(gap_buffer_get_nongap_byte(buffer.gb, byte_count - 1) != "\n");
-        }
-
-        assert(byte_count == buffer.gb.count);
-    }
-
-    // This is also too expensive to do in shipping builds.
+    // This is too expensive to do in shipping builds. We completely recreate lines from text.
     #if SANITY {
         lines: [..] Line;
         lines.allocator = temp;
+
+        array_reserve(*lines, buffer.lines.count);
         array_add(*lines);
 
-        // XXX: Fill in character counts! Remove previous sanity.
-        view := gap_buffer_make_contiguous_view(buffer.gb, 0, buffer.gb.count,, temp);
-        for view {
-            lines[lines.count - 1].byte_count += 1;
-            if it == "\n" {
+        view := cast(string, gap_buffer_make_contiguous_view(buffer.gb, 0, buffer.gb.count,, temp));
+        while view.count {
+            newline, newline_advance := string_starts_with_newline(view);
+            if newline_advance {
+                lines[lines.count - 1].char_count += 1;
+                lines[lines.count - 1].byte_count += newline_advance;
+
                 array_add(*lines);
+
+                advance(*view, newline_advance);
+            } else {
+                codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[view[0]], 1, 4);
+
+                _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, view), 0);
+                assert(codepoint_advance == codepoint_advance_check);
+
+                lines[lines.count - 1].char_count += 1;
+                lines[lines.count - 1].byte_count += codepoint_advance;
+
+                advance(*view, codepoint_advance);
             }
         }
 
         assert(lines.count == buffer.lines.count);
         for lines {
-            // TODO(jt): Compare character count, but for that we need to parse characters.
-            assert(it.byte_count == buffer.lines[it_index].byte_count);
+            want_chars := it.char_count;
+            have_chars := buffer.lines[it_index].char_count;
+            want_bytes := it.byte_count;
+            have_bytes := buffer.lines[it_index].byte_count;
+
+            assert(want_chars == have_chars, "Different char count on line %: % (computed) != % (stored)", it_index, want_chars, have_chars);
+            assert(want_bytes == have_bytes, "Different byte count on line %: % (computed) != % (stored)", it_index, want_bytes, have_bytes);
         }
     }
 }
@@ -1233,7 +1233,6 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
         // TODO(jt): The Unicode module actually doesn't clamp this by itself and it can be as much
         // as 6 (this was valid in older specs?). Cleanup?
         codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
-
         // TODO(jt): This probably shouldn't be an assert, but we need to do something about
         // incorrect unicode coming in and prevent it getting into the buffer. If we are ingesting a
         // new file, we should probably check ahead for encoding or something. If we are in
@@ -1241,8 +1240,10 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
         //
         // UPDATE: Also shouldn't be an assert, because we have already inserted stuff into the gap
         // buffer, so maybe we want to revert that.
-        _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
-        assert(codepoint_advance == codepoint_advance_check);
+        #if SANITY {
+            _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
+            assert(codepoint_advance == codepoint_advance_check);
+        }
 
         advance(*text, codepoint_advance);
 

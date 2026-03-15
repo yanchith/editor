@@ -297,6 +297,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 clamp_scroll_to_start_of_line |= text_buffer_move_cursor_to_next_word_boundary(*editor.buffer, editor.buffer_selecting);
                                 clamp_scroll_to_cursor = true;
                             }
+
+                            case .BACKSPACE; // TODO(jt): text_buffer_delete_until_previous_word_boundary.
+                            case #char "d";  #through;
+                            case #char "D";  // TODO(jt): text_buffer_delete_until_next_word_boundary.
+
                             case #char "v";  #through;
                             case #char "V";  scroll_viewport_up(editor, input);
 
