@@ -27,13 +27,14 @@ f64 :: float64;
 #import "Basic";
 #import "Hash_Table";
 
-Random :: #import "Random";
-String :: #import "String";
-File   :: #import "File";
-Window :: #import "Window_Creation";
-Input  :: #import "Input"; // This is our modified version. See :ModifiedInputModule.
-Simp   :: #import "Simp";
-Editor :: #import,file "editor/editor.jai"()(SANITY = SANITY);
+Random    :: #import "Random";
+String    :: #import "String";
+File      :: #import "File";
+Window    :: #import "Window_Creation";
+Input     :: #import "Input"; // This is our modified version. See :ModifiedInputModule.
+Clipboard :: #import "Clipboard";
+Simp      :: #import "Simp";
+Editor    :: #import,file "editor/editor.jai"()(SANITY = SANITY);
 
 Random_State           :: Random.Random_State;
 random_seed            :: Random.random_seed;
@@ -136,6 +137,13 @@ main :: () {
             data, success := File.read_entire_file(absolute_path);
 
             return success, cast([] u8, data);
+        }
+
+        platform.clipboard_get_text = () -> string {
+            return Clipboard.os_clipboard_get_text();
+        }
+        platform.clipboard_set_text = (text: string) {
+            Clipboard.os_clipboard_set_text(text);
         }
 
         renderer_shader.gl_handle = Simp.get_shader_program(SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL);

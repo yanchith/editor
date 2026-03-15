@@ -11,7 +11,7 @@ TODO(jt): Stuff to do:
 - [X] Basic file navigation
 - [X] Basic file editing
 - [ ] Load file/Save file
-- [ ] Cut/Copy/Paste (also kill ring?)
+- [X] Cut/Copy/Paste
 - [X] Undo!
 
 TODO(jt): Fancy stuff to do:
@@ -20,6 +20,7 @@ TODO(jt): Fancy stuff to do:
 - [ ] Themes
 - [ ] Automatic indentation (C-i)
 - [ ] Emacs-like undo?
+- [ ] Emacs-like kill ring
 - [ ] Lister panels
 - [ ] Read only mode. Automatically on for files that had to undergo load fixups, as well as lister panels.
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
@@ -152,7 +153,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     HELLO_SIZE : s64 : 64 << 10;
     hello_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
-    text_buffer_insert(*editor.buffer, hello_text);
+    text_buffer_insert(*editor.buffer, hello_text, undo_barrier = true);
     arena_release(hello_arena);
 
     renderer.create_texture_r8unorm(
@@ -223,8 +224,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, shift_selecting || editor.buffer_selecting); clamp_scroll_to_cursor = true; if shift_selecting then editor.buffer_selecting = false;
                         case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, shift_selecting || editor.buffer_selecting); clamp_scroll_to_cursor = true; if shift_selecting then editor.buffer_selecting = false;
 
-                        case .PAGE_UP;      scroll_viewport_up(editor, input);
-                        case .PAGE_DOWN;    scroll_viewport_down(editor, input);
+                        case .PAGE_UP;      scroll_buffer_up_one_screen(editor, input);
+                        case .PAGE_DOWN;    scroll_buffer_down_one_screen(editor, input);
 
                         case .HOME;         text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                         case .END;          text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
@@ -247,9 +248,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "e";  #through;
                             case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
                             case #char "l";  #through;
-                            case #char "L";  recenter_viewport(editor, input);
+                            case #char "L";  recenter_buffer(editor, input);
                             case #char "v";  #through;
-                            case #char "V";  scroll_viewport_down(editor, input);
+                            case #char "V";  scroll_buffer_down_one_screen(editor, input);
 
                             case .SPACEBAR;  editor.buffer_selecting = true;  text_buffer_join_cursors(*editor.buffer);
                             case #char "g";  #through;
@@ -258,7 +259,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "k";  #through;
                             case #char "K"; {
                                 editor.buffer_selecting = false;
-                                text_buffer_delete_line(*editor.buffer);
+                                text := text_buffer_delete_line(*editor.buffer);
+                                if text {
+                                    platform.clipboard_set_text(text);
+                                }
                             }
                             case #char "d";  #through;
                             case #char "D";  editor.buffer_selecting = false; text_buffer_delete_forward(*editor.buffer);
@@ -267,19 +271,38 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "M"; {
                                 // TODO(jt): Preserve CRLF in CRLF-only documents.
                                 editor.buffer_selecting = false;
-                                text_buffer_insert(*editor.buffer, "\n");
+                                text_buffer_insert(*editor.buffer, "\n", undo_barrier = true);
                                 clamp_scroll_to_cursor = true;
                             }
                             case #char "o";  #through;
                             case #char "O"; {
                                 // TODO(jt): Preserve CRLF in CRLF-only documents.
                                 editor.buffer_selecting = false;
-                                text_buffer_insert(*editor.buffer, "\n");
+                                text_buffer_insert(*editor.buffer, "\n", undo_barrier = true);
                                 text_buffer_move_cursor_y(*editor.buffer, -1, false);
                                 text_buffer_move_cursor_to_end_of_line(*editor.buffer, false);
                             }
 
                             case #char "/";  text_buffer_undo_edit(*editor.buffer); clamp_scroll_to_cursor = true;
+
+                            case #char "w";  #through;
+                            case #char "W"; {
+                                editor.buffer_selecting = false;
+                                deleted := text_buffer_delete_between_cursors(*editor.buffer);
+                                if deleted {
+                                    platform.clipboard_set_text(deleted);
+                                }
+
+                            }
+                            case #char "y";  #through;
+                            case #char "Y"; {
+                                editor.buffer_selecting = false;
+                                text := platform.clipboard_get_text(,, temp);
+                                if text {
+                                    text_buffer_insert(*editor.buffer, text, undo_barrier = true);
+                                    clamp_scroll_to_cursor = true;
+                                }
+                            }
                         }
                     } else if editor.key_alt_down {
                         if it.data.codepoint == {
@@ -303,12 +326,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "D";  // TODO(jt): text_buffer_delete_until_next_word_boundary.
 
                             case #char "v";  #through;
-                            case #char "V";  scroll_viewport_up(editor, input);
+                            case #char "V";  scroll_buffer_up_one_screen(editor, input);
 
                             case #char "<";  text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                             case #char ">";  text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
 
                             case #char "/";  text_buffer_redo_edit(*editor.buffer); clamp_scroll_to_cursor = true;
+
+                            case #char "w";  #through;
+                            case #char "W";  {
+                                editor.buffer_selecting = false;
+                                text := text_buffer_make_view_between_cursors(editor.buffer, editor.buffer.cursor0, editor.buffer.cursor1,, temp);
+                                if text {
+                                    platform.clipboard_set_text(text);
+                                }
+
+                                text_buffer_join_cursors(*editor.buffer);
+                            }
                         }
                     } else if editor.key_meta_down {
                         // Nothing for now.
@@ -325,7 +359,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case .SPACEBAR;   text_buffer_insert(*editor.buffer, " ");     clamp_scroll_to_cursor = true;
 
                             // TODO(jt): Preserve CRLF in CRLF-only documents.
-                            case .ENTER;      text_buffer_insert(*editor.buffer, "\n");    clamp_scroll_to_cursor = true;
+                            case .ENTER;      text_buffer_insert(*editor.buffer, "\n", undo_barrier = true); clamp_scroll_to_cursor = true;
 
                             case; {
                                 // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
@@ -679,7 +713,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
 #scope_file
 
-recenter_viewport :: (editor: *Editor, input: Input) {
+recenter_buffer :: (editor: *Editor, input: Input) {
     cursor_y := editor.buffer.cursor0.y * editor.font.line_height_in_scaled_pixels;
 
     center := cursor_y - 0.5 * input.window_size.y;
@@ -695,7 +729,7 @@ recenter_viewport :: (editor: *Editor, input: Input) {
     }
 }
 
-scroll_viewport_up :: (editor: *Editor, input: Input) {
+scroll_buffer_up_one_screen :: (editor: *Editor, input: Input) {
     cell_h := editor.font.line_height_in_scaled_pixels;
 
     delta_max := cast(s64, floor(input.window_size.y / cell_h));
@@ -707,7 +741,7 @@ scroll_viewport_up :: (editor: *Editor, input: Input) {
     }
 }
 
-scroll_viewport_down :: (editor: *Editor, input: Input) {
+scroll_buffer_down_one_screen :: (editor: *Editor, input: Input) {
     cell_h := editor.font.line_height_in_scaled_pixels;
 
     delta_max := cast(s64, floor(input.window_size.y / cell_h));

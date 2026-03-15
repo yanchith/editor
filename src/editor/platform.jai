@@ -15,4 +15,7 @@ Platform :: struct {
 
     make_directory:      (path: string) -> success: bool;
     delete_directory:    (path: string) -> success: bool;
+
+    clipboard_get_text:  () -> string;
+    clipboard_set_text:  (text: string);
 }
