@@ -410,6 +410,8 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 }
 
 text_buffer_delete_line :: (buffer: *Text_Buffer) {
+    ProfileZone("text_buffer_delete_line");
+
     line_end := text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
     view     := text_buffer_make_view_between_cursors(buffer, buffer.cursor0, line_end,, temp);
 
@@ -718,6 +720,8 @@ text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
 }
 
 text_buffer_move_cursor_to :: (buffer: *Text_Buffer, _x: s64, _y: s64, selecting: bool) {
+    ProfileZone("text_buffer_move_cursor_to");
+
     assert_valid(buffer);
 
     y := clamp(_y, 0, buffer.lines.count);
@@ -733,6 +737,8 @@ text_buffer_move_cursor_to :: (buffer: *Text_Buffer, _x: s64, _y: s64, selecting
 }
 
 text_buffer_move_cursor_to_start :: (buffer: *Text_Buffer, selecting: bool) {
+    ProfileZone("text_buffer_move_cursor_to_start");
+
     assert_valid(buffer);
 
     buffer.cursor0 = { 0, 0 };
@@ -745,6 +751,8 @@ text_buffer_move_cursor_to_start :: (buffer: *Text_Buffer, selecting: bool) {
 }
 
 text_buffer_move_cursor_to_end :: (buffer: *Text_Buffer, selecting: bool) {
+    ProfileZone("text_buffer_move_cursor_to_end");
+
     assert_valid(buffer);
 
     y := buffer.lines.count - 1;
@@ -1124,6 +1132,8 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
 #scope_file
 
 assert_valid :: (buffer: Text_Buffer) {
+    ProfileZone("assert_valid");
+
     assert(buffer.lines.count > 0, "Text_Buffer not initialized (has to have at least one line). Call text_buffer_init().");
     assert_cursor_valid(buffer, buffer.cursor0);
     assert_cursor_valid(buffer, buffer.cursor1);
