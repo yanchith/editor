@@ -148,9 +148,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     editor.mb_left_pressed = false;
     editor.mb_left_last_pressed_inside_window = false;
 
-    HELLO_SIZE : s64 : 1 << 20;
+    HELLO_SIZE : s64 : 64 << 10;
     // Also reserve slop for arena header and hello text that grew above the threshold.
-    hello_arena := arena_allocate(arena_procs, reserve_size = HELLO_SIZE + (1 << 20));
+    hello_arena := arena_allocate(arena_procs, reserve_size = HELLO_SIZE + HELLO_TEXT.count + size_of(Arena));
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
     text_buffer_insert(*editor.buffer, hello_text);
     arena_release(hello_arena);
