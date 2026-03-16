@@ -40,6 +40,8 @@ Font :: struct {
     // Glyph cache stuff
 
     glyph_atlas: [] u8;
+    glyph_atlas_cell_width: s32;
+    glyph_atlas_cell_height: s32;
     glyph_atlas_width: s32;
     glyph_atlas_height: s32;
     glyph_entries: [] Glyph_Entry;
@@ -103,15 +105,20 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     font.max_glyph_width_in_scaled_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_scaled_pixels));
     font.max_glyph_height_in_scaled_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_scaled_pixels));
 
-    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_scaled_integer_pixels;
-    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_scaled_integer_pixels;
-    table_size   := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
+    SLOP :: 2;
+    atlas_cell_width  := font.max_glyph_width_in_scaled_integer_pixels + SLOP;
+    atlas_cell_height := font.max_glyph_height_in_scaled_integer_pixels + SLOP;
+    atlas_width       := ATLAS_WIDTH_IN_CELLS * atlas_cell_width;
+    atlas_height      := ATLAS_HEIGHT_IN_CELLS * atlas_cell_height;
+    table_size        := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
 
-    font.glyph_atlas        = NewArray(atlas_width * atlas_height, u8,, arena_allocator(font.arena));
-    font.glyph_atlas_width  = atlas_width;
-    font.glyph_atlas_height = atlas_height;
-    font.glyph_entries      = NewArray(table_size, Glyph_Entry,, arena_allocator(font.arena));
-    font.glyph_table.allocator = arena_allocator(font.arena);
+    font.glyph_atlas             = NewArray(atlas_width * atlas_height, u8,, arena_allocator(font.arena));
+    font.glyph_atlas_cell_width  = atlas_cell_width;
+    font.glyph_atlas_cell_height = atlas_cell_height;
+    font.glyph_atlas_width       = atlas_width;
+    font.glyph_atlas_height      = atlas_height;
+    font.glyph_entries           = NewArray(table_size, Glyph_Entry,, arena_allocator(font.arena));
+    font.glyph_table.allocator   = arena_allocator(font.arena);
 
     table_ensure_space(*font.glyph_table, table_size);
 
@@ -157,8 +164,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
             glyph_bitmap_width  := glyph_bitmap_box.x1 - glyph_bitmap_box.x0;
             glyph_bitmap_height := glyph_bitmap_box.y1 - glyph_bitmap_box.y0;
 
-            glyph_cell_x_in_atlas: s32;
-            glyph_cell_y_in_atlas: s32;
+            glyph_cell_x: s32;
+            glyph_cell_y: s32;
 
             // TODO(jt): Factor out cache manipulation and just return the cell coordinates.
             entry_index_pointer := table_find_pointer(*font.glyph_table, glyph_index);
@@ -170,8 +177,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 assert(entry.glyph_index == glyph_index);
 
                 // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
-                glyph_cell_x_in_atlas = entry_index % ATLAS_WIDTH_IN_CELLS;
-                glyph_cell_y_in_atlas = entry_index / ATLAS_HEIGHT_IN_CELLS;
+                glyph_cell_x = entry_index % ATLAS_WIDTH_IN_CELLS;
+                glyph_cell_y = entry_index / ATLAS_HEIGHT_IN_CELLS;
 
                 entry.stamp = font.glyph_cache_stamp;
 
@@ -195,26 +202,25 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 entry.glyph_index = glyph_index;
 
                 // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
-                glyph_cell_x_in_atlas = entry_index % ATLAS_WIDTH_IN_CELLS;
-                glyph_cell_y_in_atlas = entry_index / ATLAS_HEIGHT_IN_CELLS;
+                glyph_cell_x = entry_index % ATLAS_WIDTH_IN_CELLS;
+                glyph_cell_y = entry_index / ATLAS_HEIGHT_IN_CELLS;
 
                 move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
                 assert(font.glyph_entries_tail == entry_index);
 
                 dest := font.glyph_atlas.data +
-                        font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels +
-                        glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels;
+                        font.glyph_atlas_width * glyph_cell_y * font.glyph_atlas_cell_height +
+                        glyph_cell_x * font.glyph_atlas_cell_width;
 
-                clear_glyph_cell(dest, font.max_glyph_width_in_scaled_integer_pixels, font.max_glyph_height_in_scaled_integer_pixels, font.glyph_atlas_width);
+                clear_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width);
 
-                // :SDF
+                // // :SDF
                 // sdf := get_glyph_sdf_bitmap(font.info, glyph_index, font.font_scale);
                 // // XXX
-                // // assert(sdf.width <= font.max_glyph_width_in_scaled_integer_pixels, "W % <= %", sdf.width, font.max_glyph_width_in_scaled_integer_pixels);
-                // // assert(sdf.height <= font.max_glyph_height_in_scaled_integer_pixels, "H % <= %", sdf.height, font.max_glyph_height_in_scaled_integer_pixels);
+                // // assert(sdf.width <= font.glyph_atlas_cell_width, "W % <= %", sdf.width, font.glyph_atlas_cell_width);
+                // // assert(sdf.height <= font.glyph_atlas_cell_height, "H % <= %", sdf.height, font.glyph_atlas_cell_height);
                 // if (sdf.data) {
-                //     copy_glyph_cell(dest, font.max_glyph_width_in_scaled_integer_pixels, font.max_glyph_height_in_scaled_integer_pixels, font.glyph_atlas_width,
-                //                     sdf.data, sdf.width, sdf.height);
+                //     copy_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width, sdf.data, sdf.width, sdf.height);
                 //     free_sdf_bitmap(*sdf);
                 // }
 
@@ -224,13 +230,14 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                                 dest, glyph_bitmap_width, glyph_bitmap_height,
                                 font.glyph_atlas_width,
                                 font.font_scale);
-                table_add(*font.glyph_table, glyph_index, entry_index);
 
+
+                table_add(*font.glyph_table, glyph_index, entry_index);
                 array_add(
                     update_regions,
                     irect_from_point_and_size(
-                        glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels,
-                        glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels,
+                        glyph_cell_x * font.glyph_atlas_cell_width,
+                        glyph_cell_y * font.glyph_atlas_cell_height,
                         glyph_bitmap_width,
                         glyph_bitmap_height,
                     ),
@@ -245,8 +252,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 cast(f32, glyph_bitmap_height),
             );
             rr.texture_rect = rect_from_point_and_size(
-                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels) / font.glyph_atlas_width,
-                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels) / font.glyph_atlas_height,
+                cast(f32, glyph_cell_x * font.glyph_atlas_cell_width) / font.glyph_atlas_width,
+                cast(f32, glyph_cell_y * font.glyph_atlas_cell_height) / font.glyph_atlas_height,
                 cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
                 cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
             );
@@ -420,8 +427,8 @@ SDF_Bitmap :: struct {
     y_offset: s32;
 }
 
-SDF_ON_EDGE_VALUE    : u8  : 128;
-SDF_PIXEL_DIST_SCALE : f32 : cast(f32, SDF_ON_EDGE_VALUE) / 2.0;
+SDF_ON_EDGE_VALUE    : u8  : 200;
+SDF_PIXEL_DIST_SCALE : f32 : 1.0;
 
 get_glyph_sdf_bitmap :: (info: stbtt_fontinfo, index: s32, scale: f32) -> SDF_Bitmap {
     result: SDF_Bitmap;
