@@ -590,9 +590,9 @@ uniform sampler2D diffuse_texture;
 
 void main () {
     // XXX
-    const float EDGE = 128.0 / 255.0;
-    const float MIN  = 126.0 / 255.0;
-    const float MAX  = 130.0 / 255.0;
+    const float EDGE = 200.0 / 255.0;
+    const float MIN  = EDGE - 1.0 / 255.0;
+    const float MAX  = EDGE + 1.0 / 255.0;
 
     float x = texture(diffuse_texture, v_tex_coords).r;
     float a = x;
