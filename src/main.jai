@@ -504,7 +504,7 @@ main :: () {
                     // #WaitForEvents
                     //
                     // On Windows (TM), we wait for new events with WaitMessage.
-                    WaitMessage(); // XXX: Sometimes on Windows we don't exit properly (the window closes, but the process stays). Is it related to this?
+                    WaitMessage(); // XXX: Sometimes on Windows we don't exit properly (the window closes, but the process stays). Is it related to this? This happens quite often when we close the application with the X button.
                 }
 
                 #if OS == .MACOS {
@@ -589,15 +589,17 @@ out vec4 color;
 uniform sampler2D diffuse_texture;
 
 void main () {
-    // XXX
-    const float EDGE = 200.0 / 255.0;
-    const float MIN  = EDGE - 1.0 / 255.0;
-    const float MAX  = EDGE + 1.0 / 255.0;
+    // XXX: SDF stuff.
+    const float EDGE  = 250.0 / 255.0;
+    const float RANGE = 3.0 / 255.0;
+    const float MIN   = EDGE - RANGE;
+    const float MAX   = EDGE + RANGE;
 
-    float x = texture(diffuse_texture, v_tex_coords).r;
-    float a = x;
-    // float a = step(EDGE, x);
-    // float a = smoothstep(MIN, MAX, x);
+    float sdf = texture(diffuse_texture, v_tex_coords).r;
+
+    // float a = sdf;
+    // float a = step(EDGE, sdf);
+    float a = smoothstep(MIN, MAX, sdf);
     color = v_color * vec4(1, 1, 1, a);
 }
 #endif
