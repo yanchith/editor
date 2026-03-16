@@ -12,11 +12,10 @@
 // - vertical fonts
 //
 
-FONT_PIXEL_HEIGHT : f32 : 36;
+FONT_PIXEL_HEIGHT : f32 : 30;
+
 ATLAS_WIDTH_IN_CELLS  :: 32;
 ATLAS_HEIGHT_IN_CELLS :: 32;
-
-XXX_ATLAS_SCALE : s32 : 2;
 
 Font :: struct {
     arena: *Arena;
@@ -104,8 +103,8 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     font.max_glyph_width_in_scaled_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_scaled_pixels));
     font.max_glyph_height_in_scaled_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_scaled_pixels));
 
-    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_scaled_integer_pixels * XXX_ATLAS_SCALE;
-    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_scaled_integer_pixels * XXX_ATLAS_SCALE;
+    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_scaled_integer_pixels;
+    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_scaled_integer_pixels;
     table_size   := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
 
     font.glyph_atlas        = NewArray(atlas_width * atlas_height, u8,, arena_allocator(font.arena));
@@ -203,26 +202,28 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 assert(font.glyph_entries_tail == entry_index);
 
                 dest := font.glyph_atlas.data +
-                        font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels * XXX_ATLAS_SCALE +
-                        glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels * XXX_ATLAS_SCALE;
+                        font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels +
+                        glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels;
 
-                clear_glyph_cell(dest, font.max_glyph_width_in_scaled_integer_pixels * XXX_ATLAS_SCALE, font.max_glyph_height_in_scaled_integer_pixels * XXX_ATLAS_SCALE, font.glyph_atlas_width * XXX_ATLAS_SCALE);
-                sdf := get_glyph_sdf_bitmap(font.info, glyph_index, font.font_scale * XXX_ATLAS_SCALE);
+                clear_glyph_cell(dest, font.max_glyph_width_in_scaled_integer_pixels, font.max_glyph_height_in_scaled_integer_pixels, font.glyph_atlas_width);
+
+                // :SDF
+                // sdf := get_glyph_sdf_bitmap(font.info, glyph_index, font.font_scale);
+                // // XXX
+                // // assert(sdf.width <= font.max_glyph_width_in_scaled_integer_pixels, "W % <= %", sdf.width, font.max_glyph_width_in_scaled_integer_pixels);
+                // // assert(sdf.height <= font.max_glyph_height_in_scaled_integer_pixels, "H % <= %", sdf.height, font.max_glyph_height_in_scaled_integer_pixels);
+                // if (sdf.data) {
+                //     copy_glyph_cell(dest, font.max_glyph_width_in_scaled_integer_pixels, font.max_glyph_height_in_scaled_integer_pixels, font.glyph_atlas_width,
+                //                     sdf.data, sdf.width, sdf.height);
+                //     free_sdf_bitmap(*sdf);
+                // }
 
                 // XXX
-                // assert(sdf.width <= font.max_glyph_width_in_scaled_integer_pixels, "W % <= %", sdf.width, font.max_glyph_width_in_scaled_integer_pixels);
-                // assert(sdf.height <= font.max_glyph_height_in_scaled_integer_pixels, "H % <= %", sdf.height, font.max_glyph_height_in_scaled_integer_pixels);
-                if (sdf.data) {
-                    copy_glyph_cell(dest, font.max_glyph_width_in_scaled_integer_pixels * XXX_ATLAS_SCALE, font.max_glyph_height_in_scaled_integer_pixels * XXX_ATLAS_SCALE, font.glyph_atlas_width * XXX_ATLAS_SCALE,
-                                    sdf.data, sdf.width, sdf.height);
-                    free_sdf_bitmap(*sdf);
-                }
-
-                // XXX
-                // rasterize_glyph(font.info, glyph_index,
-                //                 dest, glyph_bitmap_width, glyph_bitmap_height,
-                //                 font.glyph_atlas_width,
-                //                 font.font_scale);
+                // :Rasterize
+                rasterize_glyph(font.info, glyph_index,
+                                dest, glyph_bitmap_width, glyph_bitmap_height,
+                                font.glyph_atlas_width,
+                                font.font_scale);
                 table_add(*font.glyph_table, glyph_index, entry_index);
 
                 array_add(
@@ -244,10 +245,10 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 cast(f32, glyph_bitmap_height),
             );
             rr.texture_rect = rect_from_point_and_size(
-                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels * XXX_ATLAS_SCALE) / font.glyph_atlas_width,
-                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels * XXX_ATLAS_SCALE) / font.glyph_atlas_height,
-                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width * XXX_ATLAS_SCALE,
-                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height * XXX_ATLAS_SCALE,
+                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels) / font.glyph_atlas_width,
+                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels) / font.glyph_atlas_height,
+                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
+                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
             );
             rr.texture_id = font.texture_id;
 
