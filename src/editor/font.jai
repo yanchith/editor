@@ -12,9 +12,11 @@
 // - vertical fonts
 //
 
-FONT_PIXEL_HEIGHT: f32 = 34;
+FONT_PIXEL_HEIGHT : f32 : 36;
 ATLAS_WIDTH_IN_CELLS  :: 32;
 ATLAS_HEIGHT_IN_CELLS :: 32;
+
+XXX_ATLAS_SCALE : s32 : 2;
 
 Font :: struct {
     arena: *Arena;
@@ -102,8 +104,8 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     font.max_glyph_width_in_scaled_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_scaled_pixels));
     font.max_glyph_height_in_scaled_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_scaled_pixels));
 
-    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_scaled_integer_pixels;
-    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_scaled_integer_pixels;
+    atlas_width  := ATLAS_WIDTH_IN_CELLS * font.max_glyph_width_in_scaled_integer_pixels * XXX_ATLAS_SCALE;
+    atlas_height := ATLAS_HEIGHT_IN_CELLS * font.max_glyph_height_in_scaled_integer_pixels * XXX_ATLAS_SCALE;
     table_size   := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
 
     font.glyph_atlas        = NewArray(atlas_width * atlas_height, u8,, arena_allocator(font.arena));
@@ -151,7 +153,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
             glyph_index   := get_glyph_index(font.info, it);
             glyph_metrics := get_glyph_hmetrics(font.info, glyph_index);
 
-            // Alredy scaled from internal font unites to pixels.
+            // Already scaled from internal font units to pixels.
             glyph_bitmap_box    := get_glyph_bitmap_box(font.info, glyph_index, font.font_scale);
             glyph_bitmap_width  := glyph_bitmap_box.x1 - glyph_bitmap_box.x0;
             glyph_bitmap_height := glyph_bitmap_box.y1 - glyph_bitmap_box.y0;
@@ -200,16 +202,27 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
                 assert(font.glyph_entries_tail == entry_index);
 
-                out := font.glyph_atlas.data +
-                       font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels +
-                       glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels;
+                dest := font.glyph_atlas.data +
+                        font.glyph_atlas_width * glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels * XXX_ATLAS_SCALE +
+                        glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels * XXX_ATLAS_SCALE;
 
-                clear_glyph_cell(out, font.max_glyph_width_in_scaled_integer_pixels, font.max_glyph_height_in_scaled_integer_pixels, font.glyph_atlas_width);
-                rasterize_glyph(font.info, glyph_index,
-                                out, glyph_bitmap_width, glyph_bitmap_height,
-                                font.glyph_atlas_width,
-                                font.font_scale);
+                clear_glyph_cell(dest, font.max_glyph_width_in_scaled_integer_pixels * XXX_ATLAS_SCALE, font.max_glyph_height_in_scaled_integer_pixels * XXX_ATLAS_SCALE, font.glyph_atlas_width * XXX_ATLAS_SCALE);
+                sdf := get_glyph_sdf_bitmap(font.info, glyph_index, font.font_scale * XXX_ATLAS_SCALE);
 
+                // XXX
+                // assert(sdf.width <= font.max_glyph_width_in_scaled_integer_pixels, "W % <= %", sdf.width, font.max_glyph_width_in_scaled_integer_pixels);
+                // assert(sdf.height <= font.max_glyph_height_in_scaled_integer_pixels, "H % <= %", sdf.height, font.max_glyph_height_in_scaled_integer_pixels);
+                if (sdf.data) {
+                    copy_glyph_cell(dest, font.max_glyph_width_in_scaled_integer_pixels * XXX_ATLAS_SCALE, font.max_glyph_height_in_scaled_integer_pixels * XXX_ATLAS_SCALE, font.glyph_atlas_width * XXX_ATLAS_SCALE,
+                                    sdf.data, sdf.width, sdf.height);
+                    free_sdf_bitmap(*sdf);
+                }
+
+                // XXX
+                // rasterize_glyph(font.info, glyph_index,
+                //                 dest, glyph_bitmap_width, glyph_bitmap_height,
+                //                 font.glyph_atlas_width,
+                //                 font.font_scale);
                 table_add(*font.glyph_table, glyph_index, entry_index);
 
                 array_add(
@@ -231,10 +244,10 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 cast(f32, glyph_bitmap_height),
             );
             rr.texture_rect = rect_from_point_and_size(
-                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels) / font.glyph_atlas_width,
-                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels) / font.glyph_atlas_height,
-                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
-                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
+                cast(f32, glyph_cell_x_in_atlas * font.max_glyph_width_in_scaled_integer_pixels * XXX_ATLAS_SCALE) / font.glyph_atlas_width,
+                cast(f32, glyph_cell_y_in_atlas * font.max_glyph_height_in_scaled_integer_pixels * XXX_ATLAS_SCALE) / font.glyph_atlas_height,
+                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width * XXX_ATLAS_SCALE,
+                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height * XXX_ATLAS_SCALE,
             );
             rr.texture_id = font.texture_id;
 
@@ -336,12 +349,23 @@ move_back_glyph_entry :: (entries: [] Glyph_Entry, head_index: *s32, tail_index:
     tail_index.* = index;
 }
 
-clear_glyph_cell :: (out: *u8, out_width: s32, out_height: s32, out_stride: s32) {
-    for y: 0..out_height - 1 {
-        for x: 0..out_width - 1 {
+clear_glyph_cell :: (dest: *u8, width: s32, height: s32, stride: s32) {
+    for y: 0..height - 1 {
+        for x: 0..width - 1 {
             // TODO(jt): @Speed memset each row span?
-            p := out + y * out_stride  + x;
+            p := dest + y * stride + x;
             p.* = 0;
+        }
+    }
+}
+
+copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_stride: s32, source: *u8, source_width: s32, source_height: s32) {
+    for y: 0..min(dest_height, source_height) - 1 {
+        for x: 0..min(dest_width, source_width) - 1 {
+            // TODO(jt): @Speed memset each row span?
+            dest_p   := dest + y * dest_stride + x;
+            source_p := source + y * source_width + x;
+            dest_p.* = source_p.*;
         }
     }
 }
@@ -378,11 +402,42 @@ get_glyph_bitmap_box :: (info: stbtt_fontinfo, index: s32, scale: f32) -> IRect 
     return result;
 }
 
-rasterize_glyph :: (info: stbtt_fontinfo, index: s32, out: *u8, out_width: s32, out_height: s32, out_stride: s32, scale: f32) {
+rasterize_glyph :: (info: stbtt_fontinfo, index: s32, dest: *u8, dest_width: s32, dest_height: s32, dest_stride: s32, scale: f32) {
     // TODO(jt): @Memory stbtt_MakeGlyphBitmap actually hits STBTT_malloc multiple times (in
     // stbtt_Rasterize, but also in stbtt_GetGlyphbitmapBox), so we should probably have a way to
     // set the allocator to temp?
-    stbtt_MakeGlyphBitmap(*info, out, out_width, out_height, out_stride, scale, scale, index);
+    stbtt_MakeGlyphBitmap(*info, dest, dest_width, dest_height, dest_stride, scale, scale, index);
+}
+
+// stbtt does not give us a function where we make the memory, so instead we have to free this.
+// TODO(jt): @Memory Fix this! We should be able to create this directly in target memory!
+SDF_Bitmap :: struct {
+    width: s32;
+    height: s32;
+    data: *u8;
+    x_offset: s32;
+    y_offset: s32;
+}
+
+SDF_ON_EDGE_VALUE    : u8  : 128;
+SDF_PIXEL_DIST_SCALE : f32 : cast(f32, SDF_ON_EDGE_VALUE) / 2.0;
+
+get_glyph_sdf_bitmap :: (info: stbtt_fontinfo, index: s32, scale: f32) -> SDF_Bitmap {
+    result: SDF_Bitmap;
+    result.data = stbtt_GetGlyphSDF(*info, scale, index, 0, SDF_ON_EDGE_VALUE, SDF_PIXEL_DIST_SCALE, *result.width, *result.height, *result.x_offset, *result.y_offset);
+
+    log("XXX %", result);
+
+    return result;
+}
+
+free_sdf_bitmap :: (b: *SDF_Bitmap) {
+    stbtt_FreeSDF(b.data, null);
+    b.data = null;
+    b.width = 0;
+    b.height = 0;
+    b.x_offset = 0;
+    b.y_offset = 0;
 }
 
 #import "stb_truetype"; // Move to scope exported scope, since the info field is visible anyway?

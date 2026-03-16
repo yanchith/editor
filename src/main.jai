@@ -589,7 +589,16 @@ out vec4 color;
 uniform sampler2D diffuse_texture;
 
 void main () {
-    color = v_color * vec4(1, 1, 1, texture(diffuse_texture, v_tex_coords));
+    // XXX
+    const float EDGE = 128.0 / 255.0;
+    const float MIN  = 126.0 / 255.0;
+    const float MAX  = 130.0 / 255.0;
+
+    float x = texture(diffuse_texture, v_tex_coords).r;
+    // float a = x;
+    float a = step(EDGE, x);
+    // float a = smoothstep(MIN, MAX, x);
+    color = v_color * vec4(1, 1, 1, a);
 }
 #endif
 END
