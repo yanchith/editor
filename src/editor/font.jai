@@ -105,7 +105,7 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
     font.max_glyph_width_in_scaled_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_scaled_pixels));
     font.max_glyph_height_in_scaled_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_scaled_pixels));
 
-    SLOP :: 2;
+    SLOP :: 20 + SDF_PADDING; // XXX: Explain
     atlas_cell_width  := font.max_glyph_width_in_scaled_integer_pixels + SLOP;
     atlas_cell_height := font.max_glyph_height_in_scaled_integer_pixels + SLOP;
     atlas_width       := ATLAS_WIDTH_IN_CELLS * atlas_cell_width;
@@ -214,22 +214,29 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 
                 clear_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width);
 
-                // // :SDF
-                // sdf := get_glyph_sdf_bitmap(font.info, glyph_index, font.font_scale);
-                // // XXX
-                // // assert(sdf.width <= font.glyph_atlas_cell_width, "W % <= %", sdf.width, font.glyph_atlas_cell_width);
-                // // assert(sdf.height <= font.glyph_atlas_cell_height, "H % <= %", sdf.height, font.glyph_atlas_cell_height);
-                // if (sdf.data) {
-                //     copy_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width, sdf.data, sdf.width, sdf.height);
-                //     free_sdf_bitmap(*sdf);
-                // }
+                // XXX: HERE Once I played with the parameters (on edge value, pixel dist scale) and
+                // I smoothed the sdf with smoothstep, it starts to look passable. It is definitely
+                // sharper than regular rasterized text. However, it looks like it is cut off at
+                // points? Should we adjust the texturing coordinates we emit for it?
+                //
+                // Either way, unless it gets wayyy better, this is still not nice font rendering
+                // (compared to DirectWrite, or whatever Apple does).
 
-                // XXX
-                // :Rasterize
-                rasterize_glyph(font.info, glyph_index,
-                                dest, glyph_bitmap_width, glyph_bitmap_height,
-                                font.glyph_atlas_width,
-                                font.font_scale);
+                // :SDF
+                sdf := get_glyph_sdf_bitmap(font.info, glyph_index, font.font_scale);
+                assert(sdf.width <= font.glyph_atlas_cell_width);
+                assert(sdf.height <= font.glyph_atlas_cell_height);
+                if (sdf.data) {
+                    copy_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width, sdf.data, sdf.width, sdf.height);
+                    free_sdf_bitmap(*sdf);
+                }
+
+                // // XXX
+                // // :Rasterize
+                // rasterize_glyph(font.info, glyph_index,
+                //                 dest, glyph_bitmap_width, glyph_bitmap_height,
+                //                 font.glyph_atlas_width,
+                //                 font.font_scale);
 
 
                 table_add(*font.glyph_table, glyph_index, entry_index);
@@ -427,12 +434,13 @@ SDF_Bitmap :: struct {
     y_offset: s32;
 }
 
-SDF_ON_EDGE_VALUE    : u8  : 200;
-SDF_PIXEL_DIST_SCALE : f32 : 1.0;
+SDF_PADDING          : u8  : 0;
+SDF_ON_EDGE_VALUE    : u8  : 250;
+SDF_PIXEL_DIST_SCALE : f32 : 5.0;
 
 get_glyph_sdf_bitmap :: (info: stbtt_fontinfo, index: s32, scale: f32) -> SDF_Bitmap {
     result: SDF_Bitmap;
-    result.data = stbtt_GetGlyphSDF(*info, scale, index, 0, SDF_ON_EDGE_VALUE, SDF_PIXEL_DIST_SCALE, *result.width, *result.height, *result.x_offset, *result.y_offset);
+    result.data = stbtt_GetGlyphSDF(*info, scale, index, SDF_PADDING, SDF_ON_EDGE_VALUE, SDF_PIXEL_DIST_SCALE, *result.width, *result.height, *result.x_offset, *result.y_offset);
 
     log("XXX %", result);
 
