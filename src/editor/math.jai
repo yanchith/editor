@@ -338,7 +338,21 @@ irect_max :: inline (r: IRect) -> IVector2 {
     return { x, y };
 }
 
-// TODO(jt): Add irect_width and irect_height that do check for flip.
+irect_width :: inline (r: IRect) -> s32 {
+    if r.x0 < r.x1 {
+        return r.x1 - r.x0;
+    } else {
+        return r.x0 - r.x1;
+    }
+}
+
+irect_height :: inline (r: IRect) -> s32 {
+    if r.y0 < r.y1 {
+        return r.y1 - r.y0;
+    } else {
+        return r.y0 - r.y1;
+    }
+}
 
 irect_fixup :: (r: IRect) -> IRect {
     p0 := irect_min(r);

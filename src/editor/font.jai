@@ -12,7 +12,7 @@
 // - vertical fonts
 //
 
-FONT_PIXEL_HEIGHT : f32 : 30;
+SDF_FONT_PIXEL_HEIGHT : f32 : 30;
 
 ATLAS_WIDTH_IN_CELLS  :: 32;
 ATLAS_HEIGHT_IN_CELLS :: 32;
@@ -21,16 +21,19 @@ Font :: struct {
     arena: *Arena;
     arena_mark: Arena_Mark;
 
+    pixel_height: s32;
     texture_id: Texture_ID;
 
     // Font info stuff
-
-    info: stbtt_fontinfo;
-
+    font_info: stbtt_fontinfo;
     font_vmetrics: Font_VMetrics;
     font_bounding_box: IRect;
-    font_scale: f32;
 
+    // Scale for which the SDF atlas was computed. This is different than the target scale below.
+    atlas_scale: f32;
+
+    // Scaled metrics useful for font layout.
+    scale: f32;
     line_height_in_scaled_pixels: f32;
     max_glyph_width_in_scaled_pixels: f32;
     max_glyph_height_in_scaled_pixels: f32;
@@ -58,16 +61,14 @@ Font :: struct {
 }
 
 Font_VMetrics :: struct {
-    // TODO(jt): In internal font units. If we are going to keep scaling this, maybe we should do it
-    // only once and cache?
+    // In internal font units.
     ascent: s32;
     descent: s32;
     line_gap: s32;
 }
 
 Glyph_HMetrics :: struct {
-    // TODO(jt): In internal font units. If we are going to keep scaling this, maybe we should do it
-    // only once and cache?
+    // In internal font units.
     advance: s32;
     left_side_bearing: s32;
 }
@@ -81,11 +82,11 @@ Glyph_Entry :: struct {
 }
 
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
-make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font {
+make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_height: s32) -> Font {
     arena_mark := arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
 
-    info: stbtt_fontinfo;
-    stbtt_InitFont(*info, ttf_buffer.data, stbtt_GetFontOffsetForIndex(ttf_buffer.data, 0));
+    font_info: stbtt_fontinfo;
+    stbtt_InitFont(*font_info, ttf_buffer.data, stbtt_GetFontOffsetForIndex(ttf_buffer.data, 0));
 
     font: Font;
     font.arena      = arena;
@@ -93,21 +94,19 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
 
     font.texture_id = texture_id;
 
-    font.info = info;
+    font.font_info = font_info;
 
-    font.font_vmetrics     = get_font_vmetrics(info);
-    font.font_bounding_box = get_font_bounding_box(info);
-    font.font_scale        = get_font_scale_for_pixel_height(info, FONT_PIXEL_HEIGHT);
+    font.font_vmetrics     = get_font_vmetrics(font_info);
+    font.font_bounding_box = get_font_bounding_box(font_info);
 
-    font.line_height_in_scaled_pixels = font.font_scale * (font.font_vmetrics.ascent - font.font_vmetrics.descent + font.font_vmetrics.line_gap);
-    font.max_glyph_width_in_scaled_pixels  = font.font_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
-    font.max_glyph_height_in_scaled_pixels = font.font_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
-    font.max_glyph_width_in_scaled_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_scaled_pixels));
-    font.max_glyph_height_in_scaled_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_scaled_pixels));
+    font.atlas_scale = get_font_scale_for_pixel_height(font_info, SDF_FONT_PIXEL_HEIGHT);
 
-    SLOP :: 20 + SDF_PADDING; // XXX: Explain
-    atlas_cell_width  := font.max_glyph_width_in_scaled_integer_pixels + SLOP;
-    atlas_cell_height := font.max_glyph_height_in_scaled_integer_pixels + SLOP;
+    max_sdf_glyph_width  := font.atlas_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
+    max_sdf_glyph_height := font.atlas_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
+
+    SLOP :: 20; // XXX: Explain slop.
+    atlas_cell_width  := cast(s32, ceil(max_sdf_glyph_width)) + SLOP;
+    atlas_cell_height := cast(s32, ceil(max_sdf_glyph_width)) + SLOP;
     atlas_width       := ATLAS_WIDTH_IN_CELLS * atlas_cell_width;
     atlas_height      := ATLAS_HEIGHT_IN_CELLS * atlas_cell_height;
     table_size        := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
@@ -124,7 +123,21 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID) -> Font 
 
     link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 
+    font_set_pixel_height(*font, pixel_height);
+
     return font;
+}
+
+font_set_pixel_height :: (font: *Font, pixel_height: s32) {
+    font.pixel_height = pixel_height;
+
+    font.scale = get_font_scale_for_pixel_height(font.font_info, cast(f32, pixel_height));
+
+    font.line_height_in_scaled_pixels = font.scale * (font.font_vmetrics.ascent - font.font_vmetrics.descent + font.font_vmetrics.line_gap);
+    font.max_glyph_width_in_scaled_pixels  = font.scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
+    font.max_glyph_height_in_scaled_pixels = font.scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
+    font.max_glyph_width_in_scaled_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_scaled_pixels));
+    font.max_glyph_height_in_scaled_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_scaled_pixels));
 }
 
 font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, scroll: Vector2, is_new_frame := false) {
@@ -145,7 +158,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
     }
 
     cursor_x: f32 = 0;
-    cursor_y: f32 = font.font_scale * font.font_vmetrics.ascent;
+    cursor_y: f32 = font.scale * font.font_vmetrics.ascent;
 
     for :Unicode.utf8_iter text {
         // TODO(jt): @Cleanup Factored this way, because utf8_iter does not support 'continue' (or I
@@ -154,15 +167,18 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
         // TODO(jt): Support all kinds of newlines.
         if it == #char "\n" {
             cursor_x = 0;
-            cursor_y += font.font_scale * (font.font_vmetrics.line_gap + font.font_vmetrics.ascent - font.font_vmetrics.descent);
+            cursor_y += font.line_height_in_scaled_pixels;
         } else {
-            glyph_index   := get_glyph_index(font.info, it);
-            glyph_metrics := get_glyph_hmetrics(font.info, glyph_index);
+            glyph_index   := get_glyph_index(font.font_info, it);
+            glyph_metrics := get_glyph_hmetrics(font.font_info, glyph_index);
 
-            // Already scaled from internal font units to pixels.
-            glyph_bitmap_box    := get_glyph_bitmap_box(font.info, glyph_index, font.font_scale);
+            glyph_bitmap_box    := get_glyph_bitmap_box(font.font_info, glyph_index, font.scale);
             glyph_bitmap_width  := glyph_bitmap_box.x1 - glyph_bitmap_box.x0;
             glyph_bitmap_height := glyph_bitmap_box.y1 - glyph_bitmap_box.y0;
+
+            atlas_glyph_bitmap_box := get_glyph_bitmap_box(font.font_info, glyph_index, font.atlas_scale);
+            atlas_glyph_bitmap_width  := atlas_glyph_bitmap_box.x1 - atlas_glyph_bitmap_box.x0;
+            atlas_glyph_bitmap_height := atlas_glyph_bitmap_box.y1 - atlas_glyph_bitmap_box.y0;
 
             glyph_cell_x: s32;
             glyph_cell_y: s32;
@@ -214,16 +230,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 
                 clear_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width);
 
-                // XXX: HERE Once I played with the parameters (on edge value, pixel dist scale) and
-                // I smoothed the sdf with smoothstep, it starts to look passable. It is definitely
-                // sharper than regular rasterized text. However, it looks like it is cut off at
-                // points? Should we adjust the texturing coordinates we emit for it?
-                //
-                // Either way, unless it gets wayyy better, this is still not nice font rendering
-                // (compared to DirectWrite, or whatever Apple does).
-
-                // :SDF
-                sdf := get_glyph_sdf_bitmap(font.info, glyph_index, font.font_scale);
+                sdf := get_glyph_sdf_bitmap(font.font_info, glyph_index, font.atlas_scale);
                 assert(sdf.width <= font.glyph_atlas_cell_width);
                 assert(sdf.height <= font.glyph_atlas_cell_height);
                 if (sdf.data) {
@@ -231,22 +238,14 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                     free_sdf_bitmap(*sdf);
                 }
 
-                // XXX
-                // :Rasterized
-                // rasterize_glyph(font.info, glyph_index,
-                //                 dest, glyph_bitmap_width, glyph_bitmap_height,
-                //                 font.glyph_atlas_width,
-                //                 font.font_scale);
-
-
                 table_add(*font.glyph_table, glyph_index, entry_index);
                 array_add(
                     update_regions,
                     irect_from_point_and_size(
                         glyph_cell_x * font.glyph_atlas_cell_width,
                         glyph_cell_y * font.glyph_atlas_cell_height,
-                        glyph_bitmap_width,
-                        glyph_bitmap_height,
+                        atlas_glyph_bitmap_width,
+                        atlas_glyph_bitmap_height,
                     ),
                 );
             }
@@ -261,12 +260,12 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
             rr.texture_rect = rect_from_point_and_size(
                 cast(f32, glyph_cell_x * font.glyph_atlas_cell_width) / font.glyph_atlas_width,
                 cast(f32, glyph_cell_y * font.glyph_atlas_cell_height) / font.glyph_atlas_height,
-                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
-                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
+                cast(f32, atlas_glyph_bitmap_width) / font.glyph_atlas_width,
+                cast(f32, atlas_glyph_bitmap_height) / font.glyph_atlas_height,
             );
             rr.texture_id = font.texture_id;
 
-            cursor_x += font.font_scale * glyph_metrics.advance;
+            cursor_x += font.scale * glyph_metrics.advance;
         }
     }
 }
@@ -286,14 +285,14 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
             break;
         }
 
-        glyph_index   := get_glyph_index(font.info, it);
-        glyph_metrics := get_glyph_hmetrics(font.info, glyph_index);
+        glyph_index   := get_glyph_index(font.font_info, it);
+        glyph_metrics := get_glyph_hmetrics(font.font_info, glyph_index);
 
         advance += glyph_metrics.advance;
     }
 
     // Return f64, because in theory lines could be pretty long. We use f64s for absulute pixel coordinates in the editor.
-    scaled_advance := advance * cast(f64, font.font_scale);
+    scaled_advance := advance * cast(f64, font.scale);
 
     return scaled_advance;
 }
@@ -312,15 +311,15 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) 
     advance: s64 = 0; // In font integers. We scale at the end to avoid rounding errors.
     for :Unicode.utf8_iter line_text {
         // Return f64, because in theory lines could be pretty long. We use f64s for absulute pixel coordinates in the editor.
-        scaled_advance := advance * cast(f64, font.font_scale);
+        scaled_advance := advance * cast(f64, font.scale);
         if scaled_advance >= x {
             break;
         }
 
         character_index = it_index;
 
-        glyph_index   := get_glyph_index(font.info, it);
-        glyph_metrics := get_glyph_hmetrics(font.info, glyph_index);
+        glyph_index   := get_glyph_index(font.font_info, it);
+        glyph_metrics := get_glyph_hmetrics(font.font_info, glyph_index);
 
         advance += glyph_metrics.advance;
     }
@@ -434,13 +433,12 @@ SDF_Bitmap :: struct {
     y_offset: s32;
 }
 
-SDF_PADDING          : u8  : 0;
 SDF_ON_EDGE_VALUE    : u8  : 250;
 SDF_PIXEL_DIST_SCALE : f32 : 5.0;
 
 get_glyph_sdf_bitmap :: (info: stbtt_fontinfo, index: s32, scale: f32) -> SDF_Bitmap {
     result: SDF_Bitmap;
-    result.data = stbtt_GetGlyphSDF(*info, scale, index, SDF_PADDING, SDF_ON_EDGE_VALUE, SDF_PIXEL_DIST_SCALE, *result.width, *result.height, *result.x_offset, *result.y_offset);
+    result.data = stbtt_GetGlyphSDF(*info, scale, index, 0, SDF_ON_EDGE_VALUE, SDF_PIXEL_DIST_SCALE, *result.width, *result.height, *result.x_offset, *result.y_offset);
 
     log("XXX %", result);
 
