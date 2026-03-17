@@ -589,26 +589,35 @@ out vec4 color;
 uniform sampler2D diffuse_texture;
 
 void main () {
-    const float EDGE            = 250.0 / 255.0; // @Volatile This has to be the same as SDF_ON_EDGE_VALUE in font.jai.
-    const int   STEPS           = 4;
-    const float STEP            = 1.0 / float(STEPS);
-    const float INITIAL_STEP    = 0.5 * STEP;
-    const float R_STEPS_SQUARED = 1.0 / float(STEPS * STEPS);
+    // :SDF
+    // const float EDGE            = 250.0 / 255.0; // @Volatile This has to be the same as SDF_ON_EDGE_VALUE in font.jai.
+    // const float EDGE_STEP       =  20.0 / 255.0; // @Volatile XXX
 
-    vec2 texel_size = 1.0 / textureSize(diffuse_texture, 0);
-    float a = 0.0;
-    for (int y = 0; y < STEPS; ++y) {
-        for (int x = 0; x < STEPS; ++x) {
-            vec2 tex_coords = v_tex_coords
-                - 0.5 * texel_size                // Reset to top-left
-                + INITIAL_STEP * texel_size       // Add initial half-step
-                + vec2(x, y) * STEP * texel_size; // Step to next subpixel region
+    // const int   STEPS           = 4;
+    // const float STEP            = 1.0 / float(STEPS);
+    // const float INITIAL_STEP    = 0.5 * STEP;
+    // const float R_STEPS_SQUARED = 1.0 / float(STEPS * STEPS);
 
-            float sdf = texture(diffuse_texture, tex_coords).r;
-            a += step(EDGE, sdf);
-        }
-    }
-    a *= R_STEPS_SQUARED;
+    // vec2 texel_size = 1.0 / textureSize(diffuse_texture, 0);
+    // float a = 0.0;
+    // for (int y = 0; y < STEPS; ++y) {
+    //     for (int x = 0; x < STEPS; ++x) {
+    //         vec2 tex_coords = v_tex_coords
+    //             - 0.5 * texel_size                // Reset to top-left
+    //             + INITIAL_STEP * texel_size       // Add initial half-step
+    //             + vec2(x, y) * STEP * texel_size; // Step to next subpixel region
+
+    //         float sdf = texture(diffuse_texture, tex_coords).r;
+    //         a += step(EDGE, sdf);
+    //         // a += smoothstep(EDGE - 0.5*EDGE_STEP, EDGE + 0.5*EDGE_STEP, sdf);
+    //     }
+    // }
+    // a *= R_STEPS_SQUARED;
+
+    // :Rasterize
+    float a = texture(diffuse_texture, v_tex_coords).r;
+
+    // XXX: :RasterizeSuppixel
 
     color = v_color * vec4(1, 1, 1, a);
 }
