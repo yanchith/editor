@@ -12,10 +12,14 @@
 // - vertical fonts
 //
 
-SDF_FONT_PIXEL_HEIGHT : f32 : 30;
+ATLAS_PIXEL_HEIGHT : s32 : 30;
 
-ATLAS_WIDTH_IN_CELLS  :: 32;
-ATLAS_HEIGHT_IN_CELLS :: 32;
+// XXX: Find out why 5 is max, when stbtt should support at least 8.
+OVERSAMPLE_X :: 4;
+OVERSAMPLE_Y :: 4;
+
+ATLAS_WIDTH_IN_CELLS  :: 16;
+ATLAS_HEIGHT_IN_CELLS :: 16;
 
 Font :: struct {
     arena: *Arena;
@@ -79,6 +83,11 @@ Glyph_Entry :: struct {
     next: s32;
 
     glyph_index: s32; // So that we can remove it from the hash table.
+
+    // Additional metadata about how the glyph was rasterized.
+
+    glyph_sub_x: f32;
+    glyph_sub_y: f32;
 }
 
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
@@ -99,14 +108,14 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
     font.font_vmetrics     = get_font_vmetrics(font_info);
     font.font_bounding_box = get_font_bounding_box(font_info);
 
-    font.atlas_scale = get_font_scale_for_pixel_height(font_info, SDF_FONT_PIXEL_HEIGHT);
+    font.atlas_scale = get_font_scale_for_pixel_height(font_info, cast(f32, ATLAS_PIXEL_HEIGHT));
 
-    max_sdf_glyph_width  := font.atlas_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
-    max_sdf_glyph_height := font.atlas_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
+    max_atlas_glyph_width  := OVERSAMPLE_X * font.atlas_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
+    max_atlas_glyph_height := OVERSAMPLE_Y * font.atlas_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
 
-    SLOP :: 20; // XXX: Explain slop.
-    atlas_cell_width  := cast(s32, ceil(max_sdf_glyph_width)) + SLOP;
-    atlas_cell_height := cast(s32, ceil(max_sdf_glyph_width)) + SLOP;
+    SLOP :: 10; // XXX: Explain slop or remove
+    atlas_cell_width  := cast(s32, ceil(max_atlas_glyph_width)) + SLOP;
+    atlas_cell_height := cast(s32, ceil(max_atlas_glyph_width)) + SLOP;
     atlas_width       := ATLAS_WIDTH_IN_CELLS * atlas_cell_width;
     atlas_height      := ATLAS_HEIGHT_IN_CELLS * atlas_cell_height;
     table_size        := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
@@ -128,6 +137,7 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
     return font;
 }
 
+// XXX: Get rid of this and just drop the glyph cache when the font size changes.
 font_set_pixel_height :: (font: *Font, pixel_height: s32) {
     font.pixel_height = pixel_height;
 
@@ -176,14 +186,12 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
             glyph_bitmap_width  := glyph_bitmap_box.x1 - glyph_bitmap_box.x0;
             glyph_bitmap_height := glyph_bitmap_box.y1 - glyph_bitmap_box.y0;
 
-            atlas_glyph_bitmap_box := get_glyph_bitmap_box(font.font_info, glyph_index, font.atlas_scale);
-            atlas_glyph_bitmap_width  := atlas_glyph_bitmap_box.x1 - atlas_glyph_bitmap_box.x0;
-            atlas_glyph_bitmap_height := atlas_glyph_bitmap_box.y1 - atlas_glyph_bitmap_box.y0;
-
             glyph_cell_x: s32;
             glyph_cell_y: s32;
+            glyph_sub_x: f32;
+            glyph_sub_y: f32;
 
-            // TODO(jt): Factor out cache manipulation and just return the cell coordinates.
+            // TODO(jt): Factor out cache manipulation and just return the cell coordinates and other info (sub_x/sub_y).
             entry_index_pointer := table_find_pointer(*font.glyph_table, glyph_index);
             if entry_index_pointer {
                 font.frame_cache_hits += 1;
@@ -195,6 +203,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
                 glyph_cell_x = entry_index % ATLAS_WIDTH_IN_CELLS;
                 glyph_cell_y = entry_index / ATLAS_HEIGHT_IN_CELLS;
+                glyph_sub_x = entry.glyph_sub_x;
+                glyph_sub_y = entry.glyph_sub_y;
 
                 entry.stamp = font.glyph_cache_stamp;
 
@@ -230,6 +240,9 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 
                 clear_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width);
 
+                entry.glyph_sub_x = 0;
+                entry.glyph_sub_y = 0;
+
                 // XXX: Make it possible to switch these with a single constant.
 
                 // :SDF
@@ -242,13 +255,22 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 // }
 
                 // :Rasterize
-                rasterize_glyph(font.font_info, glyph_index,
-                                dest, glyph_bitmap_width, glyph_bitmap_height,
-                                font.glyph_atlas_width,
-                                font.scale);
+                // rasterize_glyph(font.font_info, glyph_index,
+                //                 dest, glyph_bitmap_width, glyph_bitmap_height,
+                //                 font.glyph_atlas_width,
+                //                 font.scale);
 
 
                 // XXX: :RasterizeSubpixel
+                sub_x, sub_y := rasterize_glyph_oversample(font.font_info, glyph_index,
+                                                           dest, OVERSAMPLE_X * glyph_bitmap_width, OVERSAMPLE_Y * glyph_bitmap_height,
+                                                           font.glyph_atlas_width,
+                                                           font.scale, OVERSAMPLE_X, OVERSAMPLE_Y);
+                entry.glyph_sub_x = sub_x;
+                entry.glyph_sub_y = sub_y;
+
+                glyph_sub_x = entry.glyph_sub_x;
+                glyph_sub_y = entry.glyph_sub_y;
 
                 table_add(*font.glyph_table, glyph_index, entry_index);
                 array_add(
@@ -256,8 +278,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                     irect_from_point_and_size(
                         glyph_cell_x * font.glyph_atlas_cell_width,
                         glyph_cell_y * font.glyph_atlas_cell_height,
-                        atlas_glyph_bitmap_width,
-                        atlas_glyph_bitmap_height,
+                        glyph_bitmap_width,
+                        glyph_bitmap_height,
                     ),
                 );
             }
@@ -270,10 +292,10 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 cast(f32, glyph_bitmap_height),
             );
             rr.texture_rect = rect_from_point_and_size(
-                cast(f32, glyph_cell_x * font.glyph_atlas_cell_width) / font.glyph_atlas_width,
-                cast(f32, glyph_cell_y * font.glyph_atlas_cell_height) / font.glyph_atlas_height,
-                cast(f32, atlas_glyph_bitmap_width) / font.glyph_atlas_width,
-                cast(f32, atlas_glyph_bitmap_height) / font.glyph_atlas_height,
+                cast(f32, glyph_cell_x * font.glyph_atlas_cell_width + glyph_sub_x) / font.glyph_atlas_width,
+                cast(f32, glyph_cell_y * font.glyph_atlas_cell_height + glyph_sub_y) / font.glyph_atlas_height,
+                cast(f32, OVERSAMPLE_X * glyph_bitmap_width) / font.glyph_atlas_width,
+                cast(f32, OVERSAMPLE_Y * glyph_bitmap_height) / font.glyph_atlas_height,
             );
             rr.texture_id = font.texture_id;
 
@@ -432,7 +454,28 @@ rasterize_glyph :: (info: stbtt_fontinfo, index: s32, dest: *u8, dest_width: s32
     // TODO(jt): @Memory stbtt_MakeGlyphBitmap actually hits STBTT_malloc multiple times (in
     // stbtt_Rasterize, but also in stbtt_GetGlyphbitmapBox), so we should probably have a way to
     // set the allocator to temp?
+    // XXX: Verify that the memory is at least freed and this is not a leak.
     stbtt_MakeGlyphBitmap(*info, dest, dest_width, dest_height, dest_stride, scale, scale, index);
+}
+
+rasterize_glyph_oversample :: (info: stbtt_fontinfo, index: s32, dest: *u8, dest_width: s32, dest_height: s32, dest_stride: s32, scale: f32, oversample_x: s32, oversample_y: s32) -> sub_x: f32, sub_y: f32 {
+    // TODO(jt): @Memory stbtt_MakeGlyphBitmapSubpixelPrefilter actually hits STBTT_malloc multiple
+    // times (in stbtt_Rasterize, but also in stbtt_GetGlyphbitmapBox), so we should probably have a
+    // way to set the allocator to temp?
+    // XXX: Verify that the memory is at least freed and this is not a leak.
+
+    sub_x: f32;
+    sub_y: f32;
+
+    stbtt_MakeGlyphBitmapSubpixelPrefilter(*info, dest, dest_width, dest_height, dest_stride,
+                                           oversample_x * scale, oversample_y * scale,
+                                           0, 0,
+                                           oversample_x, oversample_y,
+                                           *sub_x, *sub_y, index);
+
+    log("XXX subx %, suby %", sub_x, sub_y);
+
+    return sub_x, sub_y;
 }
 
 // stbtt does not give us a function where we make the memory, so instead we have to free this.
