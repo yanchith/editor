@@ -589,7 +589,7 @@ out vec4 color;
 uniform sampler2D diffuse_texture;
 
 void main () {
-    const float EDGE            = 250.0 / 255.0;
+    const float EDGE            = 250.0 / 255.0; // @Volatile This has to be the same as SDF_ON_EDGE_VALUE in font.jai.
     const int   STEPS           = 4;
     const float STEP            = 1.0 / float(STEPS);
     const float INITIAL_STEP    = 0.5 * STEP;
