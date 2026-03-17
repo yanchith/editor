@@ -131,7 +131,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     font_arena   := arena_allocate(arena_procs);
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
-    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, 20);
+    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, 30);
 
     buffer_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
     buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
