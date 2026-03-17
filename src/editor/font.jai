@@ -113,9 +113,8 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
     max_atlas_glyph_width  := OVERSAMPLE_X * font.atlas_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
     max_atlas_glyph_height := OVERSAMPLE_Y * font.atlas_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
 
-    SLOP :: 10; // XXX: Explain slop or remove
-    atlas_cell_width  := cast(s32, ceil(max_atlas_glyph_width)) + SLOP;
-    atlas_cell_height := cast(s32, ceil(max_atlas_glyph_width)) + SLOP;
+    atlas_cell_width  := cast(s32, ceil(max_atlas_glyph_width));
+    atlas_cell_height := cast(s32, ceil(max_atlas_glyph_width));
     atlas_width       := ATLAS_WIDTH_IN_CELLS * atlas_cell_width;
     atlas_height      := ATLAS_HEIGHT_IN_CELLS * atlas_cell_height;
     table_size        := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
