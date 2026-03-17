@@ -118,6 +118,8 @@ Editor :: struct {
     // TODO(jt): If we do more stuff like this, maybe we should have our usual input_state thing.
     mb_left_pressed: bool;                    // True the first frame the button is down.
     mb_left_last_pressed_inside_window: bool; // Keeps previous value until the button is pressed again.
+
+    dev_show_atlas_texture: bool;
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
@@ -131,7 +133,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     font_arena   := arena_allocate(arena_procs);
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
-    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, 30);
+    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, ATLAS_PIXEL_HEIGHT /* Same as the atlas for now */);
 
     buffer_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
     buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
@@ -232,6 +234,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                         case .F1;           font_set_pixel_height(*editor.font, min(editor.font.pixel_height + 1, 400)); log("XXX %", editor.font.pixel_height);
                         case .F2;           font_set_pixel_height(*editor.font, max(editor.font.pixel_height - 1, 6));   log("XXX %", editor.font.pixel_height);
+                        case .F3;           editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture;
                     }
                 }
 
@@ -699,6 +702,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
         // to the left of the screen, but we don't have to emit render rects for it.
         font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, scroll_offset, is_new_frame = true);
+    }
+
+    if editor.dev_show_atlas_texture {
+        render_rects.count = 0;
+
+        rr := array_add(*render_rects);
+        rr.rect = { 0, 0, cast(f32, editor.font.glyph_atlas_width), cast(f32, editor.font.glyph_atlas_height) };
+        rr.texture_rect = { 0, 0, 1, 1 };
+        rr.texture_id = TEXTURE_ID_GLYPH_ATLAS;
     }
 
     // Moved above the rendering code below, because OpenGL blocks and waits for surface, and we
