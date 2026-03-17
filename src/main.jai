@@ -589,17 +589,31 @@ out vec4 color;
 uniform sampler2D diffuse_texture;
 
 void main () {
-    // XXX: SDF stuff.
-    const float EDGE  = 250.0 / 255.0;
-    const float RANGE = 3.0 / 255.0;
-    const float MIN   = EDGE - RANGE;
-    const float MAX   = EDGE + RANGE;
+    // :Rasterized
+    // float a = texture(diffuse_texture, v_tex_coords).r;
 
-    float sdf = texture(diffuse_texture, v_tex_coords).r;
+    // :SDF
+    const float EDGE            = 250.0 / 255.0;
+    const int   STEPS           = 4;
+    const float STEP            = 1.0 / float(STEPS);
+    const float INITIAL_STEP    = 0.5 * STEP;
+    const float R_STEPS_SQUARED = 1.0 / float(STEPS * STEPS);
 
-    // float a = sdf;
-    // float a = step(EDGE, sdf);
-    float a = smoothstep(MIN, MAX, sdf);
+    vec2 texel_size = 1.0 / textureSize(diffuse_texture, 0);
+    float a = 0.0;
+    for (int y = 0; y < STEPS; ++y) {
+        for (int x = 0; x < STEPS; ++x) {
+            vec2 tex_coords = v_tex_coords
+                - 0.5 * texel_size                // Reset to top-left
+                + INITIAL_STEP * texel_size       // Add initial half-step
+                + vec2(x, y) * STEP * texel_size; // Step to next subpixel region
+
+            float sdf = texture(diffuse_texture, tex_coords).r;
+            a += step(EDGE, sdf);
+        }
+    }
+    a *= R_STEPS_SQUARED;
+
     color = v_color * vec4(1, 1, 1, a);
 }
 #endif

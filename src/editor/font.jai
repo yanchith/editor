@@ -231,8 +231,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                     free_sdf_bitmap(*sdf);
                 }
 
-                // // XXX
-                // // :Rasterize
+                // XXX
+                // :Rasterized
                 // rasterize_glyph(font.info, glyph_index,
                 //                 dest, glyph_bitmap_width, glyph_bitmap_height,
                 //                 font.glyph_atlas_width,
