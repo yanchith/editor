@@ -12,12 +12,11 @@
 // - vertical fonts
 //
 
-ATLAS_PIXEL_HEIGHT : s32 : 30;
-
 // Max is 8.
-OVERSAMPLE_X :: 5;
-OVERSAMPLE_Y :: 5;
+OVERSAMPLE_X :: 1;
+OVERSAMPLE_Y :: 1;
 
+// XXX: Compute dynamically to fill screen.
 ATLAS_WIDTH_IN_CELLS  :: 16;
 ATLAS_HEIGHT_IN_CELLS :: 16;
 
@@ -25,24 +24,24 @@ Font :: struct {
     arena: *Arena;
     arena_mark: Arena_Mark;
 
-    pixel_height: s32;
     texture_id: Texture_ID;
 
     // Font info stuff
+
     font_info: stbtt_fontinfo;
     font_vmetrics: Font_VMetrics;
     font_bounding_box: IRect;
 
-    // Scale for which the SDF atlas was computed. This is different than the target scale below.
-    atlas_scale: f32;
+    pixel_height: s32;
 
-    // Scaled metrics useful for font layout.
+    // Metrics for currently set pixel_height
+
     scale: f32;
-    line_height_in_scaled_pixels: f32;
-    max_glyph_width_in_scaled_pixels: f32;
-    max_glyph_height_in_scaled_pixels: f32;
-    max_glyph_width_in_scaled_integer_pixels: s32;
-    max_glyph_height_in_scaled_integer_pixels: s32;
+    line_height_in_pixels: f32;
+    max_glyph_width_in_pixels: f32;
+    max_glyph_height_in_pixels: f32;
+    max_glyph_width_in_integer_pixels: s32;
+    max_glyph_height_in_integer_pixels: s32;
 
     // Glyph cache stuff
 
@@ -104,49 +103,57 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
     font.texture_id = texture_id;
 
     font.font_info = font_info;
-
     font.font_vmetrics     = get_font_vmetrics(font_info);
     font.font_bounding_box = get_font_bounding_box(font_info);
 
-    font.atlas_scale = get_font_scale_for_pixel_height(font_info, cast(f32, ATLAS_PIXEL_HEIGHT));
-
-    max_atlas_glyph_width  := OVERSAMPLE_X * font.atlas_scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
-    max_atlas_glyph_height := OVERSAMPLE_Y * font.atlas_scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
-
-    atlas_cell_width  := cast(s32, ceil(max_atlas_glyph_width));
-    atlas_cell_height := cast(s32, ceil(max_atlas_glyph_width));
-    atlas_width       := ATLAS_WIDTH_IN_CELLS * atlas_cell_width;
-    atlas_height      := ATLAS_HEIGHT_IN_CELLS * atlas_cell_height;
-    table_size        := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
-
-    font.glyph_atlas             = NewArray(atlas_width * atlas_height, u8,, arena_allocator(font.arena));
-    font.glyph_atlas_cell_width  = atlas_cell_width;
-    font.glyph_atlas_cell_height = atlas_cell_height;
-    font.glyph_atlas_width       = atlas_width;
-    font.glyph_atlas_height      = atlas_height;
-    font.glyph_entries           = NewArray(table_size, Glyph_Entry,, arena_allocator(font.arena));
-    font.glyph_table.allocator   = arena_allocator(font.arena);
-
-    table_ensure_space(*font.glyph_table, table_size);
-
-    link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
-
-    font_set_pixel_height(*font, pixel_height);
+    font_reset_for_pixel_height(*font, pixel_height);
 
     return font;
 }
 
-// XXX: Get rid of this and just drop the glyph cache when the font size changes.
-font_set_pixel_height :: (font: *Font, pixel_height: s32) {
+font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     font.pixel_height = pixel_height;
 
-    font.scale = get_font_scale_for_pixel_height(font.font_info, cast(f32, pixel_height));
+    arena_pop_to_mark(font.arena, font.arena_mark);
 
-    font.line_height_in_scaled_pixels = font.scale * (font.font_vmetrics.ascent - font.font_vmetrics.descent + font.font_vmetrics.line_gap);
-    font.max_glyph_width_in_scaled_pixels  = font.scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
-    font.max_glyph_height_in_scaled_pixels = font.scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
-    font.max_glyph_width_in_scaled_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_scaled_pixels));
-    font.max_glyph_height_in_scaled_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_scaled_pixels));
+    font.scale = get_font_scale_for_pixel_height(font.font_info, cast(f32, pixel_height));
+    font.line_height_in_pixels = font.scale * (font.font_vmetrics.ascent - font.font_vmetrics.descent + font.font_vmetrics.line_gap);
+    font.max_glyph_width_in_pixels  = font.scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
+    font.max_glyph_height_in_pixels = font.scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
+    font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
+    font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
+
+    max_atlas_glyph_width  := OVERSAMPLE_X * font.max_glyph_width_in_pixels;
+    max_atlas_glyph_height := OVERSAMPLE_Y * font.max_glyph_height_in_pixels;
+
+    SLOP :: 10;
+    atlas_cell_width  := cast(s32, ceil(max_atlas_glyph_width)) + SLOP;
+    atlas_cell_height := cast(s32, ceil(max_atlas_glyph_width)) + SLOP;
+    atlas_width       := ATLAS_WIDTH_IN_CELLS * atlas_cell_width;
+    atlas_height      := ATLAS_HEIGHT_IN_CELLS * atlas_cell_height;
+    table_size        := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
+
+    font.glyph_atlas             = arena_push_array(font.arena, u8, atlas_width * atlas_height);
+    font.glyph_atlas_cell_width  = atlas_cell_width;
+    font.glyph_atlas_cell_height = atlas_cell_height;
+    font.glyph_atlas_width       = atlas_width;
+    font.glyph_atlas_height      = atlas_height;
+    font.glyph_entries           = arena_push_array(font.arena, Glyph_Entry, table_size);
+    font.glyph_entries_head      = 0;
+    font.glyph_entries_tail      = 0;
+
+    glyph_table: Table(s32, s32);
+    glyph_table.allocator = arena_allocator(font.arena);
+    font.glyph_table = glyph_table;
+
+    table_ensure_space(*font.glyph_table, table_size);
+
+    font.glyph_cache_stamp = 0;
+
+    font.frame_cache_hits   = 0;
+    font.frame_cache_misses = 0;
+
+    link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 }
 
 font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, scroll: Vector2, is_new_frame := false) {
@@ -176,7 +183,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
         // TODO(jt): Support all kinds of newlines.
         if it == #char "\n" {
             cursor_x = 0;
-            cursor_y += font.line_height_in_scaled_pixels;
+            cursor_y += font.line_height_in_pixels;
         } else {
             glyph_index   := get_glyph_index(font.font_info, it);
             glyph_metrics := get_glyph_hmetrics(font.font_info, glyph_index);
@@ -254,13 +261,6 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 // }
 
                 // :Rasterize
-                // rasterize_glyph(font.font_info, glyph_index,
-                //                 dest, glyph_bitmap_width, glyph_bitmap_height,
-                //                 font.glyph_atlas_width,
-                //                 font.scale);
-
-
-                // XXX: :RasterizeSubpixel
                 sub_x, sub_y := rasterize_glyph_oversample(font.font_info, glyph_index,
                                                            dest, OVERSAMPLE_X * glyph_bitmap_width, OVERSAMPLE_Y * glyph_bitmap_height,
                                                            font.glyph_atlas_width,
@@ -449,14 +449,6 @@ get_glyph_bitmap_box :: (info: stbtt_fontinfo, index: s32, scale: f32) -> IRect 
     return result;
 }
 
-rasterize_glyph :: (info: stbtt_fontinfo, index: s32, dest: *u8, dest_width: s32, dest_height: s32, dest_stride: s32, scale: f32) {
-    // TODO(jt): @Memory stbtt_MakeGlyphBitmap actually hits STBTT_malloc multiple times (in
-    // stbtt_Rasterize, but also in stbtt_GetGlyphbitmapBox), so we should probably have a way to
-    // set the allocator to temp?
-    // XXX: Verify that the memory is at least freed and this is not a leak.
-    stbtt_MakeGlyphBitmap(*info, dest, dest_width, dest_height, dest_stride, scale, scale, index);
-}
-
 rasterize_glyph_oversample :: (info: stbtt_fontinfo, index: s32, dest: *u8, dest_width: s32, dest_height: s32, dest_stride: s32, scale: f32, oversample_x: s32, oversample_y: s32) -> sub_x: f32, sub_y: f32 {
     // TODO(jt): @Memory stbtt_MakeGlyphBitmapSubpixelPrefilter actually hits STBTT_malloc multiple
     // times (in stbtt_Rasterize, but also in stbtt_GetGlyphbitmapBox), so we should probably have a
@@ -471,8 +463,6 @@ rasterize_glyph_oversample :: (info: stbtt_fontinfo, index: s32, dest: *u8, dest
                                            0, 0,
                                            oversample_x, oversample_y,
                                            *sub_x, *sub_y, index);
-
-    log("XXX subx %, suby %", sub_x, sub_y);
 
     return sub_x, sub_y;
 }

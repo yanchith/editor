@@ -133,7 +133,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     font_arena   := arena_allocate(arena_procs);
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
-    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, ATLAS_PIXEL_HEIGHT /* Same as the atlas for now */);
+    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, 30);
 
     buffer_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
     buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
@@ -232,8 +232,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .HOME;         text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                         case .END;          text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
 
-                        case .F1;           font_set_pixel_height(*editor.font, min(editor.font.pixel_height + 1, 400)); log("XXX %", editor.font.pixel_height);
-                        case .F2;           font_set_pixel_height(*editor.font, max(editor.font.pixel_height - 1, 6));   log("XXX %", editor.font.pixel_height);
+                        case .F1;           font_reset_for_pixel_height(*editor.font, min(editor.font.pixel_height + 1, 400)); log("XXX %", editor.font.pixel_height);
+                        case .F2;           font_reset_for_pixel_height(*editor.font, max(editor.font.pixel_height - 1, 6));   log("XXX %", editor.font.pixel_height);
                         case .F3;           editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture;
                     }
                 }
@@ -392,8 +392,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     // Upcast to f64 here, because we later multiply them with lines/columns, and we don't want to
     // accidentally do the multiply in f32, which is not precise enough in large buffers.
-    buffer_cell_w := cast(f64, editor.font.max_glyph_width_in_scaled_pixels);
-    buffer_cell_h := cast(f64, editor.font.line_height_in_scaled_pixels);
+    buffer_cell_w := cast(f64, editor.font.max_glyph_width_in_pixels);
+    buffer_cell_h := cast(f64, editor.font.line_height_in_pixels);
 
     if input.mouse_wheel_delta != 0 {
         // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
@@ -729,11 +729,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 #scope_file
 
 recenter_buffer :: (editor: *Editor, input: Input) {
-    cursor_y := editor.buffer.cursor0.y * editor.font.line_height_in_scaled_pixels;
+    cursor_y := editor.buffer.cursor0.y * editor.font.line_height_in_pixels;
 
     center := cursor_y - 0.5 * input.window_size.y;
     top    := cursor_y;
-    bottom := cursor_y - input.window_size.y + editor.font.line_height_in_scaled_pixels;
+    bottom := cursor_y - input.window_size.y + editor.font.line_height_in_pixels;
 
     if editor.buffer_viewport_scroll_target.y == center {
         editor.buffer_viewport_scroll_target.y = top;
@@ -745,7 +745,7 @@ recenter_buffer :: (editor: *Editor, input: Input) {
 }
 
 scroll_buffer_up_one_screen :: (editor: *Editor, input: Input) {
-    cell_h := editor.font.line_height_in_scaled_pixels;
+    cell_h := editor.font.line_height_in_pixels;
 
     delta_max := cast(s64, floor(input.window_size.y / cell_h));
     delta     := min(editor.buffer.cursor0.y, delta_max);
@@ -757,7 +757,7 @@ scroll_buffer_up_one_screen :: (editor: *Editor, input: Input) {
 }
 
 scroll_buffer_down_one_screen :: (editor: *Editor, input: Input) {
-    cell_h := editor.font.line_height_in_scaled_pixels;
+    cell_h := editor.font.line_height_in_pixels;
 
     delta_max := cast(s64, floor(input.window_size.y / cell_h));
     delta     := min(editor.buffer.lines.count - 1 - editor.buffer.cursor0.y, delta_max);
