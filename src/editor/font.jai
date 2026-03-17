@@ -14,9 +14,9 @@
 
 ATLAS_PIXEL_HEIGHT : s32 : 30;
 
-// XXX: Find out why 5 is max, when stbtt should support at least 8.
-OVERSAMPLE_X :: 4;
-OVERSAMPLE_Y :: 4;
+// Max is 8.
+OVERSAMPLE_X :: 5;
+OVERSAMPLE_Y :: 5;
 
 ATLAS_WIDTH_IN_CELLS  :: 16;
 ATLAS_HEIGHT_IN_CELLS :: 16;
