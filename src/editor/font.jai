@@ -230,13 +230,25 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 
                 clear_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width);
 
-                sdf := get_glyph_sdf_bitmap(font.font_info, glyph_index, font.atlas_scale);
-                assert(sdf.width <= font.glyph_atlas_cell_width);
-                assert(sdf.height <= font.glyph_atlas_cell_height);
-                if (sdf.data) {
-                    copy_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width, sdf.data, sdf.width, sdf.height);
-                    free_sdf_bitmap(*sdf);
-                }
+                // XXX: Make it possible to switch these with a single constant.
+
+                // :SDF
+                // sdf := get_glyph_sdf_bitmap(font.font_info, glyph_index, font.atlas_scale);
+                // assert(sdf.width <= font.glyph_atlas_cell_width);
+                // assert(sdf.height <= font.glyph_atlas_cell_height);
+                // if (sdf.data) {
+                //     copy_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width, sdf.data, sdf.width, sdf.height);
+                //     free_sdf_bitmap(*sdf);
+                // }
+
+                // :Rasterize
+                rasterize_glyph(font.font_info, glyph_index,
+                                dest, glyph_bitmap_width, glyph_bitmap_height,
+                                font.glyph_atlas_width,
+                                font.scale);
+
+
+                // XXX: :RasterizeSubpixel
 
                 table_add(*font.glyph_table, glyph_index, entry_index);
                 array_add(
@@ -434,7 +446,7 @@ SDF_Bitmap :: struct {
 }
 
 SDF_ON_EDGE_VALUE    : u8  : 250; // @Volatile This has to be the same as EDGE on the shader.
-SDF_PIXEL_DIST_SCALE : f32 : 5.0;
+SDF_PIXEL_DIST_SCALE : f32 : 20.0;
 
 get_glyph_sdf_bitmap :: (info: stbtt_fontinfo, index: s32, scale: f32) -> SDF_Bitmap {
     result: SDF_Bitmap;
