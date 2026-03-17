@@ -433,7 +433,7 @@ SDF_Bitmap :: struct {
     y_offset: s32;
 }
 
-SDF_ON_EDGE_VALUE    : u8  : 250;
+SDF_ON_EDGE_VALUE    : u8  : 250; // @Volatile This has to be the same as EDGE on the shader.
 SDF_PIXEL_DIST_SCALE : f32 : 5.0;
 
 get_glyph_sdf_bitmap :: (info: stbtt_fontinfo, index: s32, scale: f32) -> SDF_Bitmap {
