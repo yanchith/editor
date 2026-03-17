@@ -131,7 +131,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer) {
     font_arena   := arena_allocate(arena_procs);
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
-    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS);
+    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, 20);
 
     buffer_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
     buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
@@ -229,6 +229,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                         case .HOME;         text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                         case .END;          text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
+
+                        case .F1;           font_set_pixel_height(*editor.font, min(editor.font.pixel_height + 2, 400)); log("XXX %", editor.font.pixel_height);
+                        case .F2;           font_set_pixel_height(*editor.font, max(editor.font.pixel_height - 2, 2));   log("XXX %", editor.font.pixel_height);
                     }
                 }
 

@@ -589,10 +589,6 @@ out vec4 color;
 uniform sampler2D diffuse_texture;
 
 void main () {
-    // :Rasterized
-    // float a = texture(diffuse_texture, v_tex_coords).r;
-
-    // :SDF
     const float EDGE            = 250.0 / 255.0;
     const int   STEPS           = 4;
     const float STEP            = 1.0 / float(STEPS);
