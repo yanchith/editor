@@ -499,3 +499,115 @@ free_sdf_bitmap :: (b: *SDF_Bitmap) {
 }
 
 #import "stb_truetype"; // Move to scope exported scope, since the info field is visible anyway?
+
+
+/* XXX:
+
+Freetype functions from tutorial
+FT_Init_Freetype(&library)
+FT_New_Memory_Face
+FT_Done_Face
+
+Freetype structures from tutorial
+FT_FaceRec
+num_glyphs
+face_flags
+units_per_EM
+num_fixed_sizes
+available_sizes
+
+FT_Size (face−>size)
+FT_Set_Char_Size
+error = FT_Set_Char_Size(
+          face,    /* handle to face object         */
+          0,       /* char_width in 1/64 of points  */
+          16*64,   /* char_height in 1/64 of points */
+          300,     /* horizontal device resolution  */
+          300 );   /* vertical device resolution    */
+
+
+error = FT_Set_Pixel_Sizes(
+          face,   /* handle to face object */
+          0,      /* pixel_width           */
+          16 );   /* pixel_height          */
+
+glyph_index = FT_Get_Char_Index( face, charcode );
+
+error = FT_Load_Glyph(
+          face,          /* handle to face object */
+          glyph_index,   /* glyph index           */
+          load_flags );  /* load flags, see below */
+
+error = FT_Render_Glyph( face->glyph,   /* glyph slot  */
+                         render_mode ); /* render mode */
+
+glyph->bitmap
+glyph->bitmap_left
+glyph->bitmap_top
+
+(For optimal rendering on a screen the bitmap should be used as an alpha channel in linear blending with gamma correction.)
+
+Note that bitmap_left is the horizontal distance from the current pen position to the leftmost
+border of the glyph bitmap, while bitmap_top is the vertical distance from the pen position (on the
+baseline) to the topmost border of the glyph bitmap. It is positive to indicate an upwards distance.
+
+
+Simple text rendering:
+
+FT_GlyphSlot  slot = face->glyph;  /* a small shortcut */
+int           pen_x, pen_y, n;
+
+
+... initialize library ...
+... create face object ...
+... set character size ...
+
+pen_x = 300;
+pen_y = 200;
+
+for ( n = 0; n < num_chars; n++ )
+{
+  FT_UInt  glyph_index;
+
+
+  /* retrieve glyph index from character code */
+  glyph_index = FT_Get_Char_Index( face, text[n] );
+
+  /* load glyph image into the slot (erase previous one) */
+  error = FT_Load_Glyph( face, glyph_index, FT_LOAD_DEFAULT );
+  if ( error )
+    continue;  /* ignore errors */
+
+  /* convert to an anti-aliased bitmap */
+  error = FT_Render_Glyph( face->glyph, FT_RENDER_MODE_NORMAL );
+  if ( error )
+    continue;
+
+  /* now, draw to our target surface */
+  my_draw_bitmap( &slot->bitmap,
+                  pen_x + slot->bitmap_left,
+                  pen_y - slot->bitmap_top );
+
+  /* increment pen position */
+  pen_x += slot->advance.x >> 6;
+  pen_y += slot->advance.y >> 6; /* not useful for now */
+  // NOTE(jt): shift by 6 is divide by 64, so... this is all in integers and we snap, and the font looks good because it is hinted? I don't understand.
+  // NOTE(jt): If we do glyph caching, we *could* just draw the entire screen into a texture. Probably not what we want, because unlike an atlas we can't do partial updates, and also we'd have everything snapped to pixels, but interesting.
+  // NOTE(jt): The advanced (c) example computes with font pixels (1/64), so it doesn't do the downshift, but also doesn't do floats.
+}
+
+// NOTE(jt): The advanced freetype example uses the transform API so that it rasterizes the bitmap
+// already in the right place. This is probably the best for quality, but we can't stuff it into an
+// atlas... Jon's Simp font rendering is nice enough. He does not use the transform API and lays out
+// the text naively (as we do). Let's try that first, before we ponder rendering the whole screen with
+// freetype. (XXX: HERE)
+
+---------------------------------------------------
+Freetype functions Jon uses
+
+FT_Set_Pixel_Sizes
+FT_Get_Char_Index
+FT_Load_Glyph (with FT_LOAD_RENDER)
+
+
+*/
