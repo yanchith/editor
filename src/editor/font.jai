@@ -1,79 +1,64 @@
-// TODO(jt): Features:
-//
-// - [~] Basic text layout (in progress, might change)
-// - [ ] kerning
-// - [ ] ligatures?
-//
-// Nonfeatures:
-//
-// - hinting
-// - shaping
-// - right to left
-// - vertical fonts
-//
-
-// Max is 8.
-OVERSAMPLE_X :: 1;
-OVERSAMPLE_Y :: 1;
-
-// XXX: Compute dynamically to fill screen.
+// TODO(jt): Compute dynamically to fill screen.
 ATLAS_WIDTH_IN_CELLS  :: 16;
 ATLAS_HEIGHT_IN_CELLS :: 16;
 
 Font :: struct {
+    //
+    // "Inputs"
+    //
+
     arena: *Arena;
     arena_mark: Arena_Mark;
 
     texture_id: Texture_ID;
 
-    // Font info stuff
-
-    font_info: stbtt_fontinfo;
-    font_vmetrics: Font_VMetrics;
-    font_bounding_box: IRect;
-
     pixel_height: s32;
 
-    // Metrics for currently set pixel_height
+    //
+    // Font info stuff. Does not change once we have loaded a font.
+    //
 
-    scale: f32;
+    ft_library: FT_Library;
+    ft_face:    FT_Face;
+
+    // These metrics are in font units.
+    font_bounding_box: IRect;
+    font_ascender:     s32;
+    font_descender:    s32;
+    font_line_height:  s32;
+
+    //
+    // Scaled metrics for currently set pixel_height
+    //
+
+    scale_from_font_units_to_pixels: f32;
     line_height_in_pixels: f32;
     max_glyph_width_in_pixels: f32;
     max_glyph_height_in_pixels: f32;
     max_glyph_width_in_integer_pixels: s32;
     max_glyph_height_in_integer_pixels: s32;
 
+    //
     // Glyph cache stuff
+    //
 
     glyph_atlas: [] u8;
     glyph_atlas_cell_width: s32;
     glyph_atlas_cell_height: s32;
     glyph_atlas_width: s32;
     glyph_atlas_height: s32;
+
     glyph_entries: [] Glyph_Entry;
     glyph_entries_head: s32;
     glyph_entries_tail: s32;
-    // TODO(jt): @Speed @Memory Remove this hash table and do hashing over glyph_entries directly. We'll have to make the size of power of two, etc.
+
+    // TODO(jt): @Speed @Memory Remove this hash table and do hashing over glyph_entries
+    // directly. We'll have to make the size a power of two, etc.
     glyph_table: Table(s32, s32);
-    // This can overflow after about 200 days (if we rendered 60 frames every second), but we only
-    // ever compare it for equality to detect same-frame evictions.
-    glyph_cache_stamp: u32;
 
-    frame_cache_hits: s64;
-    frame_cache_misses: s64;
-}
-
-Font_VMetrics :: struct {
-    // In internal font units.
-    ascent: s32;
-    descent: s32;
-    line_gap: s32;
-}
-
-Glyph_HMetrics :: struct {
-    // In internal font units.
-    advance: s32;
-    left_side_bearing: s32;
+    glyph_cache_stamp: u32; // This can overflow, but we only ever compare it for equality to detect same-frame evictions.
+    glyph_cache_hits: s64;
+    glyph_cache_misses: s64;
 }
 
 Glyph_Entry :: struct {
@@ -83,28 +68,50 @@ Glyph_Entry :: struct {
 
     glyph_index: s32; // So that we can remove it from the hash table.
 
-    // Additional metadata about how the glyph was rasterized.
+    //
+    // Metrics, metadata, anything that we know about the glyph.
+    //
+    // In the STBTT days, we didn't cache anything in here, but either I don't understand FreeType
+    // very well, or it seems like even extracing these is a heavyweight operation that involves
+    // actually rasterizing the glyph (or loading the bitmap, if present).
 
-    glyph_sub_x: f32;
-    glyph_sub_y: f32;
+    glyph_advance: f32;          // TODO(jt): Store this in font units to preserve precision?
+    glyph_offset_x: s32;
+    glyph_offset_y: s32;
+    glyph_bitmap_width: s32;
+    glyph_bitmap_height: s32;
 }
 
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
 make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_height: s32) -> Font {
-    arena_mark := arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
-
-    font_info: stbtt_fontinfo;
-    stbtt_InitFont(*font_info, ttf_buffer.data, stbtt_GetFontOffsetForIndex(ttf_buffer.data, 0));
-
     font: Font;
-    font.arena      = arena;
-    font.arena_mark = arena_mark;
+    font.arena        = arena;
+    font.arena_mark   = arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
+    font.texture_id   = texture_id;
+    // pixel_height assigned in font_reset_for_pixel_height.
 
-    font.texture_id = texture_id;
+    error: FT_Error;
 
-    font.font_info = font_info;
-    font.font_vmetrics     = get_font_vmetrics(font_info);
-    font.font_bounding_box = get_font_bounding_box(font_info);
+    // TODO(jt): @Memory In C, there is a FT_New_Library that supports custom allocators. Can we use that?
+    error = FT_Init_FreeType(*font.ft_library);
+    if error {
+        log_error("FreeType error when initializing the Library");
+        return font;
+    }
+
+    error = FT_New_Memory_Face(font.ft_library, ttf_buffer.data, cast(s32, ttf_buffer.count), 0, *font.ft_face);
+    if error {
+        log_error("FreeType error when creating a new Face");
+        return font;
+    }
+
+    font.font_bounding_box.x0 = font.ft_face.bbox.xMin;
+    font.font_bounding_box.y0 = font.ft_face.bbox.yMin;
+    font.font_bounding_box.x1 = font.ft_face.bbox.xMax;
+    font.font_bounding_box.y1 = font.ft_face.bbox.yMax;
+    font.font_ascender    = font.ft_face.ascender;
+    font.font_descender   = font.ft_face.descender;
+    font.font_line_height = font.ft_face.height; // XXX: STB had line_gap here... is this gap or height?
 
     font_reset_for_pixel_height(*font, pixel_height);
 
@@ -112,23 +119,28 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
 }
 
 font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
-    font.pixel_height = pixel_height;
-
     arena_pop_to_mark(font.arena, font.arena_mark);
 
-    font.scale = get_font_scale_for_pixel_height(font.font_info, cast(f32, pixel_height));
-    font.line_height_in_pixels = font.scale * (font.font_vmetrics.ascent - font.font_vmetrics.descent + font.font_vmetrics.line_gap);
-    font.max_glyph_width_in_pixels  = font.scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
-    font.max_glyph_height_in_pixels = font.scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
+    font.pixel_height = pixel_height;
+
+    error: FT_Error;
+    error = FT_Set_Pixel_Sizes(font.ft_face, 0, cast(u32, pixel_height));
+    if error {
+        log_error("FreeType error when setting pixel size");
+        return;
+    }
+
+    scale := cast(f32, pixel_height) / (font.font_ascender - font.font_descender);
+
+    font.scale_from_font_units_to_pixels = scale;
+    font.line_height_in_pixels = scale * (font.font_ascender - font.font_descender + font.font_line_height);
+    font.max_glyph_width_in_pixels  = scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
+    font.max_glyph_height_in_pixels = scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
     font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
 
-    max_atlas_glyph_width  := OVERSAMPLE_X * font.max_glyph_width_in_pixels;
-    max_atlas_glyph_height := OVERSAMPLE_Y * font.max_glyph_height_in_pixels;
-
-    SLOP :: 10;
-    atlas_cell_width  := cast(s32, ceil(max_atlas_glyph_width)) + SLOP;
-    atlas_cell_height := cast(s32, ceil(max_atlas_glyph_width)) + SLOP;
+    atlas_cell_width  := font.max_glyph_width_in_integer_pixels;
+    atlas_cell_height := font.max_glyph_height_in_integer_pixels;
     atlas_width       := ATLAS_WIDTH_IN_CELLS * atlas_cell_width;
     atlas_height      := ATLAS_HEIGHT_IN_CELLS * atlas_cell_height;
     table_size        := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
@@ -150,8 +162,8 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
 
     font.glyph_cache_stamp = 0;
 
-    font.frame_cache_hits   = 0;
-    font.frame_cache_misses = 0;
+    font.glyph_cache_hits   = 0;
+    font.glyph_cache_misses = 0;
 
     link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 }
@@ -159,12 +171,13 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
 font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, scroll: Vector2, is_new_frame := false) {
     ProfileZone("font_layout_and_draw_text");
 
-    // TODO(jt): @Cleanup Consider having the user update the stamp manually?
     if is_new_frame {
-        font.glyph_cache_stamp += 1;
+        #no_aoc {
+            font.glyph_cache_stamp += 1;
+        }
 
-        font.frame_cache_hits = 0;
-        font.frame_cache_misses = 0;
+        font.glyph_cache_hits = 0;
+        font.glyph_cache_misses = 0;
     }
 
     // TODO(jt): @Cleanup Early exit to prevent utf8_iter accessing the first byte of a 0-length
@@ -173,57 +186,65 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
         return;
     }
 
+    // TODO(jt): Compute in font units and convert to floats at the end.
     cursor_x: f32 = 0;
-    cursor_y: f32 = font.scale * font.font_vmetrics.ascent;
+    cursor_y: f32 = font.scale_from_font_units_to_pixels * font.font_ascender;
 
     for :Unicode.utf8_iter text {
-        // TODO(jt): @Cleanup Factored this way, because utf8_iter does not support 'continue' (or I
-        // used it incorrectly, or something).
-        //
-        // TODO(jt): Support all kinds of newlines.
+        // TODO(jt): Support all kinds of newlines. XXX We already do this elsewhere, so might as well fix it here!
         if it == #char "\n" {
             cursor_x = 0;
             cursor_y += font.line_height_in_pixels;
         } else {
-            glyph_index   := get_glyph_index(font.font_info, it);
-            glyph_metrics := get_glyph_hmetrics(font.font_info, glyph_index);
+            glyph_index := FT_Get_Char_Index(font.ft_face, it);
+            if glyph_index == 0 {
+                // TODO(jt): Replacement character!
+                continue;
+            }
 
-            glyph_bitmap_box    := get_glyph_bitmap_box(font.font_info, glyph_index, font.scale);
-            glyph_bitmap_width  := glyph_bitmap_box.x1 - glyph_bitmap_box.x0;
-            glyph_bitmap_height := glyph_bitmap_box.y1 - glyph_bitmap_box.y0;
+            // These are filled in in one of the two branches below
+            glyph_advance: f32;
+            glyph_offset_x: s32;
+            glyph_offset_y: s32;
+            glyph_bitmap_width: s32;
+            glyph_bitmap_height: s32;
 
             glyph_cell_x: s32;
             glyph_cell_y: s32;
-            glyph_sub_x: f32;
-            glyph_sub_y: f32;
 
-            // TODO(jt): Factor out cache manipulation and just return the cell coordinates and other info (sub_x/sub_y).
-            entry_index_pointer := table_find_pointer(*font.glyph_table, glyph_index);
+            // TODO(jt): Factor out cache manipulation and just return the all necessary metadata.
+            entry_index_pointer := table_find_pointer(*font.glyph_table, cast(s32, glyph_index));
             if entry_index_pointer {
-                font.frame_cache_hits += 1;
+                font.glyph_cache_hits += 1;
 
                 entry_index := entry_index_pointer.*;
                 entry := *font.glyph_entries[entry_index];
-                assert(entry.glyph_index == glyph_index);
-
-                // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
-                glyph_cell_x = entry_index % ATLAS_WIDTH_IN_CELLS;
-                glyph_cell_y = entry_index / ATLAS_HEIGHT_IN_CELLS;
-                glyph_sub_x = entry.glyph_sub_x;
-                glyph_sub_y = entry.glyph_sub_y;
+                sanity_assert(entry.glyph_index == cast(s32, glyph_index));
 
                 entry.stamp = font.glyph_cache_stamp;
 
+                glyph_advance       = entry.glyph_advance;
+                glyph_offset_x      = entry.glyph_offset_x;
+                glyph_offset_y      = entry.glyph_offset_y;
+                glyph_bitmap_width  = entry.glyph_bitmap_width;
+                glyph_bitmap_height = entry.glyph_bitmap_height;
+
+                // TODO(jt): @Speed Compute this with shifts, since the dimensions are a power of two.
+                glyph_cell_x = entry_index % ATLAS_WIDTH_IN_CELLS;
+                glyph_cell_y = entry_index / ATLAS_HEIGHT_IN_CELLS;
+
                 move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
+                sanity_assert(font.glyph_entries_tail == entry_index);
             } else {
-                font.frame_cache_misses += 1;
+                font.glyph_cache_misses += 1;
 
                 entry_index := font.glyph_entries_head;
                 entry := *font.glyph_entries[entry_index];
 
-                // We can't overwrite an entry we wrote to this frame. We would be evicting something we
-                // need this frame. If we really want to handle this case, we could flush our rendering
-                // here and continue where we left of, but better to just have a larger cache.
+                // We can't overwrite an entry we wrote to this frame, as we would be evicting
+                // something else we also wrote this frame that we need. If we want to handle this
+                // case, we could flush our rendering here and continue where we left of, but better
+                // to just have a larger cache.
                 if entry.stamp == font.glyph_cache_stamp {
                     log_error("Glyph cache overwriting slot % during same layout. Rendering is going to look funny.", entry_index);
                 }
@@ -231,47 +252,43 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 table_remove(*font.glyph_table, entry.glyph_index);
 
                 entry.stamp = font.glyph_cache_stamp;
-                entry.glyph_index = glyph_index;
+                entry.glyph_index = cast(s32, glyph_index);
 
-                // TODO(jt): Compute this with shifts, since the dimensions are a power of two.
+                error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER);
+                if error {
+                    // TODO(jt): Replacement character!
+                    continue;
+                }
+
+                glyph         := font.ft_face.glyph; // unlike metrics and bitmap, glyph is a pointer
+                glyph_metrics := *font.ft_face.glyph.metrics;
+                glyph_bitmap  := *font.ft_face.glyph.bitmap;
+
+                entry.glyph_advance       = cast(f32, glyph_metrics.horiAdvance) / 64;
+                entry.glyph_offset_x      = glyph.bitmap_left;
+                entry.glyph_offset_y      = glyph.bitmap_top;
+                entry.glyph_bitmap_width  = cast(s32, glyph_bitmap.width);
+                entry.glyph_bitmap_height = cast(s32, glyph_bitmap.rows);
+
+                glyph_advance       = entry.glyph_advance;
+                glyph_offset_x      = entry.glyph_offset_x;
+                glyph_offset_y      = entry.glyph_offset_y;
+                glyph_bitmap_width  = entry.glyph_bitmap_width;
+                glyph_bitmap_height = entry.glyph_bitmap_height;
+
+                // TODO(jt): @Speed Compute this with shifts, since the dimensions are a power of two.
                 glyph_cell_x = entry_index % ATLAS_WIDTH_IN_CELLS;
                 glyph_cell_y = entry_index / ATLAS_HEIGHT_IN_CELLS;
-
-                move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
-                assert(font.glyph_entries_tail == entry_index);
 
                 dest := font.glyph_atlas.data +
                         font.glyph_atlas_width * glyph_cell_y * font.glyph_atlas_cell_height +
                         glyph_cell_x * font.glyph_atlas_cell_width;
 
                 clear_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width);
+                copy_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width,
+                                glyph_bitmap.buffer, cast(s32, glyph_bitmap.width), cast(s32, glyph_bitmap.rows), cast(s32, glyph_bitmap.pitch));
 
-                entry.glyph_sub_x = 0;
-                entry.glyph_sub_y = 0;
-
-                // XXX: Make it possible to switch these with a single constant.
-
-                // :SDF
-                // sdf := get_glyph_sdf_bitmap(font.font_info, glyph_index, font.atlas_scale);
-                // assert(sdf.width <= font.glyph_atlas_cell_width);
-                // assert(sdf.height <= font.glyph_atlas_cell_height);
-                // if (sdf.data) {
-                //     copy_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width, sdf.data, sdf.width, sdf.height);
-                //     free_sdf_bitmap(*sdf);
-                // }
-
-                // :Rasterize
-                sub_x, sub_y := rasterize_glyph_oversample(font.font_info, glyph_index,
-                                                           dest, OVERSAMPLE_X * glyph_bitmap_width, OVERSAMPLE_Y * glyph_bitmap_height,
-                                                           font.glyph_atlas_width,
-                                                           font.scale, OVERSAMPLE_X, OVERSAMPLE_Y);
-                entry.glyph_sub_x = sub_x;
-                entry.glyph_sub_y = sub_y;
-
-                glyph_sub_x = entry.glyph_sub_x;
-                glyph_sub_y = entry.glyph_sub_y;
-
-                table_add(*font.glyph_table, glyph_index, entry_index);
+                table_add(*font.glyph_table, cast(s32, glyph_index), entry_index);
                 array_add(
                     update_regions,
                     irect_from_point_and_size(
@@ -281,24 +298,27 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                         glyph_bitmap_height,
                     ),
                 );
+
+                move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
+                sanity_assert(font.glyph_entries_tail == entry_index);
             }
 
             rr := array_add(render_rects);
             rr.rect = rect_from_point_and_size(
-                cursor_x + glyph_bitmap_box.x0 - scroll.x,
-                cursor_y + glyph_bitmap_box.y0 - scroll.y,
+                cursor_x + glyph_offset_x - scroll.x,
+                cursor_y + glyph_offset_y - scroll.y,
                 cast(f32, glyph_bitmap_width),
                 cast(f32, glyph_bitmap_height),
             );
             rr.texture_rect = rect_from_point_and_size(
-                cast(f32, glyph_cell_x * font.glyph_atlas_cell_width + glyph_sub_x) / font.glyph_atlas_width,
-                cast(f32, glyph_cell_y * font.glyph_atlas_cell_height + glyph_sub_y) / font.glyph_atlas_height,
-                cast(f32, OVERSAMPLE_X * glyph_bitmap_width) / font.glyph_atlas_width,
-                cast(f32, OVERSAMPLE_Y * glyph_bitmap_height) / font.glyph_atlas_height,
+                cast(f32, glyph_cell_x * font.glyph_atlas_cell_width) / font.glyph_atlas_width,
+                cast(f32, glyph_cell_y * font.glyph_atlas_cell_height) / font.glyph_atlas_height,
+                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
+                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
             );
             rr.texture_id = font.texture_id;
 
-            cursor_x += font.scale * glyph_metrics.advance;
+            cursor_x += glyph_advance;
         }
     }
 }
@@ -312,20 +332,34 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
         return 0;
     }
 
-    advance: s64 = 0; // In font integers. We scale at the end to avoid rounding errors.
+    advance: s64 = 0; // In font integers. We scale at the end to avoid rounding errors. XXX Verify if it really is font integers
     for :Unicode.utf8_iter line_text {
         if it_index >= character_index {
             break;
         }
 
-        glyph_index   := get_glyph_index(font.font_info, it);
-        glyph_metrics := get_glyph_hmetrics(font.font_info, glyph_index);
+        glyph_index := FT_Get_Char_Index(font.ft_face, it);
+        if glyph_index == 0 {
+            // TODO(jt): Replacement character! (?)
+            continue;
+        }
 
-        advance += glyph_metrics.advance;
+        // TODO(jt): @Speed In the STBTT days, getting glyph metrics basically amounted to loading
+        // some offsets in the TTF file. FreeType seems to do much more work, but maybe we can
+        // disable most of it with the FT_LOAD_ flags? Otherwise we might need to cache this.
+        //
+        // NOTE(jt): FT_LOAD_NO_SCALE keeps the metrics in font units.
+        error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_NO_SCALE);
+        if error {
+            // TODO(jt): Replacement character! (?)
+            continue;
+        }
+
+        advance += font.ft_face.glyph.advance.x;;
     }
 
     // Return f64, because in theory lines could be pretty long. We use f64s for absulute pixel coordinates in the editor.
-    scaled_advance := advance * cast(f64, font.scale);
+    scaled_advance := advance * cast(f64, font.scale_from_font_units_to_pixels);
 
     return scaled_advance;
 }
@@ -344,17 +378,31 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) 
     advance: s64 = 0; // In font integers. We scale at the end to avoid rounding errors.
     for :Unicode.utf8_iter line_text {
         // Return f64, because in theory lines could be pretty long. We use f64s for absulute pixel coordinates in the editor.
-        scaled_advance := advance * cast(f64, font.scale);
+        scaled_advance := advance * cast(f64, font.scale_from_font_units_to_pixels);
         if scaled_advance >= x {
             break;
         }
 
         character_index = it_index;
 
-        glyph_index   := get_glyph_index(font.font_info, it);
-        glyph_metrics := get_glyph_hmetrics(font.font_info, glyph_index);
+        glyph_index := FT_Get_Char_Index(font.ft_face, it);
+        if glyph_index == 0 {
+            // TODO(jt): Replacement character! (?)
+            continue;
+        }
 
-        advance += glyph_metrics.advance;
+        // TODO(jt): @Speed In the STBTT days, getting glyph metrics basically amounted to loading
+        // some offsets in the TTF file. FreeType seems to do much more work, but maybe we can
+        // disable most of it with the FT_LOAD_ flags? Otherwise we might need to cache this.
+        //
+        // NOTE(jt): FT_LOAD_NO_SCALE keeps the metrics in font units.
+        error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_NO_SCALE);
+        if error {
+            // TODO(jt): Replacement character! (?)
+            continue;
+        }
+
+        advance += font.ft_face.glyph.advance.x;
     }
 
     return character_index;
@@ -396,109 +444,28 @@ move_back_glyph_entry :: (entries: [] Glyph_Entry, head_index: *s32, tail_index:
     tail_index.* = index;
 }
 
-clear_glyph_cell :: (dest: *u8, width: s32, height: s32, stride: s32) {
+clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
     for y: 0..height - 1 {
         for x: 0..width - 1 {
             // TODO(jt): @Speed memset each row span?
-            p := dest + y * stride + x;
+            p := dest + y * pitch + x;
             p.* = 0;
         }
     }
 }
 
-copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_stride: s32, source: *u8, source_width: s32, source_height: s32) {
+copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
     for y: 0..min(dest_height, source_height) - 1 {
         for x: 0..min(dest_width, source_width) - 1 {
             // TODO(jt): @Speed memset each row span?
-            dest_p   := dest + y * dest_stride + x;
-            source_p := source + y * source_width + x;
+            dest_p   := dest + y * dest_pitch + x;
+            source_p := source + y * source_pitch + x;
             dest_p.* = source_p.*;
         }
     }
 }
 
-get_font_vmetrics :: (info: stbtt_fontinfo) -> Font_VMetrics {
-    result: Font_VMetrics = ---;
-    stbtt_GetFontVMetrics(*info, *result.ascent, *result.descent, *result.line_gap);
-    return result;
-}
-
-get_font_bounding_box :: (info: stbtt_fontinfo) -> IRect {
-    result: IRect = ---;
-    stbtt_GetFontBoundingBox(*info, *result.x0, *result.y0, *result.x1, *result.y1);
-    return result;
-}
-
-get_font_scale_for_pixel_height :: (info: stbtt_fontinfo, pixel_height: f32) -> f32 {
-    return stbtt_ScaleForPixelHeight(*info, pixel_height);
-}
-
-get_glyph_index :: (info: stbtt_fontinfo, codepoint: u32) -> s32 {
-    return stbtt_FindGlyphIndex(*info, cast,no_check(s32, codepoint));
-}
-
-get_glyph_hmetrics :: (info: stbtt_fontinfo, index: s32) -> Glyph_HMetrics {
-    result: Glyph_HMetrics = ---;
-    stbtt_GetGlyphHMetrics(*info, index, *result.advance, *result.left_side_bearing);
-    return result;
-}
-
-get_glyph_bitmap_box :: (info: stbtt_fontinfo, index: s32, scale: f32) -> IRect {
-    result: IRect = ---;
-    stbtt_GetGlyphBitmapBox(*info, index, scale, scale, *result.x0, *result.y0, *result.x1, *result.y1);
-    return result;
-}
-
-rasterize_glyph_oversample :: (info: stbtt_fontinfo, index: s32, dest: *u8, dest_width: s32, dest_height: s32, dest_stride: s32, scale: f32, oversample_x: s32, oversample_y: s32) -> sub_x: f32, sub_y: f32 {
-    // TODO(jt): @Memory stbtt_MakeGlyphBitmapSubpixelPrefilter actually hits STBTT_malloc multiple
-    // times (in stbtt_Rasterize, but also in stbtt_GetGlyphbitmapBox), so we should probably have a
-    // way to set the allocator to temp?
-    // XXX: Verify that the memory is at least freed and this is not a leak.
-
-    sub_x: f32;
-    sub_y: f32;
-
-    stbtt_MakeGlyphBitmapSubpixelPrefilter(*info, dest, dest_width, dest_height, dest_stride,
-                                           oversample_x * scale, oversample_y * scale,
-                                           0, 0,
-                                           oversample_x, oversample_y,
-                                           *sub_x, *sub_y, index);
-
-    return sub_x, sub_y;
-}
-
-// stbtt does not give us a function where we make the memory, so instead we have to free this.
-// TODO(jt): @Memory Fix this! We should be able to create this directly in target memory!
-SDF_Bitmap :: struct {
-    width: s32;
-    height: s32;
-    data: *u8;
-    x_offset: s32;
-    y_offset: s32;
-}
-
-SDF_ON_EDGE_VALUE    : u8  : 250; // @Volatile This has to be the same as EDGE on the shader.
-SDF_PIXEL_DIST_SCALE : f32 : 20.0;
-
-get_glyph_sdf_bitmap :: (info: stbtt_fontinfo, index: s32, scale: f32) -> SDF_Bitmap {
-    result: SDF_Bitmap;
-    result.data = stbtt_GetGlyphSDF(*info, scale, index, 0, SDF_ON_EDGE_VALUE, SDF_PIXEL_DIST_SCALE, *result.width, *result.height, *result.x_offset, *result.y_offset);
-
-    log("XXX %", result);
-
-    return result;
-}
-
-free_sdf_bitmap :: (b: *SDF_Bitmap) {
-    stbtt_FreeSDF(b.data, null);
-    b.data = null;
-    b.width = 0;
-    b.height = 0;
-    b.x_offset = 0;
-    b.y_offset = 0;
-}
-
-#import "stb_truetype"; // Move to scope exported scope, since the info field is visible anyway?
+#import "freetype"; // Move to scope exported scope, since the info field is visible anyway?
 
 
 /* XXX:
