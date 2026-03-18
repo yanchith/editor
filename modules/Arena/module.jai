@@ -259,8 +259,8 @@ arena_push :: (arena: *Arena, _size: s64, alignment: s64 = 16) -> *void {
     return pointer;
 }
 
-arena_push :: (arena: *Arena, $T: Type) -> *T {
-    pointer := arena_push(arena, size_of(T), align_of(T));
+arena_push :: (arena: *Arena, $T: Type, ensure_alignment := 1) -> *T {
+    pointer := arena_push(arena, size_of(T), max(align_of(T), ensure_alignment));
     if pointer == null {
         return null;
     }
@@ -275,10 +275,10 @@ arena_push :: (arena: *Arena, $T: Type) -> *T {
     return pointer;
 }
 
-arena_push_array :: (arena: *Arena, $T: Type, count: s64) -> [] T {
+arena_push_array :: (arena: *Arena, $T: Type, count: s64, ensure_alignment := 1) -> [] T {
     assert(count > 0, "Can not push empty arrays");
 
-    pointer := arena_push(arena, size_of(T) * count, align_of(T));
+    pointer := arena_push(arena, size_of(T) * count, max(align_of(T), ensure_alignment));
     if pointer == null {
         result: [] T;
         return result;
@@ -300,10 +300,10 @@ arena_push_array :: (arena: *Arena, $T: Type, count: s64) -> [] T {
     return result;
 }
 
-arena_push_array :: (arena: *Arena, a: [] $T) -> [] T {
+arena_push_array :: (arena: *Arena, a: [] $T, ensure_alignment := 1) -> [] T {
     assert(a.count > 0, "Can not push empty arrays");
 
-    pointer := arena_push(arena, size_of(T) * a.count, align_of(T));
+    pointer := arena_push(arena, size_of(T) * a.count, max(align_of(T), ensure_alignment));
     if pointer == null {
         result: [] T;
         return result;
@@ -318,10 +318,10 @@ arena_push_array :: (arena: *Arena, a: [] $T) -> [] T {
     return result;
 }
 
-arena_push_string :: (arena: *Arena, s: string) -> string {
+arena_push_string :: (arena: *Arena, s: string, ensure_alignment := 1) -> string {
     assert(s.count > 0, "Can not push empty strings");
 
-    pointer := arena_push(arena, s.count, 1);
+    pointer := arena_push(arena, s.count, ensure_alignment);
     if pointer == null {
         result: string;
         return result;
