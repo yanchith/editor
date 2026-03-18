@@ -105,10 +105,11 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
         return font;
     }
 
-    font.font_bounding_box.x0 = font.ft_face.bbox.xMin;
-    font.font_bounding_box.y0 = font.ft_face.bbox.yMin;
-    font.font_bounding_box.x1 = font.ft_face.bbox.xMax;
-    font.font_bounding_box.y1 = font.ft_face.bbox.yMax;
+    // NOTE(jt): bbox is s64 on macOS and s32 on Windows, so we just always cast.
+    font.font_bounding_box.x0 = cast(s32, font.ft_face.bbox.xMin);
+    font.font_bounding_box.y0 = cast(s32, font.ft_face.bbox.yMin);
+    font.font_bounding_box.x1 = cast(s32, font.ft_face.bbox.xMax);
+    font.font_bounding_box.y1 = cast(s32, font.ft_face.bbox.yMax);
     font.font_ascender    = font.ft_face.ascender;
     font.font_descender   = font.ft_face.descender;
     font.font_line_height = font.ft_face.height; // XXX: STB had line_gap here... is this gap or height?
