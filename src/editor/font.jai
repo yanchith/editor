@@ -190,6 +190,9 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
     cursor_x: f32 = 0;
     cursor_y: f32 = font.scale_from_font_units_to_pixels * font.font_ascender;
 
+    // XXX: We had a note here saying that utf8_iter doesn't support 'continue', but we for sure DO
+    // 'continue' quite a bit in this file. Find out!
+
     for :Unicode.utf8_iter text {
         // TODO(jt): Support all kinds of newlines. XXX We already do this elsewhere, so might as well fix it here!
         if it == #char "\n" {
@@ -364,6 +367,7 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
     return scaled_advance;
 }
 
+// XXX: This can infinite-loop now!
 font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) -> s64 {
     ProfileZone("font_compute_character_index_on_line");
 
