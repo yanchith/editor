@@ -3,6 +3,7 @@ Input :: struct {
     dtime: Apollo_Time;
 
     window_size: IVector2;
+    window_scale_factor: f32;
 
     mouse_position:    Vector2;
     mouse_wheel_delta: s64;
