@@ -269,9 +269,6 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 glyph_bitmap  := *font.ft_face.glyph.bitmap;
 
                 entry.glyph_advance       = cast(f32, glyph_metrics.horiAdvance) / 64;
-                // XXX: Simp gets sharper results. Is it pixel snapping?
-                log("XXX advance % -> %", glyph_metrics.horiAdvance, entry.glyph_advance);
-                log("XXX offsets % %", glyph.bitmap_left, glyph.bitmap_top);
                 entry.glyph_offset_x      = glyph.bitmap_left;
                 entry.glyph_offset_y      = glyph.bitmap_top;
                 entry.glyph_bitmap_width  = cast(s32, glyph_bitmap.width);
