@@ -11,10 +11,18 @@ f64 :: float64;
 #if OS == .WINDOWS {
     #import "Windows";
 
-    // TODO(jt): @Cleanup WaitMessage is commented out in modules/Windows, but we want it for
-    // blocking. Remove our version if it evet gets added there?
+    // TODO(jt): @Cleanup We define a few functions that are either not present in modules/Windows,
+    // or are commented out there. Eventually remove our version? Or eventually have just our
+    // version of modules/Windows?
     user32 :: #library,system "user32";
-    WaitMessage :: () -> BOOL #foreign user32;
+
+    UINT :: u32;
+
+    // TODO(jt): GetDpiForWindow is relatively new (Windows 10, version 1607), but we could switch
+    // to GetDpiForMonitor (Windows 8.1) in Shcore.dll, or the venerable GetDeviceCaps(LOGPIXELSX)
+    // (Windows 2000) in Gdi32.dll.
+    GetDpiForWindow :: (hWnd: HWND) -> UINT #foreign user32;
+    WaitMessage     :: () -> BOOL #foreign user32;
 } else #if OS == .MACOS {
     #import "POSIX";
     #import "Objective_C";
@@ -66,9 +74,9 @@ main :: () {
         #if OS == .WINDOWS {
             // :OperatingSystemSpecificHacks
             //
-            // Unless you call this, GetClientRect reports sizes in scaled pixels, which is not okay, if you do your own text rendering.
-            //
-            // XXX: We need to query the DPI factor and give it to the editor.
+            // Unless you call this, GetClientRect reports sizes in scaled pixels, which is not
+            // okay, if you do your own text rendering. We could further improve this with
+            // per-monitor awareness: SetProcessDpiAwarenessContext.
             SetProcessDPIAware();
         } else #if OS == .MACOS {
             // :OperatingSystemSpecificHacks
@@ -245,10 +253,23 @@ main :: () {
         window_width, window_height = Simp.get_render_dimensions(window);
 
         input: Editor.Input;
+        // input.time and input.dtime are zeroed.
         input.window_size = { window_width, window_height };
+        #if OS == .WINDOWS {
+            input.window_scale_factor = cast(f32, GetDpiForWindow(window)) / 96.0;
+        } else {
+            input.window_scale_factor = 1.0; // XXX: macOS!
+        }
+
+        mouse_x, mouse_y, success := Window.get_mouse_pointer_position();
+        if success {
+            input.mouse_position = { cast(f32, mouse_x), cast(f32, mouse_y) };
+        }
+        // input.mouse_wheel_delta is zeroed.
+
 
         editor: Editor.Editor;
-        Editor.init(*editor, platform, renderer);
+        Editor.init(*editor, platform, renderer, input);
 
         should_run  := true;
         should_fuzz := false;
@@ -273,6 +294,12 @@ main :: () {
                 if it.window == window {
                     input.window_size = { it.width, it.height };
                 }
+            }
+
+            #if OS == .WINDOWS {
+                input.window_scale_factor = cast(f32, GetDpiForWindow(window)) / 96.0;
+            } else {
+                input.window_scale_factor = 1.0; // XXX: macOS!
             }
 
             for Input.events_this_frame {
