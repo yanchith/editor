@@ -63,7 +63,23 @@ main :: () {
     random_seed(*fuzz_rng, 1);
 
     push_context editor_context {
-        #if OS == .MACOS {
+        #if OS == .WINDOWS {
+            // :OperatingSystemSpecificHacks
+            //
+            // Unless you call this, GetClientRect reports sizes in scaled pixels, which is not okay, if you do your own text rendering.
+            //
+            // XXX: We need to query the DPI factor and give it to the editor.
+            SetProcessDPIAware();
+        } else #if OS == .MACOS {
+            // :OperatingSystemSpecificHacks
+            //
+            // Working directory on macOS is weird. If you start from console, it respects the
+            // current console working directory. If you click on the executable, it starts in the
+            // user's HOME. We make it behave more like Windows, where the working directory
+            // defaults to the current executable path, unless overridden from console.
+            //
+            // We detect this situation by looking for asset files that should be distributed with
+            // the executable. If we can't find them, we are most likely not running from console.
             System         :: #import "System";
             File_Utilities :: #import "File_Utilities";
 
@@ -82,14 +98,13 @@ main :: () {
 
         time_last_frame_start := time_program_start;
 
-        window_width:  s32 = 1600;
-        window_height: s32 = 900;
-        window := Window.create_window(window_width, window_height, "editor");
+        window := Window.create_window(1600, 900, "editor");
 
         Simp.set_render_target(window, .LEFT_HANDED);
 
         platform: Editor.Platform;
         #if OS == .WINDOWS {
+            // :VirtualMemoryProcs
             info: SYSTEM_INFO;
             GetSystemInfo(*info);
 
@@ -108,6 +123,7 @@ main :: () {
                 VirtualFree(pointer, cast(u64, size), MEM_DECOMMIT);
             };
         } else #if OS_IS_UNIX {
+            // :VirtualMemoryProcs
             platform.page_size = sysconf(_SC_PAGE_SIZE);
             platform.mem_reserve = (size: s64) -> *void {
                 result := mmap(null, cast(u64, size), PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
@@ -221,6 +237,12 @@ main :: () {
                 );
             }
         }
+
+        // In logical pixels
+        window_width: s32;
+        window_height: s32;
+
+        window_width, window_height = Simp.get_render_dimensions(window);
 
         input: Editor.Input;
         input.window_size = { window_width, window_height };
@@ -501,14 +523,14 @@ main :: () {
 
             if !wants_quit && !wants_next_frame {
                 #if OS == .WINDOWS {
-                    // #WaitForEvents
+                    // :WaitForEvents
                     //
                     // On Windows (TM), we wait for new events with WaitMessage.
                     WaitMessage(); // XXX: Sometimes on Windows we don't exit properly (the window closes, but the process stays). Is it related to this? This happens quite often when we close the application with the X button.
                 }
 
                 #if OS == .MACOS {
-                    // #WaitForEvents
+                    // :WaitForEvents
                     //
                     // On macOS, we wait for events by checking the queue with nextEventMatchingMask
                     // (with NO as the last parameter so that we don't dequeue).
@@ -589,36 +611,7 @@ out vec4 color;
 uniform sampler2D diffuse_texture;
 
 void main () {
-    // :SDF
-    // const float EDGE            = 250.0 / 255.0; // @Volatile This has to be the same as SDF_ON_EDGE_VALUE in font.jai.
-    // const float EDGE_STEP       =  20.0 / 255.0; // @Volatile XXX
-
-    // const int   STEPS           = 4;
-    // const float STEP            = 1.0 / float(STEPS);
-    // const float INITIAL_STEP    = 0.5 * STEP;
-    // const float R_STEPS_SQUARED = 1.0 / float(STEPS * STEPS);
-
-    // vec2 texel_size = 1.0 / textureSize(diffuse_texture, 0);
-    // float a = 0.0;
-    // for (int y = 0; y < STEPS; ++y) {
-    //     for (int x = 0; x < STEPS; ++x) {
-    //         vec2 tex_coords = v_tex_coords
-    //             - 0.5 * texel_size                // Reset to top-left
-    //             + INITIAL_STEP * texel_size       // Add initial half-step
-    //             + vec2(x, y) * STEP * texel_size; // Step to next subpixel region
-
-    //         float sdf = texture(diffuse_texture, tex_coords).r;
-    //         a += step(EDGE, sdf);
-    //         // a += smoothstep(EDGE - 0.5*EDGE_STEP, EDGE + 0.5*EDGE_STEP, sdf);
-    //     }
-    // }
-    // a *= R_STEPS_SQUARED;
-
-    // :Rasterize
     float a = texture(diffuse_texture, v_tex_coords).r;
-
-    // XXX: :RasterizeSuppixel
-
     color = v_color * vec4(1, 1, 1, a);
 }
 #endif
