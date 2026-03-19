@@ -257,8 +257,14 @@ main :: () {
         input.window_size = { window_width, window_height };
         #if OS == .WINDOWS {
             input.window_scale_factor = cast(f32, GetDpiForWindow(window)) / 96.0;
+        } else #if OS == .MACOS {
+            // NOTE(jt): backingScaleFactor is only saying, if we are on a Retina display (by
+            // returning 2.0), but it doesn't tell us what scaling the user has picked. Still,
+            // we can use it to approximate how large we want things to be. Maybe there is a
+            // better solution, but winit also does backingScaleFactor.
+            input.window_scale_factor = cast(f32, window.backingScaleFactor(window));
         } else {
-            input.window_scale_factor = 1.0; // XXX: macOS!
+            input.window_scale_factor = 1.0;
         }
 
         mouse_x, mouse_y, success := Window.get_mouse_pointer_position();
@@ -266,7 +272,7 @@ main :: () {
             input.mouse_position = { cast(f32, mouse_x), cast(f32, mouse_y) };
         }
         // input.mouse_wheel_delta is zeroed.
-
+        // input.events is zeroed.
 
         editor: Editor.Editor;
         Editor.init(*editor, platform, renderer, input);
@@ -298,8 +304,14 @@ main :: () {
 
             #if OS == .WINDOWS {
                 input.window_scale_factor = cast(f32, GetDpiForWindow(window)) / 96.0;
+            } else #if OS == .MACOS {
+                // NOTE(jt): backingScaleFactor is only saying, if we are on a Retina display (by
+                // returning 2.0), but it doesn't tell us what scaling the user has picked. Still,
+                // we can use it to approximate how large we want things to be. Maybe there is a
+                // better solution, but winit also does backingScaleFactor.
+                input.window_scale_factor = cast(f32, window.backingScaleFactor(window));
             } else {
-                input.window_scale_factor = 1.0; // XXX: macOS!
+                input.window_scale_factor = 1.0;
             }
 
             for Input.events_this_frame {
