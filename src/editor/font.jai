@@ -1,4 +1,4 @@
-// TODO(jt): Compute dynamically to fill screen.
+// XXX: HERE Compute dynamically to fill screen. We have to do this now, because we don't want to change the atlas size even if the font size changes.
 ATLAS_WIDTH_IN_CELLS  :: 16;
 ATLAS_HEIGHT_IN_CELLS :: 16;
 
