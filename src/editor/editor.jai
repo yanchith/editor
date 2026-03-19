@@ -98,7 +98,7 @@ Editor :: struct {
     perm_arena: *Arena;
 
     font: Font;
-    font_size: s32 = 16; // Scaled!
+    font_size: s32; // Scaled!
 
     buffer: Text_Buffer;
     buffer_selecting: bool;
@@ -128,15 +128,20 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     profiler_init();
     profiler_start_frame("init");
 
-    log("XXX scale factor: %", input.window_scale_factor);
-
     arena_procs := make_arena_procs(platform);
     editor.perm_arena = arena_allocate(arena_procs);
 
     font_arena   := arena_allocate(arena_procs);
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
-    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, cast(s32, ceil(editor.font_size * input.window_scale_factor)));
+
+    editor.font_size = 16;
+    log("Current font pixel height: %", editor.font_size);
+
+    physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
+    log("Initializing font for physical pixel height: %", physical_pixel_height);
+
+    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, physical_pixel_height);
 
     buffer_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
     buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
@@ -235,8 +240,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .HOME;         text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                         case .END;          text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
 
-                        case .F1;           editor.font_size += 1;                           log("Current font pixel height is %", editor.font_size);
-                        case .F2;           editor.font_size = max(editor.font_size - 1, 4); log("Current font pixel height is %", editor.font_size);
+                        case .F1;           editor.font_size += 1;                           log("Current font pixel height: %", editor.font_size);
+                        case .F2;           editor.font_size = max(editor.font_size - 1, 4); log("Current font pixel height: %", editor.font_size);
                         case .F3;           editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture;
                     }
                 }
