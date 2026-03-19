@@ -232,8 +232,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .HOME;         text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
                         case .END;          text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
 
-                        case .F1;           font_reset_for_pixel_height(*editor.font, min(editor.font.pixel_height + 1, 400)); log("XXX %", editor.font.pixel_height);
-                        case .F2;           font_reset_for_pixel_height(*editor.font, max(editor.font.pixel_height - 1, 6));   log("XXX %", editor.font.pixel_height);
+                        case .F1;           font_reset_for_pixel_height(*editor.font, min(editor.font.pixel_height + 1, 400)); log("Current font pixel height is %", editor.font.pixel_height);
+                        case .F2;           font_reset_for_pixel_height(*editor.font, max(editor.font.pixel_height - 1, 6));   log("Current font pixel height is %", editor.font.pixel_height);
                         case .F3;           editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture;
                     }
                 }
