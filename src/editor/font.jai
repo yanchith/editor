@@ -1,4 +1,4 @@
-ATLAS_WIDTH_IN_PIXELS  :: 4096;
+ATLAS_WIDTH_IN_PIXELS  :: 2048;
 ATLAS_HEIGHT_IN_PIXELS :: 2048;
 
 R64 : f32 : 1.0 / 64.0;
@@ -22,17 +22,18 @@ Font :: struct {
     ft_library: FT_Library;
     ft_face:    FT_Face;
 
-    // These metrics are in font units.
-    font_bounding_box: IRect;
-    font_ascender:     s32;
-    font_descender:    s32;
-    font_line_height:  s32;
-
     //
-    // Scaled metrics for currently set pixel_height
+    // Scaled metrics for currently set pixel_height in the FreeType 26:6 fixed-point format.
     //
 
-    scale_from_font_units_to_pixels: f32;
+    ascender: s64;
+    descender: s64;
+    line_height: s64;
+
+    //
+    // Scaled metrics for currently set pixel_height in floating point pixels.
+    //
+
     line_height_in_pixels: f32;
     max_glyph_width_in_pixels: f32;
     max_glyph_height_in_pixels: f32;
@@ -78,7 +79,7 @@ Glyph_Entry :: struct {
     // very well, or it seems like even extracing these is a heavyweight operation that involves
     // actually rasterizing the glyph (or loading the bitmap, if present).
 
-    glyph_advance: f32;          // TODO(jt): Store this in font units to preserve precision?
+    glyph_advance: f32;          // TODO(jt): Store this in 26:6 fixed-point to preserve precision?
     glyph_offset_x: s32;
     glyph_offset_y: s32;
     glyph_bitmap_width: s32;
@@ -108,15 +109,6 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
         return font;
     }
 
-    // NOTE(jt): bbox is s64 on macOS and s32 on Windows, so we just always cast.
-    font.font_bounding_box.x0 = cast(s32, font.ft_face.bbox.xMin);
-    font.font_bounding_box.y0 = cast(s32, font.ft_face.bbox.yMin);
-    font.font_bounding_box.x1 = cast(s32, font.ft_face.bbox.xMax);
-    font.font_bounding_box.y1 = cast(s32, font.ft_face.bbox.yMax);
-    font.font_ascender    = font.ft_face.ascender;
-    font.font_descender   = font.ft_face.descender;
-    font.font_line_height = font.ft_face.height;
-
     font_reset_for_pixel_height(*font, pixel_height);
 
     return font;
@@ -134,16 +126,18 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
         return;
     }
 
-    scale := cast(f32, pixel_height) / (font.font_ascender - font.font_descender);
 
-    font.scale_from_font_units_to_pixels = scale;
-    font.line_height_in_pixels = scale * font.font_line_height;
-    font.max_glyph_width_in_pixels  = scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
-    font.max_glyph_height_in_pixels = scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
+    font.ascender    = font.ft_face.size.metrics.ascender;
+    font.descender   = font.ft_face.size.metrics.descender;
+    font.line_height = font.ft_face.size.metrics.height;
+
+    font.line_height_in_pixels = cast(f32, font.ft_face.size.metrics.height) * R64;
+    font.max_glyph_width_in_pixels  = cast(f32, font.ft_face.size.metrics.max_advance) * R64;
+    font.max_glyph_height_in_pixels = cast(f32, font.ft_face.size.metrics.height) * R64;
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
     font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
 
-    PADDING :: 20;
+    PADDING :: 2; // Because the atlas is bilinearly filtered, and we don't want to sample data from adjacent cells.
     atlas_cell_width_in_pixels  := font.max_glyph_width_in_integer_pixels + PADDING;
     atlas_cell_height_in_pixels := font.max_glyph_height_in_integer_pixels + PADDING;
     atlas_width_in_cells        := ATLAS_WIDTH_IN_PIXELS / atlas_cell_width_in_pixels;
@@ -201,10 +195,11 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 
     // TODO(jt): Compute in font units and convert to floats at the end.
     cursor_x: f32 = 0;
-    cursor_y: f32 = font.scale_from_font_units_to_pixels * font.font_ascender;
+    cursor_y: f32 = cast(f32, font.ascender) * R64;
 
     // XXX: We had a note here saying that utf8_iter doesn't support 'continue', but we for sure DO
-    // 'continue' quite a bit in this file. Find out!
+    // 'continue' quite a bit in this file. Find out! This could also be related to that infinite
+    // loop thing.
 
     for :Unicode.utf8_iter text {
         // TODO(jt): Support all kinds of newlines. XXX We already do this elsewhere, so might as well fix it here!
@@ -351,7 +346,7 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
         return 0;
     }
 
-    advance: s64 = 0; // In font integers. We scale at the end to avoid rounding errors. XXX Verify if it really is font integers
+    advance: s64 = 0; // In FreeType's 26:6 fixed-point pixels.
     for :Unicode.utf8_iter line_text {
         if it_index >= character_index {
             break;
@@ -375,8 +370,7 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
         advance += font.ft_face.glyph.metrics.horiAdvance;
     }
 
-    // Return f64, because in theory lines could be pretty long. We use f64s for absulute pixel coordinates in the editor.
-    scaled_advance := advance * R64;
+    scaled_advance: f64 = cast(f64, advance) * R64;
 
     return scaled_advance;
 }
@@ -393,10 +387,9 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) 
 
     character_index: s64 = 0;
 
-    advance: s64 = 0; // In font integers. We scale at the end to avoid rounding errors.
+    advance: s64 = 0; // In FreeType's 26:6 fixed-point pixels.
     for :Unicode.utf8_iter line_text {
-        // Return f64, because in theory lines could be pretty long. We use f64s for absulute pixel coordinates in the editor.
-        scaled_advance := advance * R64;
+        scaled_advance: f64 = cast(f64, advance) * R64;
         if scaled_advance >= x {
             break;
         }
@@ -466,9 +459,6 @@ clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
             // TODO(jt): @Speed memset each row span?
             p := dest + y * pitch + x;
             p.* = 0;
-            if y == 0 || x == 0 {
-                p.* = 128; // XXX: Debug only.
-            }
         }
     }
 }
