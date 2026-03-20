@@ -168,8 +168,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
-        editor.font.glyph_atlas_width,
-        editor.font.glyph_atlas_height,
+        editor.font.glyph_atlas_width_in_pixels,
+        editor.font.glyph_atlas_height_in_pixels,
         editor.font.glyph_atlas,
     );
 
@@ -724,7 +724,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         render_rects.count = 0;
 
         rr := array_add(*render_rects);
-        rr.rect = { 0, 0, cast(f32, editor.font.glyph_atlas_width), cast(f32, editor.font.glyph_atlas_height) };
+        rr.rect = { 0, 0, cast(f32, editor.font.glyph_atlas_width_in_pixels), cast(f32, editor.font.glyph_atlas_height_in_pixels) };
         rr.texture_rect = { 0, 0, 1, 1 };
         rr.texture_id = TEXTURE_ID_GLYPH_ATLAS;
     }
