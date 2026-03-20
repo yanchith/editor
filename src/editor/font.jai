@@ -112,7 +112,7 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
     font.font_bounding_box.y1 = cast(s32, font.ft_face.bbox.yMax);
     font.font_ascender    = font.ft_face.ascender;
     font.font_descender   = font.ft_face.descender;
-    font.font_line_height = font.ft_face.height; // XXX: STB had line_gap here... is this gap or height?
+    font.font_line_height = font.ft_face.height;
 
     font_reset_for_pixel_height(*font, pixel_height);
 
@@ -134,7 +134,7 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     scale := cast(f32, pixel_height) / (font.font_ascender - font.font_descender);
 
     font.scale_from_font_units_to_pixels = scale;
-    font.line_height_in_pixels = scale * (font.font_ascender - font.font_descender + font.font_line_height);
+    font.line_height_in_pixels = scale * font.font_line_height;
     font.max_glyph_width_in_pixels  = scale * cast(f32, font.font_bounding_box.x1 - font.font_bounding_box.x0);
     font.max_glyph_height_in_pixels = scale * cast(f32, font.font_bounding_box.y1 - font.font_bounding_box.y0);
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
@@ -270,7 +270,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 
                 entry.glyph_advance       = cast(f32, glyph_metrics.horiAdvance) / 64;
                 entry.glyph_offset_x      = glyph.bitmap_left;
-                entry.glyph_offset_y      = glyph.bitmap_top;
+                entry.glyph_offset_y      = -glyph.bitmap_top; // Vertical flip
                 entry.glyph_bitmap_width  = cast(s32, glyph_bitmap.width);
                 entry.glyph_bitmap_height = cast(s32, glyph_bitmap.rows);
 
