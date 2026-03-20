@@ -1,6 +1,7 @@
-// XXX: HERE Compute dynamically to fill screen. We have to do this now, because we don't want to change the atlas size even if the font size changes.
-ATLAS_WIDTH_IN_CELLS  :: 16;
-ATLAS_HEIGHT_IN_CELLS :: 16;
+ATLAS_WIDTH_IN_PIXELS  :: 4096;
+ATLAS_HEIGHT_IN_PIXELS :: 2048;
+
+R64 : f32 : 1.0 / 64.0;
 
 Font :: struct {
     //
@@ -43,10 +44,12 @@ Font :: struct {
     //
 
     glyph_atlas: [] u8;
-    glyph_atlas_cell_width: s32;
-    glyph_atlas_cell_height: s32;
-    glyph_atlas_width: s32;
-    glyph_atlas_height: s32;
+    glyph_atlas_cell_width_in_pixels: s32;
+    glyph_atlas_cell_height_in_pixels: s32;
+    glyph_atlas_width_in_cells: s32;
+    glyph_atlas_height_in_cells: s32;
+    glyph_atlas_width_in_pixels: s32;
+    glyph_atlas_height_in_pixels: s32;
 
     glyph_entries: [] Glyph_Entry;
     glyph_entries_head: s32;
@@ -140,20 +143,29 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
     font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
 
-    atlas_cell_width  := font.max_glyph_width_in_integer_pixels;
-    atlas_cell_height := font.max_glyph_height_in_integer_pixels;
-    atlas_width       := ATLAS_WIDTH_IN_CELLS * atlas_cell_width;
-    atlas_height      := ATLAS_HEIGHT_IN_CELLS * atlas_cell_height;
-    table_size        := ATLAS_WIDTH_IN_CELLS * ATLAS_HEIGHT_IN_CELLS;
+    PADDING :: 20;
+    atlas_cell_width_in_pixels  := font.max_glyph_width_in_integer_pixels + PADDING;
+    atlas_cell_height_in_pixels := font.max_glyph_height_in_integer_pixels + PADDING;
+    atlas_width_in_cells        := ATLAS_WIDTH_IN_PIXELS / atlas_cell_width_in_pixels;
+    atlas_height_in_cells       := ATLAS_HEIGHT_IN_PIXELS / atlas_cell_height_in_pixels;
+    table_size                  := atlas_width_in_cells * atlas_height_in_cells;
 
-    font.glyph_atlas             = arena_push_array(font.arena, u8, atlas_width * atlas_height);
-    font.glyph_atlas_cell_width  = atlas_cell_width;
-    font.glyph_atlas_cell_height = atlas_cell_height;
-    font.glyph_atlas_width       = atlas_width;
-    font.glyph_atlas_height      = atlas_height;
-    font.glyph_entries           = arena_push_array(font.arena, Glyph_Entry, table_size);
-    font.glyph_entries_head      = 0;
-    font.glyph_entries_tail      = 0;
+    assert(atlas_width_in_cells > 0);
+    assert(atlas_height_in_cells > 0);
+    assert(table_size > 0);
+
+    log("Glyph cell is %x% pixels. Glyph atlas size is %x% cells (% table entries)", atlas_cell_width_in_pixels, atlas_cell_height_in_pixels, atlas_width_in_cells, atlas_height_in_cells, table_size);
+
+    font.glyph_atlas                       = arena_push_array(font.arena, u8, ATLAS_WIDTH_IN_PIXELS * ATLAS_HEIGHT_IN_PIXELS);
+    font.glyph_atlas_cell_width_in_pixels  = atlas_cell_width_in_pixels;
+    font.glyph_atlas_cell_height_in_pixels = atlas_cell_height_in_pixels;
+    font.glyph_atlas_width_in_cells        = atlas_width_in_cells;
+    font.glyph_atlas_height_in_cells       = atlas_height_in_cells;
+    font.glyph_atlas_width_in_pixels       = ATLAS_WIDTH_IN_PIXELS;
+    font.glyph_atlas_height_in_pixels      = ATLAS_HEIGHT_IN_PIXELS;
+    font.glyph_entries                     = arena_push_array(font.arena, Glyph_Entry, table_size);
+    font.glyph_entries_head                = 0;
+    font.glyph_entries_tail                = 0;
 
     glyph_table: Table(s32, s32);
     glyph_table.allocator = arena_allocator(font.arena);
@@ -233,9 +245,9 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 glyph_bitmap_width  = entry.glyph_bitmap_width;
                 glyph_bitmap_height = entry.glyph_bitmap_height;
 
-                // TODO(jt): @Speed Compute this with shifts, since the dimensions are a power of two.
-                glyph_cell_x = entry_index % ATLAS_WIDTH_IN_CELLS;
-                glyph_cell_y = entry_index / ATLAS_HEIGHT_IN_CELLS;
+                // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
+                glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
+                glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
 
                 move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
                 sanity_assert(font.glyph_entries_tail == entry_index);
@@ -258,17 +270,20 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 entry.stamp = font.glyph_cache_stamp;
                 entry.glyph_index = cast(s32, glyph_index);
 
-                error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER);
-                if error {
-                    // TODO(jt): Replacement character!
-                    continue;
+                {
+                    ProfileZone("FT_Load_GLyph(FT_LOAD_RENDER)"); // XXX: @Bug Not instrumented!
+                    error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER);
+                    if error {
+                        // TODO(jt): Replacement character!
+                        continue;
+                    }
                 }
 
                 glyph         := font.ft_face.glyph; // unlike metrics and bitmap, glyph is a pointer
                 glyph_metrics := *font.ft_face.glyph.metrics;
                 glyph_bitmap  := *font.ft_face.glyph.bitmap;
 
-                entry.glyph_advance       = cast(f32, glyph_metrics.horiAdvance) / 64;
+                entry.glyph_advance       = cast(f32, glyph_metrics.horiAdvance) * R64;
                 entry.glyph_offset_x      = glyph.bitmap_left;
                 entry.glyph_offset_y      = -glyph.bitmap_top; // Vertical flip
                 entry.glyph_bitmap_width  = cast(s32, glyph_bitmap.width);
@@ -280,24 +295,24 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 glyph_bitmap_width  = entry.glyph_bitmap_width;
                 glyph_bitmap_height = entry.glyph_bitmap_height;
 
-                // TODO(jt): @Speed Compute this with shifts, since the dimensions are a power of two.
-                glyph_cell_x = entry_index % ATLAS_WIDTH_IN_CELLS;
-                glyph_cell_y = entry_index / ATLAS_HEIGHT_IN_CELLS;
+                // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
+                glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
+                glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
 
                 dest := font.glyph_atlas.data +
-                        font.glyph_atlas_width * glyph_cell_y * font.glyph_atlas_cell_height +
-                        glyph_cell_x * font.glyph_atlas_cell_width;
+                        font.glyph_atlas_width_in_pixels * glyph_cell_y * font.glyph_atlas_cell_height_in_pixels +
+                        glyph_cell_x * font.glyph_atlas_cell_width_in_pixels;
 
-                clear_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width);
-                copy_glyph_cell(dest, font.glyph_atlas_cell_width, font.glyph_atlas_cell_height, font.glyph_atlas_width,
+                clear_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels);
+                copy_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels,
                                 glyph_bitmap.buffer, cast(s32, glyph_bitmap.width), cast(s32, glyph_bitmap.rows), cast(s32, glyph_bitmap.pitch));
 
                 table_add(*font.glyph_table, cast(s32, glyph_index), entry_index);
                 array_add(
                     update_regions,
                     irect_from_point_and_size(
-                        glyph_cell_x * font.glyph_atlas_cell_width,
-                        glyph_cell_y * font.glyph_atlas_cell_height,
+                        glyph_cell_x * font.glyph_atlas_cell_width_in_pixels,
+                        glyph_cell_y * font.glyph_atlas_cell_height_in_pixels,
                         glyph_bitmap_width,
                         glyph_bitmap_height,
                     ),
@@ -315,10 +330,10 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 cast(f32, glyph_bitmap_height),
             );
             rr.texture_rect = rect_from_point_and_size(
-                cast(f32, glyph_cell_x * font.glyph_atlas_cell_width) / font.glyph_atlas_width,
-                cast(f32, glyph_cell_y * font.glyph_atlas_cell_height) / font.glyph_atlas_height,
-                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width,
-                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height,
+                cast(f32, glyph_cell_x * font.glyph_atlas_cell_width_in_pixels) / font.glyph_atlas_width_in_pixels,
+                cast(f32, glyph_cell_y * font.glyph_atlas_cell_height_in_pixels) / font.glyph_atlas_height_in_pixels,
+                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width_in_pixels,
+                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height_in_pixels,
             );
             rr.texture_id = font.texture_id;
 
@@ -351,19 +366,17 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
         // TODO(jt): @Speed In the STBTT days, getting glyph metrics basically amounted to loading
         // some offsets in the TTF file. FreeType seems to do much more work, but maybe we can
         // disable most of it with the FT_LOAD_ flags? Otherwise we might need to cache this.
-        //
-        // NOTE(jt): FT_LOAD_NO_SCALE keeps the metrics in font units.
-        error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_NO_SCALE);
+        error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_DEFAULT);
         if error {
             // TODO(jt): Replacement character! (?)
             continue;
         }
 
-        advance += font.ft_face.glyph.advance.x;;
+        advance += font.ft_face.glyph.metrics.horiAdvance;
     }
 
     // Return f64, because in theory lines could be pretty long. We use f64s for absulute pixel coordinates in the editor.
-    scaled_advance := advance * cast(f64, font.scale_from_font_units_to_pixels);
+    scaled_advance := advance * R64;
 
     return scaled_advance;
 }
@@ -383,7 +396,7 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) 
     advance: s64 = 0; // In font integers. We scale at the end to avoid rounding errors.
     for :Unicode.utf8_iter line_text {
         // Return f64, because in theory lines could be pretty long. We use f64s for absulute pixel coordinates in the editor.
-        scaled_advance := advance * cast(f64, font.scale_from_font_units_to_pixels);
+        scaled_advance := advance * R64;
         if scaled_advance >= x {
             break;
         }
@@ -399,15 +412,13 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) 
         // TODO(jt): @Speed In the STBTT days, getting glyph metrics basically amounted to loading
         // some offsets in the TTF file. FreeType seems to do much more work, but maybe we can
         // disable most of it with the FT_LOAD_ flags? Otherwise we might need to cache this.
-        //
-        // NOTE(jt): FT_LOAD_NO_SCALE keeps the metrics in font units.
-        error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_NO_SCALE);
+        error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_DEFAULT);
         if error {
             // TODO(jt): Replacement character! (?)
             continue;
         }
 
-        advance += font.ft_face.glyph.advance.x;
+        advance += font.ft_face.glyph.metrics.horiAdvance;
     }
 
     return character_index;
@@ -455,6 +466,9 @@ clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
             // TODO(jt): @Speed memset each row span?
             p := dest + y * pitch + x;
             p.* = 0;
+            if y == 0 || x == 0 {
+                p.* = 128; // XXX: Debug only.
+            }
         }
     }
 }
