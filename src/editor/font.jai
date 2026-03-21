@@ -256,7 +256,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
                 entry.glyph_index = cast(s32, glyph_index);
 
                 {
-                    ProfileZone("FT_Load_GLyph(FT_LOAD_RENDER)"); // XXX: @Bug Not instrumented!
+                    ProfileZone("FT_Load_GLyph(FT_LOAD_RENDER)");
                     error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER);
                     if error {
                         // TODO(jt): Replacement character!
@@ -431,6 +431,7 @@ move_back_glyph_entry :: (entries: [] Glyph_Entry, head_index: *s32, tail_index:
 }
 
 clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
+    ProfileZone("clear_glyph_cell");
     for y: 0..height - 1 {
         for x: 0..width - 1 {
             // TODO(jt): @Speed memset each row span?
@@ -441,9 +442,9 @@ clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
 }
 
 copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
+    ProfileZone("copy_glyph_cell");
     for y: 0..min(dest_height, source_height) - 1 {
         for x: 0..min(dest_width, source_width) - 1 {
-            // TODO(jt): @Speed memset each row span?
             dest_p   := dest + y * dest_pitch + x;
             source_p := source + y * source_pitch + x;
             dest_p.* = source_p.*;
