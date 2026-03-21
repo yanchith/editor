@@ -560,12 +560,12 @@ main :: () {
 
             reset_temporary_storage();
 
-            if !wants_quit && !wants_next_frame {
+            if should_run && !wants_next_frame {
                 #if OS == .WINDOWS {
                     // :WaitForEvents
                     //
                     // On Windows (TM), we wait for new events with WaitMessage.
-                    WaitMessage(); // XXX: Sometimes on Windows we don't exit properly (the window closes, but the process stays). Is it related to this? This happens quite often when we close the application with the X button.
+                    WaitMessage();
                 }
 
                 #if OS == .MACOS {
