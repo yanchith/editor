@@ -33,7 +33,6 @@ handle_message :: (message: *Message) {
             phase := message_phase.phase;
 
             if phase == .TYPECHECKED_ALL_WE_CAN {
-                log("[Profiler] Received TYPECHECKED_ALL_WE_CAN (num_things = %)", message_phase.num_items_waiting_to_typecheck);
                 if !profiler_final_code_inserted {
                     // :InsertFinalCode
                     //
@@ -99,14 +98,14 @@ handle_message :: (message: *Message) {
             for tc: message_typechecked.procedure_bodies {
                 body := tc.expression;
 
-                // We could guard against ALREADY_MODIFIED, but because we replace the macros we
-                // invoke, it shouldn't matter if we look at the same procedure multiple times.
+                // We could guard against ALREADY_MODIFIED, but because we only replace our own
+                // macros idempotently, it shouldn't matter if we look at the same procedure
+                // multiple times.
 
                 new_statements: [..] *Code_Node;
                 new_statements.allocator = temp; // Is it okay to temp this? Will the compiler copy it to its own memory?
 
                 do_modify := maybe_instrument_statements(*new_statements, body.block.statements);
-
                 if do_modify {
                     body.block.statements = new_statements;
                     compiler_modify_procedure(message.workspace, body);
@@ -191,27 +190,17 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
         }
         call_ident := cast(*Code_Ident, call.procedure_expression);
 
-        if call_ident.resolved_declaration == null {
-            array_add(new_statements, statement);
-            continue;
-        }
-
-        if call_ident.resolved_declaration.expression == null {
-            array_add(new_statements, statement);
-            continue;
-        }
-
-        if call_ident.resolved_declaration.expression.kind != .PROCEDURE_HEADER {
-            array_add(new_statements, statement);
-            continue;
-        }
-        header := cast(*Code_Procedure_Header, call_ident.resolved_declaration.expression);
-
-        // TODO(jt): We should also get the filename and import of the profiling
-        // functions to check that they are really from this module, instead of just
-        // checking if they are ProfileFrame/ProfileZone shaped.
-
-        if header.name != "ProfileZone" {
+        // @Hack we are doing very little checking before we replace the macro invocation. We used
+        // to crawl to the actual header of the called procedure, which can then be matched agains.
+        // However, if our ProfileZone invocation is inside something that makes it impossible to
+        // resolve at the time we see it, e.g. a macro/#insert/for_expansion, we can't reach the
+        // actual declaration to check that it is the one in our module.
+        //
+        // Because I had the need to put profiling zones into for loops with for_expansions, I
+        // ripped out the more robust checking code, and we are now instrumenting everything called
+        // ProfileZone with exactly one string parameter, whether it is resolved or not. Maybe we'll
+        // want to add a strict version that can be toggled with a flag or something.
+        if call_ident.name != "ProfileZone" {
             array_add(new_statements, statement);
             continue;
         }
@@ -226,20 +215,20 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
 
         call_arguments := call.arguments_unsorted;
         if call_arguments.count != 1 {
-            log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
+            log("[Profiler] Skipping invalid zone at %:%", invocation_file, invocation_line);
             array_add(new_statements, statement);
             continue;
         }
 
         if call_arguments[0].expression.kind != .LITERAL {
-            log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
+            log("[Profiler] Skipping invalid zone at %:%", invocation_file, invocation_line);
             array_add(new_statements, statement);
             continue;
         }
         argument_literal := cast(*Code_Literal, call_arguments[0].expression);
 
         if argument_literal.value_type != .STRING {
-            log("[Profiler] Skipping invalid ProfileZone at %:%", invocation_file, invocation_line);
+            log("[Profiler] Skipping invalid zone at %:%", invocation_file, invocation_line);
             array_add(new_statements, statement);
             continue;
         }
@@ -247,7 +236,7 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
         zone_index := profiler_colleted_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
         array_add(*profiler_colleted_zone_labels, argument_literal._string);
 
-        log("[Profiler] Instrumenting ProfileZone(\"%\")", argument_literal._string);
+        log("[Profiler] Instrumenting zone %", argument_literal._string);
         s := tprint("__ProfileZone(%);", zone_index);
 
         literal := New(Code_Literal,, temp);
