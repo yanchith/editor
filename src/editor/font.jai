@@ -187,21 +187,11 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
         font.glyph_cache_misses = 0;
     }
 
-    // TODO(jt): @Cleanup Early exit to prevent utf8_iter accessing the first byte of a 0-length
-    // string. Can remove after the fix is incorporated.
-    if text.count == 0 {
-        return;
-    }
-
     // TODO(jt): Compute in font units and convert to floats at the end.
     cursor_x: f32 = 0;
     cursor_y: f32 = cast(f32, font.ascender) * R64;
 
-    // XXX: We had a note here saying that utf8_iter doesn't support 'continue', but we for sure DO
-    // 'continue' quite a bit in this file. Find out! This could also be related to that infinite
-    // loop thing.
-
-    for :Unicode.utf8_iter text {
+    for :utf8_iter text {
         // TODO(jt): Support all kinds of newlines. XXX We already do this elsewhere, so might as well fix it here!
         if it == #char "\n" {
             cursor_x = 0;
@@ -340,14 +330,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64) -> f64 {
     ProfileZone("font_compute_position_on_line");
 
-    // TODO(jt): @Cleanup Early exit to prevent utf8_iter accessing the first byte of a 0-length
-    // string. Can remove after the fix is incorporated.
-    if line_text.count == 0 {
-        return 0;
-    }
-
     advance: s64 = 0; // In FreeType's 26:6 fixed-point pixels.
-    for :Unicode.utf8_iter line_text {
+    for :utf8_iter line_text {
         if it_index >= character_index {
             break;
         }
@@ -375,20 +359,13 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
     return scaled_advance;
 }
 
-// XXX: This can infinite-loop now!
 font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) -> s64 {
     ProfileZone("font_compute_character_index_on_line");
-
-    // TODO(jt): @Cleanup Early exit to prevent utf8_iter accessing the first byte of a 0-length
-    // string. Can remove after the fix is incorporated.
-    if line_text.count == 0 {
-        return 0;
-    }
 
     character_index: s64 = 0;
 
     advance: s64 = 0; // In FreeType's 26:6 fixed-point pixels.
-    for :Unicode.utf8_iter line_text {
+    for :utf8_iter line_text {
         scaled_advance: f64 = cast(f64, advance) * R64;
         if scaled_advance >= x {
             break;
