@@ -41,21 +41,28 @@ main :: () {
 }
 
 one_frame :: () {
-    ProfileZone("one_frame");
+    // ProfileZone("one_frame");
 
     inner1 :: () {
         ProfileZone("inner1");
         print("printing from inner\n");
     }
 
-    ProfileZone("one_frame part(a)");
+    // ProfileZone("one_frame part(a)");
     result := f(1, 5);
     for 1..100 {
         result += f(result, 5);
     }
 
-    ProfileZone("one_frame part(a1)");
+    result += MacroOperation(5, 5);
+
+    // ProfileZone("one_frame part(a1)");
     print("result is %\n", result);
+}
+
+MacroOperation :: (a: s32, b: s32) -> s32 #expand {
+    ProfileZone("MacroOperation");
+    return a + b;
 }
 
 f :: (a: float32, b: float32) -> float32 {
