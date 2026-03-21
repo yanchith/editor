@@ -75,6 +75,7 @@ operator==     :: Math.operator==;
 
 #load "assert.jai";
 #load "string.jai";
+#load "unicode.jai";
 #load "math.jai";
 #load "platform.jai";
 #load "renderer.jai";
