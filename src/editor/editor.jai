@@ -161,7 +161,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.mb_left_pressed = false;
     editor.mb_left_last_pressed_inside_window = false;
 
+    // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
+    // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
     HELLO_SIZE : s64 : 64 << 10;
+
     hello_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
     text_buffer_insert(*editor.buffer, hello_text, undo_barrier = true);
