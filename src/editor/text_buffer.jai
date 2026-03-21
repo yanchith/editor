@@ -806,7 +806,7 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
 
         found := false;
         dx := 0;
-        for < :Unicode.utf8_iter line_view {
+        for < :utf8_iter line_view {
             is_nonword := character_is_nonword_character(it);
 
             if !inside_word_initial_set {
@@ -885,7 +885,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
 
         found := false;
         dx := 0;
-        for :Unicode.utf8_iter line_view {
+        for :utf8_iter line_view {
             is_nonword := character_is_nonword_character(it);
 
             if !inside_word_initial_set {
