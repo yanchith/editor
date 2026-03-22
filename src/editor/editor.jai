@@ -74,6 +74,7 @@ operator/      :: Math.operator/;
 operator==     :: Math.operator==;
 
 #load "assert.jai";
+#load "bits.jai";
 #load "string.jai";
 #load "unicode.jai";
 #load "math.jai";
@@ -714,10 +715,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Because we start the layout just before the current viewport, the rendering scroll Y offset
         // is just the fractional part of the cell.
         //
-        // Because we expect scroll_offset to be small, we keep it in f32.
-        scroll_offset: Vector2;
-        scroll_offset.x = cast(f32, editor.buffer_viewport_scroll.x);
-        scroll_offset.y = cast(f32, viewport_y0 - buffer_cell_h * viewport_line_index_start);
+        // While we expect vertical scroll_offset to be small, horizontal can in theory be pretty
+        // big (although I'd wager we have serious performance problems before that starts to
+        // matter), so we go f64 to be future proof.
+        scroll_offset: DVector2;
+        scroll_offset.x = editor.buffer_viewport_scroll.x;
+        scroll_offset.y = viewport_y0 - buffer_cell_h * viewport_line_index_start;
 
         // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
         // to the left of the screen, but we don't have to emit render rects for it.
