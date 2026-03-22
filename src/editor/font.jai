@@ -23,7 +23,7 @@ Font :: struct {
     ft_face:    FT_Face;
 
     //
-    // Scaled metrics for currently set pixel_height in the FreeType 26:6 fixed-point format.
+    // Scaled metrics for currently set pixel_height in the FreeType 26:6 fixed point format. (64-bit, because FT_Pos is 64-bit on Unix)
     //
 
     ascender: s64;
@@ -76,14 +76,16 @@ Glyph_Entry :: struct {
     // Metrics, metadata, anything that we know about the glyph.
     //
     // In the STBTT days, we didn't cache anything in here, but either I don't understand FreeType
-    // very well, or it seems like even extracing these is a heavyweight operation that involves
-    // actually rasterizing the glyph (or loading the bitmap, if present).
+    // very well, or it seems like even extracing at least some of these (except for advance) is a
+    // heavyweight operation that involves actually rasterizing the glyph (or loading the bitmap
+    // version, if present).
+    //
 
-    glyph_advance: f32;          // TODO(jt): Store this in 26:6 fixed-point to preserve precision?
-    glyph_offset_x: s32;
-    glyph_offset_y: s32;
-    glyph_bitmap_width: s32;
-    glyph_bitmap_height: s32;
+    glyph_advance: s32;        // In 26:6 pixels.
+    glyph_offset_x: s32;       // In integer pixels.
+    glyph_offset_y: s32;       // In integer pixels.
+    glyph_bitmap_width: s32;   // In integer pixels.
+    glyph_bitmap_height: s32;  // In integer pixels.
 }
 
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
@@ -175,7 +177,7 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, scroll: Vector2, is_new_frame := false) {
+font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, scroll_offset: DVector2, is_new_frame := false) {
     ProfileZone("font_layout_and_draw_text");
 
     if is_new_frame {
@@ -187,9 +189,9 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
         font.glyph_cache_misses = 0;
     }
 
-    // TODO(jt): Compute cursors in 26:6 and convert to floats only when needed.
-    cursor_x: f32 = 0;
-    cursor_y: f32 = cast(f32, font.ascender) * R64;
+    // Cursors are in 26:6 pixels (64-bit, because on Unix, FT_Pos is 64-bit even if they only use 32 bits).
+    cursor_x: s64 = 0;
+    cursor_y: s64 = font.ascender;
 
     for :utf8_iter text {
         if it == #char "\r" {
@@ -198,7 +200,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 
         if it == #char "\n" {
             cursor_x = 0;
-            cursor_y += font.line_height_in_pixels;
+            cursor_y += font.line_height;
             continue;
         }
 
@@ -208,12 +210,12 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
             continue;
         }
 
-        // These are filled in in one of the two branches below
-        glyph_advance: f32;
-        glyph_offset_x: s32;
-        glyph_offset_y: s32;
-        glyph_bitmap_width: s32;
-        glyph_bitmap_height: s32;
+        // These get filled in one of the branches below. Either we compute them, or we get them from the cache.
+        glyph_advance: s32;       // In 26:6 pixels.
+        glyph_offset_x: s32;      // In integer pixels.
+        glyph_offset_y: s32;      // In integer pixels.
+        glyph_bitmap_width: s32;  // In integer pixels.
+        glyph_bitmap_height: s32; // In integer pixels.
 
         glyph_cell_x: s32;
         glyph_cell_y: s32;
@@ -274,7 +276,8 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
             glyph_metrics := *font.ft_face.glyph.metrics;
             glyph_bitmap  := *font.ft_face.glyph.bitmap;
 
-            entry.glyph_advance       = cast(f32, glyph_metrics.horiAdvance) * R64;
+            // On Unix, FT_Pos is defined as s64, even if they only utilize only 32 bits.
+            entry.glyph_advance       = cast(s32, glyph_metrics.horiAdvance);
             entry.glyph_offset_x      = glyph.bitmap_left;
             entry.glyph_offset_y      = -glyph.bitmap_top; // Vertical flip
             entry.glyph_bitmap_width  = cast(s32, glyph_bitmap.width);
@@ -313,10 +316,15 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
             sanity_assert(font.glyph_entries_tail == entry_index);
         }
 
+        // Order of operations here is somewhat important. Cursor and scroll_offset can be big, so
+        // we subtract those first, so that the small glyph offset doesn't get destroyed.
+        rx := cast(f64, cursor_x) * R64 - scroll_offset.x + glyph_offset_x;
+        ry := cast(f64, cursor_y) * R64 - scroll_offset.y + glyph_offset_y;
+
         rr := array_add(render_rects);
         rr.rect = rect_from_point_and_size(
-            cursor_x + glyph_offset_x - scroll.x,
-            cursor_y + glyph_offset_y - scroll.y,
+            cast(f32, rx),
+            cast(f32, ry),
             cast(f32, glyph_bitmap_width),
             cast(f32, glyph_bitmap_height),
         );
@@ -335,7 +343,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64) -> f64 {
     ProfileZone("font_compute_position_on_line");
 
-    advance: s64 = 0; // In FreeType's 26:6 fixed-point pixels.
+    advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
     for :utf8_iter line_text {
         if it_index >= character_index {
             break;
@@ -347,9 +355,6 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
             continue;
         }
 
-        // TODO(jt): @Speed In the STBTT days, getting glyph metrics basically amounted to loading
-        // some offsets in the TTF file. FreeType seems to do much more work, but maybe we can
-        // disable most of it with the FT_LOAD_ flags? Otherwise we might need to cache this.
         error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_DEFAULT);
         if error {
             // TODO(jt): Replacement character! (?)
@@ -369,7 +374,7 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) 
 
     character_index: s64 = 0;
 
-    advance: s64 = 0; // In FreeType's 26:6 fixed-point pixels.
+    advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
     for :utf8_iter line_text {
         scaled_advance: f64 = cast(f64, advance) * R64;
         if scaled_advance >= x {
@@ -384,9 +389,6 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) 
             continue;
         }
 
-        // TODO(jt): @Speed In the STBTT days, getting glyph metrics basically amounted to loading
-        // some offsets in the TTF file. FreeType seems to do much more work, but maybe we can
-        // disable most of it with the FT_LOAD_ flags? Otherwise we might need to cache this.
         error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_DEFAULT);
         if error {
             // TODO(jt): Replacement character! (?)
@@ -439,7 +441,7 @@ clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
     ProfileZone("clear_glyph_cell");
     for y: 0..height - 1 {
         for x: 0..width - 1 {
-            // TODO(jt): @Speed memset each row span?
+            // TODO(jt): @Speed memset each row span aboce some threshold?
             p := dest + y * pitch + x;
             p.* = 0;
         }
