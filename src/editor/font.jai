@@ -177,7 +177,7 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, scroll_offset: DVector2, is_new_frame := false) {
+font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame := false) {
     ProfileZone("font_layout_and_draw_text");
 
     if is_new_frame {
@@ -316,10 +316,10 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
             sanity_assert(font.glyph_entries_tail == entry_index);
         }
 
-        // Order of operations here is somewhat important. Cursor and scroll_offset can be big, so
+        // Order of operations here is somewhat important. Cursor and offset can be big, so
         // we subtract those first, so that the small glyph offset doesn't get destroyed.
-        rx := cast(f64, cursor_x) * R64 - scroll_offset.x + glyph_offset_x;
-        ry := cast(f64, cursor_y) * R64 - scroll_offset.y + glyph_offset_y;
+        rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
+        ry := cast(f64, cursor_y) * R64 + offset.y + glyph_offset_y;
 
         rr := array_add(render_rects);
         rr.rect = rect_from_point_and_size(
