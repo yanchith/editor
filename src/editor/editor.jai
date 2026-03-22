@@ -121,8 +121,11 @@ Panel :: struct {
     // own numeric type that's s64 + f32 offset.
     //
     // :FloatPrecision
-    scroll: DVector2;
+    scroll_source: DVector2;
     scroll_target: DVector2;
+    scroll_time_start: Apollo_Time;
+
+    scroll: DVector2;
 
     // These clampers get set during event processing and unset after. We could store them somewhere
     // else, but we need them for every panel we have touched, so they might as well be here.
@@ -201,7 +204,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
     profiler_start_frame("update_and_render");
 
-    dt := to_float64_seconds(input.dtime);
+    // @Hack to constrain DT from sleeping frames. However, we should only be using DT in situations
+    // where we are already animating.
+    dt := min(to_float64_seconds(input.dtime), 0.33);
 
     wants_quit       := false;
     wants_next_frame := false;
@@ -297,8 +302,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
             active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
             active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * (active_panel.buffer.lines.count - 1));
-
-            active_panel.scroll = active_panel.scroll_target;
+            finish_scroll_interpolation(active_panel);
         }
 
         //
@@ -314,7 +318,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // Mouse selection scrolling
             //
             if editor.input_state.keys[Key.MB_LEFT] & .LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW {
-                SCROLL_APRON : f32 :  50.0;
+                SCROLL_APRON : f32 :  20.0;
                 SCROLL_SPEED : f64 :  10.0;
                 SCROLL_BOOST : f64 :   5.0;
 
@@ -323,6 +327,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     active_panel.scroll_target.x -= SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.x = max(active_panel.scroll_target.x, 0);
+                    finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
                 } else if mouse.x > cast(f32, input.window_size.x) - SCROLL_APRON {
@@ -336,6 +341,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     active_panel.scroll_target.x += SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.x = min(active_panel.scroll_target.x, max_x);
+                    finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
                 }
@@ -345,6 +351,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     active_panel.scroll_target.y -= SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.y = max(active_panel.scroll_target.y, 0);
+                    finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
                 } else if mouse.y > cast(f32, input.window_size.y) - SCROLL_APRON {
@@ -352,6 +359,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     active_panel.scroll_target.y += SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * (active_panel.buffer.lines.count - 1));
+                    finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
                 }
@@ -421,15 +429,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             if scroll_to_rect.x1 > viewport_rect.x1 {
+                finish_scroll_interpolation(panel);
                 panel.scroll_target.x = scroll_to_rect.x0 - window_w + drect_width(scroll_to_rect) + scroll_padding_x;
+                setup_scroll_interpolation(panel, input.time);
             } else if scroll_to_rect.x0 < viewport_rect.x0 {
+                finish_scroll_interpolation(panel);
                 panel.scroll_target.x = scroll_to_rect.x0 - scroll_padding_x;
+                setup_scroll_interpolation(panel, input.time);
             }
 
             if scroll_to_rect.y1 > viewport_rect.y1 {
+                finish_scroll_interpolation(panel);
                 panel.scroll_target.y = scroll_to_rect.y0 - window_h + drect_height(scroll_to_rect) + scroll_padding_y;
+                setup_scroll_interpolation(panel, input.time);
             } else if scroll_to_rect.y0 < viewport_rect.y0 {
+                finish_scroll_interpolation(panel);
                 panel.scroll_target.y = scroll_to_rect.y0 - scroll_padding_y;
+                setup_scroll_interpolation(panel, input.time);
             }
         }
 
@@ -437,16 +453,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Scroll animation
         //
         {
-            panel.scroll_target.x = max(panel.scroll_target.x, 0.0);
-            panel.scroll_target.y = max(panel.scroll_target.y, 0.0);
+            SCROLL_TIME : f64 : 0.12;
 
-            // TODO(jt): At least make this frame rate independent, but ideally also make it a
-            // closed-form Hermite lerp, where we munge the previous animation.
-            panel.scroll = lerp(panel.scroll, panel.scroll_target, 0.4);
-            if length(panel.scroll_target - panel.scroll) > 1.0 {
+            // TODO(jt): Because we don't want to use DT, the animation starts with oine frame of
+            // lag. We could make up some fake DT for the first frame. Maybe we could get the
+            // monitor refresh rate?
+            t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(panel.scroll_time_start)) / SCROLL_TIME);
+            t = clamp(t, 0.0, 1.0);
+            t = smoothstep(0.0, 1.0, t);
+
+            panel.scroll = lerp(panel.scroll_source, panel.scroll_target, t);
+
+            if t < 1.0 {
                 wants_next_frame = true;
-            } else {
-                panel.scroll = panel.scroll_target;
             }
         }
 
@@ -868,7 +887,9 @@ add_scratch_panel :: (editor: *Editor, platform: Platform) {
     panel_index := editor.panels.count;
     panel := array_add(*editor.panels);
 
+    panel.scroll_source = { 0, 0 };
     panel.scroll_target = { 0, 0 };
+    panel.scroll_time_start = APOLLO_TIME_INVALID;
     panel.scroll = { 0, 0 };
 
     panel.clamp_scroll_to_cursor = true; // Because we are inserting pontentially large text.
@@ -901,6 +922,8 @@ recenter_panel :: (panel: *Panel, input: Input, cell_h: f32) {
     top    := cursor_y;
     bottom := cursor_y - input.window_size.y + cell_h;
 
+    finish_scroll_interpolation(panel);
+
     if panel.scroll_target.y == center {
         panel.scroll_target.y = top;
     } else if panel.scroll_target.y == top {
@@ -908,6 +931,8 @@ recenter_panel :: (panel: *Panel, input: Input, cell_h: f32) {
     } else {
         panel.scroll_target.y = center;
     }
+
+    setup_scroll_interpolation(panel, input.time);
 }
 
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
@@ -915,8 +940,11 @@ scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     delta     := min(panel.buffer.cursor0.y, delta_max);
 
     text_buffer_move_cursor_y(*panel.buffer, -delta, panel.selecting);
+
+    finish_scroll_interpolation(panel);
     if delta == delta_max {
         panel.scroll_target.y -= delta * cell_h;
+        setup_scroll_interpolation(panel, input.time);
     }
 }
 
@@ -925,9 +953,26 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     delta     := min(panel.buffer.lines.count - 1 - panel.buffer.cursor0.y, delta_max);
 
     text_buffer_move_cursor_y(*panel.buffer, delta, panel.selecting);
+
+    finish_scroll_interpolation(panel);
     if delta == delta_max {
         panel.scroll_target.y += delta * cell_h;
+        setup_scroll_interpolation(panel, input.time);
     }
+}
+
+finish_scroll_interpolation :: (panel: *Panel) {
+    panel.scroll_source = panel.scroll_target;
+    panel.scroll_time_start = APOLLO_TIME_INVALID;
+    panel.scroll = panel.scroll_target;
+}
+
+setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time) {
+    panel.scroll_target.x = max(panel.scroll_target.x, 0.0);
+    panel.scroll_target.y = max(panel.scroll_target.y, 0.0);
+
+    panel.scroll_source = panel.scroll;
+    panel.scroll_time_start = time;
 }
 
 make_arena_procs :: (platform: Platform) -> Arena_Procs {
