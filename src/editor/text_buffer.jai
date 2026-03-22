@@ -219,8 +219,8 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 
     bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
 
-    newline, newline_advance := string_starts_with_newline(bytes);
-    if newline {
+    newline_advance := string_starts_with_newline(bytes);
+    if newline_advance {
         assert(buffer.cursor0.y < buffer.lines.count - 1);                         // The last line can't have a newline.
         assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1); // The newline has to be the last char.
 
@@ -306,8 +306,8 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 
     bytes := gap_buffer_get_bytes_before_gap(buffer.gb);
 
-    newline, newline_advance := string_ends_with_newline(bytes);
-    if newline {
+    newline_advance := string_ends_with_newline(bytes);
+    if newline_advance {
         assert(buffer.cursor0.x == 0);
         assert(buffer.cursor0.y > 0);
 
@@ -384,6 +384,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
+// TODO(jt): @Bug Undoing this restores the selection as though we'd have selected it manually, but we haven't.
 text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     ProfileZone("text_buffer_delete_line");
 
@@ -591,8 +592,8 @@ text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include
     view        := gap_buffer_make_contiguous_view(buffer.gb, start_index, line.byte_count);
 
     if !include_newline {
-        _, newline_length := string_ends_with_newline(view);
-        view.count -= newline_length;
+        newline_advance := string_ends_with_newline(view);
+        view.count -= newline_advance;
     }
 
     return cast(string, view);
@@ -1098,7 +1099,17 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
 
     for 0..cursor.x - 1 {
         first_byte := gap_buffer_get_nongap_byte(buffer.gb, index);
-        continuation_bytes := Unicode.trailingBytesForUTF8[first_byte];
+
+        // Even if in ascii \r\n is two characters, we treat them as one character when moving
+        // cursors around, and we can't really have a byte index that goes in between these two, if
+        // they are next to each other.
+        //
+        // :CarriageReturn
+        //
+        // TODO(jt): We don't accept a lone \r, currently. Should we? But then again, we don't
+        // accept malformed unicode either - we just trust trailingBytes. What's our strategy for
+        // malformed input?
+        continuation_bytes := ifx first_byte == #char "\r" then 1 else Unicode.trailingBytesForUTF8[first_byte];
 
         index += 1 + continuation_bytes;
     }
@@ -1125,7 +1136,7 @@ assert_valid :: (buffer: Text_Buffer) {
 
         view := cast(string, gap_buffer_make_contiguous_view(buffer.gb, 0, buffer.gb.count,, temp));
         while view.count {
-            newline, newline_advance := string_starts_with_newline(view);
+            newline_advance := string_starts_with_newline(view);
             if newline_advance {
                 lines[lines.count - 1].char_count += 1;
                 lines[lines.count - 1].byte_count += newline_advance;
@@ -1200,14 +1211,13 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
     }
 
     while text.count {
-        newline, newline_advance := string_starts_with_newline(text);
-        if newline {
+        newline_advance := string_starts_with_newline(text);
+        if newline_advance {
             char_count_after_cursor := buffer.lines[buffer.cursor0.y].char_count - buffer.cursor0.x;
             byte_count_after_cursor := buffer.lines[buffer.cursor0.y].byte_count - bytes_on_line_before_cursor;
 
             advance(*text, newline_advance);
 
-            // We treat \r\n as one character, if it happens to be in there.
             buffer.lines[buffer.cursor0.y].char_count += 1 - char_count_after_cursor;
             buffer.lines[buffer.cursor0.y].byte_count += newline_advance - byte_count_after_cursor;
 
@@ -1260,9 +1270,8 @@ update_after_delete_selection :: (buffer: *Text_Buffer, _text: string) {
 
     text := _text;
     while text.count {
-
-        newline, newline_advance := string_starts_with_newline(text);
-        if newline {
+        newline_advance := string_starts_with_newline(text);
+        if newline_advance {
             assert(buffer.cursor0.y < buffer.lines.count - 1);                         // The last line can't have a newline.
             assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1); // The newline has to be the last char.
 
@@ -1299,8 +1308,8 @@ update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
 
     text := _text;
     while text.count {
-        newline, newline_advance := string_starts_with_newline(text);
-        if newline {
+        newline_advance := string_starts_with_newline(text);
+        if newline_advance {
             assert(buffer.cursor0.y < buffer.lines.count - 1);                         // The last line can't have a newline.
             assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1); // The newline has to be the last char.
 
@@ -1338,8 +1347,8 @@ update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
     assert(buffer.cursor0 == buffer.cursor1);
 
     while text.count {
-        newline, newline_advance := string_ends_with_newline(text);
-        if newline {
+        newline_advance := string_ends_with_newline(text);
+        if newline_advance {
             assert(buffer.cursor0.x == 0);
             assert(buffer.cursor0.y > 0);
 
@@ -1394,34 +1403,36 @@ sort_cursors :: (start: *Cursor, end: *Cursor) {
     }
 }
 
-string_starts_with_newline :: (bytes: [] u8) -> bool, newline_byte_length: s64 {
-    newline, newline_byte_length := inline string_starts_with_newline(cast(string, bytes));
-    return newline, newline_byte_length;
+// We treat \r\n as a single character when we see them next to each other.
+//
+// :CarriageReturn
+
+string_starts_with_newline :: (bytes: [] u8) -> newline_byte_length: s64 {
+    return inline string_starts_with_newline(cast(string, bytes));
 }
 
-string_starts_with_newline :: (s: string) -> bool, newline_byte_length: s64 {
+string_starts_with_newline :: (s: string) -> newline_byte_length: s64 {
     if s.count > 1 && s[0] == "\r" && s[1] == "\n" {
-        return true, 2;
+        return 2;
     } else if s.count > 0 && s[0] == "\n" {
-        return true, 1;
+        return 1;
     }
 
-    return false, 0;
+    return 0;
 }
 
-string_ends_with_newline :: (bytes: [] u8) -> bool, newline_byte_length: s64 {
-    newline, newline_byte_length := inline string_ends_with_newline(cast(string, bytes));
-    return newline, newline_byte_length;
+string_ends_with_newline :: (bytes: [] u8) -> newline_byte_length: s64 {
+    return inline string_ends_with_newline(cast(string, bytes));
 }
 
-string_ends_with_newline :: (s: string) -> bool, newline_byte_length: s64 {
+string_ends_with_newline :: (s: string) -> newline_byte_length: s64 {
     if s.count > 1 && s[s.count - 2] == "\r" && s[s.count - 1] == "\n" {
-        return true, 2;
+        return 2;
     } else if s.count > 0 && s[s.count - 1] == "\n" {
-        return true, 1;
+        return 1;
     }
 
-    return false, 0;
+    return 0;
 }
 
 find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: s64 {
