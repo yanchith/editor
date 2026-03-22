@@ -360,3 +360,12 @@ irect_fixup :: (r: IRect) -> IRect {
 
     return make_irect(p0, p1);
 }
+
+//
+// Other useful stuff
+//
+
+smoothstep :: (edge0: f32, edge1: f32, x: f32) -> f32 {
+    t := clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
