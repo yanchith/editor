@@ -102,28 +102,36 @@ Editor :: struct {
     font: Font;
     font_size: s32; // Scaled!
 
-    buffer: Text_Buffer;
-    buffer_selecting: bool;
+    input_state: Input_State;
+
+    // TODO(jt): Layout!
+    panels: [..] Panel;
+    active_panel_index: s64;
+
+    dev_show_atlas_texture: bool;
+}
+
+Panel :: struct {
     // Scroll vectors are in f64s, because buffers can be large and we actually ran into precision
     // issues. Doubles are fine for now (verified up to 1GB of prose), but maybe we should do our
     // own numeric type that's s64 + f32 offset.
     //
     // :FloatPrecision
-    buffer_viewport_scroll: DVector2;
-    buffer_viewport_scroll_target: DVector2;
-    buffer_clamp_scroll_to_cursor: bool;
+    scroll: DVector2;
+    scroll_target: DVector2;
 
-    key_ctrl_down: bool;
-    key_alt_down: bool;
-    key_shift_down: bool;
-    key_meta_down: bool;
+    // These clampers get set during event processing and unset after. We could store them somewhere
+    // else, but we need them for every panel we have touched, so they might as well be here.
+    //
+    // TODO(jt): Turn these into flags!
+    clamp_scroll_to_cursor: bool;
+    clamp_scroll_to_start_of_line: bool;
+    clamp_scroll_to_end_of_line: bool;
 
-    mb_left_down: bool;
-    // TODO(jt): If we do more stuff like this, maybe we should have our usual input_state thing.
-    mb_left_pressed: bool;                    // True the first frame the button is down.
-    mb_left_last_pressed_inside_window: bool; // Keeps previous value until the button is pressed again.
+    // TODO(jt): Read-only flag.
 
-    dev_show_atlas_texture: bool;
+    selecting: bool;
+    buffer: Text_Buffer; // XXX: We need to reuse text buffers between various panels! (the panel content has to own the cursors)
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
@@ -145,31 +153,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, physical_pixel_height);
 
-    buffer_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
-    buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
-    text_buffer_init(*editor.buffer, buffer_arena, buffer_patch_text_arena);
+    input_state_update_on_frame_start(*editor.input_state, input);
+    for input.events {
+        input_state_update_with_event(*editor.input_state, it);
+    }
 
-    editor.buffer_viewport_scroll_target = { 0, 0 };
-    editor.buffer_viewport_scroll = { 0, 0 };
-    editor.buffer_clamp_scroll_to_cursor = true;
-
-    editor.key_ctrl_down = false;
-    editor.key_alt_down = false;
-    editor.key_shift_down = false;
-    editor.key_meta_down = false;
-
-    editor.mb_left_down = false;
-    editor.mb_left_pressed = false;
-    editor.mb_left_last_pressed_inside_window = false;
-
-    // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
-    // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
-    HELLO_SIZE : s64 : 64 << 10;
-
-    hello_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
-    hello_text := make_hello_text(hello_arena, HELLO_SIZE);
-    text_buffer_insert(*editor.buffer, hello_text, undo_barrier = true);
-    arena_release(hello_arena);
+    add_scratch_panel(editor, platform);
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -195,210 +184,40 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions: [..] IRect;
     update_regions.allocator = temp;
 
-    editor.mb_left_pressed = false;
-    // editor.mb_left_last_pressed_inside_window is not cleared to false on purpose here. We
-    // want to preserve this info until next click.
+    input_state_update_on_frame_start(*editor.input_state, input);
 
-    clamp_scroll_to_cursor := editor.buffer_clamp_scroll_to_cursor;
-    clamp_scroll_to_start_of_line := false;
-    clamp_scroll_to_end_of_line := false;
-
-    editor.buffer_clamp_scroll_to_cursor = false;
+    active_panel: *Panel = null;
+    if editor.panels.count {
+        index := clamp(editor.active_panel_index, 0, editor.panels.count - 1);
+        active_panel = *editor.panels[index];
+    }
 
     for input.events {
-        if it.type == {
-            case .KEY; if it.data.key == {
-                case .CTRL;               editor.key_ctrl_down = cast(bool, it.flags & .KEY_PRESSED);
-                case .ALT;                editor.key_alt_down = cast(bool, it.flags & .KEY_PRESSED);
-                case .SHIFT;              editor.key_shift_down = cast(bool, it.flags & .KEY_PRESSED);
-                case .META;               editor.key_meta_down = cast(bool, it.flags & .KEY_PRESSED);
-                case .MOUSE_BUTTON_LEFT; {
-                    editor.mb_left_down = cast(bool, it.flags & .KEY_PRESSED);
-                    if it.flags & .KEY_PRESSED {
-                        editor.mb_left_pressed = true;
+        handled := false;
 
-                        window_client_rect := rect_from_point_and_size(0, 0, cast(f32, input.window_size.x), cast(f32, input.window_size.y));
-                        editor.mb_left_last_pressed_inside_window = rect_contains(window_client_rect, input.mouse_position);
+        input_state_update_with_event(*editor.input_state, it);
+
+        //
+        // Global events handled at the editor level.
+        //
+        if it.flags & .KEY_PRESSED {
+            if it.type == {
+                case .KEY; {
+                    if it.data.key == {
+                        case .F1;  editor.font_size += 1; handled = true;
+                        case .F2;  editor.font_size = max(editor.font_size - 1, 4); handled = true;
+                        case .F3;  editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture; handled = true;
                     }
                 }
             }
         }
 
-        if it.flags & .KEY_PRESSED {
-            if it.type == {
-                case .KEY; {
-                    // We can't go into global selecting mode if shift is down, because many
-                    // Emacs-like shortcuts require shift. Therefore we only enable it for arrow
-                    // keys. If we selected something using shift selecting, we also turn off global
-                    // buffer selecting.
-                    shift_selecting := editor.key_shift_down;
-
-                    if it.data.key == {
-                        case .ARROW_UP;     text_buffer_move_cursor_y(*editor.buffer, -1, shift_selecting || editor.buffer_selecting); clamp_scroll_to_cursor = true; if shift_selecting then editor.buffer_selecting = false;
-                        case .ARROW_DOWN;   text_buffer_move_cursor_y(*editor.buffer,  1, shift_selecting || editor.buffer_selecting); clamp_scroll_to_cursor = true; if shift_selecting then editor.buffer_selecting = false;
-                        case .ARROW_LEFT;   text_buffer_move_cursor_x(*editor.buffer, -1, shift_selecting || editor.buffer_selecting); clamp_scroll_to_cursor = true; if shift_selecting then editor.buffer_selecting = false;
-                        case .ARROW_RIGHT;  text_buffer_move_cursor_x(*editor.buffer,  1, shift_selecting || editor.buffer_selecting); clamp_scroll_to_cursor = true; if shift_selecting then editor.buffer_selecting = false;
-
-                        case .PAGE_UP;      scroll_buffer_up_one_screen(editor, input);
-                        case .PAGE_DOWN;    scroll_buffer_down_one_screen(editor, input);
-
-                        case .HOME;         text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                        case .END;          text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
-
-                        case .F1;           editor.font_size += 1;                           log("Current font pixel height: %", editor.font_size);
-                        case .F2;           editor.font_size = max(editor.font_size - 1, 4); log("Current font pixel height: %", editor.font_size);
-                        case .F3;           editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture;
-                    }
-                }
-
-                case .CODEPOINT; {
-                    if editor.key_ctrl_down {
-                        if it.data.codepoint == {
-                            case #char "p";  #through;
-                            case #char "P";  text_buffer_move_cursor_y(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char "n";  #through;
-                            case #char "N";  text_buffer_move_cursor_y(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char "b";  #through;
-                            case #char "B";  text_buffer_move_cursor_x(*editor.buffer, -1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char "f";  #through;
-                            case #char "F";  text_buffer_move_cursor_x(*editor.buffer,  1, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char "a";  #through;
-                            case #char "A";  text_buffer_move_cursor_to_start_of_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char "e";  #through;
-                            case #char "E";  text_buffer_move_cursor_to_end_of_line(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
-                            case #char "l";  #through;
-                            case #char "L";  recenter_buffer(editor, input);
-                            case #char "v";  #through;
-                            case #char "V";  scroll_buffer_down_one_screen(editor, input);
-
-                            case .SPACEBAR;  editor.buffer_selecting = true;  text_buffer_join_cursors(*editor.buffer);
-                            case #char "g";  #through;
-                            case #char "G";  editor.buffer_selecting = false; text_buffer_join_cursors(*editor.buffer);
-
-                            case #char "k";  #through;
-                            case #char "K"; {
-                                editor.buffer_selecting = false;
-                                text := text_buffer_delete_line(*editor.buffer);
-                                if text {
-                                    platform.clipboard_set_text(text);
-                                }
-                            }
-                            case #char "d";  #through;
-                            case #char "D";  editor.buffer_selecting = false; text_buffer_delete_forward(*editor.buffer);
-
-                            case #char "m";  #through;
-                            case #char "M"; {
-                                // TODO(jt): Preserve CRLF in CRLF-only documents.
-                                editor.buffer_selecting = false;
-                                text_buffer_insert(*editor.buffer, "\n", undo_barrier = true);
-                                clamp_scroll_to_cursor = true;
-                            }
-                            case #char "o";  #through;
-                            case #char "O"; {
-                                // TODO(jt): Preserve CRLF in CRLF-only documents.
-                                editor.buffer_selecting = false;
-                                text_buffer_insert(*editor.buffer, "\n", undo_barrier = true);
-                                text_buffer_move_cursor_y(*editor.buffer, -1, false);
-                                text_buffer_move_cursor_to_end_of_line(*editor.buffer, false);
-                            }
-
-                            case #char "/";  text_buffer_undo_edit(*editor.buffer); clamp_scroll_to_cursor = true;
-
-                            case #char "w";  #through;
-                            case #char "W"; {
-                                editor.buffer_selecting = false;
-                                deleted := text_buffer_delete_between_cursors(*editor.buffer);
-                                if deleted {
-                                    platform.clipboard_set_text(deleted);
-                                }
-
-                            }
-                            case #char "y";  #through;
-                            case #char "Y"; {
-                                editor.buffer_selecting = false;
-                                text := platform.clipboard_get_text(,, temp);
-                                if text {
-                                    text_buffer_insert(*editor.buffer, text, undo_barrier = true);
-                                    clamp_scroll_to_cursor = true;
-                                }
-                            }
-                        }
-                    } else if editor.key_alt_down {
-                        if it.data.codepoint == {
-                            case #char "p";  #through;
-                            case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char "n";  #through;
-                            case #char "N";  text_buffer_move_cursor_to_next_blank_line(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char "b";  #through;
-                            case #char "B"; {
-                                clamp_scroll_to_end_of_line |= text_buffer_move_cursor_to_previous_word_boundary(*editor.buffer, editor.buffer_selecting);
-                                clamp_scroll_to_cursor = true;
-                            }
-                            case #char "f";  #through;
-                            case #char "F"; {
-                                clamp_scroll_to_start_of_line |= text_buffer_move_cursor_to_next_word_boundary(*editor.buffer, editor.buffer_selecting);
-                                clamp_scroll_to_cursor = true;
-                            }
-
-                            case .BACKSPACE; // TODO(jt): text_buffer_delete_until_previous_word_boundary.
-                            case #char "d";  #through;
-                            case #char "D";  // TODO(jt): text_buffer_delete_until_next_word_boundary.
-
-                            case #char "v";  #through;
-                            case #char "V";  scroll_buffer_up_one_screen(editor, input);
-
-                            case #char "<";  text_buffer_move_cursor_to_start(*editor.buffer, editor.buffer_selecting); clamp_scroll_to_cursor = true;
-                            case #char ">";  text_buffer_move_cursor_to_end(*editor.buffer, editor.buffer_selecting);   clamp_scroll_to_cursor = true;
-
-                            case #char "/";  text_buffer_redo_edit(*editor.buffer); clamp_scroll_to_cursor = true;
-
-                            case #char "w";  #through;
-                            case #char "W";  {
-                                editor.buffer_selecting = false;
-                                text := text_buffer_make_view_between_cursors(editor.buffer, editor.buffer.cursor0, editor.buffer.cursor1,, temp);
-                                if text {
-                                    platform.clipboard_set_text(text);
-                                }
-
-                                text_buffer_join_cursors(*editor.buffer);
-                            }
-                        }
-                    } else if editor.key_meta_down {
-                        // Nothing for now.
-                    } else {
-                        editor.buffer_selecting = false;
-
-                        if it.data.codepoint == {
-                            case .BACKSPACE;  text_buffer_delete_backward(*editor.buffer); clamp_scroll_to_cursor = true;
-                            case .DELETE;     text_buffer_delete_forward(*editor.buffer);  clamp_scroll_to_cursor = true;
-
-                            // TODO(jt): Make indentation configurable.
-                            // TODO(jt): Preserve tab-ness in tab-only documents.
-                            case .TAB;        text_buffer_insert(*editor.buffer, "    ");  clamp_scroll_to_cursor = true;
-                            case .SPACEBAR;   text_buffer_insert(*editor.buffer, " ");     clamp_scroll_to_cursor = true;
-
-                            // TODO(jt): Preserve CRLF in CRLF-only documents.
-                            case .ENTER;      text_buffer_insert(*editor.buffer, "\n", undo_barrier = true); clamp_scroll_to_cursor = true;
-
-                            case; {
-                                // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
-                                // buffer before inserting. That includes spacebar, enter, linefeed, etc.
-                                //
-                                // TODO(jt): @Speed This is a little dumb, because buffer will be
-                                // parsing this back to codepoints for its linedata tracking. Clean
-                                // this up after we know what we are doing (on all levels, from the
-                                // OS to our buffer!)
-                                buf: [4] u8;
-                                s: string;
-                                s.data = buf.data;
-                                Unicode.character_utf32_to_utf8(cast(u32, it.data.codepoint), *s);
-
-                                text_buffer_insert(*editor.buffer, s);
-                                clamp_scroll_to_cursor = true;
-                            }
-                        }
-                    }
-                }
+        //
+        // Events that trickle down to the active panel.
+        //
+        if !handled {
+            if active_panel {
+                route_event_to_panel(active_panel, it, platform, input, editor.input_state, editor.font.line_height_in_pixels);
             }
         }
     }
@@ -413,15 +232,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     // Upcast to f64 here, because we later multiply them with lines/columns, and we don't want to
     // accidentally do the multiply in f32, which is not precise enough in large buffers.
-    buffer_cell_w := cast(f64, editor.font.max_glyph_width_in_pixels);
-    buffer_cell_h := cast(f64, editor.font.line_height_in_pixels);
+    cell_w := cast(f64, editor.font.max_glyph_width_in_pixels);
+    cell_h := cast(f64, editor.font.line_height_in_pixels);
 
-    if input.mouse_wheel_delta != 0 {
+    // XXX: Mouse stuff should activate the clicked panel!
+
+    //
+    // Mouse wheel scrolling
+    //
+    if active_panel && input.mouse_wheel_delta != 0 {
         // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
-        editor.buffer_viewport_scroll_target.y -= cast(f64, input.mouse_wheel_delta);
-        editor.buffer_viewport_scroll_target.y = clamp(editor.buffer_viewport_scroll_target.y, 0, buffer_cell_h * (editor.buffer.lines.count - 1));
+        active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
+        active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * (active_panel.buffer.lines.count - 1));
 
-        editor.buffer_viewport_scroll = editor.buffer_viewport_scroll_target;
+        active_panel.scroll = active_panel.scroll_target;
     }
 
     //
@@ -430,13 +254,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // TODO(jt): Double click to select word.
     // TODO(jt): Triple click to select line.
     //
-    if editor.mb_left_down {
+    if active_panel && editor.input_state.keys[Key.MB_LEFT] & .DOWN {
         mouse := input.mouse_position;
 
         //
         // Mouse selection scrolling
         //
-        if editor.mb_left_last_pressed_inside_window {
+        if editor.input_state.keys[Key.MB_LEFT] & .LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW {
             SCROLL_APRON : f32 :  50.0;
             SCROLL_SPEED : f64 :  10.0;
             SCROLL_BOOST : f64 :   5.0;
@@ -444,21 +268,21 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if mouse.x < SCROLL_APRON {
                 boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
 
-                editor.buffer_viewport_scroll_target.x -= SCROLL_SPEED * boost * dt;
-                editor.buffer_viewport_scroll_target.x = max(editor.buffer_viewport_scroll_target.x, 0);
+                active_panel.scroll_target.x -= SCROLL_SPEED * boost * dt;
+                active_panel.scroll_target.x = max(active_panel.scroll_target.x, 0);
 
                 wants_next_frame = true;
             } else if mouse.x > cast(f32, input.window_size.x) - SCROLL_APRON {
                 boost := (mouse.x - (cast(f32, input.window_size.x) - SCROLL_APRON)) * SCROLL_BOOST;
 
                 // Apron contains the newline (if present) and one additional horizontal cell.
-                apron := 2 * buffer_cell_w;
+                apron := 2 * cell_w;
 
-                line_view := text_buffer_make_view_for_line(editor.buffer, editor.buffer.cursor0.y,, temp);
-                max_x := font_compute_position_on_line(editor.font, line_view, editor.buffer.cursor0.x) - input.window_size.x + apron;
+                line_view := text_buffer_make_view_for_line(active_panel.buffer, active_panel.buffer.cursor0.y,, temp);
+                max_x := font_compute_position_on_line(editor.font, line_view, active_panel.buffer.cursor0.x) - input.window_size.x + apron;
 
-                editor.buffer_viewport_scroll_target.x += SCROLL_SPEED * boost * dt;
-                editor.buffer_viewport_scroll_target.x = min(editor.buffer_viewport_scroll_target.x, max_x);
+                active_panel.scroll_target.x += SCROLL_SPEED * boost * dt;
+                active_panel.scroll_target.x = min(active_panel.scroll_target.x, max_x);
 
                 wants_next_frame = true;
             }
@@ -466,265 +290,275 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if mouse.y < SCROLL_APRON {
                 boost := (SCROLL_APRON - mouse.y) * SCROLL_BOOST;
 
-                editor.buffer_viewport_scroll_target.y -= SCROLL_SPEED * boost * dt;
-                editor.buffer_viewport_scroll_target.y = max(editor.buffer_viewport_scroll_target.y, 0);
+                active_panel.scroll_target.y -= SCROLL_SPEED * boost * dt;
+                active_panel.scroll_target.y = max(active_panel.scroll_target.y, 0);
 
                 wants_next_frame = true;
             } else if mouse.y > cast(f32, input.window_size.y) - SCROLL_APRON {
                 boost := (mouse.y - (cast(f32, input.window_size.y) - SCROLL_APRON)) * SCROLL_BOOST;
 
-                editor.buffer_viewport_scroll_target.y += SCROLL_SPEED * boost * dt;
-                editor.buffer_viewport_scroll_target.y = min(editor.buffer_viewport_scroll_target.y, buffer_cell_h * (editor.buffer.lines.count - 1));
+                active_panel.scroll_target.y += SCROLL_SPEED * boost * dt;
+                active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * (active_panel.buffer.lines.count - 1));
 
                 wants_next_frame = true;
             }
         }
 
-        row := cast(s64, floor((mouse.y + editor.buffer_viewport_scroll.y) / buffer_cell_h));
+        row := cast(s64, floor((mouse.y + active_panel.scroll.y) / cell_h));
         col := 0;
 
         if row < 0 {
             row = 0;
             col = 0;
-        } else if row > editor.buffer.lines.count - 1 {
-            row = editor.buffer.lines.count - 1;
+        } else if row > active_panel.buffer.lines.count - 1 {
+            row = active_panel.buffer.lines.count - 1;
 
             // Include newline, so that the cursor can go there.
-            line_view := text_buffer_make_view_for_line(editor.buffer, row, include_newline = true,, temp);
-            col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + editor.buffer_viewport_scroll.x);
+            line_view := text_buffer_make_view_for_line(active_panel.buffer, row, include_newline = true,, temp);
+            col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x);
         } else {
             // Include newline, so that the cursor can go there.
-            line_view := text_buffer_make_view_for_line(editor.buffer, row, include_newline = true,, temp);
-            col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + editor.buffer_viewport_scroll.x);
+            line_view := text_buffer_make_view_for_line(active_panel.buffer, row, include_newline = true,, temp);
+            col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x);
         }
 
-        text_buffer_move_cursor_to(*editor.buffer, col, row, !editor.mb_left_pressed);
+        text_buffer_move_cursor_to(*active_panel.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
     }
 
-    buffer_cursor0_position: DVector2;
-    buffer_cursor0_line_end_x: f64;
-    {
-        c0_line_start, c0_line_end := text_buffer_get_cursors_for_line(editor.buffer, editor.buffer.cursor0.y);
-        c0_line_view := text_buffer_make_view_between_cursors(editor.buffer, c0_line_start, c0_line_end,, temp);
+    for * panel: editor.panels {
+        //
+        // Compute cursor position.
+        //
+        buffer_cursor0_position: DVector2;
+        buffer_cursor0_line_end_x: f64;
+        {
+            c0_line_start, c0_line_end := text_buffer_get_cursors_for_line(panel.buffer, panel.buffer.cursor0.y);
+            c0_line_view := text_buffer_make_view_between_cursors(panel.buffer, c0_line_start, c0_line_end,, temp);
 
-        buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, editor.buffer.cursor0.x);
-        buffer_cursor0_position.y = editor.buffer.cursor0.y * buffer_cell_h;
-        buffer_cursor0_line_end_x = font_compute_position_on_line(editor.font, c0_line_view, c0_line_end.x);
-    }
-
-    //
-    // Scroll buffer to cursor, if buffer changed. Clamp cursor to buffer, if buffer scrolled.
-    //
-    if clamp_scroll_to_cursor || clamp_scroll_to_start_of_line || clamp_scroll_to_end_of_line {
-        ProfileZone(":ClampScroll");
-        window_w := cast(f32, input.window_size.x);
-        window_h := cast(f32, input.window_size.y);
-
-        SCROLL_PADDING_CELLS_X :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
-        SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
-        scroll_padding_x := min(window_w * 0.25, cast(f32, buffer_cell_w) * SCROLL_PADDING_CELLS_X);
-        scroll_padding_y := min(window_h * 0.25, cast(f32, buffer_cell_h) * SCROLL_PADDING_CELLS_Y);
-
-        cursor0 := editor.buffer.cursor0;
-
-        viewport_rect := drect_from_point_and_size(editor.buffer_viewport_scroll_target.x, editor.buffer_viewport_scroll_target.y, window_w, window_h);
-        scroll_to_rect: DRect;
-        if clamp_scroll_to_start_of_line {
-            scroll_to_rect = drect_from_point_and_size(0, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
-        } else if clamp_scroll_to_end_of_line {
-            scroll_to_rect = drect_from_point_and_size(buffer_cursor0_line_end_x, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
-        } else {
-            scroll_to_rect = drect_from_point_and_size(buffer_cursor0_position.x, buffer_cursor0_position.y, buffer_cell_w, buffer_cell_h);
+            buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, panel.buffer.cursor0.x);
+            buffer_cursor0_position.y = panel.buffer.cursor0.y * cell_h;
+            buffer_cursor0_line_end_x = font_compute_position_on_line(editor.font, c0_line_view, c0_line_end.x);
         }
 
-        if scroll_to_rect.x1 > viewport_rect.x1 {
-            editor.buffer_viewport_scroll_target.x = scroll_to_rect.x0 - window_w + drect_width(scroll_to_rect) + scroll_padding_x;
-        } else if scroll_to_rect.x0 < viewport_rect.x0 {
-            editor.buffer_viewport_scroll_target.x = scroll_to_rect.x0 - scroll_padding_x;
+        //
+        // Scroll buffer to cursor, if buffer changed. Clamp cursor to buffer, if buffer scrolled.
+        //
+        if panel.clamp_scroll_to_cursor || panel.clamp_scroll_to_start_of_line || panel.clamp_scroll_to_end_of_line {
+            ProfileZone(":ClampScroll");
+            window_w := cast(f32, input.window_size.x);
+            window_h := cast(f32, input.window_size.y);
+
+            SCROLL_PADDING_CELLS_X :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
+            SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
+            scroll_padding_x := min(window_w * 0.25, cast(f32, cell_w) * SCROLL_PADDING_CELLS_X);
+            scroll_padding_y := min(window_h * 0.25, cast(f32, cell_h) * SCROLL_PADDING_CELLS_Y);
+
+            cursor0 := panel.buffer.cursor0;
+
+            // XXX: This is not the correct viewport rect anymore! Compute for panel.
+            viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, window_w, window_h);
+            scroll_to_rect: DRect;
+            if panel.clamp_scroll_to_start_of_line {
+                scroll_to_rect = drect_from_point_and_size(0, buffer_cursor0_position.y, cell_w, cell_h);
+            } else if panel.clamp_scroll_to_end_of_line {
+                scroll_to_rect = drect_from_point_and_size(buffer_cursor0_line_end_x, buffer_cursor0_position.y, cell_w, cell_h);
+            } else {
+                scroll_to_rect = drect_from_point_and_size(buffer_cursor0_position.x, buffer_cursor0_position.y, cell_w, cell_h);
+            }
+
+            if scroll_to_rect.x1 > viewport_rect.x1 {
+                panel.scroll_target.x = scroll_to_rect.x0 - window_w + drect_width(scroll_to_rect) + scroll_padding_x;
+            } else if scroll_to_rect.x0 < viewport_rect.x0 {
+                panel.scroll_target.x = scroll_to_rect.x0 - scroll_padding_x;
+            }
+
+            if scroll_to_rect.y1 > viewport_rect.y1 {
+                panel.scroll_target.y = scroll_to_rect.y0 - window_h + drect_height(scroll_to_rect) + scroll_padding_y;
+            } else if scroll_to_rect.y0 < viewport_rect.y0 {
+                panel.scroll_target.y = scroll_to_rect.y0 - scroll_padding_y;
+            }
         }
 
-        if scroll_to_rect.y1 > viewport_rect.y1 {
-            editor.buffer_viewport_scroll_target.y = scroll_to_rect.y0 - window_h + drect_height(scroll_to_rect) + scroll_padding_y;
-        } else if scroll_to_rect.y0 < viewport_rect.y0 {
-            editor.buffer_viewport_scroll_target.y = scroll_to_rect.y0 - scroll_padding_y;
+        //
+        // Scroll animation
+        //
+        {
+            panel.scroll_target.x = max(panel.scroll_target.x, 0.0);
+            panel.scroll_target.y = max(panel.scroll_target.y, 0.0);
+
+            // TODO(jt): At least make this frame rate independent, but ideally also make it a
+            // closed-form Hermite lerp, where we munge the previous animation.
+            panel.scroll = lerp(panel.scroll, panel.scroll_target, 0.4);
+            if length(panel.scroll_target - panel.scroll) > 1.0 {
+                wants_next_frame = true;
+            } else {
+                panel.scroll = panel.scroll_target;
+            }
         }
-    }
 
-    //
-    // Scroll animation
-    //
-    {
-        editor.buffer_viewport_scroll_target.x = max(editor.buffer_viewport_scroll_target.x, 0.0);
-        editor.buffer_viewport_scroll_target.y = max(editor.buffer_viewport_scroll_target.y, 0.0);
+        //
+        // Layout and draw selection
+        //
+        if panel.buffer.cursor0 != panel.buffer.cursor1 {
+            cursor_start := text_buffer_get_min_cursor(panel.buffer);
+            cursor_end   := text_buffer_get_max_cursor(panel.buffer);
 
-        // TODO(jt): At least make this frame rate independent, but ideally also make it a
-        // closed-form Hermite lerp, where we munge the previous animation.
-        editor.buffer_viewport_scroll = lerp(editor.buffer_viewport_scroll, editor.buffer_viewport_scroll_target, 0.4);
-        if length(editor.buffer_viewport_scroll_target - editor.buffer_viewport_scroll) > 1.0 {
-            wants_next_frame = true;
-        } else {
-            editor.buffer_viewport_scroll = editor.buffer_viewport_scroll_target;
+            if cursor_start.y == cursor_end.y {
+                ProfileZone(":DrawSelectionHighlightSingleLine");
+
+                line_start := text_buffer_get_start_cursor_for_line(panel.buffer, cursor_start.y);
+
+                view_before_cursor   := text_buffer_make_view_between_cursors(panel.buffer, line_start, cursor_start,, temp);
+                view_between_cursors := text_buffer_make_view_between_cursors(panel.buffer, cursor_start, cursor_end,, temp);
+
+                selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
+                selection_x1 := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x) + selection_x0;
+                selection_y0 := cursor_start.y * cell_h;
+                selection_y1 := selection_y0 + cell_h;
+                selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
+
+                selection := array_add(*render_rects);
+                selection.rect = drect_to_rect(selection_rect - panel.scroll);
+                selection.texture_rect = { 0, 0, 0, 0 };
+                selection.texture_id = TEXTURE_ID_NONE;
+                selection.color = COLOR_SELECTION;
+            } else {
+                ProfileZone(":DrawSelectionHighlightMultiLine");
+
+                // This does very simple vertical culling by doing layout and draw only on visible
+                // lines. If the lines are long, we do a lot of layout and draw.
+                //
+                // TODO(jt): @Speed Horizontal culling?
+                viewport_y0 := panel.scroll.y;
+                viewport_y1 := panel.scroll.y + input.window_size.y; // XXX: Incorrect. Compute viewport for panel.
+
+                viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, panel.buffer.lines.count - 1);
+                viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, panel.buffer.lines.count - 1);
+
+                // Because we start the layout just before the current viewport, the rendering scroll Y offset
+                // is just the fractional part of the cell.
+                //
+                // Because we expect scroll_offset to be small, we keep it in f32.
+                scroll_offset: Vector2;
+                scroll_offset.x = cast(f32, panel.scroll.x);
+                scroll_offset.y = cast(f32, viewport_y0 - cell_h * viewport_line_index_start);
+
+                // First line, if in viewport
+                if cursor_start.y >= viewport_line_index_start && cursor_start.y <= viewport_line_index_end {
+                    line_start, line_end := text_buffer_get_cursors_for_line(panel.buffer, cursor_start.y);
+
+                    view_before_cursor := text_buffer_make_view_between_cursors(panel.buffer, line_start, cursor_start,, temp);
+                    view_after_cursor  := text_buffer_make_view_between_cursors(panel.buffer, cursor_start, line_end,, temp);
+
+                    selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
+                    selection_x1 := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x) + selection_x0;
+                    selection_y0 := cursor_start.y * cell_h;
+                    selection_y1 := selection_y0 + cell_h;
+                    selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
+
+                    selection := array_add(*render_rects);
+                    selection.rect = drect_to_rect(selection_rect - panel.scroll);
+                    selection.texture_rect = { 0, 0, 0, 0 };
+                    selection.texture_id = TEXTURE_ID_NONE;
+                    selection.color = COLOR_SELECTION;
+                }
+
+                // Center lines, if in viewport
+                for (cursor_start.y + 1)..(cursor_end.y - 1) {
+                    // TODO(jt): @Speed Clamp center lines range instead.
+                    if it < viewport_line_index_start || it > viewport_line_index_end {
+                        continue;
+                    }
+
+                    line_end  := text_buffer_get_end_cursor_for_line(panel.buffer, it);
+                    line_view := text_buffer_make_view_for_line(panel.buffer, it,, temp);
+                    selection_x0 := 0.0;
+                    selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x);
+                    selection_y0 := it * cell_h;
+                    selection_y1 := selection_y0 + cell_h;
+                    selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
+
+
+                    selection := array_add(*render_rects);
+                    selection.rect = drect_to_rect(selection_rect - panel.scroll);
+                    selection.texture_rect = { 0, 0, 0, 0 };
+                    selection.texture_id = TEXTURE_ID_NONE;
+                    selection.color = COLOR_SELECTION;
+                }
+
+                if cursor_end.y >= viewport_line_index_start && cursor_end.y <= viewport_line_index_end {
+                    line_start := text_buffer_get_start_cursor_for_line(panel.buffer, cursor_end.y);
+
+                    view_before_cursor := text_buffer_make_view_between_cursors(panel.buffer, line_start, cursor_end,, temp);
+
+                    selection_x0 := 0.0;
+                    selection_x1 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x);
+                    selection_y0 := cursor_end.y * cell_h;
+                    selection_y1 := selection_y0 + cell_h;
+                    selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
+
+                    selection := array_add(*render_rects);
+                    selection.rect = drect_to_rect(selection_rect - panel.scroll);
+                    selection.texture_rect = { 0, 0, 0, 0 };
+                    selection.texture_id = TEXTURE_ID_NONE;
+                    selection.color = COLOR_SELECTION;
+                }
+            }
         }
-    }
 
-    //
-    // Layout and draw selection
-    //
-    if editor.buffer.cursor0 != editor.buffer.cursor1 {
-        cursor_start := text_buffer_get_min_cursor(editor.buffer);
-        cursor_end   := text_buffer_get_max_cursor(editor.buffer);
+        //
+        // Draw cursor
+        //
+        {
+            position := buffer_cursor0_position;
 
-        if cursor_start.y == cursor_end.y {
-            ProfileZone(":DrawSelectionHighlightSingleLine");
+            cursor_rect := drect_from_point_and_size(position.x, position.y, cell_w, cell_h);
 
-            line_start := text_buffer_get_start_cursor_for_line(editor.buffer, cursor_start.y);
+            cursor := array_add(*render_rects);
+            cursor.rect = drect_to_rect(cursor_rect - panel.scroll);
+            cursor.texture_rect = { 0, 0, 0, 0 };
+            cursor.texture_id = TEXTURE_ID_NONE;
+            cursor.color = COLOR_CURSOR;
+        }
 
-            view_before_cursor   := text_buffer_make_view_between_cursors(editor.buffer, line_start, cursor_start,, temp);
-            view_between_cursors := text_buffer_make_view_between_cursors(editor.buffer, cursor_start, cursor_end,, temp);
-
-            selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
-            selection_x1 := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x) + selection_x0;
-            selection_y0 := cursor_start.y * buffer_cell_h;
-            selection_y1 := selection_y0 + buffer_cell_h;
-            selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
-
-            selection := array_add(*render_rects);
-            selection.rect = drect_to_rect(selection_rect - editor.buffer_viewport_scroll);
-            selection.texture_rect = { 0, 0, 0, 0 };
-            selection.texture_id = TEXTURE_ID_NONE;
-            selection.color = COLOR_SELECTION;
-        } else {
-            ProfileZone(":DrawSelectionHighlightMultiLine");
+        //
+        // Layout and draw text
+        //
+        {
+            ProfileZone(":DrawText");
 
             // This does very simple vertical culling by doing layout and draw only on visible
             // lines. If the lines are long, we do a lot of layout and draw.
             //
             // TODO(jt): @Speed Horizontal culling?
-            viewport_y0 := editor.buffer_viewport_scroll.y;
-            viewport_y1 := editor.buffer_viewport_scroll.y + input.window_size.y;
+            viewport_y0 := panel.scroll.y;
+            viewport_y1 := panel.scroll.y + input.window_size.y; // XXX: Incorrect. Compute viewport for panel.
 
-            viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / buffer_cell_h)), 0, editor.buffer.lines.count - 1);
-            viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / buffer_cell_h)), 0, editor.buffer.lines.count - 1);
+            viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, panel.buffer.lines.count - 1);
+            viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, panel.buffer.lines.count - 1);
+
+            viewport_start := text_buffer_get_start_cursor_for_line(panel.buffer, viewport_line_index_start);
+            viewport_end   := text_buffer_get_end_cursor_for_line(panel.buffer, viewport_line_index_end);
+            viewport_view  := text_buffer_make_view_between_cursors(panel.buffer, viewport_start, viewport_end,, temp);
 
             // Because we start the layout just before the current viewport, the rendering scroll Y offset
             // is just the fractional part of the cell.
             //
-            // Because we expect scroll_offset to be small, we keep it in f32.
-            scroll_offset: Vector2;
-            scroll_offset.x = cast(f32, editor.buffer_viewport_scroll.x);
-            scroll_offset.y = cast(f32, viewport_y0 - buffer_cell_h * viewport_line_index_start);
+            // While we expect vertical scroll_offset to be small, horizontal can in theory be pretty
+            // big (although I'd wager we have serious performance problems before that starts to
+            // matter), so we go f64 to be future proof.
+            scroll_offset: DVector2;
+            scroll_offset.x = panel.scroll.x;
+            scroll_offset.y = viewport_y0 - cell_h * viewport_line_index_start;
 
-            // First line, if in viewport
-            if cursor_start.y >= viewport_line_index_start && cursor_start.y <= viewport_line_index_end {
-                line_start, line_end := text_buffer_get_cursors_for_line(editor.buffer, cursor_start.y);
-
-                view_before_cursor := text_buffer_make_view_between_cursors(editor.buffer, line_start, cursor_start,, temp);
-                view_after_cursor  := text_buffer_make_view_between_cursors(editor.buffer, cursor_start, line_end,, temp);
-
-                selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
-                selection_x1 := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x) + selection_x0;
-                selection_y0 := cursor_start.y * buffer_cell_h;
-                selection_y1 := selection_y0 + buffer_cell_h;
-                selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
-
-                selection := array_add(*render_rects);
-                selection.rect = drect_to_rect(selection_rect - editor.buffer_viewport_scroll);
-                selection.texture_rect = { 0, 0, 0, 0 };
-                selection.texture_id = TEXTURE_ID_NONE;
-                selection.color = COLOR_SELECTION;
-            }
-
-            // Center lines, if in viewport
-            for (cursor_start.y + 1)..(cursor_end.y - 1) {
-                // TODO(jt): @Speed Clamp center lines range instead.
-                if it < viewport_line_index_start || it > viewport_line_index_end {
-                    continue;
-                }
-
-                line_end  := text_buffer_get_end_cursor_for_line(editor.buffer, it);
-                line_view := text_buffer_make_view_for_line(editor.buffer, it,, temp);
-                selection_x0 := 0.0;
-                selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x);
-                selection_y0 := it * buffer_cell_h;
-                selection_y1 := selection_y0 + buffer_cell_h;
-                selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
-
-
-                selection := array_add(*render_rects);
-                selection.rect = drect_to_rect(selection_rect - editor.buffer_viewport_scroll);
-                selection.texture_rect = { 0, 0, 0, 0 };
-                selection.texture_id = TEXTURE_ID_NONE;
-                selection.color = COLOR_SELECTION;
-            }
-
-            if cursor_end.y >= viewport_line_index_start && cursor_end.y <= viewport_line_index_end {
-                line_start := text_buffer_get_start_cursor_for_line(editor.buffer, cursor_end.y);
-
-                view_before_cursor := text_buffer_make_view_between_cursors(editor.buffer, line_start, cursor_end,, temp);
-
-                selection_x0 := 0.0;
-                selection_x1 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x);
-                selection_y0 := cursor_end.y * buffer_cell_h;
-                selection_y1 := selection_y0 + buffer_cell_h;
-                selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
-
-                selection := array_add(*render_rects);
-                selection.rect = drect_to_rect(selection_rect - editor.buffer_viewport_scroll);
-                selection.texture_rect = { 0, 0, 0, 0 };
-                selection.texture_id = TEXTURE_ID_NONE;
-                selection.color = COLOR_SELECTION;
-            }
+            // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
+            // to the left of the screen, but we don't have to emit render rects for it.
+            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, scroll_offset, is_new_frame = true);
         }
-    }
 
-    //
-    // Draw cursor
-    //
-    {
-        position := buffer_cursor0_position;
-
-        cursor_rect := drect_from_point_and_size(position.x, position.y, buffer_cell_w, buffer_cell_h);
-
-        cursor := array_add(*render_rects);
-        cursor.rect = drect_to_rect(cursor_rect - editor.buffer_viewport_scroll);
-        cursor.texture_rect = { 0, 0, 0, 0 };
-        cursor.texture_id = TEXTURE_ID_NONE;
-        cursor.color = COLOR_CURSOR;
-    }
-
-    //
-    // Layout and draw text
-    //
-    {
-        ProfileZone(":DrawText");
-
-        // This does very simple vertical culling by doing layout and draw only on visible
-        // lines. If the lines are long, we do a lot of layout and draw.
-        //
-        // TODO(jt): @Speed Horizontal culling?
-        viewport_y0 := editor.buffer_viewport_scroll.y;
-        viewport_y1 := editor.buffer_viewport_scroll.y + input.window_size.y;
-
-        viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / buffer_cell_h)), 0, editor.buffer.lines.count - 1);
-        viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / buffer_cell_h)), 0, editor.buffer.lines.count - 1);
-
-        viewport_start := text_buffer_get_start_cursor_for_line(editor.buffer, viewport_line_index_start);
-        viewport_end   := text_buffer_get_end_cursor_for_line(editor.buffer, viewport_line_index_end);
-        viewport_view  := text_buffer_make_view_between_cursors(editor.buffer, viewport_start, viewport_end,, temp);
-
-        // Because we start the layout just before the current viewport, the rendering scroll Y offset
-        // is just the fractional part of the cell.
-        //
-        // While we expect vertical scroll_offset to be small, horizontal can in theory be pretty
-        // big (although I'd wager we have serious performance problems before that starts to
-        // matter), so we go f64 to be future proof.
-        scroll_offset: DVector2;
-        scroll_offset.x = editor.buffer_viewport_scroll.x;
-        scroll_offset.y = viewport_y0 - buffer_cell_h * viewport_line_index_start;
-
-        // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
-        // to the left of the screen, but we don't have to emit render rects for it.
-        font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, scroll_offset, is_new_frame = true);
+        panel.clamp_scroll_to_cursor        = false;
+        panel.clamp_scroll_to_start_of_line = false;
+        panel.clamp_scroll_to_end_of_line   = false;
     }
 
     if editor.dev_show_atlas_texture {
@@ -751,43 +585,264 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
 #scope_file
 
-recenter_buffer :: (editor: *Editor, input: Input) {
-    cursor_y := editor.buffer.cursor0.y * editor.font.line_height_in_pixels;
+route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) {
+    // TODO(jt): Switch on panel type here: e.g. route_event_to_text_buffer_panel vs route_event_to_lister_panel.
+
+    if event.flags & .KEY_PRESSED {
+        if event.type == {
+            case .KEY; {
+                // We can't go into global selecting mode if shift is down, because many
+                // Emacs-like shortcuts require shift. Therefore we only enable it for arrow
+                // keys. If we selected something using shift selecting, we also turn off global
+                // buffer selecting.
+                shift_selecting := input_state.keys[Key.SHIFT] & .DOWN;
+
+                if event.data.key == {
+                    case .ARROW_UP;     text_buffer_move_cursor_y(*panel.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+                    case .ARROW_DOWN;   text_buffer_move_cursor_y(*panel.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+                    case .ARROW_LEFT;   text_buffer_move_cursor_x(*panel.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+                    case .ARROW_RIGHT;  text_buffer_move_cursor_x(*panel.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+
+                    case .PAGE_UP;      scroll_panel_up_one_screen(panel, input, cell_h);
+                    case .PAGE_DOWN;    scroll_panel_down_one_screen(panel, input, cell_h);
+
+                    case .HOME;         text_buffer_move_cursor_to_start(*panel.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
+                    case .END;          text_buffer_move_cursor_to_end(*panel.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
+                }
+            }
+
+            case .CODEPOINT; {
+                if input_state.keys[Key.CTRL] & .DOWN && input_state.keys[Key.ALT] & .DOWN {
+                    if event.data.codepoint == {
+                        case #char "p";  #through;
+                        case #char "P";  // TODO(jt): Swap line with previous.
+                        case #char "n";  #through;
+                        case #char "N";  // TODO(jt): Swap line with next.
+                    }
+                } else if input_state.keys[Key.CTRL] & .DOWN {
+                    if event.data.codepoint == {
+                        case #char "p";  #through;
+                        case #char "P";  text_buffer_move_cursor_y(*panel.buffer, -1, panel.selecting); panel.clamp_scroll_to_cursor = true;
+                        case #char "n";  #through;
+                        case #char "N";  text_buffer_move_cursor_y(*panel.buffer,  1, panel.selecting); panel.clamp_scroll_to_cursor = true;
+                        case #char "b";  #through;
+                        case #char "B";  text_buffer_move_cursor_x(*panel.buffer, -1, panel.selecting); panel.clamp_scroll_to_cursor = true;
+                        case #char "f";  #through;
+                        case #char "F";  text_buffer_move_cursor_x(*panel.buffer,  1, panel.selecting); panel.clamp_scroll_to_cursor = true;
+                        case #char "a";  #through;
+                        case #char "A";  text_buffer_move_cursor_to_start_of_line(*panel.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
+                        case #char "e";  #through;
+                        case #char "E";  text_buffer_move_cursor_to_end_of_line(*panel.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
+                        case #char "l";  #through;
+                        case #char "L";  recenter_panel(panel, input, cell_h);
+                        case #char "v";  #through;
+                        case #char "V";  scroll_panel_down_one_screen(panel, input, cell_h);
+
+                        case .SPACEBAR;  panel.selecting = true;  text_buffer_join_cursors(*panel.buffer);
+                        case #char "g";  #through;
+                        case #char "G";  panel.selecting = false; text_buffer_join_cursors(*panel.buffer);
+
+                        case #char "k";  #through;
+                        case #char "K"; {
+                            panel.selecting = false;
+                            text := text_buffer_delete_line(*panel.buffer);
+                            if text {
+                                platform.clipboard_set_text(text);
+                            }
+                        }
+                        case #char "d";  #through;
+                        case #char "D";  panel.selecting = false; text_buffer_delete_forward(*panel.buffer);
+
+                        case #char "m";  #through;
+                        case #char "M"; {
+                            // TODO(jt): Preserve CRLF in CRLF-only documents.
+                            panel.selecting = false;
+                            text_buffer_insert(*panel.buffer, "\n", undo_barrier = true);
+                            panel.clamp_scroll_to_cursor = true;
+                        }
+                        case #char "o";  #through;
+                        case #char "O"; {
+                            // TODO(jt): Preserve CRLF in CRLF-only documents.
+                            panel.selecting = false;
+                            text_buffer_insert(*panel.buffer, "\n", undo_barrier = true);
+                            text_buffer_move_cursor_y(*panel.buffer, -1, false);
+                            text_buffer_move_cursor_to_end_of_line(*panel.buffer, false);
+                        }
+
+                        case #char "/";  text_buffer_undo_edit(*panel.buffer); panel.clamp_scroll_to_cursor = true;
+
+                        case #char "w";  #through;
+                        case #char "W"; {
+                            panel.selecting = false;
+                            deleted := text_buffer_delete_between_cursors(*panel.buffer);
+                            if deleted {
+                                platform.clipboard_set_text(deleted);
+                            }
+
+                        }
+                        case #char "y";  #through;
+                        case #char "Y"; {
+                            panel.selecting = false;
+                            text := platform.clipboard_get_text(,, temp);
+                            if text {
+                                text_buffer_insert(*panel.buffer, text, undo_barrier = true);
+                                panel.clamp_scroll_to_cursor = true;
+                            }
+                        }
+                    }
+                } else if input_state.keys[Key.ALT] & .DOWN {
+                    if event.data.codepoint == {
+                        // TODO(jt): C-M
+                        case #char "p";  #through;
+                        case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*panel.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
+                        case #char "n";  #through;
+                        case #char "N";  text_buffer_move_cursor_to_next_blank_line(*panel.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
+                        case #char "b";  #through;
+                        case #char "B"; {
+                            panel.clamp_scroll_to_end_of_line |= text_buffer_move_cursor_to_previous_word_boundary(*panel.buffer, panel.selecting);
+                            panel.clamp_scroll_to_cursor = true;
+                        }
+                        case #char "f";  #through;
+                        case #char "F"; {
+                            panel.clamp_scroll_to_start_of_line |= text_buffer_move_cursor_to_next_word_boundary(*panel.buffer, panel.selecting);
+                            panel.clamp_scroll_to_cursor = true;
+                        }
+
+                        case .BACKSPACE; // TODO(jt): text_buffer_delete_until_previous_word_boundary.
+                        case #char "d";  #through;
+                        case #char "D";  // TODO(jt): text_buffer_delete_until_next_word_boundary.
+
+                        case #char "v";  #through;
+                        case #char "V";  scroll_panel_up_one_screen(panel, input, cell_h);
+
+                        case #char "<";  text_buffer_move_cursor_to_start(*panel.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
+                        case #char ">";  text_buffer_move_cursor_to_end(*panel.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
+
+                        case #char "/";  text_buffer_redo_edit(*panel.buffer); panel.clamp_scroll_to_cursor = true;
+
+                        case #char "w";  #through;
+                        case #char "W";  {
+                            panel.selecting = false;
+                            text := text_buffer_make_view_between_cursors(panel.buffer, panel.buffer.cursor0, panel.buffer.cursor1,, temp);
+                            if text {
+                                platform.clipboard_set_text(text);
+                            }
+
+                            text_buffer_join_cursors(*panel.buffer);
+                        }
+                    }
+                } else if input_state.keys[Key.META] & .DOWN {
+                    // Nothing for now.
+                } else {
+                    panel.selecting = false;
+
+                    codepoint := event.data.codepoint;
+
+                    if codepoint == {
+                        case .BACKSPACE;  text_buffer_delete_backward(*panel.buffer); panel.clamp_scroll_to_cursor = true;
+                        case .DELETE;     text_buffer_delete_forward(*panel.buffer);  panel.clamp_scroll_to_cursor = true;
+
+                        // TODO(jt): Make indentation configurable.
+                        // TODO(jt): Preserve tab-ness in tab-only documents.
+                        case .TAB;        text_buffer_insert(*panel.buffer, "    ");  panel.clamp_scroll_to_cursor = true;
+                        case .SPACEBAR;   text_buffer_insert(*panel.buffer, " ");     panel.clamp_scroll_to_cursor = true;
+
+                        // TODO(jt): Preserve CRLF in CRLF-only documents.
+                        case .ENTER;      text_buffer_insert(*panel.buffer, "\n", undo_barrier = true); panel.clamp_scroll_to_cursor = true;
+
+                        case; {
+                            // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
+                            // buffer before inserting. That includes spacebar, enter, linefeed, etc.
+                            //
+                            // TODO(jt): @Speed This is a little dumb, because buffer will be
+                            // parsing this back to codepoints for its linedata tracking. Clean
+                            // this up after we know what we are doing (on all levels, from the
+                            // OS to our buffer!)
+                            buf: [4] u8;
+                            s: string;
+                            s.data = buf.data;
+                            Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
+
+                            text_buffer_insert(*panel.buffer, s);
+                            panel.clamp_scroll_to_cursor = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+add_scratch_panel :: (editor: *Editor, platform: Platform) {
+    ProfileZone("add_scratch_panel");
+
+    arena_procs := make_arena_procs(platform);
+
+    buffer_arena            := arena_allocate(arena_procs, reserve_size = 16 << 30);
+    buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
+
+    buffer: Text_Buffer;
+    text_buffer_init(*buffer, buffer_arena, buffer_patch_text_arena);
+
+    panel := array_add(*editor.panels);
+
+    panel.scroll_target = { 0, 0 };
+    panel.scroll = { 0, 0 };
+
+    panel.clamp_scroll_to_cursor = true; // Because we are inserting pontentially large text.
+    panel.clamp_scroll_to_start_of_line = false;
+    panel.clamp_scroll_to_end_of_line = false;
+
+    panel.selecting = false;
+    panel.buffer = buffer;
+
+    // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
+    // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
+    HELLO_SIZE : s64 : 64 << 10;
+
+    hello_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
+    hello_text := make_hello_text(hello_arena, HELLO_SIZE);
+    text_buffer_insert(*panel.buffer, hello_text, undo_barrier = true);
+    arena_release(hello_arena);
+}
+
+add_file_visiting_panel :: (editor: *Editor) { // XXX
+
+}
+
+recenter_panel :: (panel: *Panel, input: Input, cell_h: f32) {
+    cursor_y := panel.buffer.cursor0.y * cell_h;
 
     center := cursor_y - 0.5 * input.window_size.y;
     top    := cursor_y;
-    bottom := cursor_y - input.window_size.y + editor.font.line_height_in_pixels;
+    bottom := cursor_y - input.window_size.y + cell_h;
 
-    if editor.buffer_viewport_scroll_target.y == center {
-        editor.buffer_viewport_scroll_target.y = top;
-    } else if editor.buffer_viewport_scroll_target.y == top {
-        editor.buffer_viewport_scroll_target.y = bottom;
+    if panel.scroll_target.y == center {
+        panel.scroll_target.y = top;
+    } else if panel.scroll_target.y == top {
+        panel.scroll_target.y = bottom;
     } else {
-        editor.buffer_viewport_scroll_target.y = center;
+        panel.scroll_target.y = center;
     }
 }
 
-scroll_buffer_up_one_screen :: (editor: *Editor, input: Input) {
-    cell_h := editor.font.line_height_in_pixels;
-
+scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     delta_max := cast(s64, floor(input.window_size.y / cell_h));
-    delta     := min(editor.buffer.cursor0.y, delta_max);
+    delta     := min(panel.buffer.cursor0.y, delta_max);
 
-    text_buffer_move_cursor_y(*editor.buffer, -delta, editor.buffer_selecting);
+    text_buffer_move_cursor_y(*panel.buffer, -delta, panel.selecting);
     if delta == delta_max {
-        editor.buffer_viewport_scroll_target.y -= delta * cell_h;
+        panel.scroll_target.y -= delta * cell_h;
     }
 }
 
-scroll_buffer_down_one_screen :: (editor: *Editor, input: Input) {
-    cell_h := editor.font.line_height_in_pixels;
-
+scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     delta_max := cast(s64, floor(input.window_size.y / cell_h));
-    delta     := min(editor.buffer.lines.count - 1 - editor.buffer.cursor0.y, delta_max);
+    delta     := min(panel.buffer.lines.count - 1 - panel.buffer.cursor0.y, delta_max);
 
-    text_buffer_move_cursor_y(*editor.buffer, delta, editor.buffer_selecting);
+    text_buffer_move_cursor_y(*panel.buffer, delta, panel.selecting);
     if delta == delta_max {
-        editor.buffer_viewport_scroll_target.y += delta * cell_h;
+        panel.scroll_target.y += delta * cell_h;
     }
 }
 

@@ -380,9 +380,9 @@ main :: () {
 
                             case .PRINT_SCREEN;            array_add(*input_events, { .KEY, flags, { key = .PRINT_SCREEN } });
 
-                            case .MOUSE_BUTTON_LEFT;       array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_LEFT } });
-                            case .MOUSE_BUTTON_RIGHT;      array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_RIGHT } });
-                            case .MOUSE_BUTTON_MIDDLE;     array_add(*input_events, { .KEY, flags, { key = .MOUSE_BUTTON_MIDDLE } });
+                            case .MOUSE_BUTTON_LEFT;       array_add(*input_events, { .KEY, flags, { key = .MB_LEFT } });
+                            case .MOUSE_BUTTON_RIGHT;      array_add(*input_events, { .KEY, flags, { key = .MB_RIGHT } });
+                            case .MOUSE_BUTTON_MIDDLE;     array_add(*input_events, { .KEY, flags, { key = .MB_MIDDLE } });
 
                             case; {
                                 // TODO(jt): @Cleanup @Hack Both Windows and macOS have their quirks
