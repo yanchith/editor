@@ -187,143 +187,148 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
         font.glyph_cache_misses = 0;
     }
 
-    // TODO(jt): Compute in font units and convert to floats at the end.
+    // TODO(jt): Compute cursors in 26:6 and convert to floats only when needed.
     cursor_x: f32 = 0;
     cursor_y: f32 = cast(f32, font.ascender) * R64;
 
     for :utf8_iter text {
-        // TODO(jt): Support all kinds of newlines. XXX We already do this elsewhere, so might as well fix it here!
+        if it == #char "\r" {
+            continue; // Not rendered.
+        }
+
         if it == #char "\n" {
             cursor_x = 0;
             cursor_y += font.line_height_in_pixels;
-        } else {
-            glyph_index := FT_Get_Char_Index(font.ft_face, it);
-            if glyph_index == 0 {
-                // TODO(jt): Replacement character!
-                continue;
-            }
-
-            // These are filled in in one of the two branches below
-            glyph_advance: f32;
-            glyph_offset_x: s32;
-            glyph_offset_y: s32;
-            glyph_bitmap_width: s32;
-            glyph_bitmap_height: s32;
-
-            glyph_cell_x: s32;
-            glyph_cell_y: s32;
-
-            // TODO(jt): Factor out cache manipulation and just return the all necessary metadata.
-            entry_index_pointer := table_find_pointer(*font.glyph_table, cast(s32, glyph_index));
-            if entry_index_pointer {
-                font.glyph_cache_hits += 1;
-
-                entry_index := entry_index_pointer.*;
-                entry := *font.glyph_entries[entry_index];
-                sanity_assert(entry.glyph_index == cast(s32, glyph_index));
-
-                entry.stamp = font.glyph_cache_stamp;
-
-                glyph_advance       = entry.glyph_advance;
-                glyph_offset_x      = entry.glyph_offset_x;
-                glyph_offset_y      = entry.glyph_offset_y;
-                glyph_bitmap_width  = entry.glyph_bitmap_width;
-                glyph_bitmap_height = entry.glyph_bitmap_height;
-
-                // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
-                glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
-                glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
-
-                move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
-                sanity_assert(font.glyph_entries_tail == entry_index);
-            } else {
-                font.glyph_cache_misses += 1;
-
-                entry_index := font.glyph_entries_head;
-                entry := *font.glyph_entries[entry_index];
-
-                // We can't overwrite an entry we wrote to this frame, as we would be evicting
-                // something else we also wrote this frame that we need. If we want to handle this
-                // case, we could flush our rendering here and continue where we left of, but better
-                // to just have a larger cache.
-                if entry.stamp == font.glyph_cache_stamp {
-                    log_error("Glyph cache overwriting slot % during same layout. Rendering is going to look funny.", entry_index);
-                }
-
-                table_remove(*font.glyph_table, entry.glyph_index);
-
-                entry.stamp = font.glyph_cache_stamp;
-                entry.glyph_index = cast(s32, glyph_index);
-
-                {
-                    ProfileZone("FT_Load_GLyph(FT_LOAD_RENDER)");
-                    error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER);
-                    if error {
-                        // TODO(jt): Replacement character!
-                        continue;
-                    }
-                }
-
-                glyph         := font.ft_face.glyph; // unlike metrics and bitmap, glyph is a pointer
-                glyph_metrics := *font.ft_face.glyph.metrics;
-                glyph_bitmap  := *font.ft_face.glyph.bitmap;
-
-                entry.glyph_advance       = cast(f32, glyph_metrics.horiAdvance) * R64;
-                entry.glyph_offset_x      = glyph.bitmap_left;
-                entry.glyph_offset_y      = -glyph.bitmap_top; // Vertical flip
-                entry.glyph_bitmap_width  = cast(s32, glyph_bitmap.width);
-                entry.glyph_bitmap_height = cast(s32, glyph_bitmap.rows);
-
-                glyph_advance       = entry.glyph_advance;
-                glyph_offset_x      = entry.glyph_offset_x;
-                glyph_offset_y      = entry.glyph_offset_y;
-                glyph_bitmap_width  = entry.glyph_bitmap_width;
-                glyph_bitmap_height = entry.glyph_bitmap_height;
-
-                // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
-                glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
-                glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
-
-                dest := font.glyph_atlas.data +
-                        font.glyph_atlas_width_in_pixels * glyph_cell_y * font.glyph_atlas_cell_height_in_pixels +
-                        glyph_cell_x * font.glyph_atlas_cell_width_in_pixels;
-
-                clear_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels);
-                copy_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels,
-                                glyph_bitmap.buffer, cast(s32, glyph_bitmap.width), cast(s32, glyph_bitmap.rows), cast(s32, glyph_bitmap.pitch));
-
-                table_add(*font.glyph_table, cast(s32, glyph_index), entry_index);
-                array_add(
-                    update_regions,
-                    irect_from_point_and_size(
-                        glyph_cell_x * font.glyph_atlas_cell_width_in_pixels,
-                        glyph_cell_y * font.glyph_atlas_cell_height_in_pixels,
-                        glyph_bitmap_width,
-                        glyph_bitmap_height,
-                    ),
-                );
-
-                move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
-                sanity_assert(font.glyph_entries_tail == entry_index);
-            }
-
-            rr := array_add(render_rects);
-            rr.rect = rect_from_point_and_size(
-                cursor_x + glyph_offset_x - scroll.x,
-                cursor_y + glyph_offset_y - scroll.y,
-                cast(f32, glyph_bitmap_width),
-                cast(f32, glyph_bitmap_height),
-            );
-            rr.texture_rect = rect_from_point_and_size(
-                cast(f32, glyph_cell_x * font.glyph_atlas_cell_width_in_pixels) / font.glyph_atlas_width_in_pixels,
-                cast(f32, glyph_cell_y * font.glyph_atlas_cell_height_in_pixels) / font.glyph_atlas_height_in_pixels,
-                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width_in_pixels,
-                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height_in_pixels,
-            );
-            rr.texture_id = font.texture_id;
-
-            cursor_x += glyph_advance;
+            continue;
         }
+
+        glyph_index := FT_Get_Char_Index(font.ft_face, it);
+        if glyph_index == 0 {
+            // TODO(jt): Replacement character!
+            continue;
+        }
+
+        // These are filled in in one of the two branches below
+        glyph_advance: f32;
+        glyph_offset_x: s32;
+        glyph_offset_y: s32;
+        glyph_bitmap_width: s32;
+        glyph_bitmap_height: s32;
+
+        glyph_cell_x: s32;
+        glyph_cell_y: s32;
+
+        // TODO(jt): Factor out cache manipulation and just return the all necessary metadata.
+        entry_index_pointer := table_find_pointer(*font.glyph_table, cast(s32, glyph_index));
+        if entry_index_pointer {
+            font.glyph_cache_hits += 1;
+
+            entry_index := entry_index_pointer.*;
+            entry := *font.glyph_entries[entry_index];
+            sanity_assert(entry.glyph_index == cast(s32, glyph_index));
+
+            entry.stamp = font.glyph_cache_stamp;
+
+            glyph_advance       = entry.glyph_advance;
+            glyph_offset_x      = entry.glyph_offset_x;
+            glyph_offset_y      = entry.glyph_offset_y;
+            glyph_bitmap_width  = entry.glyph_bitmap_width;
+            glyph_bitmap_height = entry.glyph_bitmap_height;
+
+            // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
+            glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
+            glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
+
+
+            move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
+            sanity_assert(font.glyph_entries_tail == entry_index);
+        } else {
+            font.glyph_cache_misses += 1;
+
+            entry_index := font.glyph_entries_head;
+            entry := *font.glyph_entries[entry_index];
+
+            // We can't overwrite an entry we wrote to this frame, as we would be evicting
+            // something else we also wrote this frame that we need. If we want to handle this
+            // case, we could flush our rendering here and continue where we left of, but better
+            // to just have a larger cache.
+            if entry.stamp == font.glyph_cache_stamp {
+                log_error("Glyph cache overwriting slot % during same layout. Rendering is going to look funny.", entry_index);
+            }
+
+            table_remove(*font.glyph_table, entry.glyph_index);
+
+            entry.stamp = font.glyph_cache_stamp;
+            entry.glyph_index = cast(s32, glyph_index);
+
+            {
+                ProfileZone("FT_Load_GLyph(FT_LOAD_RENDER)");
+                error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER);
+                if error {
+                    // TODO(jt): Replacement character!
+                    continue;
+                }
+            }
+
+            glyph         := font.ft_face.glyph; // unlike metrics and bitmap, glyph is a pointer
+            glyph_metrics := *font.ft_face.glyph.metrics;
+            glyph_bitmap  := *font.ft_face.glyph.bitmap;
+
+            entry.glyph_advance       = cast(f32, glyph_metrics.horiAdvance) * R64;
+            entry.glyph_offset_x      = glyph.bitmap_left;
+            entry.glyph_offset_y      = -glyph.bitmap_top; // Vertical flip
+            entry.glyph_bitmap_width  = cast(s32, glyph_bitmap.width);
+            entry.glyph_bitmap_height = cast(s32, glyph_bitmap.rows);
+
+            glyph_advance       = entry.glyph_advance;
+            glyph_offset_x      = entry.glyph_offset_x;
+            glyph_offset_y      = entry.glyph_offset_y;
+            glyph_bitmap_width  = entry.glyph_bitmap_width;
+            glyph_bitmap_height = entry.glyph_bitmap_height;
+
+            // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
+            glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
+            glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
+
+            dest := font.glyph_atlas.data +
+                font.glyph_atlas_width_in_pixels * glyph_cell_y * font.glyph_atlas_cell_height_in_pixels +
+                glyph_cell_x * font.glyph_atlas_cell_width_in_pixels;
+
+            clear_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels);
+            copy_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels,
+                            glyph_bitmap.buffer, cast(s32, glyph_bitmap.width), cast(s32, glyph_bitmap.rows), cast(s32, glyph_bitmap.pitch));
+
+            table_add(*font.glyph_table, cast(s32, glyph_index), entry_index);
+            array_add(
+                update_regions,
+                irect_from_point_and_size(
+                    glyph_cell_x * font.glyph_atlas_cell_width_in_pixels,
+                    glyph_cell_y * font.glyph_atlas_cell_height_in_pixels,
+                    glyph_bitmap_width,
+                    glyph_bitmap_height,
+                ),
+            );
+
+            move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
+            sanity_assert(font.glyph_entries_tail == entry_index);
+        }
+
+        rr := array_add(render_rects);
+        rr.rect = rect_from_point_and_size(
+            cursor_x + glyph_offset_x - scroll.x,
+            cursor_y + glyph_offset_y - scroll.y,
+            cast(f32, glyph_bitmap_width),
+            cast(f32, glyph_bitmap_height),
+        );
+        rr.texture_rect = rect_from_point_and_size(
+            cast(f32, glyph_cell_x * font.glyph_atlas_cell_width_in_pixels) / font.glyph_atlas_width_in_pixels,
+            cast(f32, glyph_cell_y * font.glyph_atlas_cell_height_in_pixels) / font.glyph_atlas_height_in_pixels,
+            cast(f32, glyph_bitmap_width) / font.glyph_atlas_width_in_pixels,
+            cast(f32, glyph_bitmap_height) / font.glyph_atlas_height_in_pixels,
+        );
+        rr.texture_id = font.texture_id;
+
+        cursor_x += glyph_advance;
     }
 }
 
