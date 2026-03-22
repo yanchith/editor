@@ -4,13 +4,14 @@ TODO(jt): Stuff to do:
 
 - [X] Implement Arena, or use Flat_Pool.
 - [X] Display text on screen
-- [ ] Nice font rendering. Subpixel/SDF/Slug
+- [X] Nice font rendering.
 
 - [X] Gap Buffer (or other text datastructure)
 
 - [X] Basic file navigation
 - [X] Basic file editing
 - [ ] Load file/Save file
+- [ ] Find in mini panel
 - [X] Cut/Copy/Paste
 - [X] Undo!
 
@@ -25,6 +26,7 @@ TODO(jt): Fancy stuff to do:
 - [ ] Read only mode. Automatically on for files that had to undergo load fixups, as well as lister panels.
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
+- [ ] Very nice glyph rendering (Slug?)
 - [ ] Git integration
 
 - [ ] Customization and plugins
@@ -108,6 +110,8 @@ Editor :: struct {
     panels: [..] Panel;
     active_panel_index: s64;
 
+    mini_panel: Mini_Panel;
+
     dev_show_atlas_texture: bool;
 }
 
@@ -134,6 +138,25 @@ Panel :: struct {
     buffer: Text_Buffer; // XXX: We need to reuse text buffers between various panels! (the panel content has to own the cursors)
 }
 
+Mini_Panel :: struct {
+    open: bool;
+
+    buffer: [..] u32;
+    buffer_cursor: s64;
+
+    action: Action;
+
+    things: [..] string;
+    active_thing_index: s64;
+
+    Action :: enum {
+        SEARCH          :: 0;
+        OPEN_FILE       :: 1;
+        SWITCH_TO_PANEL :: 2;
+        CLOSE_PANEL     :: 3;
+    }
+}
+
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
     profiler_init();
     profiler_start_frame("init");
@@ -158,7 +181,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         input_state_update_with_event(*editor.input_state, it);
     }
 
+    editor.panels.allocator = arena_allocator(editor.perm_arena);
     add_scratch_panel(editor, platform);
+
+    editor.mini_panel.buffer.allocator = arena_allocator(editor.perm_arena);
+    editor.mini_panel.things.allocator = arena_allocator(editor.perm_arena);
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -209,6 +236,29 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .F3;  editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture; handled = true;
                     }
                 }
+
+                case .CODEPOINT; {
+                    if it.data.codepoint == {
+                        case #char "s";  #through;
+                        case #char "S"; {
+                            editor.mini_panel.open = !editor.mini_panel.open;
+                            if editor.mini_panel.open {
+                                array_reset_keeping_memory(*editor.mini_panel.buffer);
+                                editor.mini_panel.buffer_cursor = 0;
+
+                                editor.mini_panel.action = .SEARCH;
+
+                                array_reset_keeping_memory(*editor.mini_panel.things);
+                                array_add(*editor.mini_panel.things, "Gondar");
+                                array_add(*editor.mini_panel.things, "Nox");
+                                array_add(*editor.mini_panel.things, "Brennan");
+                                array_add(*editor.mini_panel.things, "Griffin");
+                                array_add(*editor.mini_panel.things, "Seth");
+                                editor.mini_panel.active_thing_index = 0;
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -235,94 +285,98 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     cell_w := cast(f64, editor.font.max_glyph_width_in_pixels);
     cell_h := cast(f64, editor.font.line_height_in_pixels);
 
-    // XXX: Mouse stuff should activate the clicked panel!
-
-    //
-    // Mouse wheel scrolling
-    //
-    if active_panel && input.mouse_wheel_delta != 0 {
-        // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
-        active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
-        active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * (active_panel.buffer.lines.count - 1));
-
-        active_panel.scroll = active_panel.scroll_target;
-    }
-
-    //
-    // Mouse Selection
-    //
-    // TODO(jt): Double click to select word.
-    // TODO(jt): Triple click to select line.
-    //
-    if active_panel && editor.input_state.keys[Key.MB_LEFT] & .DOWN {
-        mouse := input.mouse_position;
+    if editor.mini_panel.open {
+        // XXX: Handle mouse stuff in mini panel?
+    } else {
+        // XXX: Mouse stuff should activate the clicked panel!
 
         //
-        // Mouse selection scrolling
+        // Mouse wheel scrolling
         //
-        if editor.input_state.keys[Key.MB_LEFT] & .LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW {
-            SCROLL_APRON : f32 :  50.0;
-            SCROLL_SPEED : f64 :  10.0;
-            SCROLL_BOOST : f64 :   5.0;
+        if active_panel && input.mouse_wheel_delta != 0 {
+            // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
+            active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
+            active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * (active_panel.buffer.lines.count - 1));
 
-            if mouse.x < SCROLL_APRON {
-                boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
-
-                active_panel.scroll_target.x -= SCROLL_SPEED * boost * dt;
-                active_panel.scroll_target.x = max(active_panel.scroll_target.x, 0);
-
-                wants_next_frame = true;
-            } else if mouse.x > cast(f32, input.window_size.x) - SCROLL_APRON {
-                boost := (mouse.x - (cast(f32, input.window_size.x) - SCROLL_APRON)) * SCROLL_BOOST;
-
-                // Apron contains the newline (if present) and one additional horizontal cell.
-                apron := 2 * cell_w;
-
-                line_view := text_buffer_make_view_for_line(active_panel.buffer, active_panel.buffer.cursor0.y,, temp);
-                max_x := font_compute_position_on_line(editor.font, line_view, active_panel.buffer.cursor0.x) - input.window_size.x + apron;
-
-                active_panel.scroll_target.x += SCROLL_SPEED * boost * dt;
-                active_panel.scroll_target.x = min(active_panel.scroll_target.x, max_x);
-
-                wants_next_frame = true;
-            }
-
-            if mouse.y < SCROLL_APRON {
-                boost := (SCROLL_APRON - mouse.y) * SCROLL_BOOST;
-
-                active_panel.scroll_target.y -= SCROLL_SPEED * boost * dt;
-                active_panel.scroll_target.y = max(active_panel.scroll_target.y, 0);
-
-                wants_next_frame = true;
-            } else if mouse.y > cast(f32, input.window_size.y) - SCROLL_APRON {
-                boost := (mouse.y - (cast(f32, input.window_size.y) - SCROLL_APRON)) * SCROLL_BOOST;
-
-                active_panel.scroll_target.y += SCROLL_SPEED * boost * dt;
-                active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * (active_panel.buffer.lines.count - 1));
-
-                wants_next_frame = true;
-            }
+            active_panel.scroll = active_panel.scroll_target;
         }
 
-        row := cast(s64, floor((mouse.y + active_panel.scroll.y) / cell_h));
-        col := 0;
+        //
+        // Mouse Selection
+        //
+        // TODO(jt): Double click to select word.
+        // TODO(jt): Triple click to select line.
+        //
+        if active_panel && editor.input_state.keys[Key.MB_LEFT] & .DOWN {
+            mouse := input.mouse_position;
 
-        if row < 0 {
-            row = 0;
-            col = 0;
-        } else if row > active_panel.buffer.lines.count - 1 {
-            row = active_panel.buffer.lines.count - 1;
+            //
+            // Mouse selection scrolling
+            //
+            if editor.input_state.keys[Key.MB_LEFT] & .LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW {
+                SCROLL_APRON : f32 :  50.0;
+                SCROLL_SPEED : f64 :  10.0;
+                SCROLL_BOOST : f64 :   5.0;
 
-            // Include newline, so that the cursor can go there.
-            line_view := text_buffer_make_view_for_line(active_panel.buffer, row, include_newline = true,, temp);
-            col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x);
-        } else {
-            // Include newline, so that the cursor can go there.
-            line_view := text_buffer_make_view_for_line(active_panel.buffer, row, include_newline = true,, temp);
-            col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x);
+                if mouse.x < SCROLL_APRON {
+                    boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
+
+                    active_panel.scroll_target.x -= SCROLL_SPEED * boost * dt;
+                    active_panel.scroll_target.x = max(active_panel.scroll_target.x, 0);
+
+                    wants_next_frame = true;
+                } else if mouse.x > cast(f32, input.window_size.x) - SCROLL_APRON {
+                    boost := (mouse.x - (cast(f32, input.window_size.x) - SCROLL_APRON)) * SCROLL_BOOST;
+
+                    // Apron contains the newline (if present) and one additional horizontal cell.
+                    apron := 2 * cell_w;
+
+                    line_view := text_buffer_make_view_for_line(active_panel.buffer, active_panel.buffer.cursor0.y,, temp);
+                    max_x := font_compute_position_on_line(editor.font, line_view, active_panel.buffer.cursor0.x) - input.window_size.x + apron;
+
+                    active_panel.scroll_target.x += SCROLL_SPEED * boost * dt;
+                    active_panel.scroll_target.x = min(active_panel.scroll_target.x, max_x);
+
+                    wants_next_frame = true;
+                }
+
+                if mouse.y < SCROLL_APRON {
+                    boost := (SCROLL_APRON - mouse.y) * SCROLL_BOOST;
+
+                    active_panel.scroll_target.y -= SCROLL_SPEED * boost * dt;
+                    active_panel.scroll_target.y = max(active_panel.scroll_target.y, 0);
+
+                    wants_next_frame = true;
+                } else if mouse.y > cast(f32, input.window_size.y) - SCROLL_APRON {
+                    boost := (mouse.y - (cast(f32, input.window_size.y) - SCROLL_APRON)) * SCROLL_BOOST;
+
+                    active_panel.scroll_target.y += SCROLL_SPEED * boost * dt;
+                    active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * (active_panel.buffer.lines.count - 1));
+
+                    wants_next_frame = true;
+                }
+            }
+
+            row := cast(s64, floor((mouse.y + active_panel.scroll.y) / cell_h));
+            col := 0;
+
+            if row < 0 {
+                row = 0;
+                col = 0;
+            } else if row > active_panel.buffer.lines.count - 1 {
+                row = active_panel.buffer.lines.count - 1;
+
+                // Include newline, so that the cursor can go there.
+                line_view := text_buffer_make_view_for_line(active_panel.buffer, row, include_newline = true,, temp);
+                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x);
+            } else {
+                // Include newline, so that the cursor can go there.
+                line_view := text_buffer_make_view_for_line(active_panel.buffer, row, include_newline = true,, temp);
+                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x);
+            }
+
+            text_buffer_move_cursor_to(*active_panel.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
         }
-
-        text_buffer_move_cursor_to(*active_panel.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
     }
 
     for * panel: editor.panels {
@@ -547,13 +601,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // While we expect vertical scroll_offset to be small, horizontal can in theory be pretty
             // big (although I'd wager we have serious performance problems before that starts to
             // matter), so we go f64 to be future proof.
-            scroll_offset: DVector2;
-            scroll_offset.x = panel.scroll.x;
-            scroll_offset.y = viewport_y0 - cell_h * viewport_line_index_start;
+            offset: DVector2;
+            offset.x = -panel.scroll.x;
+            offset.y = -viewport_y0 + cell_h * viewport_line_index_start;
 
             // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
             // to the left of the screen, but we don't have to emit render rects for it.
-            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, scroll_offset, is_new_frame = true);
+            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, is_new_frame = true);
         }
 
         panel.clamp_scroll_to_cursor        = false;
@@ -561,8 +615,31 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         panel.clamp_scroll_to_end_of_line   = false;
     }
 
+    // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
+    if editor.mini_panel.open {
+        MINI_PANEL_LINES :: 10 + 1;
+
+        background_h := cast(f32, MINI_PANEL_LINES * cell_h);
+        background_y := cast(f32, max(input.window_size.y - background_h, 0));
+
+        rr := array_add(*render_rects);
+        rr.rect = { 0, background_y, cast(f32, input.window_size.x), cast(f32, input.window_size.y) };
+        rr.texture_rect = { 0, 0, 0, 0 };
+        rr.texture_id = TEXTURE_ID_NONE;
+        rr.color = { 0.9, 0.9, 0.9, 1.0 };
+
+        // TODO(jt): Use a simpler/faster routine to handle mini panel layout?
+        font_layout_and_draw_text(*editor.font, "MINIPANEL", *render_rects, *update_regions, { 0, input.window_size.y - cell_h }, is_new_frame = false);
+
+        for editor.mini_panel.things {
+            offset_y: f64 = background_y + it_index * cell_h;
+            // TODO(jt): Use a simpler/faster routine to handle mini panel layout?
+            font_layout_and_draw_text(*editor.font, it, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
+        }
+    }
+
     if editor.dev_show_atlas_texture {
-        render_rects.count = 0;
+        array_reset_keeping_memory(*render_rects);
 
         rr := array_add(*render_rects);
         rr.rect = { 0, 0, cast(f32, editor.font.glyph_atlas_width_in_pixels), cast(f32, editor.font.glyph_atlas_height_in_pixels) };
@@ -584,6 +661,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 }
 
 #scope_file
+
+route_event_to_mini_panel :: (mini_panel: *Mini_Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) { // XXX
+
+}
 
 route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) {
     // TODO(jt): Switch on panel type here: e.g. route_event_to_text_buffer_panel vs route_event_to_lister_panel.
@@ -784,6 +865,7 @@ add_scratch_panel :: (editor: *Editor, platform: Platform) {
     buffer: Text_Buffer;
     text_buffer_init(*buffer, buffer_arena, buffer_patch_text_arena);
 
+    panel_index := editor.panels.count;
     panel := array_add(*editor.panels);
 
     panel.scroll_target = { 0, 0 };
@@ -804,6 +886,8 @@ add_scratch_panel :: (editor: *Editor, platform: Platform) {
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
     text_buffer_insert(*panel.buffer, hello_text, undo_barrier = true);
     arena_release(hello_arena);
+
+    editor.active_panel_index = panel_index;
 }
 
 add_file_visiting_panel :: (editor: *Editor) { // XXX
