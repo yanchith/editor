@@ -37,7 +37,11 @@ build :: () {
 
     if !do_optimized_build {
         // This isn't enabled yet by default for debug builds.. and maybe they will only enable it
-        // for very_debug builds, so...
+        // for very_debug builds, so let's try it out.
+        //
+        // UPDATE: There's code in jai modules (and sometimes in our own code) that can trigger
+        // this. So far it was always a bug, but it was usually a benign one, and the resulting
+        // crash was a little annoying to debug. Leaving it on for now, but man...
         options.arithmetic_overflow_check = .FATAL;
     }
 
