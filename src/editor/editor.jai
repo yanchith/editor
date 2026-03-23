@@ -244,9 +244,17 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 case .CODEPOINT; {
                     if it.data.codepoint == {
+                        case #char "g";  #through;
+                        case #char "G"; {
+                            if editor.mini_panel.open {
+                                editor.mini_panel.open = false;
+                                handled = true;
+                            }
+                        }
+
                         case #char "s";  #through;
                         case #char "S"; {
-                            editor.mini_panel.open = !editor.mini_panel.open;
+                            editor.mini_panel.open = true;
                             if editor.mini_panel.open {
                                 array_reset_keeping_memory(*editor.mini_panel.buffer);
                                 editor.mini_panel.buffer_cursor = 0;
@@ -261,6 +269,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 array_add(*editor.mini_panel.things, "Seth");
                                 editor.mini_panel.active_thing_index = 0;
                             }
+
+                            handled = true;
                         }
                     }
                 }
@@ -271,7 +281,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Events that trickle down to the active panel.
         //
         if !handled {
-            if active_panel {
+            if editor.mini_panel.open {
+                route_event_to_mini_panel(*editor.mini_panel, active_panel, it, platform, input, editor.input_state, editor.font.line_height_in_pixels);
+            } else if active_panel {
                 route_event_to_panel(active_panel, it, platform, input, editor.input_state, editor.font.line_height_in_pixels);
             }
         }
@@ -490,11 +502,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection_y1 := selection_y0 + cell_h;
                 selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
-                selection := array_add(*render_rects);
-                selection.rect = drect_to_rect(selection_rect - panel.scroll);
-                selection.texture_rect = { 0, 0, 0, 0 };
-                selection.texture_id = TEXTURE_ID_NONE;
-                selection.color = COLOR_SELECTION;
+                draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), COLOR_SELECTION);
             } else {
                 ProfileZone(":DrawSelectionHighlightMultiLine");
 
@@ -529,11 +537,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
-                    selection := array_add(*render_rects);
-                    selection.rect = drect_to_rect(selection_rect - panel.scroll);
-                    selection.texture_rect = { 0, 0, 0, 0 };
-                    selection.texture_id = TEXTURE_ID_NONE;
-                    selection.color = COLOR_SELECTION;
+                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), COLOR_SELECTION);
                 }
 
                 // Center lines, if in viewport
@@ -551,12 +555,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
-
-                    selection := array_add(*render_rects);
-                    selection.rect = drect_to_rect(selection_rect - panel.scroll);
-                    selection.texture_rect = { 0, 0, 0, 0 };
-                    selection.texture_id = TEXTURE_ID_NONE;
-                    selection.color = COLOR_SELECTION;
+                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), COLOR_SELECTION);
                 }
 
                 if cursor_end.y >= viewport_line_index_start && cursor_end.y <= viewport_line_index_end {
@@ -570,11 +569,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
-                    selection := array_add(*render_rects);
-                    selection.rect = drect_to_rect(selection_rect - panel.scroll);
-                    selection.texture_rect = { 0, 0, 0, 0 };
-                    selection.texture_id = TEXTURE_ID_NONE;
-                    selection.color = COLOR_SELECTION;
+                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), COLOR_SELECTION);
                 }
             }
         }
@@ -584,14 +579,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         {
             position := buffer_cursor0_position;
+            rect := drect_from_point_and_size(position.x, position.y, cell_w, cell_h) - panel.scroll;
 
-            cursor_rect := drect_from_point_and_size(position.x, position.y, cell_w, cell_h);
-
-            cursor := array_add(*render_rects);
-            cursor.rect = drect_to_rect(cursor_rect - panel.scroll);
-            cursor.texture_rect = { 0, 0, 0, 0 };
-            cursor.texture_id = TEXTURE_ID_NONE;
-            cursor.color = COLOR_CURSOR;
+            draw_rect(*render_rects, drect_to_rect(rect), COLOR_CURSOR);
         }
 
         //
@@ -638,20 +628,32 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     if editor.mini_panel.open {
         MINI_PANEL_LINES :: 10 + 1;
 
-        background_h := cast(f32, MINI_PANEL_LINES * cell_h);
+        cw := cast(f32, cell_w);
+        ch := cast(f32, cell_h);
+
+        background_h := cast(f32, MINI_PANEL_LINES) * ch;
         background_y := cast(f32, max(input.window_size.y - background_h, 0));
 
-        rr := array_add(*render_rects);
-        rr.rect = { 0, background_y, cast(f32, input.window_size.x), cast(f32, input.window_size.y) };
-        rr.texture_rect = { 0, 0, 0, 0 };
-        rr.texture_id = TEXTURE_ID_NONE;
-        rr.color = { 0.9, 0.9, 0.9, 1.0 };
+        window_w := cast(f32, input.window_size.x);
+        window_h := cast(f32, input.window_size.y);
 
+        draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.9, 0.9, 0.9, 1.0 });
+
+        if editor.mini_panel.active_thing_index == -1 {
+            draw_rect(*render_rects, 0, background_y, window_w, background_y + ch);
+        }
         // TODO(jt): Use a simpler/faster routine to handle mini panel layout?
-        font_layout_and_draw_text(*editor.font, "MINIPANEL", *render_rects, *update_regions, { 0, input.window_size.y - cell_h }, is_new_frame = false);
+        font_layout_and_draw_text(*editor.font, "MINIPANEL", *render_rects, *update_regions, { 0, background_y }, is_new_frame = false);
 
         for editor.mini_panel.things {
-            offset_y: f64 = background_y + it_index * cell_h;
+            if it_index == editor.mini_panel.active_thing_index {
+                y0 := background_y + (it_index + 1) * ch;
+                y1 := background_y + (it_index + 2) * ch;
+
+                draw_rect(*render_rects, 0, y0, window_w, y1);
+            }
+
+            offset_y: f64 = background_y + (it_index + 1) * cell_h;
             // TODO(jt): Use a simpler/faster routine to handle mini panel layout?
             font_layout_and_draw_text(*editor.font, it, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
         }
@@ -660,10 +662,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     if editor.dev_show_atlas_texture {
         array_reset_keeping_memory(*render_rects);
 
-        rr := array_add(*render_rects);
-        rr.rect = { 0, 0, cast(f32, editor.font.glyph_atlas_width_in_pixels), cast(f32, editor.font.glyph_atlas_height_in_pixels) };
-        rr.texture_rect = { 0, 0, 1, 1 };
-        rr.texture_id = TEXTURE_ID_GLYPH_ATLAS;
+        w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
+        h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
+        draw_rect(*render_rects, 0, 0, w, h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
     }
 
     // Moved above the rendering code below, because OpenGL blocks and waits for surface, and we
@@ -681,8 +682,48 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
 #scope_file
 
-route_event_to_mini_panel :: (mini_panel: *Mini_Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) { // XXX
+route_event_to_mini_panel :: (mini_panel: *Mini_Panel, panel: *Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) { // XXX
+    if event.flags & .KEY_PRESSED {
+        if event.type == {
+            case .KEY; {
+                if event.data.key == {
+                    case .ARROW_UP;     mini_panel.active_thing_index = clamp(mini_panel.active_thing_index - 1, -1, mini_panel.things.count - 1);
+                    case .ARROW_DOWN;   mini_panel.active_thing_index = clamp(mini_panel.active_thing_index + 1, -1, mini_panel.things.count - 1);
+                    case .ARROW_LEFT;   mini_panel.buffer_cursor = clamp(mini_panel.buffer_cursor - 1, 0, mini_panel.buffer.count);
+                    case .ARROW_RIGHT;  mini_panel.buffer_cursor = clamp(mini_panel.buffer_cursor - 1, 0, mini_panel.buffer.count);
+                }
 
+                log("XXX % %", mini_panel.buffer_cursor, mini_panel.active_thing_index);
+            }
+
+            case .CODEPOINT; {
+                codepoint := event.data.codepoint;
+                if codepoint == {
+                    // XXX: ctrl-d, ctrl-a, ctrl-e,
+                    case .BACKSPACE; {
+                        if mini_panel.buffer_cursor > 0 {
+                            array_ordered_remove_by_index(*mini_panel.buffer, mini_panel.buffer_cursor);
+                            mini_panel.buffer_cursor -= 1;
+                        }
+                    }
+
+                    case .DELETE; {
+                        if mini_panel.buffer_cursor < mini_panel.buffer.count - 1 {
+                            array_ordered_remove_by_index(*mini_panel.buffer, mini_panel.buffer_cursor);
+                        }
+                    }
+
+                    case .ENTER; {
+                        // XXX: Confirm selection. Context specific.
+                    }
+
+                    // TODO(jt): Make indentation configurable.
+                    case .TAB;  array_insert_at(*mini_panel.buffer, #char " ", mini_panel.buffer_cursor);
+                    case;       array_insert_at(*mini_panel.buffer, cast(u32, codepoint), mini_panel.buffer_cursor);
+                }
+            }
+        }
+    }
 }
 
 route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) {
@@ -837,7 +878,6 @@ route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, 
                     panel.selecting = false;
 
                     codepoint := event.data.codepoint;
-
                     if codepoint == {
                         case .BACKSPACE;  text_buffer_delete_backward(*panel.buffer); panel.clamp_scroll_to_cursor = true;
                         case .DELETE;     text_buffer_delete_forward(*panel.buffer);  panel.clamp_scroll_to_cursor = true;
@@ -973,6 +1013,18 @@ setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time) {
 
     panel.scroll_source = panel.scroll;
     panel.scroll_time_start = time;
+}
+
+draw_rect :: (render_rects: *[..] Render_Rect, x0: f32, y0: f32, x1: f32, y1: f32, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
+    inline draw_rect(render_rects, { x0, y0, x1, y1 }, color, texture);
+}
+
+draw_rect :: (render_rects: *[..] Render_Rect, rect: Rect, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
+    rr := array_add(render_rects);
+    rr.rect = rect;
+    rr.texture_rect = { 0, 0, 1, 1 };
+    rr.texture_id = texture;
+    rr.color = color;
 }
 
 make_arena_procs :: (platform: Platform) -> Arena_Procs {
