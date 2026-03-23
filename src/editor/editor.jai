@@ -640,9 +640,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.9, 0.9, 0.9, 1.0 });
 
         if editor.mini_panel.active_thing_index == -1 {
-            draw_rect(*render_rects, 0, background_y, window_w, background_y + ch);
+            draw_rect(*render_rects, 0, background_y, window_w, background_y + ch, COLOR_SELECTION);
         }
-        // TODO(jt): Use a simpler/faster routine to handle mini panel layout?
+
+        draw_rect(*render_rects, editor.mini_panel.buffer_cursor * cw, background_y, (editor.mini_panel.buffer_cursor + 1) * cw, background_y + ch, COLOR_CURSOR);
+
+        // TODO(jt): Use a simpler/faster routine to handle mini panel layout (which is always single-line)?
+        //
+        // XXX: font_layout_and_draw_text requires utf8... I eventually wanted to keep the minipanel
+        // buffer simpler (in utf32), but maybe we should re-use our text buffer and make sure it
+        // stops inserting when it sees a newline.
         font_layout_and_draw_text(*editor.font, "MINIPANEL", *render_rects, *update_regions, { 0, background_y }, is_new_frame = false);
 
         for editor.mini_panel.things {
@@ -650,7 +657,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 y0 := background_y + (it_index + 1) * ch;
                 y1 := background_y + (it_index + 2) * ch;
 
-                draw_rect(*render_rects, 0, y0, window_w, y1);
+                draw_rect(*render_rects, 0, y0, window_w, y1, COLOR_SELECTION);
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
@@ -682,7 +689,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
 #scope_file
 
-route_event_to_mini_panel :: (mini_panel: *Mini_Panel, panel: *Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) { // XXX
+route_event_to_mini_panel :: (mini_panel: *Mini_Panel, panel: *Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) {
     if event.flags & .KEY_PRESSED {
         if event.type == {
             case .KEY; {
@@ -692,14 +699,12 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, panel: *Panel, event: Inp
                     case .ARROW_LEFT;   mini_panel.buffer_cursor = clamp(mini_panel.buffer_cursor - 1, 0, mini_panel.buffer.count);
                     case .ARROW_RIGHT;  mini_panel.buffer_cursor = clamp(mini_panel.buffer_cursor - 1, 0, mini_panel.buffer.count);
                 }
-
-                log("XXX % %", mini_panel.buffer_cursor, mini_panel.active_thing_index);
             }
 
             case .CODEPOINT; {
                 codepoint := event.data.codepoint;
                 if codepoint == {
-                    // XXX: ctrl-d, ctrl-a, ctrl-e,
+                    // XXX: Support ctrl-d, ctrl-a, ctrl-e,
                     case .BACKSPACE; {
                         if mini_panel.buffer_cursor > 0 {
                             array_ordered_remove_by_index(*mini_panel.buffer, mini_panel.buffer_cursor);
@@ -951,9 +956,7 @@ add_scratch_panel :: (editor: *Editor, platform: Platform) {
     editor.active_panel_index = panel_index;
 }
 
-add_file_visiting_panel :: (editor: *Editor) { // XXX
-
-}
+// TODO(jt): Add:   add_file_visiting_panel :: (editor: *Editor) {}
 
 recenter_panel :: (panel: *Panel, input: Input, cell_h: f32) {
     cursor_y := panel.buffer.cursor0.y * cell_h;
