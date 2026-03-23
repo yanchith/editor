@@ -889,7 +889,7 @@ add_scratch_panel :: (editor: *Editor, platform: Platform) {
 
     panel.scroll_source = { 0, 0 };
     panel.scroll_target = { 0, 0 };
-    panel.scroll_time_start = APOLLO_TIME_INVALID;
+    panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes for e.g. to_float64_seconds.
     panel.scroll = { 0, 0 };
 
     panel.clamp_scroll_to_cursor = true; // Because we are inserting pontentially large text.
@@ -963,7 +963,7 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
 
 finish_scroll_interpolation :: (panel: *Panel) {
     panel.scroll_source = panel.scroll_target;
-    panel.scroll_time_start = APOLLO_TIME_INVALID;
+    panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes for e.g. to_float64_seconds.
     panel.scroll = panel.scroll_target;
 }
 
