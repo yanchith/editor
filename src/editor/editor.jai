@@ -236,41 +236,50 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.data.key == {
-                        case .F1;  editor.font_size += 1; handled = true;
-                        case .F2;  editor.font_size = max(editor.font_size - 1, 4); handled = true;
-                        case .F3;  editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture; handled = true;
+                        case .F1;  editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture; handled = true;
                     }
                 }
 
                 case .CODEPOINT; {
-                    if it.data.codepoint == {
-                        case #char "g";  #through;
-                        case #char "G"; {
-                            if editor.mini_panel.open {
-                                editor.mini_panel.open = false;
+                    if editor.input_state.keys[Key.CTRL] & .DOWN {
+                        if it.data.codepoint == {
+                            // TODO(jt): This works a little too well on Windows, we don't even need
+                            // to press shift for the +. The problem is that Windows doesn't send us
+                            // the TEXT_INPUT (WM_CHAR/WM_SYSCHAR) event at all if CTRL is down, so
+                            // we are left with our shitty synthetic TEXT_INPUT in main.jai. We
+                            // could try translating the message without the CTRL and then glueing
+                            // the CTRL back in? I don't know.
+                            case #char "+";  editor.font_size += 1; handled = true;
+                            case #char "-";  editor.font_size = max(editor.font_size - 1, 4); handled = true;
+
+                            case #char "g";  #through;
+                            case #char "G"; {
+                                if editor.mini_panel.open {
+                                    editor.mini_panel.open = false;
+                                    handled = true;
+                                }
+                            }
+
+                            case #char "s";  #through;
+                            case #char "S"; {
+                                editor.mini_panel.open = true;
+                                if editor.mini_panel.open {
+                                    array_reset_keeping_memory(*editor.mini_panel.buffer);
+                                    editor.mini_panel.buffer_cursor = 0;
+
+                                    editor.mini_panel.action = .SEARCH;
+
+                                    array_reset_keeping_memory(*editor.mini_panel.things);
+                                    array_add(*editor.mini_panel.things, "Gondar");
+                                    array_add(*editor.mini_panel.things, "Nox");
+                                    array_add(*editor.mini_panel.things, "Brennan");
+                                    array_add(*editor.mini_panel.things, "Griffin");
+                                    array_add(*editor.mini_panel.things, "Seth");
+                                    editor.mini_panel.active_thing_index = 0;
+                                }
+
                                 handled = true;
                             }
-                        }
-
-                        case #char "s";  #through;
-                        case #char "S"; {
-                            editor.mini_panel.open = true;
-                            if editor.mini_panel.open {
-                                array_reset_keeping_memory(*editor.mini_panel.buffer);
-                                editor.mini_panel.buffer_cursor = 0;
-
-                                editor.mini_panel.action = .SEARCH;
-
-                                array_reset_keeping_memory(*editor.mini_panel.things);
-                                array_add(*editor.mini_panel.things, "Gondar");
-                                array_add(*editor.mini_panel.things, "Nox");
-                                array_add(*editor.mini_panel.things, "Brennan");
-                                array_add(*editor.mini_panel.things, "Griffin");
-                                array_add(*editor.mini_panel.things, "Seth");
-                                editor.mini_panel.active_thing_index = 0;
-                            }
-
-                            handled = true;
                         }
                     }
                 }
@@ -289,11 +298,22 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
+    if editor.input_state.keys[Key.CTRL] & .DOWN {
+        delta: s32;
+        if input.mouse_wheel_delta > 0 then delta = 1;
+        if input.mouse_wheel_delta < 0 then delta = -1;
+        editor.font_size = max(editor.font_size + delta, 4);
+    }
+
     {
         physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
         if editor.font.pixel_height != physical_pixel_height {
             log("Resetting font to new physical pixel height: %", physical_pixel_height);
             font_reset_for_pixel_height(*editor.font, physical_pixel_height);
+
+            for * editor.panels {
+                it.clamp_scroll_to_cursor = true;
+            }
         }
     }
 
@@ -310,7 +330,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Mouse wheel scrolling
         //
-        if active_panel && input.mouse_wheel_delta != 0 {
+        if active_panel && input.mouse_wheel_delta != 0 && !(editor.input_state.keys[Key.CTRL] & .DOWN) {
             // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
             active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
             active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * (active_panel.buffer.lines.count - 1));
