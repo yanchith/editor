@@ -273,9 +273,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                     text_buffer_reset(*editor.mini_panel.buffer);
                                     array_reset(*editor.mini_panel.things);
 
-                                    log("XXX pre reset");
                                     arena_reset(editor.mini_panel.arena);
-                                    log("XXX post reset");
 
                                     editor.mini_panel.action = .SEARCH;
 
@@ -285,8 +283,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                     array_add(*editor.mini_panel.things, "Griffin");
                                     array_add(*editor.mini_panel.things, "Seth");
                                     editor.mini_panel.active_thing_index = 0;
-
-                                    log("XXX post add");
                                 }
 
                                 handled = true;
@@ -675,11 +671,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         draw_rect(*render_rects, editor.mini_panel.buffer.cursor0.x * cw, background_y, (editor.mini_panel.buffer.cursor0.x + 1) * cw, background_y + ch, COLOR_CURSOR);
 
         // TODO(jt): Use a simpler/faster routine to handle mini panel layout (which is always single-line)?
-        //
-        // XXX: font_layout_and_draw_text requires utf8... I eventually wanted to keep the minipanel
-        // buffer simpler (in utf32), but maybe we should re-use our text buffer and make sure it
-        // stops inserting when it sees a newline.
-        font_layout_and_draw_text(*editor.font, "MINIPANEL", *render_rects, *update_regions, { 0, background_y }, is_new_frame = false);
+        view := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp); // XXX: HERE This crashes for now
+        font_layout_and_draw_text(*editor.font, view, *render_rects, *update_regions, { 0, background_y }, is_new_frame = false);
 
         for editor.mini_panel.things {
             if it_index == editor.mini_panel.active_thing_index {
