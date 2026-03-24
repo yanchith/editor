@@ -671,6 +671,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
         h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
+        draw_rect(*render_rects, 0, 0, w, h, { 0.89, 0.89, 0.95, 1 });
         draw_rect(*render_rects, 0, 0, w, h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
     }
 

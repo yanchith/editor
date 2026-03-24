@@ -128,7 +128,6 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
         return;
     }
 
-
     font.ascender    = font.ft_face.size.metrics.ascender;
     font.descender   = font.ft_face.size.metrics.descender;
     font.line_height = font.ft_face.size.metrics.height;
@@ -139,7 +138,9 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
     font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
 
-    PADDING :: 2; // Because the atlas is bilinearly filtered, and we don't want to sample data from adjacent cells.
+    // Because the atlas is bilinearly filtered, and we don't want to sample data from adjacent cells.
+    PADDING :: 1;
+
     atlas_cell_width_in_pixels  := font.max_glyph_width_in_integer_pixels + PADDING;
     atlas_cell_height_in_pixels := font.max_glyph_height_in_integer_pixels + PADDING;
     atlas_width_in_cells        := ATLAS_WIDTH_IN_PIXELS / atlas_cell_width_in_pixels;
@@ -150,7 +151,12 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     assert(atlas_height_in_cells > 0);
     assert(table_size > 0);
 
-    log("Glyph cell is %x% pixels. Glyph atlas size is %x% cells (% table entries)", atlas_cell_width_in_pixels, atlas_cell_height_in_pixels, atlas_width_in_cells, atlas_height_in_cells, table_size);
+    log(
+        "Glyph atlas size is %x% cells (% entries), %x% pixels. Glyph cell is %x% pixels.",
+        atlas_width_in_cells, atlas_height_in_cells, table_size,
+        ATLAS_WIDTH_IN_PIXELS, ATLAS_HEIGHT_IN_PIXELS,
+        atlas_cell_width_in_pixels, atlas_cell_height_in_pixels,
+    );
 
     font.glyph_atlas                       = arena_push_array(font.arena, u8, ATLAS_WIDTH_IN_PIXELS * ATLAS_HEIGHT_IN_PIXELS);
     font.glyph_atlas_cell_width_in_pixels  = atlas_cell_width_in_pixels;
@@ -250,12 +256,12 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
             entry_index := font.glyph_entries_head;
             entry := *font.glyph_entries[entry_index];
 
-            // We can't overwrite an entry we wrote to this frame, as we would be evicting
-            // something else we also wrote this frame that we need. If we want to handle this
-            // case, we could flush our rendering here and continue where we left of, but better
-            // to just have a larger cache.
+            // We can't overwrite an entry we wrote to this frame, as we would be evicting something
+            // else we also wrote this frame that we need. If we want to handle this case, we could
+            // flush our rendering here and continue where we left of, but better to just have a
+            // larger cache, especially now that we call this routine from multiple places.
             if entry.stamp == font.glyph_cache_stamp {
-                log_error("Glyph cache overwriting slot % during same layout. Rendering is going to look funny.", entry_index);
+                log_error("Overwriting glyph cache slot % during same frame. Rendering will be incorrect.", entry_index);
             }
 
             table_remove(*font.glyph_table, entry.glyph_index);
