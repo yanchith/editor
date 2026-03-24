@@ -1,7 +1,7 @@
 // A gap buffer operating on bytes. The bytes can be utf8, but this module does not care at all. The
 // calling code has to do utf8 parsing and provide proper byte indices.
 Gap_Buffer :: struct {
-    buffer: [..] u8; // You can modify the allocator before you use the gap buffer.
+    buffer: [..] u8; // You can modify the allocator before you use the gap buffer. Either manually, or with gap_buffer_init
 
     // Read only properties below.
 
@@ -9,6 +9,25 @@ Gap_Buffer :: struct {
 
     gap_index: s64;
     gap_count: s64;
+}
+
+// Init is optional. It is only here to help you initialize the allocator of the internal buffer. You can also set it manually.
+gap_buffer_init :: (gb: *Gap_Buffer, allocator: Allocator) {
+    gb.buffer.allocator = allocator;
+
+    gb.count = 0;
+
+    gb.gap_index = 0;
+    gb.gap_count = 0;
+}
+
+gap_buffer_reset :: (gb: *Gap_Buffer) {
+    array_reset(*gb.buffer);
+
+    gb.count = 0;
+
+    gb.gap_index = 0;
+    gb.gap_count = 0;
 }
 
 gap_buffer_get_nongap_byte :: (gb: Gap_Buffer, index: s64) -> u8 {

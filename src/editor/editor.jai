@@ -98,6 +98,8 @@ COLOR_SELECTION : Vector4 : { 0.7, 0.8, 0.7, 0.3 };
 
 SLOW_FRAME_THRESHOLD_MILLIS : f64 : 10;
 
+MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable!
+
 Editor :: struct {
     perm_arena: *Arena;
 
@@ -144,13 +146,14 @@ Panel :: struct {
 Mini_Panel :: struct {
     open: bool;
 
-    buffer: [..] u32;
-    buffer_cursor: s64;
+    buffer: Text_Buffer;
 
     action: Action;
 
     things: [..] string;
     active_thing_index: s64;
+
+    arena: *Arena;
 
     Action :: enum {
         SEARCH          :: 0;
@@ -187,8 +190,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.panels.allocator = arena_allocator(editor.perm_arena);
     add_scratch_panel(editor, platform);
 
-    editor.mini_panel.buffer.allocator = arena_allocator(editor.perm_arena);
-    editor.mini_panel.things.allocator = arena_allocator(editor.perm_arena);
+    mini_panel_arena := arena_allocate(arena_procs, reserve_size = 64 << 10);
+
+    editor.mini_panel.arena = mini_panel_arena;
+    text_buffer_init(*editor.mini_panel.buffer, mini_panel_arena);
+    editor.mini_panel.things.allocator = arena_allocator(mini_panel_arena);
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -264,18 +270,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "S"; {
                                 editor.mini_panel.open = true;
                                 if editor.mini_panel.open {
-                                    array_reset_keeping_memory(*editor.mini_panel.buffer);
-                                    editor.mini_panel.buffer_cursor = 0;
+                                    text_buffer_reset(*editor.mini_panel.buffer);
+                                    array_reset(*editor.mini_panel.things);
+
+                                    log("XXX pre reset");
+                                    arena_reset(editor.mini_panel.arena);
+                                    log("XXX post reset");
 
                                     editor.mini_panel.action = .SEARCH;
 
-                                    array_reset_keeping_memory(*editor.mini_panel.things);
                                     array_add(*editor.mini_panel.things, "Gondar");
                                     array_add(*editor.mini_panel.things, "Nox");
                                     array_add(*editor.mini_panel.things, "Brennan");
                                     array_add(*editor.mini_panel.things, "Griffin");
                                     array_add(*editor.mini_panel.things, "Seth");
                                     editor.mini_panel.active_thing_index = 0;
+
+                                    log("XXX post add");
                                 }
 
                                 handled = true;
@@ -646,12 +657,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
     if editor.mini_panel.open {
-        MINI_PANEL_LINES :: 10 + 1;
-
         cw := cast(f32, cell_w);
         ch := cast(f32, cell_h);
 
-        background_h := cast(f32, MINI_PANEL_LINES) * ch;
+        background_h := cast(f32, (MINI_PANEL_LINES + 1)) * ch;
         background_y := cast(f32, max(input.window_size.y - background_h, 0));
 
         window_w := cast(f32, input.window_size.x);
@@ -663,7 +672,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             draw_rect(*render_rects, 0, background_y, window_w, background_y + ch, COLOR_SELECTION);
         }
 
-        draw_rect(*render_rects, editor.mini_panel.buffer_cursor * cw, background_y, (editor.mini_panel.buffer_cursor + 1) * cw, background_y + ch, COLOR_CURSOR);
+        draw_rect(*render_rects, editor.mini_panel.buffer.cursor0.x * cw, background_y, (editor.mini_panel.buffer.cursor0.x + 1) * cw, background_y + ch, COLOR_CURSOR);
 
         // TODO(jt): Use a simpler/faster routine to handle mini panel layout (which is always single-line)?
         //
@@ -717,8 +726,8 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, panel: *Panel, event: Inp
                 if event.data.key == {
                     case .ARROW_UP;     mini_panel.active_thing_index = clamp(mini_panel.active_thing_index - 1, -1, mini_panel.things.count - 1);
                     case .ARROW_DOWN;   mini_panel.active_thing_index = clamp(mini_panel.active_thing_index + 1, -1, mini_panel.things.count - 1);
-                    case .ARROW_LEFT;   mini_panel.buffer_cursor = clamp(mini_panel.buffer_cursor - 1, 0, mini_panel.buffer.count);
-                    case .ARROW_RIGHT;  mini_panel.buffer_cursor = clamp(mini_panel.buffer_cursor - 1, 0, mini_panel.buffer.count);
+                    case .ARROW_LEFT;   text_buffer_move_cursor_x(*mini_panel.buffer, -1, false); // TODO(jt): Mini buffer selecting.
+                    case .ARROW_RIGHT;  text_buffer_move_cursor_x(*mini_panel.buffer,  1, false); // TODO(jt): Mini buffer selecting.
                 }
             }
 
@@ -726,26 +735,28 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, panel: *Panel, event: Inp
                 codepoint := event.data.codepoint;
                 if codepoint == {
                     // XXX: Support ctrl-d, ctrl-a, ctrl-e,
-                    case .BACKSPACE; {
-                        if mini_panel.buffer_cursor > 0 {
-                            array_ordered_remove_by_index(*mini_panel.buffer, mini_panel.buffer_cursor);
-                            mini_panel.buffer_cursor -= 1;
-                        }
-                    }
-
-                    case .DELETE; {
-                        if mini_panel.buffer_cursor < mini_panel.buffer.count - 1 {
-                            array_ordered_remove_by_index(*mini_panel.buffer, mini_panel.buffer_cursor);
-                        }
-                    }
+                    case .BACKSPACE;  text_buffer_delete_backward(*mini_panel.buffer);
+                    case .DELETE;     text_buffer_delete_forward(*mini_panel.buffer);
 
                     case .ENTER; {
                         // XXX: Confirm selection. Context specific.
                     }
 
                     // TODO(jt): Make indentation configurable.
-                    case .TAB;  array_insert_at(*mini_panel.buffer, #char " ", mini_panel.buffer_cursor);
-                    case;       array_insert_at(*mini_panel.buffer, cast(u32, codepoint), mini_panel.buffer_cursor);
+                    case .TAB;  text_buffer_insert(*mini_panel.buffer, " ");
+                    case; {
+                        // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
+                        // this back to codepoints for its linedata tracking. Add
+                        // text_buffer_insert_utf32?
+                        buf: [4] u8;
+                        s: string;
+                        s.data = buf.data;
+                        Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
+
+                        if !string_starts_with_newline(s) {
+                            text_buffer_insert(*panel.buffer, s);
+                        }
+                    }
                 }
             }
         }
@@ -917,13 +928,9 @@ route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, 
                         case .ENTER;      text_buffer_insert(*panel.buffer, "\n", undo_barrier = true); panel.clamp_scroll_to_cursor = true;
 
                         case; {
-                            // TODO(jt): @Speed Accumulate all codepoints into a UTF-8 temporary
-                            // buffer before inserting. That includes spacebar, enter, linefeed, etc.
-                            //
-                            // TODO(jt): @Speed This is a little dumb, because buffer will be
-                            // parsing this back to codepoints for its linedata tracking. Clean
-                            // this up after we know what we are doing (on all levels, from the
-                            // OS to our buffer!)
+                            // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
+                            // this back to codepoints for its linedata tracking. Add
+                            // text_buffer_insert_utf32?
                             buf: [4] u8;
                             s: string;
                             s.data = buf.data;
