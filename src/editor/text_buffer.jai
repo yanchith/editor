@@ -2,6 +2,7 @@
 // struct (this file) adds UTF8 knowledge. For now this is how it is.
 Text_Buffer :: struct {
     arena: *Arena;
+    arena_mark: Arena_Mark;
 
     cursor0: Cursor;
     cursor1: Cursor;
@@ -16,6 +17,7 @@ Text_Buffer :: struct {
     // This arena stores the actual edit texts. This way, we can actually pop/decommit it at least
     // sometimes? Maybe this is overthinking it too much.
     edit_text_arena: *Arena;
+    edit_text_arena_mark: Arena_Mark;
 }
 
 Cursor :: struct {
@@ -66,21 +68,45 @@ Edit :: struct {
     }
 }
 
-// text_buffer_init has to be called, or someone must do its equivalent. We might redesign this.
-text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, edit_text_arena: *Arena) {
+// text_buffer_init has to be called, or someone must do its equivalent. The two arenas can either
+// be the same (easier to setup), or two distinct dedicated arenas (allows memory in the
+// edit_text_arena to be reclaimed for changes that are no longer used). Text_Buffer preserves
+// allocations already present in these arenas, but you should not used them after they have been
+// passed in here. We might redesign this.
+text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, _edit_text_arena: *Arena = null) {
     buffer.* = {};
 
     buffer.arena = arena;
+    buffer.arena_mark = arena_get_mark(arena);
 
-    buffer.gb.buffer.allocator = arena_allocator(arena);
-    buffer.lines.allocator     = arena_allocator(arena);
-    buffer.edits.allocator   = arena_allocator(arena);
+    gap_buffer_init(*buffer.gb, arena_allocator(arena));
+
+    buffer.lines.allocator = arena_allocator(arena);
+    buffer.edits.allocator = arena_allocator(arena);
+
+    edit_text_arena := ifx _edit_text_arena then _edit_text_arena else arena;
 
     buffer.edit_text_arena = edit_text_arena;
+    buffer.edit_text_arena_mark = arena_get_mark(edit_text_arena);
 
     array_add(*buffer.lines);
 
     assert_valid(buffer);
+}
+
+text_buffer_reset :: (buffer: *Text_Buffer) {
+    gap_buffer_reset(*buffer.gb);
+
+    array_reset(*buffer.lines);
+    array_reset(*buffer.edits);
+
+    arena_pop_to_mark(buffer.arena, buffer.arena_mark);
+    arena_pop_to_mark(buffer.edit_text_arena, buffer.edit_text_arena_mark);
+
+    buffer.cursor0 = {};
+    buffer.cursor1 = {};
+
+    buffer.applied_edit_count = 0;
 }
 
 // TODO(jt): @Speed Inserting 1GB of prose takes almost 6 seconds, most of which is spent parsing
@@ -1185,9 +1211,13 @@ discard_unapplied_edits :: (buffer: *Text_Buffer) {
     if buffer.applied_edit_count < buffer.edits.count {
         edit := buffer.edits[buffer.applied_edit_count];
 
-        // Edit texts are allocated in order they were created. If we are hosing everything beyond
-        // a certain point, we can just use the restore mark from the beginning of the chain.
-        arena_pop_to_mark(buffer.edit_text_arena, edit.text_mark);
+        // Edit texts are allocated in order they were created. If we are hosing everything beyond a
+        // certain point, we can just use the restore mark from the beginning of the chain.
+        //
+        // However, we can only do it if we have a unique arena for the edit text.
+        if buffer.arena != buffer.edit_text_arena {
+            arena_pop_to_mark(buffer.edit_text_arena, edit.text_mark);
+        }
 
         buffer.edits.count = buffer.applied_edit_count;
     }
@@ -1401,102 +1431,6 @@ sort_cursors :: (start: *Cursor, end: *Cursor) {
     } else if start.y == end.y && start.x > end.x {
         swap(start, end);
     }
-}
-
-// We treat \r\n as a single character when we see them next to each other.
-//
-// :CarriageReturn
-
-string_starts_with_newline :: (bytes: [] u8) -> newline_byte_length: s64 {
-    return inline string_starts_with_newline(cast(string, bytes));
-}
-
-string_starts_with_newline :: (s: string) -> newline_byte_length: s64 {
-    if s.count > 1 && s[0] == "\r" && s[1] == "\n" {
-        return 2;
-    } else if s.count > 0 && s[0] == "\n" {
-        return 1;
-    }
-
-    return 0;
-}
-
-string_ends_with_newline :: (bytes: [] u8) -> newline_byte_length: s64 {
-    return inline string_ends_with_newline(cast(string, bytes));
-}
-
-string_ends_with_newline :: (s: string) -> newline_byte_length: s64 {
-    if s.count > 1 && s[s.count - 2] == "\r" && s[s.count - 1] == "\n" {
-        return 2;
-    } else if s.count > 0 && s[s.count - 1] == "\n" {
-        return 1;
-    }
-
-    return 0;
-}
-
-find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: s64 {
-    found_index, scanned_count := find_next_utf8_character_boundary(cast(string, bytes), index);
-    return found_index, scanned_count;
-}
-
-find_next_utf8_character_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: s64 {
-    assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
-    if index == text.count {
-        return text.count, 0;
-    }
-
-    assert(byte_is_utf8_character_boundary(text[index]));
-
-    // When scanning forward, we could also trust the unicode and advance based on what we read? Not
-    // sure if that's going to be faster, since it introduces a data dependency.
-    next_index := index + 1;
-    while next_index < text.count && !byte_is_utf8_character_boundary(text[next_index]) {
-        next_index += 1;
-    }
-
-    scanned_count := next_index - index;
-    assert(scanned_count <= 4);
-
-    return next_index, scanned_count;
-}
-
-find_previous_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: s64 {
-    found_index, scanned_count := inline find_previous_utf8_character_boundary(cast(string, bytes), index);
-    return found_index, scanned_count;
-}
-
-find_previous_utf8_character_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: s64 {
-    assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
-    if index == 0 {
-        return 0, 0;
-    }
-
-    if index < text.count { // Otherwise index == count, which is a valid starting point.
-        assert(byte_is_utf8_character_boundary(text[index]));
-    }
-
-    prev_index := index - 1;
-    while prev_index > 0 && !byte_is_utf8_character_boundary(text[prev_index]) {
-        prev_index -= 1;
-    }
-
-    scanned_count := index - prev_index;
-    assert(scanned_count <= 4);
-
-    return prev_index, index - prev_index;
-}
-
-
-byte_is_utf8_character_boundary :: inline (b: u8) -> bool {
-    /* Taken from Rust's std.
-
-    pub(crate) const fn is_utf8_char_boundary(self) -> bool {
-        // This is bit magic equivalent to: b < 128 || b >= 192
-        (self as i8) >= -0x40
-    }
-    */
-    return b < 128 || b >= 192;
 }
 
 // TODO(jt): Make this configurable?
