@@ -10,9 +10,11 @@
 
 #module_parameters()(SANITY := true); // TODO(jt): Eventually default this to false, once we are confident.
 
-ARENA_DEFAULT_RESERVE_SIZE: s64 : 256 << 20;
-ARENA_DEFAULT_COMMIT_SIZE:  s64 :  64 << 10;
-ARENA_DEFAULT_KEEP_SIZE:    s64 :  32 << 20;
+ARENA_DEFAULT_RESERVE_SIZE:        s64 : 256 << 20;
+ARENA_DEFAULT_COMMIT_SIZE:         s64 :  64 << 10;
+ARENA_DEFAULT_KEEP_COMMITTED_SIZE: s64 :  64 << 10;
+
+ARENA_DEFAULT_OVERWRITE_MEMORY :: SANITY;
 
 arena_allocator :: (arena: *Arena) -> Allocator {
     return { arena_allocator_proc, arena };
@@ -112,9 +114,9 @@ Arena_Procs :: struct {
 Arena :: struct {
     // Things given by the caller before arena_init as arguments to arena_allocate. At least procs must be set, because they don't have a default. Don't change them after init.
     procs: Arena_Procs;
-    reserve_size := ARENA_DEFAULT_RESERVE_SIZE; // How much memory we reserve, aligned to page size. Can't get more.
-    commit_size  := ARENA_DEFAULT_COMMIT_SIZE;  // The minimal size that is committed, aligned to page size.
-    keep_size    := ARENA_DEFAULT_KEEP_SIZE;    // The minimal size that is not decommitted once it has been committed, aligned to page size.
+    reserve_size        := ARENA_DEFAULT_RESERVE_SIZE;        // How much memory we reserve, aligned to page size. Can't get more.
+    commit_size         := ARENA_DEFAULT_COMMIT_SIZE;         // The minimal size that is (de)committed, aligned to page size. Should be less than reserve size.
+    keep_committed_size := ARENA_DEFAULT_KEEP_COMMITTED_SIZE; // The minimal size that is not decommitted once it has been committed, aligned to page size. Should be less than reserve size.
 
     // Internal stuff. Don't write to these yourself.
 
@@ -123,26 +125,31 @@ Arena :: struct {
 
     allocated: s64;
     committed: s64;
+
+    low_water_mark: s64; // Anything below won't be deallocated. Currently only used to prevent overwriting the arena's own data when resetting/popping.
 }
 
 // Allocate a new arena in its own memory and return pointer to itself. This is useful, if you want
 // to store the handle to the arena close to where it's being used instead of keeping it alive by
 // storing it on the stack above the code that uses it, but you don't have to use it this way.
 //
-// This routine tweaks the arena's keep_size so that it never overwrites its own data.
-arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZE, commit_size := ARENA_DEFAULT_COMMIT_SIZE, keep_size := ARENA_DEFAULT_KEEP_SIZE) -> *Arena {
+// This routine tweaks the arena's low water mark so that it never overwrites its own data.
+arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZE, commit_size := ARENA_DEFAULT_COMMIT_SIZE, keep_committed_size := ARENA_DEFAULT_KEEP_COMMITTED_SIZE) -> *Arena {
     arena: Arena;
     arena.procs = procs;
 
     // Aligning happens in arena_init.
-    arena.reserve_size = reserve_size;
-    arena.commit_size  = commit_size;
-    arena.keep_size    = max(size_of(Arena), keep_size);
+    arena.reserve_size        = reserve_size;
+    arena.commit_size         = commit_size;
+    arena.keep_committed_size = max(size_of(Arena), keep_committed_size);
 
     arena_init(*arena);
 
     pointer := arena_push(*arena, Arena);
     pointer.* = arena;
+
+    // So that we don't accidentally deallocate ourselves.
+    pointer.low_water_mark = pointer.allocated;
 
     return pointer;
 }
@@ -150,26 +157,26 @@ arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZ
 arena_init :: (arena: *Arena) {
     assert(arena.procs.page_size > 0 && is_power_of_two(arena.procs.page_size));
 
-    given_reserve := arena.reserve_size;
-    given_commit  := arena.commit_size;
-    given_keep    := arena.keep_size;
+    given_reserve        := arena.reserve_size;
+    given_commit         := arena.commit_size;
+    given_keep_committed := arena.keep_committed_size;
 
-    arena.reserve_size = align(max(arena.reserve_size, 1), arena.procs.page_size);
-    arena.commit_size  = align(max(arena.commit_size, 1), arena.procs.page_size);
-    arena.keep_size    = align(max(arena.keep_size, 1), arena.procs.page_size);
+    arena.reserve_size        = align(max(arena.reserve_size, 1), arena.procs.page_size);
+    arena.commit_size         = align(max(arena.commit_size, 1), arena.procs.page_size);
+    arena.keep_committed_size = align(max(arena.keep_committed_size, 1), arena.procs.page_size);
 
-    // Clamp commit and keep size so the caller can control all three sizes with just reserve size
-    // in simple scenarios. Note that this won't help when the actual allocation pushes the commit
-    // size above our reserved range.
-    arena.commit_size = min(arena.commit_size, arena.reserve_size);
-    arena.keep_size   = min(arena.keep_size, arena.reserve_size);
+    // Clamp commit and keep committed size so the caller can control all sizes with just reserve
+    // size in simple scenarios. Note that this won't help when the actual allocation pushes the
+    // commit size above our reserved range.
+    arena.commit_size         = min(arena.commit_size, arena.reserve_size);
+    arena.keep_committed_size = min(arena.keep_committed_size, arena.reserve_size);
 
-    if given_reserve != arena.reserve_size || given_commit != arena.commit_size || given_keep != arena.keep_size {
+    if given_reserve != arena.reserve_size || given_commit != arena.commit_size || given_keep_committed != arena.keep_committed_size {
         log_error(
-            "Arena sizes modified: RESERVE % -> %; COMMIT % -> %; KEEP % -> %;",
+            "Arena sizes modified: RESERVE % -> %; COMMIT % -> %; KEEP_COMMITTED % -> %;",
             given_reserve, arena.reserve_size,
             given_commit, arena.commit_size,
-            given_keep, arena.keep_size,
+            given_keep_committed, arena.keep_committed_size,
         );
     }
 
@@ -184,16 +191,20 @@ arena_init :: (arena: *Arena) {
 
     arena.allocated = 0;
     arena.committed = 0;
+
+    arena.low_water_mark = 0;
 }
 
 // Release all the memory back to the OS. You don't have to do it your program is going to end anyway.
+// If the arena was created with arena_allocate, don't use the pointer after.
 arena_release :: (arena: *Arena) {
     if !arena.memory_start {
         return;
     }
 
-    // Store on the side, because if the arena was created with arena_allocate, we can't access
-    // these after mem_release.
+    // Arena may or may not have been created with arena_allocate. In case it wasn't and it is still
+    // accessible after, we clear it to zero.
+
     memory_start := arena.memory_start;
     memory_end   := arena.memory_end;
 
@@ -340,7 +351,7 @@ arena_push_string :: (arena: *Arena, s: string, ensure_alignment := 1) -> string
 // allocation. (And even then it sometimes won't because of alignment of subsequent allocations, but
 // it is guaranteed to succeed if you just made the last allocation right now). Speaking of
 // alignment, you can't change it here.
-arena_maybe_modify_last_push :: (arena: *Arena, pointer: *void, old_size: s64, new_size: s64, overwrite_memory := false) -> success: bool {
+arena_maybe_modify_last_push :: (arena: *Arena, pointer: *void, old_size: s64, new_size: s64, overwrite_memory := ARENA_DEFAULT_OVERWRITE_MEMORY) -> success: bool {
     if !arena.memory_start {
         arena_init(arena);
     }
@@ -362,10 +373,14 @@ arena_maybe_modify_last_push :: (arena: *Arena, pointer: *void, old_size: s64, n
     }
 }
 
-arena_pop_to_mark :: (arena: *Arena, mark: Arena_Mark, overwrite_memory := false) {
+arena_pop_to_mark :: (arena: *Arena, _mark: Arena_Mark, overwrite_memory := ARENA_DEFAULT_OVERWRITE_MEMORY) {
     if !arena.memory_start {
         arena_init(arena);
     }
+
+    // Make sure we don't deallocate ourselves.
+    mark: Arena_Mark;
+    mark.allocated = max(_mark.allocated, arena.low_water_mark);
 
     sanity_assert(arena.allocated >= mark.allocated);
     if overwrite_memory && arena.allocated > mark.allocated {
@@ -378,10 +393,10 @@ arena_pop_to_mark :: (arena: *Arena, mark: Arena_Mark, overwrite_memory := false
 
     arena.allocated = mark.allocated;
 
-    if arena.committed > arena.keep_size {
+    if arena.committed > arena.keep_committed_size {
         decommit_size := arena.committed - align(arena.allocated, arena.procs.page_size);
-        if arena.committed - decommit_size < arena.keep_size {
-            decommit_size = arena.committed - arena.keep_size;
+        if arena.committed - decommit_size < arena.keep_committed_size {
+            decommit_size = arena.committed - arena.keep_committed_size;
         }
 
         if decommit_size {
@@ -396,7 +411,7 @@ arena_pop_to_mark :: (arena: *Arena, mark: Arena_Mark, overwrite_memory := false
     }
 }
 
-arena_reset :: inline (arena: *Arena, overwrite_memory := false) {
+arena_reset :: inline (arena: *Arena, overwrite_memory := ARENA_DEFAULT_OVERWRITE_MEMORY) {
     arena_pop_to_mark(arena, { 0 }, overwrite_memory);
 }
 
