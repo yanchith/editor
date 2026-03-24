@@ -88,7 +88,9 @@ Glyph_Entry :: struct {
     glyph_bitmap_height: s32;  // In integer pixels.
 }
 
-// The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena.
+// The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena. If the
+// arena already stores some allocations, they won't be popped, but you should not use it after
+// passing it to the font.
 make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_height: s32) -> Font {
     font: Font;
     font.arena        = arena;
