@@ -68,11 +68,12 @@ Edit :: struct {
     }
 }
 
-// text_buffer_init has to be called, or someone must do its equivalent. The two arenas can either
-// be the same (easier to setup), or two distinct dedicated arenas (allows memory in the
-// edit_text_arena to be reclaimed for changes that are no longer used). Text_Buffer preserves
-// allocations already present in these arenas, but you should not used them after they have been
-// passed in here. We might redesign this.
+// text_buffer_init has to be called, or someone must do its equivalent (create the first line)
+//
+// The two arenas can either be the same (easier to setup), or two distinct dedicated arenas (allows
+// memory in the edit_text_arena to be reclaimed for changes that are no longer used). Text_Buffer
+// preserves allocations already present in these arenas, but you should not used them after they
+// have been passed in here. We might redesign this.
 text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, _edit_text_arena: *Arena = null) {
     buffer.* = {};
 
@@ -89,12 +90,14 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, _edit_text_arena: *Are
     buffer.edit_text_arena = edit_text_arena;
     buffer.edit_text_arena_mark = arena_get_mark(edit_text_arena);
 
-    array_add(*buffer.lines);
+    array_add(*buffer.lines); // This is the only invariant we uphold for now.
 
     assert_valid(buffer);
 }
 
 text_buffer_reset :: (buffer: *Text_Buffer) {
+    assert_valid(buffer);
+
     gap_buffer_reset(*buffer.gb);
 
     array_reset(*buffer.lines);
@@ -107,6 +110,10 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
     buffer.cursor1 = {};
 
     buffer.applied_edit_count = 0;
+
+    array_add(*buffer.lines); // This is the only invariant we uphold for now.
+
+    assert_valid(buffer);
 }
 
 // TODO(jt): @Speed Inserting 1GB of prose takes almost 6 seconds, most of which is spent parsing
