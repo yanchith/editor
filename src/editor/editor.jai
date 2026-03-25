@@ -153,8 +153,6 @@ Mini_Panel :: struct {
     things: [..] string;
     active_thing_index: s64;
 
-    arena: *Arena;
-
     Action :: enum {
         SEARCH          :: 0;
         OPEN_FILE       :: 1;
@@ -192,9 +190,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     mini_panel_arena := arena_allocate(arena_procs, reserve_size = 64 << 10);
 
-    editor.mini_panel.arena = mini_panel_arena;
-    text_buffer_init(*editor.mini_panel.buffer, mini_panel_arena);
-    editor.mini_panel.things.allocator = arena_allocator(mini_panel_arena);
+    text_buffer_init(*editor.mini_panel.buffer, arena_allocate(arena_procs));
+    editor.mini_panel.things.allocator = arena_allocator(editor.perm_arena);
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -271,9 +268,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 editor.mini_panel.open = true;
                                 if editor.mini_panel.open {
                                     text_buffer_reset(*editor.mini_panel.buffer);
-                                    array_reset(*editor.mini_panel.things);
-
-                                    arena_reset(editor.mini_panel.arena);
+                                    array_reset_keeping_memory(*editor.mini_panel.things);
 
                                     editor.mini_panel.action = .SEARCH;
 
@@ -653,37 +648,43 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
     if editor.mini_panel.open {
-        cw := cast(f32, cell_w);
-        ch := cast(f32, cell_h);
+        cell_w32 := cast(f32, cell_w);
+        cell_h32 := cast(f32, cell_h);
 
-        background_h := cast(f32, (MINI_PANEL_LINES + 1)) * ch;
+        background_h := cast(f32, (MINI_PANEL_LINES + 1)) * cell_h32;
         background_y := cast(f32, max(input.window_size.y - background_h, 0));
 
         window_w := cast(f32, input.window_size.x);
         window_h := cast(f32, input.window_size.y);
 
-        draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.9, 0.9, 0.9, 1.0 });
+        draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.96, 0.96, 0.96, 1.0 });
 
         if editor.mini_panel.active_thing_index == -1 {
-            draw_rect(*render_rects, 0, background_y, window_w, background_y + ch, COLOR_SELECTION);
+            draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h32, COLOR_SELECTION);
         }
 
-        draw_rect(*render_rects, editor.mini_panel.buffer.cursor0.x * cw, background_y, (editor.mini_panel.buffer.cursor0.x + 1) * cw, background_y + ch, COLOR_CURSOR);
+        ACTION_TEXT_SEARCH :: "Search: ";
+        action_text := ACTION_TEXT_SEARCH;
 
-        // TODO(jt): Use a simpler/faster routine to handle mini panel layout (which is always single-line)?
-        view := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp); // XXX: HERE This crashes for now
-        font_layout_and_draw_text(*editor.font, view, *render_rects, *update_regions, { 0, background_y }, is_new_frame = false);
+        line_view := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
+        cursor_x := cast(f32, font_compute_position_on_line(editor.font, action_text, action_text.count));
+        cursor_x += cast(f32, font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor0.x));
+
+        draw_rect(*render_rects, cursor_x, background_y, cursor_x + cell_w32, background_y + cell_h32, COLOR_CURSOR);
+
+        main_line := tprint("%%", action_text, line_view);
+
+        font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, is_new_frame = false);
 
         for editor.mini_panel.things {
             if it_index == editor.mini_panel.active_thing_index {
-                y0 := background_y + (it_index + 1) * ch;
-                y1 := background_y + (it_index + 2) * ch;
+                y0 := background_y + (it_index + 1) * cell_h32;
+                y1 := background_y + (it_index + 2) * cell_h32;
 
                 draw_rect(*render_rects, 0, y0, window_w, y1, COLOR_SELECTION);
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            // TODO(jt): Use a simpler/faster routine to handle mini panel layout?
             font_layout_and_draw_text(*editor.font, it, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
         }
     }
@@ -712,42 +713,63 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
 #scope_file
 
-route_event_to_mini_panel :: (mini_panel: *Mini_Panel, panel: *Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) {
+route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) {
+    // TODO(jt): Do selecting in mini panel
+    // TODO(jt): Do horizontal scroll in mini panel.
     if event.flags & .KEY_PRESSED {
         if event.type == {
             case .KEY; {
                 if event.data.key == {
                     case .ARROW_UP;     mini_panel.active_thing_index = clamp(mini_panel.active_thing_index - 1, -1, mini_panel.things.count - 1);
                     case .ARROW_DOWN;   mini_panel.active_thing_index = clamp(mini_panel.active_thing_index + 1, -1, mini_panel.things.count - 1);
-                    case .ARROW_LEFT;   text_buffer_move_cursor_x(*mini_panel.buffer, -1, false); // TODO(jt): Mini buffer selecting.
-                    case .ARROW_RIGHT;  text_buffer_move_cursor_x(*mini_panel.buffer,  1, false); // TODO(jt): Mini buffer selecting.
+                    case .ARROW_LEFT;   text_buffer_move_cursor_x(*mini_panel.buffer, -1, false);
+                    case .ARROW_RIGHT;  text_buffer_move_cursor_x(*mini_panel.buffer,  1, false);
                 }
             }
 
             case .CODEPOINT; {
                 codepoint := event.data.codepoint;
-                if codepoint == {
-                    // XXX: Support ctrl-d, ctrl-a, ctrl-e,
-                    case .BACKSPACE;  text_buffer_delete_backward(*mini_panel.buffer);
-                    case .DELETE;     text_buffer_delete_forward(*mini_panel.buffer);
 
-                    case .ENTER; {
-                        // XXX: Confirm selection. Context specific.
+                if input_state.keys[Key.CTRL] & .DOWN {
+                    if codepoint == {
+                        case #char "p";  #through;
+                        case #char "P";  mini_panel.active_thing_index = clamp(mini_panel.active_thing_index - 1, -1, mini_panel.things.count - 1);
+                        case #char "n";  #through;
+                        case #char "N";  mini_panel.active_thing_index = clamp(mini_panel.active_thing_index + 1, -1, mini_panel.things.count - 1);
+                        case #char "b";  #through;
+                        case #char "B";  text_buffer_move_cursor_x(*mini_panel.buffer, -1, false);
+                        case #char "f";  #through;
+                        case #char "F";  text_buffer_move_cursor_x(*mini_panel.buffer,  1, false);
+                        case #char "a";  #through;
+                        case #char "A";  text_buffer_move_cursor_to_start_of_line(*mini_panel.buffer, false);
+                        case #char "e";  #through;
+                        case #char "E";  text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, false);
+                        case #char "d";  #through;
+                        case #char "D";  text_buffer_delete_forward(*mini_panel.buffer);
                     }
+                } else {
+                    if codepoint == {
+                        case .BACKSPACE;  text_buffer_delete_backward(*mini_panel.buffer);
+                        case .DELETE;     text_buffer_delete_forward(*mini_panel.buffer);
 
-                    // TODO(jt): Make indentation configurable.
-                    case .TAB;  text_buffer_insert(*mini_panel.buffer, " ");
-                    case; {
-                        // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
-                        // this back to codepoints for its linedata tracking. Add
-                        // text_buffer_insert_utf32?
-                        buf: [4] u8;
-                        s: string;
-                        s.data = buf.data;
-                        Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
+                        case .ENTER; {
+                            // XXX: Confirm selection. Context specific.
+                        }
 
-                        if !string_starts_with_newline(s) {
-                            text_buffer_insert(*panel.buffer, s);
+                        // TODO(jt): Make indentation configurable.
+                        case .TAB;  text_buffer_insert(*mini_panel.buffer, " ");
+                        case; {
+                            // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
+                            // this back to codepoints for its linedata tracking. Add
+                            // text_buffer_insert_utf32?
+                            buf: [4] u8;
+                            s: string;
+                            s.data = buf.data;
+                            Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
+
+                            if !string_starts_with_newline(s) {
+                                text_buffer_insert(*mini_panel.buffer, s);
+                            }
                         }
                     }
                 }

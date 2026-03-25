@@ -72,7 +72,7 @@ Edit :: struct {
 //
 // The two arenas can either be the same (easier to setup), or two distinct dedicated arenas (allows
 // memory in the edit_text_arena to be reclaimed for changes that are no longer used). Text_Buffer
-// preserves allocations already present in these arenas, but you should not used them after they
+// preserves allocations already present in these arenas, but you should not use them after they
 // have been passed in here. We might redesign this.
 text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, _edit_text_arena: *Arena = null) {
     buffer.* = {};
