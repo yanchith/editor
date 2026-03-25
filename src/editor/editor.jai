@@ -428,6 +428,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         if editor.mini_panel.action == {
             case .SEARCH; {
+                ProfileZone(":TextSearch");
                 // TODO(jt): @Speed This is a very naive way to do this.
                 // TODO(jt): auto_release_temp?
 
@@ -437,9 +438,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         // TODO(jt): @Speed @Memory Instead of copying the string to temp and then maybe to the
                         // items arena, we can copy directly to items arena and pop/modify-last-push.
                         line_text := text_buffer_make_view_for_line(active_panel.buffer, it,, temp);
-                        found_index := String.find_index_from_left(line_text, search_text);
-                        if found_index != -1 {
-                            s := arena_push_string(editor.mini_panel.items_arena, line_text);
+                        found := String.contains_nocase(line_text, search_text);
+                        if found {
+                            s := "";
+                            if line_text.count {
+                                s = arena_push_string(editor.mini_panel.items_arena, line_text);
+                            }
+
                             array_add(*editor.mini_panel.items, s);
                         }
                     }
@@ -708,8 +713,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, is_new_frame = false);
 
-        for editor.mini_panel.items {
-            if it_index == editor.mini_panel.item_index {
+        index0 := max(editor.mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
+        index1 := min(index0 + MINI_PANEL_LINES, editor.mini_panel.items.count - 1);
+
+        it_index := 0;
+        for index0..index1 {
+            if it == editor.mini_panel.item_index {
                 y0 := background_y + (it_index + 1) * cell_h32;
                 y1 := background_y + (it_index + 2) * cell_h32;
 
@@ -717,7 +726,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            font_layout_and_draw_text(*editor.font, it, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
+            font_layout_and_draw_text(*editor.font, editor.mini_panel.items[it], *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
+
+            it_index += 1;
         }
     }
 
@@ -755,7 +766,8 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
     }
 
     // TODO(jt): Do selecting in mini panel
-    // TODO(jt): Do horizontal scroll in mini panel.
+    // TODO(jt): Do animated horizontal scroll of buffer in mini panel.
+    // TODO(jt): Do animated vertical scroll of item list in mini_panel.
     if event.flags & .KEY_PRESSED {
         if event.type == {
             case .KEY; {
@@ -786,6 +798,16 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                         case #char "E";  text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, false);
                         case #char "d";  #through;
                         case #char "D";  text_buffer_delete_forward(*mini_panel.buffer); mini_panel.items_need_update = true;
+
+                        case #char "v";  #through;
+                        case #char "V";  mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+                    }
+                } else if input_state.keys[Key.ALT] & .DOWN {
+                    if codepoint == {
+                        case #char "v";  #through;
+                        case #char "V";  mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+
+                        // TODO(jt): M-f, M-b.
                     }
                 } else {
                     if codepoint == {
@@ -793,7 +815,8 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                         case .DELETE;     text_buffer_delete_forward(*mini_panel.buffer);  mini_panel.items_need_update = true;
 
                         case .ENTER; {
-                            // XXX: Confirm selection. Context specific.
+                            // XXX: Confirm selection. Context specific. For search this means close
+                            // mini panel and jump to match.
                         }
 
                         // TODO(jt): Make indentation configurable.

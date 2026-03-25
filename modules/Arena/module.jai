@@ -226,7 +226,7 @@ arena_is_this_yours :: (arena: Arena, pointer: *void) -> bool {
 }
 
 arena_push :: (arena: *Arena, _size: s64, alignment: s64 = 16) -> *void {
-    assert(_size > 0);
+    assert(_size > 0, "Can not push zero size");
     assert(alignment > 0 && is_power_of_two(alignment));
 
     if !arena.memory_start {
