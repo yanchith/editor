@@ -96,7 +96,8 @@ TEXTURE_ID_NONE        : Texture_ID : 0;
 TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 
 COLOR_CURSOR    : Vector4 : { 0.7, 0.8, 0.7, 1.0 };
-COLOR_SELECTION : Vector4 : { 0.7, 0.8, 0.7, 0.3 };
+COLOR_SELECTION : Vector4 : { 0.7, 0.8, 0.7, 0.38 };
+COLOR_HIGHLIGHT : Vector4 : { 0.7, 0.7, 0.9, 0.12 };
 
 SLOW_FRAME_THRESHOLD_MILLIS : f64 : 10;
 
@@ -172,8 +173,15 @@ Mini_Panel :: struct {
 
     Item :: struct {
         text: string;
-        c0: s64;
-        c1: s64;
+        selection_x0: s64;
+        selection_x1: s64;
+
+        // The code that fills these in can stuff things in here for rendering code or confirming
+        // code. It does not necessarily need to be an allocation in the items. The 64 bits of the
+        // pointer can also be used to store stuff, if you don't use it as a pointer.
+        //
+        // :MiniPanelAPI
+        userdata: *void;
     }
 }
 
@@ -204,10 +212,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.panels.allocator = arena_allocator(editor.perm_arena);
     add_scratch_panel(editor, platform);
 
-    text_buffer_init(*editor.mini_panel.buffer, arena_allocate(arena_procs));
-
-    editor.mini_panel.items_arena = arena_allocate(arena_procs);
-    editor.mini_panel.items.allocator = arena_allocator(editor.mini_panel.items_arena);
+    init_mini_panel(*editor.mini_panel, arena_procs);
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -272,26 +277,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "-";  editor.font_size = max(editor.font_size - 1, 4); handled = true;
 
                             case #char "g";  #through;
-                            case #char "G"; {
-                                if editor.mini_panel.open {
-                                    editor.mini_panel.open = false;
-                                    handled = true;
-                                }
-                            }
+                            case #char "G";  handled = close_mini_panel(*editor.mini_panel);
 
                             case #char "s";  #through;
-                            case #char "S"; {
-                                editor.mini_panel.open = true;
-                                if editor.mini_panel.open {
-                                    text_buffer_reset(*editor.mini_panel.buffer);
-                                    array_reset_keeping_memory(*editor.mini_panel.items);
-
-                                    editor.mini_panel.action = .SEARCH;
-                                    editor.mini_panel.items_need_update = true;
-                                }
-
-                                handled = true;
-                            }
+                            case #char "S";  handled = open_mini_panel(*editor.mini_panel, .SEARCH);
                         }
                     }
                 }
@@ -450,7 +439,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         // TODO(jt): @Speed @Memory Instead of copying the string to temp and then maybe to the
                         // items arena, we can copy directly to items arena and pop/modify-last-push.
                         line_text := text_buffer_make_view_for_line(active_panel.buffer, it,, temp);
-                        found := String.contains_nocase(line_text, search_text);
+
+                        // TODO(jt): We need a fuzzy searcher here! Additionally
+                        // String.index_of_string_nocase is kind of deprecated, we don't really want
+                        // to use it.
+                        found_index, found := String.index_of_string_nocase(line_text, search_text);
                         if found {
                             s := "";
                             if line_text.count {
@@ -459,7 +452,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                             item := array_add(*editor.mini_panel.items);
                             item.text = s;
-                            // XXX: Indices!
+                            item.selection_x0 = found_index;
+                            item.selection_x1 = found_index + search_text.count;
+
+                            item.userdata = cast(*void, it);
                         }
                     }
                 }
@@ -714,6 +710,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h32, COLOR_SELECTION);
         }
 
+        // :MiniPanelAPI
         ACTION_TEXT_SEARCH :: "Search: ";
         action_text := ACTION_TEXT_SEARCH;
 
@@ -732,15 +729,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         it_index := 0;
         for index0..index1 {
+            item := *editor.mini_panel.items[it];
+
             if it == editor.mini_panel.item_index {
                 y0 := background_y + (it_index + 1) * cell_h32;
                 y1 := background_y + (it_index + 2) * cell_h32;
+                draw_rect(*render_rects, 0, y0, window_w, y1, COLOR_HIGHLIGHT);
 
-                draw_rect(*render_rects, 0, y0, window_w, y1, COLOR_SELECTION);
+                // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
+                // that can resume where it left of last time. In can see multiple places in this
+                // file where that would be useful. It will become more important for long lines.
+                x0 := font_compute_position_on_line(editor.font, item.text, item.selection_x0);
+                x1 := font_compute_position_on_line(editor.font, item.text, item.selection_x1);
+                draw_rect(*render_rects, cast(f32, x0), y0, cast(f32, x1), y1, COLOR_SELECTION);
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            font_layout_and_draw_text(*editor.font, editor.mini_panel.items[it].text, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
+            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
 
             it_index += 1;
         }
@@ -778,6 +783,8 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
         case .SWITCH_TO_PANEL;  min_item_index = 0;
         case .CLOSE_PANEL;      min_item_index = 0;
     }
+
+    original_item_index := mini_panel.item_index;
 
     // TODO(jt): Do selecting in mini panel
     // TODO(jt): Do animated horizontal scroll of buffer in mini panel.
@@ -835,7 +842,19 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                             // :MiniPanelAPI
                             if mini_panel.action == {
                                 case .SEARCH; {
-                                    // XXX: HERE
+                                    assert(mini_panel.item_index >= 0);
+                                    item := *mini_panel.items[mini_panel.item_index];
+
+                                    x := item.selection_x0;
+                                    y := cast(s64, item.userdata);
+
+                                    sanity_assert(cast(bool, active_panel));
+                                    if active_panel {
+                                        text_buffer_move_cursor_to(*active_panel.buffer, x, y, false);
+                                        recenter_panel(active_panel, input, cell_h, true);
+                                    }
+
+                                    close_mini_panel(mini_panel);
                                 }
                             }
                         }
@@ -857,6 +876,27 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    if mini_panel.open {
+        // :MiniPanelAPI
+        if mini_panel.item_index != original_item_index {
+            if mini_panel.action == .SEARCH {
+                // TODO(jt): @Cleanup This is the copypaste of the confirm action, except it does not close the mini panel.
+
+                assert(mini_panel.item_index >= 0);
+                item := *mini_panel.items[mini_panel.item_index];
+
+                x := item.selection_x0;
+                y := cast(s64, item.userdata);
+
+                sanity_assert(cast(bool, active_panel));
+                if active_panel {
+                    text_buffer_move_cursor_to(*active_panel.buffer, x, y, false);
+                    recenter_panel(active_panel, input, cell_h, true);
                 }
             }
         }
@@ -1046,6 +1086,42 @@ route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, 
     }
 }
 
+init_mini_panel :: (mini_panel: *Mini_Panel, arena_procs: Arena_Procs) {
+    // Mini text buffer gets its own arena, because it survives longer than the items.
+    text_buffer_init(*mini_panel.buffer, arena_allocate(arena_procs));
+
+    mini_panel.items_arena = arena_allocate(arena_procs);
+    mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
+}
+
+open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action) -> was_closed: bool {
+    text_buffer_reset(*mini_panel.buffer);
+
+    array_reset(*mini_panel.items);
+    arena_reset(mini_panel.items_arena);
+    mini_panel.item_index = 0;
+    mini_panel.items_need_update = true;
+
+    mini_panel.action = action;
+
+    was_closed := !mini_panel.open;
+    mini_panel.open = true;
+
+    return was_closed;
+}
+
+close_mini_panel :: (mini_panel: *Mini_Panel) -> was_open: bool {
+    text_buffer_reset(*mini_panel.buffer);
+
+    array_reset(*mini_panel.items);
+    arena_reset(mini_panel.items_arena);
+
+    was_open := mini_panel.open;
+    mini_panel.open = false;
+
+    return was_open;
+}
+
 add_scratch_panel :: (editor: *Editor, platform: Platform) {
     ProfileZone("add_scratch_panel");
 
@@ -1086,7 +1162,7 @@ add_scratch_panel :: (editor: *Editor, platform: Platform) {
 
 // TODO(jt): Add:   add_file_visiting_panel :: (editor: *Editor) {}
 
-recenter_panel :: (panel: *Panel, input: Input, cell_h: f32) {
+recenter_panel :: (panel: *Panel, input: Input, cell_h: f32, force_center := false) {
     cursor_y := panel.buffer.cursor0.y * cell_h;
 
     center := cursor_y - 0.5 * input.window_size.y;
@@ -1095,7 +1171,9 @@ recenter_panel :: (panel: *Panel, input: Input, cell_h: f32) {
 
     finish_scroll_interpolation(panel);
 
-    if panel.scroll_target.y == center {
+    if force_center {
+        panel.scroll_target.y = center;
+    } else if panel.scroll_target.y == center {
         panel.scroll_target.y = top;
     } else if panel.scroll_target.y == top {
         panel.scroll_target.y = bottom;
