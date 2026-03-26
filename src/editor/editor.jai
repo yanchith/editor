@@ -804,10 +804,13 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                     }
                 } else if input_state.keys[Key.ALT] & .DOWN {
                     if codepoint == {
+                        case #char "b";  #through;
+                        case #char "B";  text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, false);
+                        case #char "f";  #through;
+                        case #char "F";  text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, false);
+
                         case #char "v";  #through;
                         case #char "V";  mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
-
-                        // TODO(jt): M-f, M-b.
                     }
                 } else {
                     if codepoint == {
