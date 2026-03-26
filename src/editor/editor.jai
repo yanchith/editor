@@ -847,16 +847,18 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                             // :MiniPanelAPI
                             if mini_panel.action == {
                                 case .SEARCH; {
-                                    assert(mini_panel.item_index >= 0);
-                                    item := *mini_panel.items[mini_panel.item_index];
+                                    if mini_panel.items.count {
+                                        assert(mini_panel.item_index >= 0);
+                                        item := *mini_panel.items[mini_panel.item_index];
 
-                                    x := item.selection_x0;
-                                    y := cast(s64, item.userdata);
+                                        x := item.selection_x0;
+                                        y := cast(s64, item.userdata);
 
-                                    sanity_assert(cast(bool, active_panel));
-                                    if active_panel {
-                                        text_buffer_move_cursor_to(*active_panel.buffer, x, y, false);
-                                        recenter_panel(active_panel, input, cell_h, true);
+                                        sanity_assert(cast(bool, active_panel));
+                                        if active_panel {
+                                            text_buffer_move_cursor_to(*active_panel.buffer, x, y, false);
+                                            recenter_panel(active_panel, input, cell_h, true);
+                                        }
                                     }
 
                                     close_mini_panel(mini_panel);
