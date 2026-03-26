@@ -151,10 +151,15 @@ Mini_Panel :: struct {
 
     buffer: Text_Buffer;
 
+    // For now, this is an enum of things we might want to do, but this is not extensible. Once we
+    // want to do a plugin architecture, we should look at all the places that read the action and
+    // see what they do there, so we can replace them with procs.
+    //
+    // :MiniPanelAPI
     action: Action;
 
     items_arena: *Arena;
-    items: [..] string;
+    items: [..] Item;
     item_index: s64;          // [0, items.count) to select a item, -1 to select the mini panel's buffer (if allowed by the action).
     items_need_update: bool;
 
@@ -163,6 +168,12 @@ Mini_Panel :: struct {
         OPEN_FILE       :: 1;
         SWITCH_TO_PANEL :: 2;
         CLOSE_PANEL     :: 3;
+    }
+
+    Item :: struct {
+        text: string;
+        c0: s64;
+        c1: s64;
     }
 }
 
@@ -426,6 +437,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         array_reset(*editor.mini_panel.items);
         arena_reset(editor.mini_panel.items_arena);
 
+        // :MiniPanelAPI
         if editor.mini_panel.action == {
             case .SEARCH; {
                 ProfileZone(":TextSearch");
@@ -445,7 +457,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 s = arena_push_string(editor.mini_panel.items_arena, line_text);
                             }
 
-                            array_add(*editor.mini_panel.items, s);
+                            item := array_add(*editor.mini_panel.items);
+                            item.text = s;
+                            // XXX: Indices!
                         }
                     }
                 }
@@ -726,7 +740,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            font_layout_and_draw_text(*editor.font, editor.mini_panel.items[it], *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
+            font_layout_and_draw_text(*editor.font, editor.mini_panel.items[it].text, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
 
             it_index += 1;
         }
@@ -757,7 +771,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 #scope_file
 
 route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) {
-    min_item_index: s64;
+    min_item_index: s64; // :MiniPanelAPI
     if mini_panel.action == {
         case .SEARCH;           min_item_index = 0;
         case .OPEN_FILE;        min_item_index = -1;
@@ -818,8 +832,12 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                         case .DELETE;     text_buffer_delete_forward(*mini_panel.buffer);  mini_panel.items_need_update = true;
 
                         case .ENTER; {
-                            // XXX: Confirm selection. Context specific. For search this means close
-                            // mini panel and jump to match.
+                            // :MiniPanelAPI
+                            if mini_panel.action == {
+                                case .SEARCH; {
+                                    // XXX: HERE
+                                }
+                            }
                         }
 
                         // TODO(jt): Make indentation configurable.
