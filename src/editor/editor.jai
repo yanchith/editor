@@ -431,24 +431,33 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             case .SEARCH; {
                 ProfileZone(":TextSearch");
                 // TODO(jt): @Speed This is a very naive way to do this.
-                // TODO(jt): auto_release_temp?
-                //
-                // XXX: HERE @Speed So the actual biggest offender here isn't what we thought. It is
-                // get_gap_buffer_index_for_line. Do we want to make an incremental version where we
-                // pass the previous index and line or something? Or maybe we want a nicer API that
-                // let's us iterated lines and those gb indices?
-
                 if active_panel {
                     search_text := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
+
+                    gb_index := 0;
                     for 0..active_panel.buffer.lines.count - 1 {
-                        // TODO(jt): @Speed @Memory Instead of copying the string to temp and then maybe to the
-                        // items arena, we can copy directly to items arena and pop/modify-last-push.
-                        line_text := text_buffer_make_view_for_line(active_panel.buffer, it,, temp);
+                        gb_count := active_panel.buffer.lines[it].byte_count;
+
+                        // We go straight to the gap buffer and count its indices manually, so that
+                        // we avoid the quadratic behavior of calling get_gb_index_for_line each
+                        // time through the loop.
+                        //
+                        // Note that even though we pass in temp, making of the view will only
+                        // allocate for one of the lines - the one that crosses the gap.
+                        line_bytes := gap_buffer_make_contiguous_view(active_panel.buffer.gb, gb_index, gb_count,, temp);
+                        line_text := cast(string, line_bytes);
 
                         // TODO(jt): We need a fuzzy searcher here! Additionally
                         // String.index_of_string_nocase is kind of deprecated, we don't really want
                         // to use it.
-                        found_index, found := String.index_of_string_nocase(line_text, search_text);
+                        //
+                        // TODO(jt): @Speed index_of_string_nocase is kind of slooooow.
+                        found_index: s64;
+                        found: bool;
+                        {
+                            ProfileZone(":ActualTextSearchThisTime");
+                            found_index, found = String.index_of_string_nocase(line_text, search_text);
+                        }
                         if found {
                             s := "";
                             if line_text.count {
@@ -462,6 +471,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                             item.userdata = cast(*void, it);
                         }
+
+                        gb_index += gb_count;
                     }
                 }
 
@@ -502,7 +513,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             cursor0 := panel.buffer.cursor0;
 
-            // XXX: This is not the correct viewport rect anymore! Compute for panel.
+            // XXX: Incorrect. Compute viewport for panel.
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, window_w, window_h);
             scroll_to_rect: DRect;
             if panel.clamp_scroll_to_start_of_line {
@@ -709,7 +720,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         window_w := cast(f32, input.window_size.x);
         window_h := cast(f32, input.window_size.y);
 
-        draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.96, 0.96, 0.96, 1.0 });
+        draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.9, 0.9, 0.9, 1.0 });
 
         if editor.mini_panel.item_index == -1 {
             draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h32, COLOR_SELECTION);
@@ -1097,7 +1108,7 @@ init_mini_panel :: (mini_panel: *Mini_Panel, arena_procs: Arena_Procs) {
     // Mini text buffer gets its own arena, because it survives longer than the items.
     text_buffer_init(*mini_panel.buffer, arena_allocate(arena_procs));
 
-    mini_panel.items_arena = arena_allocate(arena_procs);
+    mini_panel.items_arena = arena_allocate(arena_procs, reserve_size = 16 << 30);
     mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
 }
 
@@ -1157,7 +1168,7 @@ add_scratch_panel :: (editor: *Editor, platform: Platform) {
 
     // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
     // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
-    HELLO_SIZE : s64 : 64 << 10;
+    HELLO_SIZE : s64 : 10 << 20;
 
     hello_arena := arena_allocate(arena_procs, reserve_size = 16 << 30);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
