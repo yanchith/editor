@@ -432,6 +432,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 ProfileZone(":TextSearch");
                 // TODO(jt): @Speed This is a very naive way to do this.
                 // TODO(jt): auto_release_temp?
+                //
+                // XXX: HERE @Speed So the actual biggest offender here isn't what we thought. It is
+                // get_gap_buffer_index_for_line. Do we want to make an incremental version where we
+                // pass the previous index and line or something? Or maybe we want a nicer API that
+                // let's us iterated lines and those gb indices?
 
                 if active_panel {
                     search_text := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
