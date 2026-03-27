@@ -35,14 +35,15 @@ f64 :: float64;
 #import "Basic";
 #import "Hash_Table";
 
-Random    :: #import "Random";
-String    :: #import "String";
-File      :: #import "File";
-Window    :: #import "Window_Creation";
-Input     :: #import "Input"; // This is our modified version. See :ModifiedInputModule.
-Clipboard :: #import "Clipboard";
-Simp      :: #import "Simp";
-Editor    :: #import,file "editor/editor.jai"()(SANITY = SANITY);
+Random         :: #import "Random";
+String         :: #import "String";
+File           :: #import "File";
+File_Utilities :: #import "File_Utilities";
+Window         :: #import "Window_Creation";
+Input          :: #import "Input"; // This is our modified version. See :ModifiedInputModule.
+Clipboard      :: #import "Clipboard";
+Simp           :: #import "Simp";
+Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY);
 
 Random_State           :: Random.Random_State;
 random_seed            :: Random.random_seed;
@@ -88,8 +89,7 @@ main :: () {
             //
             // We detect this situation by looking for asset files that should be distributed with
             // the executable. If we can't find them, we are most likely not running from console.
-            System         :: #import "System";
-            File_Utilities :: #import "File_Utilities";
+            System :: #import "System";
 
             see_data := true;
             see_data &&= File_Utilities.is_directory("data/fonts");
@@ -161,6 +161,30 @@ main :: () {
             data, success := File.read_entire_file(absolute_path);
 
             return success, cast([] u8, data);
+        }
+        // TODO(jt): platform.write_file
+        // TODO(jt): platform.delete_file
+
+        // TODO(jt): platform.make_directory
+        // TODO(jt): platform.delete_directory
+
+        platform.list_files = (path: string) -> [] Editor.File_Info /* Allocated with context.allocator */ {
+            file_infos: [..] Editor.File_Info; // context.allocator
+
+            visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] Editor.File_Info) {
+                file_info := array_add(userdata);
+                file_info.name = copy_string(visit_info.full_name); // context.allocator
+                file_info.size = visit_info.size;
+
+                file_info.modification_time = visit_info.modification_time;
+
+                file_info.is_symlink   = visit_info.is_symlink;
+                file_info.is_directory = visit_info.is_directory;
+            }
+
+            File_Utilities.visit_files(path, false, *file_infos, visitor, visit_files = true, visit_directories = true, visit_symlinks = true, follow_directory_symlinks = true);
+
+            return file_infos;
         }
 
         platform.clipboard_get_text = () -> string {
