@@ -95,9 +95,10 @@ operator==     :: Math.operator==;
 TEXTURE_ID_NONE        : Texture_ID : 0;
 TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 
-COLOR_CURSOR    : Vector4 : { 0.7, 0.8, 0.7, 1.0 };
-COLOR_SELECTION : Vector4 : { 0.7, 0.8, 0.7, 0.38 };
-COLOR_HIGHLIGHT : Vector4 : { 0.7, 0.7, 0.9, 0.12 };
+CURSOR_COLOR    : Vector4 : { 0.7, 0.8, 0.7, 1.0 };
+SELECTION_COLOR : Vector4 : { 0.7, 0.8, 0.7, 0.38 };
+LINE_COLOR      : Vector4 : { 0, 0, 0, 0 };
+MINI_PANEL_LINE_COLOR : Vector4 : { 0.7, 0.7, 0.9, 0.18 };
 
 SLOW_FRAME_THRESHOLD_MILLIS : f64 : 10;
 
@@ -547,7 +548,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection_y1 := selection_y0 + cell_h;
                 selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
-                draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), COLOR_SELECTION);
+                draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), SELECTION_COLOR);
             } else {
                 ProfileZone(":DrawSelectionMultiLine");
 
@@ -582,7 +583,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
-                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), COLOR_SELECTION);
+                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), SELECTION_COLOR);
                 }
 
                 // Center lines, if in viewport
@@ -600,7 +601,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
-                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), COLOR_SELECTION);
+                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), SELECTION_COLOR);
                 }
 
                 if cursor_end.y >= viewport_line_index_start && cursor_end.y <= viewport_line_index_end {
@@ -614,7 +615,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
-                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), COLOR_SELECTION);
+                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), SELECTION_COLOR);
                 }
             }
         }
@@ -624,9 +625,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         {
             position := buffer_cursor0_position;
-            rect := drect_from_point_and_size(position.x, position.y, cell_w, cell_h) - panel.scroll;
 
-            draw_rect(*render_rects, drect_to_rect(rect), COLOR_CURSOR);
+            cursor_rect := drect_from_point_and_size(position.x, position.y, cell_w, cell_h) - panel.scroll;
+            line_rect: Rect = { 0, cast(f32, position.y - panel.scroll.y), cast(f32, input.window_size.x), cast(f32, position.y + cell_h - panel.scroll.y) };
+
+            draw_rect(*render_rects, line_rect, LINE_COLOR);
+            draw_rect(*render_rects, drect_to_rect(cursor_rect), CURSOR_COLOR);
         }
 
         //
@@ -684,7 +688,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.96, 0.96, 0.96, 1.0 });
 
         if editor.mini_panel.item_index == -1 {
-            draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h32, COLOR_SELECTION);
+            draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h32, SELECTION_COLOR);
         }
 
         // :MiniPanelAPI (mini_panel_render_proc)
@@ -695,7 +699,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         cursor_x := cast(f32, font_compute_position_on_line(editor.font, action_text, action_text.count));
         cursor_x += cast(f32, font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor0.x));
 
-        draw_rect(*render_rects, cursor_x, background_y, cursor_x + cell_w32, background_y + cell_h32, COLOR_CURSOR);
+        draw_rect(*render_rects, cursor_x, background_y, cursor_x + cell_w32, background_y + cell_h32, CURSOR_COLOR);
 
         main_line := tprint("%%", action_text, line_view);
 
@@ -711,14 +715,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it == editor.mini_panel.item_index {
                 y0 := background_y + (it_index + 1) * cell_h32;
                 y1 := background_y + (it_index + 2) * cell_h32;
-                draw_rect(*render_rects, 0, y0, window_w, y1, COLOR_HIGHLIGHT);
+                draw_rect(*render_rects, 0, y0, window_w, y1, MINI_PANEL_LINE_COLOR);
 
                 // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
                 // that can resume where it left of last time. In can see multiple places in this
                 // file where that would be useful. It will become more important for long lines.
                 x0 := font_compute_position_on_line(editor.font, item.text, item.highlight_x0);
                 x1 := font_compute_position_on_line(editor.font, item.text, item.highlight_x1);
-                draw_rect(*render_rects, cast(f32, x0), y0, cast(f32, x1), y1, COLOR_SELECTION);
+                draw_rect(*render_rects, cast(f32, x0), y0, cast(f32, x1), y1, SELECTION_COLOR);
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
