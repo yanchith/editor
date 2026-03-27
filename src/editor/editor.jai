@@ -888,6 +888,9 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                             // :MiniPanelAPI
                             if mini_panel.action == {
                                 case .SEARCH; {
+                                    // TODO(jt): Because we route events before we do the search,
+                                    // the confirm action here can see the unupdated items. We could
+                                    // force the update here.
                                     if mini_panel.items.count {
                                         assert(mini_panel.item_index >= 0);
                                         item := *mini_panel.items[mini_panel.item_index];
@@ -918,6 +921,7 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                                             if success {
                                                 text_buffer_reset(*active_panel.buffer);
                                                 text_buffer_insert(*active_panel.buffer, file_contents);
+                                                text_buffer_move_cursor_to(*active_panel.buffer, 0, 0, false);
                                                 recenter_panel(active_panel, input, cell_h, true);
                                             }
                                         }
