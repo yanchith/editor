@@ -387,10 +387,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     apron := 2 * cell_w;
 
                     line_view := text_buffer_make_view_for_line(active_panel.buffer, active_panel.buffer.cursor0.y,, temp);
-                    max_x := font_compute_position_on_line(editor.font, line_view, active_panel.buffer.cursor0.x) - input.window_size.x + apron;
+
+                    // Clamp to zero, so we don't end up scrolling the other way if the line is
+                    // short. (Happens if you start scrolling on a long line, but then vertically
+                    // scroll to a short line.)
+                    max_x := max(font_compute_position_on_line(editor.font, line_view, active_panel.buffer.cursor0.x) - input.window_size.x + apron, 0);
 
                     active_panel.scroll_target.x += SCROLL_SPEED * boost * dt;
-                    active_panel.scroll_target.x = min(active_panel.scroll_target.x, max_x);
+                    active_panel.scroll_target.x = min(active_panel.scroll_target.x,  max_x);
+
                     finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
