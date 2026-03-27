@@ -173,8 +173,8 @@ Mini_Panel :: struct {
 
     Item :: struct {
         text: string;
-        selection_x0: s64;
-        selection_x1: s64;
+        highlight_x0: s64;
+        highlight_x1: s64;
 
         // The code that fills these in can stuff things in here for rendering code or confirming
         // code. It does not necessarily need to be an allocation in the items. The 64 bits of the
@@ -261,6 +261,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .KEY; {
                     if it.data.key == {
                         case .F1;  editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture; handled = true;
+
+                        // TODO(jt): Temporary. We need a keymap for handling sequences of keyboard shortcuts.
+                        case .F2; open_mini_panel(*editor.mini_panel, .OPEN_FILE, "./");
                     }
                 }
 
@@ -429,7 +432,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // :MiniPanelAPI
         if editor.mini_panel.action == {
             case .SEARCH; {
-                ProfileZone(":TextSearch");
+                ProfileZone(":SearchUpdate");
                 // TODO(jt): @Speed This is a very naive way to do this.
                 if active_panel {
                     search_text := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
@@ -455,7 +458,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         found_index: s64;
                         found: bool;
                         {
-                            ProfileZone(":ActualTextSearchThisTime");
+                            ProfileZone("String.index_of_string_nocase");
                             found_index, found = String.index_of_string_nocase(line_text, search_text);
                         }
                         if found {
@@ -466,8 +469,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                             item := array_add(*editor.mini_panel.items);
                             item.text = s;
-                            item.selection_x0 = found_index;
-                            item.selection_x1 = found_index + search_text.count;
+                            item.highlight_x0 = found_index;
+                            item.highlight_x1 = found_index + search_text.count;
 
                             item.userdata = cast(*void, it);
                         }
@@ -477,6 +480,33 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
 
                 editor.mini_panel.items_need_update = false;
+            }
+
+            case .OPEN_FILE; {
+                ProfileZone(":OpenFileUpdate");
+
+                path_text := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
+
+                path_prefix, _, _, file_name_with_extension := String.path_decomp(path_text);
+
+                // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
+                file_list := platform.list_files(path_prefix,, temp);
+                for file_list {
+                    log("XXX %", it.name);
+                    found_index, found := String.index_of_string_nocase(it.name, file_name_with_extension);
+                    if found {
+                        s := "";
+                        if it.name.count {
+                            s = arena_push_string(editor.mini_panel.items_arena, it.name);
+                        }
+
+                        item := array_add(*editor.mini_panel.items);
+                        item.text = s;
+                        item.highlight_x0 = found_index;
+                        item.highlight_x1 = found_index + file_name_with_extension.count;
+                        // XXX: Userdata?
+                    }
+                }
             }
         }
     }
@@ -573,7 +603,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             cursor_end   := text_buffer_get_max_cursor(panel.buffer);
 
             if cursor_start.y == cursor_end.y {
-                ProfileZone(":DrawSelectionHighlightSingleLine");
+                ProfileZone(":DrawSelectionSingleLine");
 
                 line_start := text_buffer_get_start_cursor_for_line(panel.buffer, cursor_start.y);
 
@@ -588,7 +618,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), COLOR_SELECTION);
             } else {
-                ProfileZone(":DrawSelectionHighlightMultiLine");
+                ProfileZone(":DrawSelectionMultiLine");
 
                 // This does very simple vertical culling by doing layout and draw only on visible
                 // lines. If the lines are long, we do a lot of layout and draw.
@@ -755,8 +785,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
                 // that can resume where it left of last time. In can see multiple places in this
                 // file where that would be useful. It will become more important for long lines.
-                x0 := font_compute_position_on_line(editor.font, item.text, item.selection_x0);
-                x1 := font_compute_position_on_line(editor.font, item.text, item.selection_x1);
+                x0 := font_compute_position_on_line(editor.font, item.text, item.highlight_x0);
+                x1 := font_compute_position_on_line(editor.font, item.text, item.highlight_x1);
                 draw_rect(*render_rects, cast(f32, x0), y0, cast(f32, x1), y1, COLOR_SELECTION);
             }
 
@@ -862,7 +892,7 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                                         assert(mini_panel.item_index >= 0);
                                         item := *mini_panel.items[mini_panel.item_index];
 
-                                        x := item.selection_x0;
+                                        x := item.highlight_x0;
                                         y := cast(s64, item.userdata);
 
                                         sanity_assert(cast(bool, active_panel));
@@ -873,6 +903,25 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                                     }
 
                                     close_mini_panel(mini_panel);
+                                }
+
+                                case .OPEN_FILE; {
+                                    if mini_panel.item_index == -1 {
+                                        // XXX: Open new file
+                                    } else if mini_panel.items.count {
+                                        item := *mini_panel.items[mini_panel.item_index];
+                                        path := item.text;
+
+                                        // XXX: Temporary!
+                                        if active_panel {
+                                            success, file_contents := platform.read_file(path,, temp);
+                                            if success {
+                                                text_buffer_reset(*active_panel.buffer);
+                                                text_buffer_insert(*active_panel.buffer, file_contents);
+                                                recenter_panel(active_panel, input, cell_h, true);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -908,7 +957,7 @@ route_event_to_mini_panel :: (mini_panel: *Mini_Panel, active_panel: *Panel, eve
                 assert(mini_panel.item_index >= 0);
                 item := *mini_panel.items[mini_panel.item_index];
 
-                x := item.selection_x0;
+                x := item.highlight_x0;
                 y := cast(s64, item.userdata);
 
                 sanity_assert(cast(bool, active_panel));
@@ -1112,8 +1161,9 @@ init_mini_panel :: (mini_panel: *Mini_Panel, arena_procs: Arena_Procs) {
     mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
 }
 
-open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action) -> was_closed: bool {
+open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action, initial_text := "") -> was_closed: bool {
     text_buffer_reset(*mini_panel.buffer);
+    text_buffer_insert(*mini_panel.buffer, initial_text);
 
     array_reset(*mini_panel.items);
     arena_reset(mini_panel.items_arena);
