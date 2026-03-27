@@ -116,6 +116,10 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
+text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false) {
+    inline text_buffer_insert(buffer, cast(string, bytes), undo_barrier);
+}
+
 // TODO(jt): @Speed Inserting 1GB of prose takes almost 6 seconds, most of which is spent parsing
 // unicode and updating the line metadata. We could do it SIMD?
 text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false) {
