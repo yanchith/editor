@@ -29,6 +29,27 @@ string_ends_with_newline :: (s: string) -> newline_byte_length: s64 {
     return 0;
 }
 
+count_utf8_characters :: (bytes: [] u8) -> s64 {
+    return inline count_utf8_characters(cast(string, bytes));
+}
+
+count_utf8_characters :: (text: string) -> s64 {
+    if text.count == 0 {
+        return 0;
+    }
+
+    assert(byte_is_utf8_character_boundary(text[0]));
+
+    count := 1;
+    for 1..text.count - 1 {
+        if byte_is_utf8_character_boundary(text[it]) {
+            count += 1;
+        }
+    }
+
+    return count;
+}
+
 find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: s64 {
     found_index, scanned_count := find_next_utf8_character_boundary(cast(string, bytes), index);
     return found_index, scanned_count;

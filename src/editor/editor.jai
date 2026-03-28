@@ -1125,6 +1125,7 @@ mini_panel_update_proc :: (mini_panel: *Mini_Panel, active_panel: *Panel, platfo
                     new_item_index := -1;
 
                     search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
+                    search_text_char_count := mini_panel.buffer.lines[0].char_count;
 
                     gb_index := 0;
                     for 0..active_panel.buffer.lines.count - 1 {
@@ -1156,11 +1157,13 @@ mini_panel_update_proc :: (mini_panel: *Mini_Panel, active_panel: *Panel, platfo
                                 s = arena_push_string(mini_panel.items_arena, line_text);
                             }
 
+                            x0 := count_utf8_characters(String.slice(line_text, 0, found_index));
+
                             item_index := mini_panel.items.count;
                             item := array_add(*mini_panel.items);
                             item.text = s;
-                            item.highlight_x0 = found_index;
-                            item.highlight_x1 = found_index + search_text.count; // XXX: @Bug This is incorrect. The highlight is in characters, not bytes!
+                            item.highlight_x0 = x0;
+                            item.highlight_x1 = x0 + search_text_char_count;
 
                             item.userdata = cast(*void, it);
 
@@ -1187,9 +1190,12 @@ mini_panel_update_proc :: (mini_panel: *Mini_Panel, active_panel: *Panel, platfo
                 ProfileZone(":MiniPanelOpenFileUpdate");
 
                 path_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
+                path_text_char_count := mini_panel.buffer.lines[0].char_count;
 
                 path_prefix, _, _, file_name_with_extension := String.path_decomp(path_text);
                 path_prefix = String.trim_right(path_prefix, "/");
+
+                file_name_with_extension_char_count := count_utf8_characters(file_name_with_extension);
 
                 // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
                 file_list := platform.list_files(path_prefix,, temp);
@@ -1201,10 +1207,12 @@ mini_panel_update_proc :: (mini_panel: *Mini_Panel, active_panel: *Panel, platfo
                             s = arena_push_string(mini_panel.items_arena, it.name);
                         }
 
+                        x0 := count_utf8_characters(String.slice(it.name, 0, found_index));
+
                         item := array_add(*mini_panel.items);
                         item.text = s;
-                        item.highlight_x0 = found_index;
-                        item.highlight_x1 = found_index + file_name_with_extension.count; // TODO(jt): Should we worry about unicode here?
+                        item.highlight_x0 = x0;
+                        item.highlight_x1 = x0 + file_name_with_extension_char_count;
                     }
                 }
 
