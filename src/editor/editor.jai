@@ -223,7 +223,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     arena_procs := make_arena_procs(platform);
     editor.perm_arena = arena_allocate(arena_procs);
 
-    font_arena   := arena_allocate(arena_procs);
+    font_arena := arena_allocate(arena_procs);
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
 
@@ -240,7 +240,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         input_state_update_with_event(*editor.input_state, it);
     }
 
-    editor.panels.allocator = arena_allocator(editor.perm_arena);
+    editor.documents.allocator = arena_allocator(editor.perm_arena);
+    editor.panels.allocator    = arena_allocator(editor.perm_arena);
+
     panel := array_add(*editor.panels);
     set_panel_document_to_scratch(editor, panel, platform);
 
