@@ -148,6 +148,13 @@ Panel :: struct {
 
     selecting: bool;
     buffer: Text_Buffer; // XXX: We need to reuse text buffers between various panels! (the panel content has to own the cursors)
+
+    // The arena is currently just for path_of_backing_file. The buffer has its own arenas, becuase
+    // it can be referenced by multiple panels. I don't like this, but maybe it will become clear
+    // what to do later, once we have more stuff here.
+    arena: *Arena;
+
+    path_of_backing_file: string; // If empty, this does not yet have a backing file.
 }
 
 // TODO(jt): @Cleanup Can we split this into its own file?
@@ -266,7 +273,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     if it.data.key == {
                         case .F1;  editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture; handled = true;
 
-                        // TODO(jt): Temporary. We need a keymap for handling sequences of keyboard shortcuts.
+                        // TODO(jt): F key is temporary. We need a keymap for handling sequences of keyboard shortcuts.
                         case .F2;  {
                             was_closed := open_mini_panel(*editor.mini_panel, .OPEN_FILE, "./");
                             if was_closed {
@@ -274,6 +281,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             }
 
                             handled = was_closed;
+                        }
+
+                        // TODO(jt): F key is temporary. We need a keymap for handling sequences of keyboard shortcuts.
+                        case .F3; {
+                            if active_panel && active_panel.path_of_backing_file.count {
+                                gap_buffer_move_gap_to(*active_panel.buffer.gb, 0);
+                                contents := gap_buffer_make_contiguous_view(active_panel.buffer.gb, 0, active_panel.buffer.gb.count, assert_that_we_do_not_allocate = true);
+                                success := platform.write_file(active_panel.path_of_backing_file, contents);
+                                if success {
+                                    log("Wrote file %", active_panel.path_of_backing_file);
+                                } else {
+                                    log("Failed to write file %", active_panel.path_of_backing_file);
+                                }
+                            }
                         }
                     }
                 }
@@ -1254,6 +1275,8 @@ mini_panel_confirm_proc :: (mini_panel: *Mini_Panel, active_panel: *Panel, platf
                 if active_panel {
                     success, file_contents := platform.read_file(path,, temp);
                     if success {
+                        active_panel.path_of_backing_file = copy_string(path,, arena_allocator(active_panel.arena));
+
                         text_buffer_reset(*active_panel.buffer);
                         text_buffer_insert(*active_panel.buffer, file_contents);
                         text_buffer_move_cursor_to(*active_panel.buffer, 0, 0, false);
@@ -1292,6 +1315,10 @@ add_scratch_panel :: (editor: *Editor, platform: Platform) {
 
     panel.selecting = false;
     panel.buffer = buffer;
+
+    panel.arena = arena_allocate(arena_procs);
+
+    panel.path_of_backing_file = "";
 
     // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
     // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.

@@ -162,7 +162,13 @@ main :: () {
 
             return success, cast([] u8, data);
         }
-        // TODO(jt): platform.write_file
+        platform.write_file = (path: string, data: [] u8) -> success: bool {
+            // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
+            // will start respecting context.allocator eventually, so we pass in temp there as well.
+            absolute_path := File.get_absolute_path(path,, temp);
+            return File.write_entire_file(path, cast(string, data));
+        }
+
         // TODO(jt): platform.delete_file
 
         // TODO(jt): platform.make_directory
