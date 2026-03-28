@@ -11,10 +11,13 @@ TODO(jt): Stuff to do:
 - [X] Basic file navigation
 - [X] Basic file editing
 - [ ] Load file/Save file with file navigation in mini panel
-- [ ] Find in mini panel
+- [X] Find in mini panel
 - [X] Cut/Copy/Paste
 - [X] Undo!
 - [ ] Panel splitting (we can move this to the fancy section)
+- [ ] Find/replace
+- [ ] Keymap support
+- [ ] What else have I missed?
 
 TODO(jt): Fancy stuff to do:
 
@@ -1165,6 +1168,7 @@ mini_panel_update_proc :: (mini_panel: *Mini_Panel, active_panel: *Panel, platfo
                 path_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
 
                 path_prefix, _, _, file_name_with_extension := String.path_decomp(path_text);
+                path_prefix = String.trim_right(path_prefix, "/");
 
                 // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
                 file_list := platform.list_files(path_prefix,, temp);
