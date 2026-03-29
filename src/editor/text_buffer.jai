@@ -626,7 +626,7 @@ text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include
     line := buffer.lines[line_index];
 
     start_index := text_buffer_get_gap_buffer_index_for_line(buffer, line_index);
-    view        := gap_buffer_make_contiguous_view(buffer.gb, start_index, line.byte_count);
+    view        := gap_buffer_make_view(buffer.gb, start_index, line.byte_count);
 
     if !include_newline {
         newline_advance := string_ends_with_newline(view);
@@ -665,7 +665,7 @@ text_buffer_make_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _
     start_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start);
     end_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end);
 
-    view := gap_buffer_make_contiguous_view(buffer.gb, start_index, end_index - start_index);
+    view := gap_buffer_make_view(buffer.gb, start_index, end_index - start_index);
 
     return cast(string, view);
 }
@@ -1171,7 +1171,7 @@ assert_valid :: (buffer: Text_Buffer) {
         array_reserve(*lines, buffer.lines.count);
         array_add(*lines);
 
-        view := cast(string, gap_buffer_make_contiguous_view(buffer.gb, 0, buffer.gb.count,, temp));
+        view := cast(string, gap_buffer_make_view(buffer.gb, 0, buffer.gb.count,, temp));
         while view.count {
             newline_advance := string_starts_with_newline(view);
             if newline_advance {
