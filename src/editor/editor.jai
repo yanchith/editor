@@ -144,7 +144,9 @@ Document :: struct {
     // like this, but maybe it will become clear what to do later, once we have more stuff here.
     arena: *Arena;
 
-    path_of_backing_file: string; // If empty, this does not (yet) have a backing file. Scratch documents are always in memory, until they are saved.
+    // If empty, this does not have a backing file. Scratch documents are always in memory, until
+    // they are saved, at which point a backing file path is assigned.
+    path_of_backing_file: string;
 
     Kind :: enum {
         SCRATCH;
@@ -309,7 +311,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 buffer   := *active_panel.document.buffer;
 
                                 gap_buffer_move_gap_to(*buffer.gb, 0);
-                                contents := gap_buffer_make_contiguous_view(buffer.gb, 0, buffer.gb.count, assert_that_we_do_not_allocate = true);
+                                contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_that_we_do_not_allocate = true);
                                 success := platform.write_file(document.path_of_backing_file, contents);
                                 if success {
                                     log("Wrote file %", document.path_of_backing_file);
@@ -1187,7 +1189,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, ce
                         //
                         // Note that even though we pass in temp, making of the view will only
                         // allocate for one of the lines - the one that crosses the gap.
-                        line_bytes := gap_buffer_make_contiguous_view(document.buffer.gb, gb_index, gb_count,, temp);
+                        line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
                         line_text := cast(string, line_bytes);
 
                         // TODO(jt): We need a fuzzy searcher here! Additionally
@@ -1328,37 +1330,52 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
         }
 
         case .OPEN_FILE; {
+            path: string;
             if mini_panel.item_index == -1 {
-                // XXX: Make this do the same thing as the code below... we just need to normalize
-                // the path, so we don't point to the same document with two paths.
+                // XXX: HERE It is likely (but not certain) that this is a nonexisting file. We need
+                // to represent this.
+                path = text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
             } else if mini_panel.items.count {
-                item := *mini_panel.items[mini_panel.item_index];
-                path := item.text;
+                path = mini_panel.items[mini_panel.item_index].text;
+            }
 
-                document := find_or_add_document(editor, platform, .FILE, path);
-                // TODO(jt): Detect/Watch file changes on disk!
-                success, file_contents := platform.read_file(path,, temp);
-                if success {
-                    text_buffer_insert(*document.buffer, file_contents);
+            success, absolute_path := platform.get_absolute_path(path,, temp);
+            if success {
+                document, newly_created := find_or_add_document(editor, platform, .FILE, absolute_path);
+                if newly_created {
+                    log("Loading file into document: %", absolute_path);
 
+                    // TODO(jt): Detect/Watch file changes on disk!
+                    success, file_contents := platform.read_file(absolute_path,, temp);
+                    if success {
+                        text_buffer_insert(*document.buffer, file_contents);
+
+                        if active_panel {
+                            set_panel_document(active_panel, document);
+                            recenter_panel(active_panel, input, cell_h, true);
+                        }
+                    }
+                } else {
+                    log("Switching to existing document %", document.path_of_backing_file);
                     if active_panel {
                         set_panel_document(active_panel, document);
-                        recenter_panel(active_panel, input, cell_h, true);
                     }
                 }
-
-                close_mini_panel(mini_panel);
+            } else {
+                log("Failed to get absolute path for %", path);
             }
+
+            close_mini_panel(mini_panel);
         }
     }
 }
 
-find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, path_of_backing_file: string) -> *Document {
+find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, path_of_backing_file: string) -> *Document, newly_created: bool {
     for * editor.documents {
         if it.kind != kind                                  continue;
         if it.path_of_backing_file != path_of_backing_file  continue;
 
-        return it;
+        return it, false;
     }
 
     arena_procs := make_arena_procs(platform);
@@ -1379,7 +1396,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     _, document_pointer := bucket_array_add(*editor.documents, document);
 
-    return document_pointer;
+    return document_pointer, true;
 }
 
 set_panel_document :: (panel: *Panel, document: *Document) {
