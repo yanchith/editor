@@ -154,18 +154,48 @@ main :: () {
             }
         }
 
-        platform.read_file = (path: string) -> success: bool, data: [] u8 {
+        platform.get_absolute_path = (path: string) -> success: bool, string {
+            // TODO(jt): Raphael says that unix (presumably macOS?) get_absolute_path doesn't work
+            // for non-existing files. We might have to deal with that.
+            //
+            // TODO(jt): @Cleanup get_absulute_path returns a string in temporary storage, but we
+            // want to sometimes make it permanent. We only copy it to caller provided storage if it
+            // also isn't temp.
+            _absolute_path, success := File.get_absolute_path(path,, temp); // The temp here is future-proofing.
+            if !success {
+                return false, "";
+            }
+
+            absolute_path: string;
+            if context.allocator.proc == temp.proc && context.allocator.data == temp.data {
+                absolute_path = _absolute_path;
+            } else {
+                absolute_path = copy_string(_absolute_path);
+            }
+
+            return true, absolute_path;
+        }
+
+        platform.read_file = (path: string) -> success: bool, [] u8 {
             // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
             // will start respecting context.allocator eventually, so we pass in temp there as well.
-            absolute_path := File.get_absolute_path(path,, temp);
-            data, success := File.read_entire_file(absolute_path);
+            absolute_path, success := File.get_absolute_path(path,, temp);
+            if !success {
+                return false, .[];
+            }
+
+            data:, success = File.read_entire_file(absolute_path);
 
             return success, cast([] u8, data);
         }
         platform.write_file = (path: string, data: [] u8) -> success: bool {
             // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
             // will start respecting context.allocator eventually, so we pass in temp there as well.
-            absolute_path := File.get_absolute_path(path,, temp);
+            absolute_path, success := File.get_absolute_path(path,, temp);
+            if !success {
+                return false;
+            }
+
             return File.write_entire_file(path, cast(string, data));
         }
 
