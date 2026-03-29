@@ -179,8 +179,11 @@ gap_buffer_delete_backward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* 
 // Returns either view of original data or new array in the context allocator. Note that if you are
 // making a large view, you are negating the copy-avoidance benefits of the gap buffer, so this
 // should be used to get screen-sized chunks of text, not the entire buffer.
-gap_buffer_make_contiguous_view :: (gb: Gap_Buffer, index: s64, count: s64, assert_that_we_do_not_allocate := false) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
-    ProfileZone("gap_buffer_make_contiguous_view");
+//
+// The assert_that_we_don_not_allocate is here if you first made sure that the section of data you
+// are requesting does not cross the gap.
+gap_buffer_make_view :: (gb: Gap_Buffer, index: s64, count: s64, assert_that_we_do_not_allocate := false) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
+    ProfileZone("gap_buffer_make_view");
 
     assert_valid(gb);
 

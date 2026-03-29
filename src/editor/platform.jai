@@ -16,8 +16,10 @@ Platform :: struct {
     mem_commit:          (pointer: *void, size: s64) -> bool;
     mem_decommit:        (pointer: *void, size: s64);
 
-    read_file:           (path: string) -> success: bool, data: [] u8;
-    write_file:          (path: string, data: [] u8) -> succes: bool;
+    get_absolute_path:   (path: string) -> success: bool, string;
+
+    read_file:           (path: string) -> success: bool, [] u8;
+    write_file:          (path: string, data: [] u8) -> success: bool;
     delete_file:         (path: string) -> success: bool;
 
     make_directory:      (path: string) -> success: bool;
