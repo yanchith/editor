@@ -177,6 +177,20 @@ main :: () {
         }
 
         platform.file_exists = (path: string) -> bool {
+            absolute_path, success := File.get_absolute_path(path,, temp);
+            if !success {
+                return false;
+            }
+
+
+            #if OS == .WINDOWS {
+                handle := CreateFileW(utf8_to_wide(absolute_path,, temp), FILE_GENERIC_READ);
+
+            } else #if OS_IS_UNIX {
+                // XXX: Implement this!
+                return false;
+            }
+
             // XXX: HERE!
         }
         platform.read_file = (path: string) -> success: bool, [] u8 {
@@ -629,9 +643,7 @@ main :: () {
                     //
                     // On Windows (TM), we wait for new events with WaitMessage.
                     WaitMessage();
-                }
-
-                #if OS == .MACOS {
+                } else #if OS == .MACOS {
                     // :WaitForEvents
                     //
                     // On macOS, we wait for events by checking the queue with nextEventMatchingMask
