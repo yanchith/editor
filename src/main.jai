@@ -176,6 +176,9 @@ main :: () {
             return true, absolute_path;
         }
 
+        platform.file_exists = (path: string) -> bool {
+            // XXX: HERE!
+        }
         platform.read_file = (path: string) -> success: bool, [] u8 {
             // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
             // will start respecting context.allocator eventually, so we pass in temp there as well.
