@@ -144,9 +144,9 @@ Document :: struct {
     // like this, but maybe it will become clear what to do later, once we have more stuff here.
     arena: *Arena;
 
-    // Empty documents do not have a backing file. Scratch documents are always in memory, until
-    // they are saved, at which point a backing file path is assigned and file created. A document
-    // with a backing_file_path can also be created without the file already existing, in which case
+    // Newly created documents (and scratch documents) do not have a backing file until saved, at
+    // which point a backing file path is assigned and file created. A document with a
+    // backing_file_path can also be created without the file already existing, in which case
     // backing_file_exists gets set only after the file is first written to.
     backing_file_path: string;
     backing_file_exists: bool;
@@ -1334,29 +1334,39 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
         }
 
         case .OPEN_FILE; {
-            path: string;
+            file_path: string;
+            file_exists: bool;
             if mini_panel.item_index == -1 {
-                // XXX: HERE It is likely (but not certain) that this is a nonexisting file. We need
-                // to represent this with backing_file_exists.
-                path = text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
+                file_path = text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
+                file_exists = platform.file_exists(file_path);
             } else if mini_panel.items.count {
-                path = mini_panel.items[mini_panel.item_index].text;
+                file_path = mini_panel.items[mini_panel.item_index].text;
+                file_exists = true; // Unless deleted since we last looked.
             }
 
-            success, absolute_path := platform.get_absolute_path(path,, temp);
+            success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
             if success {
-                document, newly_created := find_or_add_document(editor, platform, .FILE, absolute_path);
-                if newly_created {
-                    log("Loading file into document: %", absolute_path);
+                document, document_newly_created := find_or_add_document(editor, platform, .FILE, file_absolute_path);
+                document.backing_file_exists = file_exists;
 
-                    // TODO(jt): Detect/Watch file changes on disk!
-                    success, file_contents := platform.read_file(absolute_path,, temp);
-                    if success {
-                        text_buffer_insert(*document.buffer, file_contents);
+                if document_newly_created {
+                    if file_exists {
+                        log("Opening file-backed document from file: %", file_absolute_path);
 
+                        // TODO(jt): Detect/Watch file changes on disk!
+                        success, file_contents := platform.read_file(file_absolute_path,, temp);
+                        if success {
+                            text_buffer_insert(*document.buffer, file_contents);
+
+                            if active_panel {
+                                set_panel_document(active_panel, document);
+                                recenter_panel(active_panel, input, cell_h, true);
+                            }
+                        }
+                    } else {
+                        log("Opening empty file-backed document: %", file_absolute_path);
                         if active_panel {
                             set_panel_document(active_panel, document);
-                            recenter_panel(active_panel, input, cell_h, true);
                         }
                     }
                 } else {
@@ -1366,7 +1376,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
                     }
                 }
             } else {
-                log("Failed to get absolute path for %", path);
+                log_error("Failed to get absolute path for %", file_path);
             }
 
             close_mini_panel(mini_panel);
