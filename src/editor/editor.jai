@@ -140,13 +140,16 @@ Document :: struct {
 
     // TODO(jt): Read-only flag.
 
-    // The arena is currently just for path_of_backing_file. The buffer has its own arenas. I don't
+    // The arena is currently just for backing_file_path. The buffer has its own arenas. I don't
     // like this, but maybe it will become clear what to do later, once we have more stuff here.
     arena: *Arena;
 
-    // If empty, this does not have a backing file. Scratch documents are always in memory, until
-    // they are saved, at which point a backing file path is assigned.
-    path_of_backing_file: string;
+    // Empty documents do not have a backing file. Scratch documents are always in memory, until
+    // they are saved, at which point a backing file path is assigned and file created. A document
+    // with a backing_file_path can also be created without the file already existing, in which case
+    // backing_file_exists gets set only after the file is first written to.
+    backing_file_path: string;
+    backing_file_exists: bool;
 
     Kind :: enum {
         SCRATCH;
@@ -306,17 +309,18 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                         // TODO(jt): F key is temporary. We need a keymap for handling sequences of keyboard shortcuts.
                         case .F3; {
-                            if active_panel && active_panel.document && active_panel.document.path_of_backing_file.count {
+                            if active_panel && active_panel.document && active_panel.document.backing_file_path.count {
                                 document := active_panel.document;
                                 buffer   := *active_panel.document.buffer;
 
                                 gap_buffer_move_gap_to(*buffer.gb, 0);
                                 contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_that_we_do_not_allocate = true);
-                                success := platform.write_file(document.path_of_backing_file, contents);
+                                success := platform.write_file(document.backing_file_path, contents);
                                 if success {
-                                    log("Wrote file %", document.path_of_backing_file);
+                                    document.backing_file_exists = true; // It might have existed before, too!
+                                    log("Wrote file %", document.backing_file_path);
                                 } else {
-                                    log("Failed to write file %", document.path_of_backing_file);
+                                    log("Failed to write file %", document.backing_file_path);
                                 }
                             }
                         }
@@ -1333,7 +1337,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
             path: string;
             if mini_panel.item_index == -1 {
                 // XXX: HERE It is likely (but not certain) that this is a nonexisting file. We need
-                // to represent this.
+                // to represent this with backing_file_exists.
                 path = text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
             } else if mini_panel.items.count {
                 path = mini_panel.items[mini_panel.item_index].text;
@@ -1356,7 +1360,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
                         }
                     }
                 } else {
-                    log("Switching to existing document %", document.path_of_backing_file);
+                    log("Switching to existing document %", document.backing_file_path);
                     if active_panel {
                         set_panel_document(active_panel, document);
                     }
@@ -1370,10 +1374,10 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
     }
 }
 
-find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, path_of_backing_file: string) -> *Document, newly_created: bool {
+find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, newly_created: bool {
     for * editor.documents {
-        if it.kind != kind                                  continue;
-        if it.path_of_backing_file != path_of_backing_file  continue;
+        if it.kind != kind                            continue;
+        if it.backing_file_path != backing_file_path  continue;
 
         return it, false;
     }
@@ -1390,8 +1394,8 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
     text_buffer_init(*document.buffer, buffer_arena, buffer_patch_text_arena);
 
     document.arena = document_arena;
-    if path_of_backing_file.count {
-        document.path_of_backing_file = copy_string(path_of_backing_file,, arena_allocator(document_arena));
+    if backing_file_path.count {
+        document.backing_file_path = copy_string(backing_file_path,, arena_allocator(document_arena));
     }
 
     _, document_pointer := bucket_array_add(*editor.documents, document);
