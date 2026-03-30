@@ -383,7 +383,7 @@ main :: () {
                         should_run = false;
                     }
 
-                    // XXX: On macOS at least, we are missing combined accented characters, like 'e -> = é
+                    // TODO(jt): On macOS at least, we are missing combined accented characters, like 'e -> = é
                     case .KEYBOARD; {
                         #if OS == .WINDOWS {
                             if it.alt_pressed && it.key_code == .F4 {

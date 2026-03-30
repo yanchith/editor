@@ -111,7 +111,7 @@ MINI_PANEL_LINE_COLOR : Vector4 : { 0.7, 0.7, 0.9, 0.18 };
 
 SLOW_FRAME_THRESHOLD_MILLIS : f64 : 10;
 
-MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable!
+MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable! :Config
 
 Editor :: struct {
     perm_arena: *Arena;
@@ -126,7 +126,17 @@ Editor :: struct {
     // we close/unload a document, we need to go through every panel and make sure it does not
     // reference that document.
     documents: Bucket_Array(Document, 16);
-    panels: [..] Panel; // TODO(jt): Layout!
+
+    // :MultiplePanels
+    //
+    // Currently we have just the one panel, but this array is the preparation for having multiple
+    // panels open (by splitting a viewport horizontally or vertically). We can start doing this by
+    // implementing just vertical side-by-side splitting, which does not require any additional data
+    // structures.
+    //
+    // TODO(jt): Do panel splitting and fix all places in code that rely on the panel covering the
+    // entire window.
+    panels: [..] Panel;
     active_panel_index: s64;
 
     mini_panel: Mini_Panel;
@@ -394,9 +404,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     cell_h := cast(f64, editor.font.line_height_in_pixels);
 
     if editor.mini_panel.open {
-        // XXX: Handle mouse stuff in mini panel?
+        // TODO(jt): Handle mouse in mini panel?
     } else {
-        // XXX: Mouse stuff should activate the clicked panel!
+        // TODO(jt): Mouse stuff should activate the clicked panel! See :MultiplePanels
 
         //
         // Mouse wheel scrolling
@@ -534,7 +544,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             cursor0 := document.buffer.cursor0;
 
-            // XXX: Incorrect. Compute viewport for panel.
+            // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, window_w, window_h);
             scroll_to_rect: DRect;
             if panel.clamp_scroll_to_start_of_line {
@@ -615,8 +625,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 // lines. If the lines are long, we do a lot of layout and draw.
                 //
                 // TODO(jt): @Speed Horizontal culling?
+                // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
                 viewport_y0 := panel.scroll.y;
-                viewport_y1 := panel.scroll.y + input.window_size.y; // XXX: Incorrect. Compute viewport for panel.
+                viewport_y1 := panel.scroll.y + input.window_size.y;
 
                 viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.lines.count - 1);
                 viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.lines.count - 1);
@@ -702,8 +713,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // lines. If the lines are long, we do a lot of layout and draw.
             //
             // TODO(jt): @Speed Horizontal culling?
+            // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
             viewport_y0 := panel.scroll.y;
-            viewport_y1 := panel.scroll.y + input.window_size.y; // XXX: Incorrect. Compute viewport for panel.
+            viewport_y1 := panel.scroll.y + input.window_size.y;
 
             viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.lines.count - 1);
             viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.lines.count - 1);
