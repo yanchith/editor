@@ -155,9 +155,9 @@ Document :: struct {
 }
 
 Panel :: struct {
-    // Scroll vectors are in f64s, because buffers can be large and we actually ran into precision
-    // issues. Doubles are fine for now (verified up to 1GB of prose), but maybe we should do our
-    // own numeric type that's s64 + f32 offset.
+    // Scroll vectors are f64, because buffers can be large and we actually ran into precision
+    // issues with f32 vectors. Doubles suffice for now (verified up to 4GB of prose), but maybe we
+    // should do our own numeric type eventually (either 58:6 fixed point or maybe s64 + f32 offset)?
     //
     // :FloatPrecision
     scroll_source: DVector2;
@@ -166,8 +166,8 @@ Panel :: struct {
 
     scroll: DVector2;
 
-    // These clampers get set during event processing and unset after. We could store them somewhere
-    // else, but we need them for every panel we have touched, so they might as well be here.
+    // These clampers get set during event processing and unset after update. We could store them
+    // somewhere else, but we need them for every panel we have touched, so they might as well be here.
     //
     // TODO(jt): Turn these into flags!
     clamp_scroll_to_cursor: bool;
