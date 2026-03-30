@@ -177,21 +177,7 @@ main :: () {
         }
 
         platform.file_exists = (path: string) -> bool {
-            absolute_path, success := File.get_absolute_path(path,, temp);
-            if !success {
-                return false;
-            }
-
-
-            #if OS == .WINDOWS {
-                handle := CreateFileW(utf8_to_wide(absolute_path,, temp), FILE_GENERIC_READ);
-
-            } else #if OS_IS_UNIX {
-                // XXX: Implement this!
-                return false;
-            }
-
-            // XXX: HERE!
+            return File_Utilities.file_exists(path);
         }
         platform.read_file = (path: string) -> success: bool, [] u8 {
             // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
