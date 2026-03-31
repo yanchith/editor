@@ -286,6 +286,14 @@ arena_push :: (arena: *Arena, $T: Type, ensure_alignment := 1) -> *T {
     return pointer;
 }
 
+// :ArenaPushEmpty
+//
+// We could allow pushing empty arrays strings (by retuning a pointer in the executable's memory and
+// not modifying the arena at all), but that might cause confusion, because the thing does not
+// really live in the arena, and arena_is_this_yours would return false for these empty
+// allocations. For now we decided not to do it. This means callers need to make sure stuff is not
+// empty themselves.
+
 arena_push_array :: (arena: *Arena, $T: Type, count: s64, ensure_alignment := 1) -> [] T {
     assert(count > 0, "Can not push empty arrays");
 
