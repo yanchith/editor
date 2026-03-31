@@ -145,6 +145,8 @@ Editor :: struct {
 }
 
 Document :: struct {
+    locator: Bucket_Locator;
+
     kind: Kind;
     buffer: Text_Buffer;
 
@@ -336,6 +338,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         // TODO(jt): F key is temporary. We need a keymap for handling sequences of keyboard shortcuts.
                         case .F4; {
                             was_closed := open_mini_panel(*editor.mini_panel, .SWITCH_TO_DOCUMENT);
+                            mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
+
+                            handled = was_closed;
+                        }
+
+                        // TODO(jt): F key is temporary. We need a keymap for handling sequences of keyboard shortcuts.
+                        case .F5; {
+                            was_closed := open_mini_panel(*editor.mini_panel, .CLOSE_DOCUMENT);
                             mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
 
                             handled = was_closed;
@@ -767,7 +777,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
 
         // :MiniPanelAPI (mini_panel_render_proc)
-        ACTION_TEXT_SEARCH :: "Search: ";
         action_text: string;
         if editor.mini_panel.action == {
             case .SEARCH;              action_text = "Search: ";
@@ -1297,13 +1306,18 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, ce
                 mini_panel.item_index = min(mini_panel.item_index, mini_panel.items.count - 1);
             }
 
-            case .SWITCH_TO_DOCUMENT; {
-                ProfileZone(":MiniPanelSwitchToDocumentUpdate");
+            case .SWITCH_TO_DOCUMENT; #through;
+            case .CLOSE_DOCUMENT; {
+                ProfileZone(":MiniPanelSwitchToDocumentOrCloseDocumentUpdate");
 
                 search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
                 search_text_char_count := mini_panel.buffer.lines[0].char_count;
 
                 for * editor.documents {
+                    if mini_panel.action == .CLOSE_DOCUMENT && it.kind == .SCRATCH {
+                        continue;
+                    }
+
                     document_name: string;
                     if it.kind == {
                         case .SCRATCH;  document_name = "*scratch*";
@@ -1455,6 +1469,18 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
 
             close_mini_panel(mini_panel);
         }
+
+        case .CLOSE_DOCUMENT; {
+            if mini_panel.items.count {
+                assert(mini_panel.item_index >= 0);
+                item := *mini_panel.items[mini_panel.item_index];
+
+                document := cast(*Document, item.userdata);
+                close_document(editor, document);
+            }
+
+            close_mini_panel(mini_panel);
+        }
     }
 }
 
@@ -1468,23 +1494,45 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     arena_procs := make_arena_procs(platform);
 
-    document_arena := arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_SMALL);
-
-    buffer_arena            := arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_LARGE);
-    buffer_patch_text_arena := arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_LARGE);
+    document_arena         := arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_SMALL);
+    buffer_arena           := arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_LARGE);
+    buffer_edit_text_arena := arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_LARGE);
 
     document: Document;
     document.kind = kind;
-    text_buffer_init(*document.buffer, buffer_arena, buffer_patch_text_arena);
+    text_buffer_init(*document.buffer, buffer_arena, buffer_edit_text_arena);
 
     document.arena = document_arena;
     if backing_file_path.count {
         document.backing_file_path = copy_string(backing_file_path,, arena_allocator(document_arena));
     }
 
-    _, document_pointer := bucket_array_add(*editor.documents, document);
+    locator, document_pointer := bucket_array_add(*editor.documents, document);
+    document_pointer.locator = locator;
 
     return document_pointer, true;
+}
+
+close_document :: (editor: *Editor, document: *Document) {
+    log("Closing document % %", document.kind, document.backing_file_path);
+
+    // Make sure nobody references the document anymore.
+    for * editor.panels {
+        if it.document == document {
+            // TODO(jt): We should switch to a new document here, perhaps by touched_timestamp or something.
+            it.document = null;
+        }
+    }
+
+    // Release arenas. Can't touch anything dynamically allocated on the document after.
+    arena_release(document.arena);
+    arena_release(document.buffer.arena);
+    arena_release(document.buffer.edit_text_arena);
+
+    locator := document.locator;
+
+    // Remove document itself.
+    bucket_array_remove(*editor.documents, locator);
 }
 
 set_panel_document :: (panel: *Panel, document: *Document) {
