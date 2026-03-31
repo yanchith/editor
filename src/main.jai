@@ -455,7 +455,7 @@ main :: () {
                                 // event into an exotic character, but for us it is important to
                                 // have Alt be part of keyboard shortcuts. For this reason, we
                                 // modified modules/Input to ignore modifiers when extracting the
-                                // text event characters. See :ModifiefInputModule.
+                                // text event characters. See :ModifiedInputModule.
                                 //
                                 // On Windows (and macOS sometimes?), holding down control
                                 // suppresses the text event, so we emit it here.
