@@ -210,10 +210,10 @@ Mini_Panel :: struct {
     item_index: s64;          // [0, items.count) to select a item, -1 to select the mini panel's buffer (if allowed by the action).
 
     Action :: enum {
-        SEARCH          :: 0;
-        OPEN_FILE       :: 1;
-        SWITCH_TO_PANEL :: 2;
-        CLOSE_PANEL     :: 3;
+        SEARCH             :: 0;
+        OPEN_FILE          :: 1;
+        SWITCH_TO_DOCUMENT :: 2;
+        CLOSE_DOCUMENT     :: 3;
     }
 
     Item :: struct {
@@ -764,7 +764,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         // :MiniPanelAPI (mini_panel_render_proc)
         ACTION_TEXT_SEARCH :: "Search: ";
-        action_text := ACTION_TEXT_SEARCH;
+        action_text: string;
+        if editor.mini_panel.action == {
+            case .SEARCH;              action_text = "Search: ";
+            case .OPEN_FILE;           action_text = "Open file: ";
+            case .SWITCH_TO_DOCUMENT;  action_text = "Switch to document: ";
+            case .CLOSE_DOCUMENT;      action_text = "Close document: ";
+        }
 
         line_view := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
         cursor_x := cast(f32, font_compute_position_on_line(editor.font, action_text, action_text.count));
@@ -1369,6 +1375,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
                         success, file_contents := platform.read_file(file_absolute_path,, temp);
                         if success {
                             text_buffer_insert(*document.buffer, file_contents);
+                            text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
                             if active_panel {
                                 set_panel_document(active_panel, document);
