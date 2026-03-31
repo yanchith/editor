@@ -388,6 +388,7 @@ main :: () {
                         #if OS == .WINDOWS {
                             if it.alt_pressed && it.key_code == .F4 {
                                 should_run = false;
+                                continue;
                             }
                         }
 
