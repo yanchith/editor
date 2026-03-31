@@ -259,7 +259,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.panels.allocator    = arena_allocator(editor.perm_arena);
 
     panel := array_add(*editor.panels);
-    set_panel_document_to_scratch(editor, panel, platform);
+    set_panel_document_to_newly_created_scratch(editor, panel, platform);
 
     init_mini_panel(*editor.mini_panel, arena_procs);
 
@@ -310,9 +310,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         // TODO(jt): F key is temporary. We need a keymap for handling sequences of keyboard shortcuts.
                         case .F2;  {
                             was_closed := open_mini_panel(*editor.mini_panel, .OPEN_FILE, "./");
-                            if was_closed {
-                                mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
-                            }
+                            mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
 
                             handled = was_closed;
                         }
@@ -333,6 +331,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                     log("Failed to write file %", document.backing_file_path);
                                 }
                             }
+                        }
+
+                        // TODO(jt): F key is temporary. We need a keymap for handling sequences of keyboard shortcuts.
+                        case .F4; {
+                            was_closed := open_mini_panel(*editor.mini_panel, .SWITCH_TO_DOCUMENT);
+                            mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
+
+                            handled = was_closed;
                         }
                     }
                 }
@@ -355,9 +361,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             case #char "s";  #through;
                             case #char "S";  {
                                 was_closed := open_mini_panel(*editor.mini_panel, .SEARCH);
-                                if was_closed {
-                                    mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
-                                }
+                                mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
 
                                 handled = was_closed;
                             }
@@ -1238,7 +1242,6 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, ce
                             item.text = s;
                             item.highlight_x0 = x0;
                             item.highlight_x1 = x0 + search_text_char_count;
-
                             item.userdata = cast(*void, it);
 
                             if new_item_index == -1 && it >= old_cursor_y {
@@ -1287,10 +1290,42 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, ce
                         item.text = s;
                         item.highlight_x0 = x0;
                         item.highlight_x1 = x0 + file_name_with_extension_char_count;
+                        item.userdata = null;
                     }
                 }
 
                 mini_panel.item_index = min(mini_panel.item_index, mini_panel.items.count - 1);
+            }
+
+            case .SWITCH_TO_DOCUMENT; {
+                ProfileZone(":MiniPanelSwitchToDocumentUpdate");
+
+                search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
+                search_text_char_count := mini_panel.buffer.lines[0].char_count;
+
+                for * editor.documents {
+                    document_name: string;
+                    if it.kind == {
+                        case .SCRATCH;  document_name = "*scratch*";
+                        case .FILE;     document_name = it.backing_file_path; // TODO(jt): Strip path prefix common for all items.
+                    }
+
+                    found_index, found := String.index_of_string_nocase(it.backing_file_path, search_text);
+                    if found {
+                        s := "";
+                        if document_name.count {
+                            s = arena_push_string(mini_panel.items_arena, document_name);
+                        }
+
+                        x0 := count_utf8_characters(String.slice(document_name, 0, found_index));
+
+                        item := array_add(*mini_panel.items);
+                        item.text = s;
+                        item.highlight_x0 = x0;
+                        item.highlight_x1 = x0 + search_text_char_count;
+                        item.userdata = it;
+                    }
+                }
             }
         }
     }
@@ -1400,6 +1435,26 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
 
             close_mini_panel(mini_panel);
         }
+
+        case .SWITCH_TO_DOCUMENT; {
+            if mini_panel.items.count {
+                assert(mini_panel.item_index >= 0);
+                item := *mini_panel.items[mini_panel.item_index];
+
+                document := cast(*Document, item.userdata);
+
+                if active_panel {
+                    set_panel_document(active_panel, document);
+
+                    // TODO(jt): Emacs actually remembers the previous scroll of the panel in
+                    // document. Do we want to do the same?
+                    recenter_panel(active_panel, input, cell_h, true);
+                    finish_scroll_interpolation(active_panel);
+                }
+            }
+
+            close_mini_panel(mini_panel);
+        }
     }
 }
 
@@ -1446,7 +1501,7 @@ set_panel_document :: (panel: *Panel, document: *Document) {
     panel.document = document;
 }
 
-set_panel_document_to_scratch :: (editor: *Editor, panel: *Panel, platform: Platform) {
+set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, platform: Platform) {
     ProfileZone("set_panel_document_to_scratch");
 
     arena_procs := make_arena_procs(platform);
