@@ -21,6 +21,7 @@ TODO(jt): Stuff to do:
 - [ ] Keymap support
 - [ ] Panel splitting (we can move this to the fancy section)
 - [ ] Modeline?
+- [ ] Open non-utf8 text buffers.
 
 TODO(jt): Fancy stuff to do:
 
@@ -138,6 +139,7 @@ Editor :: struct {
     active_panel_index: s64;
 
     mini_panel: Mini_Panel;
+    messages: [..] string;
 
     dev_show_atlas_texture: bool;
 }
@@ -242,10 +244,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     assert(success);
 
     editor.font_size = 16;
-    log("Current font pixel height: %", editor.font_size);
+    editor_log(editor, "Current font pixel height: %", editor.font_size);
 
     physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
-    log("Initializing font for physical pixel height: %", physical_pixel_height);
+    editor_log(editor, "Initializing font for physical pixel height: %", physical_pixel_height);
 
     editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, physical_pixel_height);
 
@@ -262,6 +264,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     init_mini_panel(*editor.mini_panel, platform);
 
+    editor.messages.allocator = arena_allocator(editor.perm_arena);
+
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
         editor.font.glyph_atlas_width_in_pixels,
@@ -277,7 +281,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     profiler_start_frame("update_and_render");
 
     // @Hack to constrain DT from sleeping frames. However, we should only be using DT in situations
-    // where we are already animating.
+    // where we are already animating. Can we get rid of this, perhaps by framing the computations differently?
     dt := min(to_float64_seconds(input.dtime), 0.33);
 
     wants_quit       := false;
@@ -325,9 +329,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                 success := platform.write_file(document.backing_file_path, contents);
                                 if success {
                                     document.backing_file_exists = true; // It might have existed before, too!
-                                    log("Wrote file %", document.backing_file_path);
+                                    editor_log(editor, "Wrote file %", document.backing_file_path);
                                 } else {
-                                    log("Failed to write file %", document.backing_file_path);
+                                    editor_log(editor, "Failed to write file %", document.backing_file_path);
                                 }
                             }
                         }
@@ -400,7 +404,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     {
         physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
         if editor.font.pixel_height != physical_pixel_height {
-            log("Resetting font to new physical pixel height: %", physical_pixel_height);
+            editor_log(editor, "Resetting font to new physical pixel height: %", physical_pixel_height);
             font_reset_for_pixel_height(*editor.font, physical_pixel_height);
 
             for * editor.panels {
@@ -526,6 +530,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             continue;
         }
 
+        // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
+
+        // XXX: Adjust for when mini panel is open or not.
+        viewport_y0 := panel.scroll.y;
+        viewport_y1 := panel.scroll.y + input.window_size.y - 2 * cell_h /* mode line and message line */;
+
         //
         // Compute cursor position.
         //
@@ -555,6 +565,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             cursor0 := document.buffer.cursor0;
 
+            // XXX: Adjust for mode line and message buffer.
             // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, window_w, window_h);
             scroll_to_rect: DRect;
@@ -593,9 +604,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         {
             SCROLL_TIME : f64 : 0.12;
 
-            // TODO(jt): Because we don't want to use DT, the animation starts with oine frame of
-            // lag. We could make up some fake DT for the first frame. Maybe we could get the
-            // monitor refresh rate?
             t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(panel.scroll_time_start)) / SCROLL_TIME);
             t = clamp(t, 0.0, 1.0);
             t = smoothstep(0.0, 1.0, t);
@@ -636,10 +644,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 // lines. If the lines are long, we do a lot of layout and draw.
                 //
                 // TODO(jt): @Speed Horizontal culling?
-                // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
-                viewport_y0 := panel.scroll.y;
-                viewport_y1 := panel.scroll.y + input.window_size.y;
-
                 viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.lines.count - 1);
                 viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.lines.count - 1);
 
@@ -715,19 +719,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
 
         //
-        // Layout and draw text
+        // Layout and draw document text
         //
         {
-            ProfileZone(":DrawText");
+            ProfileZone(":DrawDocumentText");
 
             // This does very simple vertical culling by doing layout and draw only on visible
             // lines. If the lines are long, we do a lot of layout and draw.
             //
             // TODO(jt): @Speed Horizontal culling?
-            // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
-            viewport_y0 := panel.scroll.y;
-            viewport_y1 := panel.scroll.y + input.window_size.y;
-
             viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.lines.count - 1);
             viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.lines.count - 1);
 
@@ -754,6 +754,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         panel.clamp_scroll_to_start_of_line = false;
         panel.clamp_scroll_to_end_of_line   = false;
     }
+
+    // XXX: HERE draw mode line and message line. Let's do it Emacs style, so mini panel replaces message line when open.
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
     if editor.mini_panel.open {
@@ -842,6 +844,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 }
 
 #scope_file
+
+editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #caller_location) {
+    s := sprint(format_string, args,, arena_allocator(editor.perm_arena));
+    array_add(*editor.messages, s);
+
+    log(format_string, args, loc);
+}
 
 get_active_panel :: (editor: *Editor) -> *Panel {
     active_panel: *Panel = null;
@@ -1415,7 +1424,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
 
                 if document_newly_created {
                     if file_exists {
-                        log("Opening file-backed document from file: %", file_absolute_path);
+                        editor_log(editor, "Opening file-backed document from: %", file_absolute_path);
 
                         // TODO(jt): Detect/Watch file changes on disk!
                         success, file_contents := platform.read_file(file_absolute_path,, temp);
@@ -1429,13 +1438,13 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
                             }
                         }
                     } else {
-                        log("Opening empty file-backed document: %", file_absolute_path);
+                        editor_log(editor, "Opening empty file-backed document with path: %", file_absolute_path);
                         if active_panel {
                             set_panel_document(active_panel, document);
                         }
                     }
                 } else {
-                    log("Switching to existing document %", document.backing_file_path);
+                    editor_log(editor, "Switching to document %", document.backing_file_path);
                     if active_panel {
                         set_panel_document(active_panel, document);
                     }
@@ -1509,7 +1518,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 }
 
 close_document :: (editor: *Editor, document: *Document) {
-    log("Closing document % %", document.kind, document.backing_file_path);
+    editor_log(editor, "Closing document % %", document.kind, document.backing_file_path);
 
     // Make sure nobody references the document anymore.
     for * editor.panels {
