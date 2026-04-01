@@ -102,9 +102,14 @@ Codepoint :: enum u32 {
 }
 
 Input_State :: struct {
-    keys: [KEY_COUNT] Key_State;
+    // TODO(jt): @Cleanup We are already selectively copying things from Input here. Consider
+    // copying the whole input here, so any function that has access to editor also has access to
+    // this frame's input, and we don't have to pass it manually.
+    time: Apollo_Time;
 
     mouse_inside_window: bool;
+
+    keys: [KEY_COUNT] Key_State;
 }
 
 Key_State :: enum_flags u8 {
@@ -117,12 +122,14 @@ Key_State :: enum_flags u8 {
 }
 
 input_state_update_on_frame_start :: (input_state: *Input_State, input: Input) {
-    for * input_state.keys {
-        it.* &= ~(.PRESSED | .RELEASED);
-    }
+    input_state.time = input.time;
 
     window_rect := rect_from_point_and_size(0, 0, cast(f32, input.window_size.x), cast(f32, input.window_size.y));
     input_state.mouse_inside_window = rect_contains(window_rect, input.mouse_position);
+
+    for * input_state.keys {
+        it.* &= ~(.PRESSED | .RELEASED);
+    }
 }
 
 input_state_update_with_event :: (input_state: *Input_State, event: Input_Event) {

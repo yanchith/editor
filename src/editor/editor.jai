@@ -16,11 +16,11 @@ TODO(jt): Stuff to do:
 - [X] Find in mini panel
 - [X] Cut/Copy/Paste
 - [X] Undo!
-- [ ] Messages
-- [ ] Find/replace
+- [X] Messages
+- [X] Modeline
 - [ ] Keymap support
+- [ ] Find/replace
 - [ ] Panel splitting (we can move this to the fancy section)
-- [ ] Modeline?
 - [ ] Open non-utf8 text buffers.
 
 TODO(jt): Fancy stuff to do:
@@ -105,8 +105,10 @@ TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 
 CURSOR_COLOR          : Vector4 : { 0.7, 0.8, 0.7, 1.0 };
 SELECTION_COLOR       : Vector4 : { 0.7, 0.8, 0.7, 0.38 };
-LINE_COLOR            : Vector4 : { 0, 0, 0, 0 };
+LINE_COLOR            : Vector4 : { 0.0, 0.0, 0.0, 0.0 };
 MINI_PANEL_LINE_COLOR : Vector4 : { 0.7, 0.7, 0.9, 0.18 };
+MODELINE_COLOR        : Vector4 : { 0.8, 0.8, 0.8, 1.0 };
+BACKGROUND_COLOR      : Vector4 : { 1.0, 1.0, 1.0, 1.0 };
 
 SLOW_FRAME_THRESHOLD_MILLIS : f64 : 10;
 
@@ -139,7 +141,9 @@ Editor :: struct {
     active_panel_index: s64;
 
     mini_panel: Mini_Panel;
+
     messages: [..] string;
+    last_message_seen: bool;
 
     dev_show_atlas_texture: bool;
 }
@@ -244,10 +248,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     assert(success);
 
     editor.font_size = 16;
-    editor_log(editor, "Current font pixel height: %", editor.font_size);
+    log("Current font pixel height: %", editor.font_size);
 
     physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
-    editor_log(editor, "Initializing font for physical pixel height: %", physical_pixel_height);
+    log("Initializing font for physical pixel height: %", physical_pixel_height);
 
     editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, physical_pixel_height);
 
@@ -305,6 +309,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Global events handled at the editor level.
         //
         if it.flags & .KEY_PRESSED {
+            editor.last_message_seen = true;
+
             if it.type == {
                 case .KEY; {
                     if it.data.key == {
@@ -413,10 +419,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    // Upcast to f64 here, because we later multiply them with lines/columns, and we don't want to
-    // accidentally do the multiply in f32, which is not precise enough in large buffers.
-    cell_w := cast(f64, editor.font.max_glyph_width_in_pixels);
-    cell_h := cast(f64, editor.font.line_height_in_pixels);
+    // cell_w and cell_h are 32-bit and that's perfectly reasonable for them, but some text
+    // documents are big. Beware multiplying cell_W and cell_h with integers (such as line count),
+    // as that autocasts the integers to f32, but we want to manually cast them to f64. See :FloatPrecision
+    cell_w := editor.font.max_glyph_width_in_pixels;
+    cell_h := editor.font.line_height_in_pixels;
+    window_w := cast(f32, input.window_size.x);
+    window_h := cast(f32, input.window_size.y);
 
     if editor.mini_panel.open {
         // TODO(jt): Handle mouse in mini panel?
@@ -429,7 +438,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if active_panel && active_panel.document && input.mouse_wheel_delta != 0 && !(editor.input_state.keys[Key.CTRL] & .DOWN) {
             // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
             active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
-            active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * (active_panel.document.buffer.lines.count - 1));
+            active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * cast(f64, active_panel.document.buffer.lines.count - 1));
             finish_scroll_interpolation(active_panel);
         }
 
@@ -473,7 +482,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     max_x := max(font_compute_position_on_line(editor.font, line_view, document.buffer.cursor0.x) - input.window_size.x + apron, 0);
 
                     active_panel.scroll_target.x += SCROLL_SPEED * boost * dt;
-                    active_panel.scroll_target.x = min(active_panel.scroll_target.x,  max_x);
+                    active_panel.scroll_target.x = min(active_panel.scroll_target.x, max_x);
 
                     finish_scroll_interpolation(active_panel);
 
@@ -492,7 +501,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     boost := (mouse.y - (cast(f32, input.window_size.y) - SCROLL_APRON)) * SCROLL_BOOST;
 
                     active_panel.scroll_target.y += SCROLL_SPEED * boost * dt;
-                    active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * (document.buffer.lines.count - 1));
+                    active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * cast(f64, document.buffer.lines.count - 1));
                     finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
@@ -531,10 +540,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
 
         // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
-
-        // XXX: Adjust for when mini panel is open or not.
         viewport_y0 := panel.scroll.y;
-        viewport_y1 := panel.scroll.y + input.window_size.y - 2 * cell_h /* mode line and message line */;
+        viewport_y1 := panel.scroll.y + cast(f64, input.window_size.y) - 2 * cell_h /* mode line and message line (or mini panel) */;
 
         //
         // Compute cursor position.
@@ -546,7 +553,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             c0_line_view := text_buffer_make_view_between_cursors(document.buffer, c0_line_start, c0_line_end,, temp);
 
             buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, document.buffer.cursor0.x);
-            buffer_cursor0_position.y = document.buffer.cursor0.y * cell_h;
+            buffer_cursor0_position.y = cast(f64, document.buffer.cursor0.y) * cell_h;
             buffer_cursor0_line_end_x = font_compute_position_on_line(editor.font, c0_line_view, c0_line_end.x);
         }
 
@@ -560,12 +567,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             SCROLL_PADDING_CELLS_X :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
             SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
-            scroll_padding_x := min(window_w * 0.25, cast(f32, cell_w) * SCROLL_PADDING_CELLS_X);
-            scroll_padding_y := min(window_h * 0.25, cast(f32, cell_h) * SCROLL_PADDING_CELLS_Y);
+            scroll_padding_x := min(window_w * 0.25, cell_w * SCROLL_PADDING_CELLS_X);
+            scroll_padding_y := min(window_h * 0.25, cell_h * SCROLL_PADDING_CELLS_Y);
 
             cursor0 := document.buffer.cursor0;
 
-            // XXX: Adjust for mode line and message buffer.
             // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, window_w, window_h);
             scroll_to_rect: DRect;
@@ -632,7 +638,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
                 selection_x1 := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x) + selection_x0;
-                selection_y0 := cursor_start.y * cell_h;
+                selection_y0 := cast(f64, cursor_start.y) * cell_h;
                 selection_y1 := selection_y0 + cell_h;
                 selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
@@ -653,7 +659,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 // Because we expect scroll_offset to be small, we keep it in f32.
                 scroll_offset: Vector2;
                 scroll_offset.x = cast(f32, panel.scroll.x);
-                scroll_offset.y = cast(f32, viewport_y0 - cell_h * viewport_line_index_start);
+                scroll_offset.y = cast(f32, viewport_y0 - cell_h * cast(f64, viewport_line_index_start));
 
                 // First line, if in viewport
                 if cursor_start.y >= viewport_line_index_start && cursor_start.y <= viewport_line_index_end {
@@ -664,7 +670,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
                     selection_x1 := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x) + selection_x0;
-                    selection_y0 := cursor_start.y * cell_h;
+                    selection_y0 := cast(f64, cursor_start.y) * cell_h;
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
@@ -682,13 +688,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     line_view := text_buffer_make_view_for_line(document.buffer, it,, temp);
                     selection_x0 := 0.0;
                     selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x);
-                    selection_y0 := it * cell_h;
+                    selection_y0 := cast(f64, it) * cell_h;
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
                     draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), SELECTION_COLOR);
                 }
 
+                // Last line, if in viewport
                 if cursor_end.y >= viewport_line_index_start && cursor_end.y <= viewport_line_index_end {
                     line_start := text_buffer_get_start_cursor_for_line(document.buffer, cursor_end.y);
 
@@ -696,7 +703,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     selection_x0 := 0.0;
                     selection_x1 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x);
-                    selection_y0 := cursor_end.y * cell_h;
+                    selection_y0 := cast(f64, cursor_end.y) * cell_h;
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
 
@@ -743,7 +750,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // matter), so we go f64 to be future proof.
             offset: DVector2;
             offset.x = -panel.scroll.x;
-            offset.y = -viewport_y0 + cell_h * viewport_line_index_start;
+            offset.y = -viewport_y0 + cell_h * cast(f64, viewport_line_index_start);
 
             // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
             // to the left of the screen, but we don't have to emit render rects for it.
@@ -755,24 +762,36 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         panel.clamp_scroll_to_end_of_line   = false;
     }
 
-    // XXX: HERE draw mode line and message line. Let's do it Emacs style, so mini panel replaces message line when open.
+    {
+        modeline_y := ifx editor.mini_panel.open then input.window_size.y - (MINI_PANEL_LINES + 2) * cell_h else input.window_size.y - 2.0 * cell_h;
+
+        draw_rect(*render_rects, 0, modeline_y, window_w, modeline_y + cell_h, MODELINE_COLOR);
+
+        if active_panel {
+            cursor  := active_panel.document.buffer.cursor0;
+            percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, active_panel.document.buffer.lines.count));
+
+            document_name: string;
+            if #complete active_panel.document.kind == {
+                case .SCRATCH; document_name = "*scratch*";
+                case .FILE;    document_name = String.path_filename(active_panel.document.backing_file_path);
+            }
+
+            percent_string := temp_right_pad(tprint("%\%", percent), 5);
+
+            s := tprint("  % % (%,%)", temp_right_pad(document_name, 20), percent_string, cursor.y + 1, cursor.x);
+            font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, is_new_frame = false);
+        }
+    }
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
     if editor.mini_panel.open {
-        ProfileZone(":MiniPanelRender");
-        cell_w32 := cast(f32, cell_w);
-        cell_h32 := cast(f32, cell_h);
-
-        background_h := cast(f32, (MINI_PANEL_LINES + 1)) * cell_h32;
-        background_y := cast(f32, max(input.window_size.y - background_h, 0));
-
-        window_w := cast(f32, input.window_size.x);
-        window_h := cast(f32, input.window_size.y);
-
+        background_h := (MINI_PANEL_LINES + 1) * cell_h;
+        background_y := max(input.window_size.y - background_h, 0);
         draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.96, 0.96, 0.96, 1.0 });
 
         if editor.mini_panel.item_index == -1 {
-            draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h32, SELECTION_COLOR);
+            draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h, SELECTION_COLOR);
         }
 
         // :MiniPanelAPI (mini_panel_render_proc)
@@ -788,7 +807,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         cursor_x := cast(f32, font_compute_position_on_line(editor.font, action_text, action_text.count));
         cursor_x += cast(f32, font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor0.x));
 
-        draw_rect(*render_rects, cursor_x, background_y, cursor_x + cell_w32, background_y + cell_h32, CURSOR_COLOR);
+        draw_rect(*render_rects, cursor_x, background_y, cursor_x + cell_w, background_y + cell_h, CURSOR_COLOR);
 
         main_line := tprint("%%", action_text, line_view);
 
@@ -802,8 +821,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             item := *editor.mini_panel.items[it];
 
             if it == editor.mini_panel.item_index {
-                y0 := background_y + (it_index + 1) * cell_h32;
-                y1 := background_y + (it_index + 2) * cell_h32;
+                y0 := background_y + (it_index + 1) * cell_h;
+                y1 := background_y + (it_index + 2) * cell_h;
                 draw_rect(*render_rects, 0, y0, window_w, y1, MINI_PANEL_LINE_COLOR);
 
                 // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
@@ -818,6 +837,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
 
             it_index += 1;
+        }
+    } else {
+        message_line_y := input.window_size.y - cell_h;
+        draw_rect(*render_rects, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
+
+        if editor.messages.count && !editor.last_message_seen {
+            message := editor.messages[editor.messages.count - 1];
+            font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, is_new_frame = false);
         }
     }
 
@@ -848,6 +875,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #caller_location) {
     s := sprint(format_string, args,, arena_allocator(editor.perm_arena));
     array_add(*editor.messages, s);
+    editor.last_message_seen = false;
 
     log(format_string, args, loc);
 }
@@ -1424,7 +1452,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
 
                 if document_newly_created {
                     if file_exists {
-                        editor_log(editor, "Opening file-backed document from: %", file_absolute_path);
+                        editor_log(editor, "Opening file: %", file_absolute_path);
 
                         // TODO(jt): Detect/Watch file changes on disk!
                         success, file_contents := platform.read_file(file_absolute_path,, temp);
@@ -1438,13 +1466,12 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
                             }
                         }
                     } else {
-                        editor_log(editor, "Opening empty file-backed document with path: %", file_absolute_path);
+                        editor_log(editor, "Opening new file with path: %", file_absolute_path);
                         if active_panel {
                             set_panel_document(active_panel, document);
                         }
                     }
                 } else {
-                    editor_log(editor, "Switching to document %", document.backing_file_path);
                     if active_panel {
                         set_panel_document(active_panel, document);
                     }
