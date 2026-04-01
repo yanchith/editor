@@ -572,6 +572,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             cursor0 := document.buffer.cursor0;
 
+            // XXX: @Bug tbe clamping viewport is smaller now that we have the mode line and message
+            // line. Also what about mini_panel? Emacs does an interesting thing with that.
+
             // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, window_w, window_h);
             scroll_to_rect: DRect;
