@@ -10,16 +10,17 @@ TODO(jt): Stuff to do:
 
 - [X] Basic file navigation
 - [X] Basic file editing
-- [ ] Load file/Save file with file navigation in mini panel
-- [ ] Switching panel documents
-- [ ] Closing documents
+- [X] Load file/Save file with file navigation in mini panel
+- [X] Switching panel documents
+- [X] Closing documents
 - [X] Find in mini panel
 - [X] Cut/Copy/Paste
 - [X] Undo!
-- [ ] Panel splitting (we can move this to the fancy section)
+- [ ] Messages
 - [ ] Find/replace
 - [ ] Keymap support
-- [ ] What else have I missed?
+- [ ] Panel splitting (we can move this to the fancy section)
+- [ ] Modeline?
 
 TODO(jt): Fancy stuff to do:
 
@@ -94,9 +95,6 @@ operator==     :: Math.operator==;
 #load "gap_buffer.jai";
 #load "text_buffer.jai";
 #load "hello.jai";
-
-ARENA_RESERVE_SIZE_LARGE : s64 : 16 << 30;
-ARENA_RESERVE_SIZE_SMALL : s64 : 64 << 10;
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
 // if the texture wasn't uploaded (we don't upload TEXTURE_ID_NONE). We could also reserve a few
@@ -237,10 +235,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     profiler_init();
     profiler_start_frame("init");
 
-    arena_procs := make_arena_procs(platform);
-    editor.perm_arena = arena_allocate(arena_procs);
+    editor.perm_arena = make_arena(platform, .LARGE);
 
-    font_arena := arena_allocate(arena_procs);
+    font_arena := make_arena(platform, .LARGE);
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
 
@@ -263,7 +260,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     panel := array_add(*editor.panels);
     set_panel_document_to_newly_created_scratch(editor, panel, platform);
 
-    init_mini_panel(*editor.mini_panel, arena_procs);
+    init_mini_panel(*editor.mini_panel, platform);
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -1136,11 +1133,11 @@ route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, 
     }
 }
 
-init_mini_panel :: (mini_panel: *Mini_Panel, arena_procs: Arena_Procs) {
+init_mini_panel :: (mini_panel: *Mini_Panel, platform: Platform) {
     // Mini text buffer gets its own arena, because it survives longer than the items.
-    text_buffer_init(*mini_panel.buffer, arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_SMALL));
+    text_buffer_init(*mini_panel.buffer, make_arena(platform, .SMALL));
 
-    mini_panel.items_arena = arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_LARGE);
+    mini_panel.items_arena = make_arena(platform, .LARGE);
     mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
 }
 
@@ -1492,11 +1489,9 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         return it, false;
     }
 
-    arena_procs := make_arena_procs(platform);
-
-    document_arena         := arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_SMALL);
-    buffer_arena           := arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_LARGE);
-    buffer_edit_text_arena := arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_LARGE);
+    document_arena         := make_arena(platform, .SMALL);
+    buffer_arena           := make_arena(platform, .LARGE);
+    buffer_edit_text_arena := make_arena(platform, .LARGE);
 
     document: Document;
     document.kind = kind;
@@ -1552,8 +1547,6 @@ set_panel_document :: (panel: *Panel, document: *Document) {
 set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, platform: Platform) {
     ProfileZone("set_panel_document_to_scratch");
 
-    arena_procs := make_arena_procs(platform);
-
     document := find_or_add_document(editor, platform, .SCRATCH, "");
 
     panel.scroll_source = { 0, 0 };
@@ -1572,7 +1565,7 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
     // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
     HELLO_SIZE : s64 : 64 << 10;
 
-    hello_arena := arena_allocate(arena_procs, reserve_size = ARENA_RESERVE_SIZE_LARGE);
+    hello_arena := make_arena(platform, .LARGE);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
     text_buffer_insert(*document.buffer, hello_text, undo_barrier = true);
 
@@ -1677,14 +1670,24 @@ draw_rect :: (render_rects: *[..] Render_Rect, rect: Rect, color: Vector4 = { 1,
     rr.color = color;
 }
 
-make_arena_procs :: (platform: Platform) -> Arena_Procs {
-    return {
-        platform.page_size,
-        platform.mem_reserve,
-        platform.mem_release,
-        platform.mem_commit,
-        platform.mem_decommit,
-    };
+Arena_Size :: enum s64 {
+    SMALL  :: 64 << 10;
+    LARGE  :: 16 << 30;
+}
+
+make_arena :: (platform: Platform, size: Arena_Size) -> *Arena {
+    procs: Arena_Procs;
+    procs.page_size    = platform.page_size;
+    procs.mem_reserve  = platform.mem_reserve;
+    procs.mem_release  = platform.mem_release;
+    procs.mem_commit   = platform.mem_commit;
+    procs.mem_decommit = platform.mem_decommit;
+
+    reserve_size := cast(s64, size);
+
+    arena := arena_allocate(procs, reserve_size = reserve_size);
+
+    return arena;
 }
 
 print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
