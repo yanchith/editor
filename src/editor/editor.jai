@@ -545,10 +545,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         panel_w := window_w;
         panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
 
-        // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
-        viewport_y0 := panel.scroll.y;
-        viewport_y1 := panel.scroll.y + panel_h;
-
         //
         // Compute cursor position.
         //
@@ -620,12 +616,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             panel.scroll = lerp(panel.scroll_source, panel.scroll_target, t);
 
-            // XXX: For some reason, rendering is delayed one frame... the scroll animation seems good though. OpenGL bug?
-            log("XXX next frame % % % <- %", t, t < 1.0, panel.scroll_target, panel.scroll);
             if t < 1.0 {
                 wants_next_frame = true;
             }
         }
+
+        // Now that we have finished scrolling, we can define the range that the viewport sees.
+        //
+        // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
+        viewport_y0 := panel.scroll.y;
+        viewport_y1 := panel.scroll.y + panel_h;
 
         //
         // Layout and draw selection
