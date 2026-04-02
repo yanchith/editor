@@ -272,9 +272,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
+        editor.font.glyph_atlas,
         editor.font.glyph_atlas_width_in_pixels,
         editor.font.glyph_atlas_height_in_pixels,
-        editor.font.glyph_atlas,
     );
 
     time_scale := profiler_end_frame();
@@ -869,7 +869,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     print_profile_for_slow_frames(SLOW_FRAME_THRESHOLD_MILLIS, time_scale);
 
     {
-        renderer.update_texture_regions_r8unorm(TEXTURE_ID_GLYPH_ATLAS, update_regions, editor.font.glyph_atlas);
+        r := irect_union_or_zero(update_regions);
+
+        renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, r);
         renderer.draw_rects(render_rects);
     }
 

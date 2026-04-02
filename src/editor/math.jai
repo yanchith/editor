@@ -2,7 +2,7 @@
 // Float vectors
 //
 //
-// TODO(jt): For float vectors, we are currently using JAI's math, becuase Simp uses them.
+// For float vectors, we are currently using JAI's math, becuase Simp uses them.
 //
 
 //
@@ -10,7 +10,7 @@
 //
 // We use double vectors as a hack to have more precision for 100MB+ text buffers for stuff that is
 // not mapped into the screen's coordinate system. We should maybe eventually switch to something
-// even more robust, like s64 + f32 offset.
+// even more robust, like s64 + f32 offset, or perhaps 58:6 fixed point.
 //
 // :FloatPrecision
 //
@@ -89,13 +89,6 @@ IVector2 :: struct {
     #overlay (x) component: [2] s32 = ---;
 }
 
-IVECTOR2_ZERO :: IVector2.{ 0, 0 };
-
-IVECTOR2_POSITIVE_X :: IVector2.{  1,  0 };
-IVECTOR2_NEGATIVE_X :: IVector2.{ -1,  0 };
-IVECTOR2_POSITIVE_Y :: IVector2.{  0,  1 };
-IVECTOR2_NEGATIVE_Y :: IVector2.{  0, -1 };
-
 operator == :: (a: IVector2, b: IVector2) -> bool {
     return a.x == b.x && a.y == b.y;
 }
@@ -164,15 +157,15 @@ rect_from_point_and_size :: inline (x0: f32, y0: f32, width: f32, height: f32) -
 }
 
 rect_min :: inline (r: Rect) -> Vector2 {
-    x := ifx x0 < x1 then x0 else x1;
-    y := ifx y0 < y1 then y0 else y1;
+    x := ifx r.x0 < r.x1 then r.x0 else r.x1;
+    y := ifx r.y0 < r.y1 then r.y0 else r.y1;
 
     return { x, y };
 }
 
 rect_max :: inline (r: Rect) -> Vector2 {
-    x := ifx x0 > x1 then x0 else x1;
-    y := ifx y0 > y1 then y0 else y1;
+    x := ifx r.x0 > r.x1 then r.x0 else r.x1;
+    y := ifx r.y0 > r.y1 then r.y0 else r.y1;
 
     return { x, y };
 }
@@ -204,7 +197,11 @@ rect_fixup :: (r: Rect) -> Rect {
     p0 := rect_min(r);
     p1 := rect_max(r);
 
-    return make_rect(p0, p1);
+    result: Rect;
+    result.p0 = p0;
+    result.p1 = p1;
+
+    return result;
 }
 
 operator + :: (r: Rect, v: Vector2) -> Rect {
@@ -247,15 +244,15 @@ drect_from_point_and_size :: inline (x0: f64, y0: f64, width: f64, height: f64) 
 }
 
 drect_min :: inline (r: DRect) -> DVector2 {
-    x := ifx x0 < x1 then x0 else x1;
-    y := ifx y0 < y1 then y0 else y1;
+    x := ifx r.x0 < r.x1 then r.x0 else r.x1;
+    y := ifx r.y0 < r.y1 then r.y0 else r.y1;
 
     return { x, y };
 }
 
 drect_max :: inline (r: DRect) -> DVector2 {
-    x := ifx x0 > x1 then x0 else x1;
-    y := ifx y0 > y1 then y0 else y1;
+    x := ifx r.x0 > r.x1 then r.x0 else r.x1;
+    y := ifx r.y0 > r.y1 then r.y0 else r.y1;
 
     return { x, y };
 }
@@ -280,7 +277,11 @@ drect_fixup :: (r: DRect) -> DRect {
     p0 := rect_min(r);
     p1 := rect_max(r);
 
-    return make_rect(p0, p1);
+    result: DRect;
+    result.p0 = p0;
+    result.p1 = p1;
+
+    return result;
 }
 
 operator + :: (r: DRect, v: DVector2) -> DRect {
@@ -325,15 +326,15 @@ irect_from_point_and_size :: inline (x0: s32, y0: s32, width: s32, height: s32) 
 }
 
 irect_min :: inline (r: IRect) -> IVector2 {
-    x := ifx x0 < x1 then x0 else x1;
-    y := ifx y0 < y1 then y0 else y1;
+    x := ifx r.x0 < r.x1 then r.x0 else r.x1;
+    y := ifx r.y0 < r.y1 then r.y0 else r.y1;
 
     return { x, y };
 }
 
 irect_max :: inline (r: IRect) -> IVector2 {
-    x := ifx x0 > x1 then x0 else x1;
-    y := ifx y0 > y1 then y0 else y1;
+    x := ifx r.x0 > r.x1 then r.x0 else r.x1;
+    y := ifx r.y0 > r.y1 then r.y0 else r.y1;
 
     return { x, y };
 }
@@ -358,7 +359,41 @@ irect_fixup :: (r: IRect) -> IRect {
     p0 := irect_min(r);
     p1 := irect_max(r);
 
-    return make_irect(p0, p1);
+    result: IRect;
+    result.p0 = p0;
+    result.p1 = p1;
+
+    return result;
+}
+
+irect_union_or_zero :: (rs: ..IRect) -> IRect {
+    return inline irect_union_or_zero(rs);
+}
+
+irect_union_or_zero :: (rs: [] IRect) -> IRect {
+    if rs.count == 0 {
+        return { 0, 0, 0, 0 };
+    }
+
+    result := irect_fixup(rs[0]);
+    for 1..rs.count - 1 {
+        r := *rs[it];
+
+        // This doesn't assume the rects are already fixed up, so maybe it does a little bit too
+        // many conditional moves.
+
+        if r.x0 < result.x0 then result.x0 = r.x0;
+        if r.y0 < result.y0 then result.y0 = r.y0;
+        if r.x1 < result.x0 then result.x0 = r.x1;
+        if r.y1 < result.y0 then result.y0 = r.y1;
+
+        if r.x0 > result.x1 then result.x1 = r.x0;
+        if r.y0 > result.y1 then result.y1 = r.y0;
+        if r.x1 > result.x1 then result.x1 = r.x1;
+        if r.y1 > result.y1 then result.y1 = r.y1;
+    }
+
+    return result;
 }
 
 //
