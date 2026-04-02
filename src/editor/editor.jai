@@ -1688,11 +1688,10 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
 
 finish_scroll_interpolation :: (panel: *Panel) {
     panel.scroll_source = panel.scroll_target;
-    panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes for e.g. to_float64_seconds.
+    panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
     panel.scroll = panel.scroll_target;
 }
 
-// XXX: @Cleanup Make scroll target be a parameter here instead of putting it manually before calling this.
 setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time) {
     panel.scroll_target.x = max(panel.scroll_target.x, 0.0);
     panel.scroll_target.y = max(panel.scroll_target.y, 0.0);
