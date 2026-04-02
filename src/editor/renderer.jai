@@ -8,7 +8,7 @@ Render_Rect :: struct {
 }
 
 Renderer :: struct {
-    create_texture_r8unorm: (texture_id: Texture_ID, width: s32, height: s32, data: [] u8);
-    update_texture_regions_r8unorm: (texture_id: Texture_ID, regions: [] IRect, data: [] u8);
+    create_texture_r8unorm: (texture_id: Texture_ID, data: [] u8, width: s32, height: s32);
+    update_texture_r8unorm: (texture_id: Texture_ID, data: [] u8, update_rect: IRect); // data is width*height, in case the implementation ignores update_rect.
     draw_rects: (render_rects: [] Render_Rect);
 }
