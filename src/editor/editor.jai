@@ -422,6 +422,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // cell_w and cell_h are 32-bit and that's perfectly reasonable for them, but some text
     // documents are big. Beware multiplying cell_W and cell_h with integers (such as line count),
     // as that autocasts the integers to f32, but we want to manually cast them to f64. See :FloatPrecision
+    //
+    // TODO(jt): cell_w should be width of letter M or something, because width of widest glyph is
+    // too much in variable-spaced fonts.
     cell_w := editor.font.max_glyph_width_in_pixels;
     cell_h := editor.font.line_height_in_pixels;
     window_w := cast(f32, input.window_size.x);
@@ -468,8 +471,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
-                } else if mouse.x > cast(f32, input.window_size.x) - SCROLL_APRON {
-                    boost := (mouse.x - (cast(f32, input.window_size.x) - SCROLL_APRON)) * SCROLL_BOOST;
+                } else if mouse.x > window_w - SCROLL_APRON {
+                    boost := (mouse.x - (window_w - SCROLL_APRON)) * SCROLL_BOOST;
 
                     // Apron contains the newline (if present) and one additional horizontal cell.
                     apron := 2 * cell_w;
@@ -479,7 +482,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     // Clamp to zero, so we don't end up scrolling the other way if the line is
                     // short. (Happens if you start scrolling on a long line, but then vertically
                     // scroll to a short line.)
-                    max_x := max(font_compute_position_on_line(editor.font, line_view, document.buffer.cursor0.x) - input.window_size.x + apron, 0);
+                    max_x := max(font_compute_position_on_line(editor.font, line_view, document.buffer.cursor0.x) - window_w + apron, 0);
 
                     active_panel.scroll_target.x += SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.x = min(active_panel.scroll_target.x, max_x);
@@ -497,8 +500,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
-                } else if mouse.y > cast(f32, input.window_size.y) - SCROLL_APRON {
-                    boost := (mouse.y - (cast(f32, input.window_size.y) - SCROLL_APRON)) * SCROLL_BOOST;
+                } else if mouse.y > window_h - SCROLL_APRON {
+                    boost := (mouse.y - (window_h - SCROLL_APRON)) * SCROLL_BOOST;
 
                     active_panel.scroll_target.y += SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * cast(f64, document.buffer.lines.count - 1));
@@ -539,9 +542,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             continue;
         }
 
-        // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
+        panel_w := window_w;
+        panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
+
+        // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
         viewport_y0 := panel.scroll.y;
-        viewport_y1 := panel.scroll.y + cast(f64, input.window_size.y) - 2 * cell_h /* mode line and message line (or mini panel) */;
+        viewport_y1 := panel.scroll.y + panel_h;
 
         //
         // Compute cursor position.
@@ -562,21 +568,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         if panel.clamp_scroll_to_cursor || panel.clamp_scroll_to_start_of_line || panel.clamp_scroll_to_end_of_line {
             ProfileZone(":ClampScroll");
-            window_w := cast(f32, input.window_size.x);
-            window_h := cast(f32, input.window_size.y);
 
-            SCROLL_PADDING_CELLS_X :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
-            SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
-            scroll_padding_x := min(window_w * 0.25, cell_w * SCROLL_PADDING_CELLS_X);
-            scroll_padding_y := min(window_h * 0.25, cell_h * SCROLL_PADDING_CELLS_Y);
+            SCROLL_PADDING_CELLS_X :: 3; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
+            SCROLL_PADDING_CELLS_Y :: 3; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
+            scroll_padding_x := min(panel_w * 0.25, cell_w * SCROLL_PADDING_CELLS_X);
+            scroll_padding_y := min(panel_h * 0.25, cell_h * SCROLL_PADDING_CELLS_Y);
 
             cursor0 := document.buffer.cursor0;
 
-            // XXX: @Bug tbe clamping viewport is smaller now that we have the mode line and message
-            // line. Also what about mini_panel? Emacs does an interesting thing with that.
-
-            // TODO(jt): This viewport rect is only correct for the entire window. Compute a viewport for panel instead. See :MultiplePanels
-            viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, window_w, window_h);
+            // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
+            viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
             scroll_to_rect: DRect;
             if panel.clamp_scroll_to_start_of_line {
                 scroll_to_rect = drect_from_point_and_size(0, buffer_cursor0_position.y, cell_w, cell_h);
@@ -588,7 +589,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             if scroll_to_rect.x1 > viewport_rect.x1 {
                 finish_scroll_interpolation(panel);
-                panel.scroll_target.x = scroll_to_rect.x0 - window_w + drect_width(scroll_to_rect) + scroll_padding_x;
+                panel.scroll_target.x = scroll_to_rect.x0 - panel_w + drect_width(scroll_to_rect) + scroll_padding_x;
                 setup_scroll_interpolation(panel, input.time);
             } else if scroll_to_rect.x0 < viewport_rect.x0 {
                 finish_scroll_interpolation(panel);
@@ -598,7 +599,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             if scroll_to_rect.y1 > viewport_rect.y1 {
                 finish_scroll_interpolation(panel);
-                panel.scroll_target.y = scroll_to_rect.y0 - window_h + drect_height(scroll_to_rect) + scroll_padding_y;
+                panel.scroll_target.y = scroll_to_rect.y0 - panel_h + drect_height(scroll_to_rect) + scroll_padding_y;
                 setup_scroll_interpolation(panel, input.time);
             } else if scroll_to_rect.y0 < viewport_rect.y0 {
                 finish_scroll_interpolation(panel);
@@ -611,7 +612,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Scroll animation
         //
         {
-            SCROLL_TIME : f64 : 0.12;
+            SCROLL_TIME : f64 : 0.08;
 
             t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(panel.scroll_time_start)) / SCROLL_TIME);
             t = clamp(t, 0.0, 1.0);
@@ -619,6 +620,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             panel.scroll = lerp(panel.scroll_source, panel.scroll_target, t);
 
+            // XXX: For some reason, rendering is delayed one frame... the scroll animation seems good though. OpenGL bug?
+            log("XXX next frame % % % <- %", t, t < 1.0, panel.scroll_target, panel.scroll);
             if t < 1.0 {
                 wants_next_frame = true;
             }
@@ -722,7 +725,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             position := buffer_cursor0_position;
 
             cursor_rect := drect_from_point_and_size(position.x, position.y, cell_w, cell_h) - panel.scroll;
-            line_rect: Rect = { 0, cast(f32, position.y - panel.scroll.y), cast(f32, input.window_size.x), cast(f32, position.y + cell_h - panel.scroll.y) };
+            line_rect: Rect = { 0, cast(f32, position.y - panel.scroll.y), window_w, cast(f32, position.y + cell_h - panel.scroll.y) };
 
             draw_rect(*render_rects, line_rect, LINE_COLOR);
             draw_rect(*render_rects, drect_to_rect(cursor_rect), CURSOR_COLOR);
@@ -766,7 +769,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     {
-        modeline_y := ifx editor.mini_panel.open then input.window_size.y - (MINI_PANEL_LINES + 2) * cell_h else input.window_size.y - 2.0 * cell_h;
+        modeline_y := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
 
         draw_rect(*render_rects, 0, modeline_y, window_w, modeline_y + cell_h, MODELINE_COLOR);
 
@@ -790,7 +793,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
     if editor.mini_panel.open {
         background_h := (MINI_PANEL_LINES + 1) * cell_h;
-        background_y := max(input.window_size.y - background_h, 0);
+        background_y := max(window_h - background_h, 0);
         draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.96, 0.96, 0.96, 1.0 });
 
         if editor.mini_panel.item_index == -1 {
@@ -842,7 +845,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             it_index += 1;
         }
     } else {
-        message_line_y := input.window_size.y - cell_h;
+        message_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
 
         if editor.messages.count && !editor.last_message_seen {
@@ -1689,6 +1692,7 @@ finish_scroll_interpolation :: (panel: *Panel) {
     panel.scroll = panel.scroll_target;
 }
 
+// XXX: @Cleanup Make scroll target be a parameter here instead of putting it manually before calling this.
 setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time) {
     panel.scroll_target.x = max(panel.scroll_target.x, 0.0);
     panel.scroll_target.y = max(panel.scroll_target.y, 0.0);
