@@ -76,9 +76,9 @@ Glyph_Entry :: struct {
     // Metrics, metadata, anything that we know about the glyph.
     //
     // In the STBTT days, we didn't cache anything in here, but either I don't understand FreeType
-    // very well, or it seems like even extracing at least some of these (except for advance) is a
+    // very well, or it seems like even extracting at least some of these (except for advance) is a
     // heavyweight operation that involves actually rasterizing the glyph (or loading the bitmap
-    // version, if present).
+    // version, if present), so just in case, they are here.
     //
 
     glyph_advance: s32;        // In 26:6 pixels.
