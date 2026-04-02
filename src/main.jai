@@ -237,7 +237,7 @@ main :: () {
         renderer_shader.alpha_blend = true;
 
         renderer: Editor.Renderer;
-        renderer.create_texture_r8unorm = (texture_id: Editor.Texture_ID, width: s32, height: s32, data: [] u8) {
+        renderer.create_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, width: s32, height: s32) {
             bitmap: Simp.Bitmap;
             Simp.bitmap_alloc(*bitmap, width, height, .R8,, temp);
             bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
@@ -251,7 +251,7 @@ main :: () {
 
             table_add(*renderer_textures, texture_id, texture);
         }
-        renderer.update_texture_regions_r8unorm = (texture_id: Editor.Texture_ID, regions: [] IRect, data: [] u8) {
+        renderer.update_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, update_rect: IRect) {
             texture := table_find_pointer(*renderer_textures, texture_id);
             if !texture {
                 log_error("Can't update nonexistent texture: %", texture_id);
@@ -259,8 +259,7 @@ main :: () {
 
             // TODO(jt): @Correctness @Speed This function re-uploads everything, because Simp does
             // glTexImage2D. Whatever backend we end up using, we want to limit the upload to just
-            // the subregions. This may also end up being a correctness issue, but at the moment it
-            // is fine.
+            // the update rect.
 
             bitmap: Simp.Bitmap;
             Simp.bitmap_alloc(*bitmap, texture.width, texture.height, .R8,, temp);
