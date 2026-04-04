@@ -203,6 +203,7 @@ Panel :: struct {
 Mini_Panel :: struct {
     open: bool;
 
+    key_map: Key_Map;
     buffer: Text_Buffer;
 
     // For now, this is an enum of things we might want to do, but this is not extensible. Once we
@@ -267,7 +268,48 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     panel := array_add(*editor.panels);
     set_panel_document_to_newly_created_scratch(editor, panel, platform);
 
-    init_mini_panel(*editor.mini_panel, platform);
+    //
+    // Init mini panel
+    //
+    {
+        mini_panel := *editor.mini_panel;
+
+        mini_panel.key_map.allocator = arena_allocator(editor.perm_arena);
+        key_map_init(*mini_panel.key_map, 128);
+
+        key_map_register(*mini_panel.key_map, shortcut_parse("C-p"),         .MINI_PANEL_MOVE_UP);
+        key_map_register(*mini_panel.key_map, shortcut_parse("C-n"),         .MINI_PANEL_MOVE_DOWN);
+        key_map_register(*mini_panel.key_map, shortcut_parse("C-b"),         .MINI_PANEL_MOVE_LEFT);
+        key_map_register(*mini_panel.key_map, shortcut_parse("C-f"),         .MINI_PANEL_MOVE_RIGHT);
+        key_map_register(*mini_panel.key_map, shortcut_parse("<up>"),        .MINI_PANEL_MOVE_UP);
+        key_map_register(*mini_panel.key_map, shortcut_parse("<down>"),      .MINI_PANEL_MOVE_DOWN);
+        key_map_register(*mini_panel.key_map, shortcut_parse("<left>"),      .MINI_PANEL_MOVE_LEFT);
+        key_map_register(*mini_panel.key_map, shortcut_parse("<right>"),     .MINI_PANEL_MOVE_RIGHT);
+
+        key_map_register(*mini_panel.key_map, shortcut_parse("M-f"),         .MINI_PANEL_MOVE_FORWARD_WORD);
+        key_map_register(*mini_panel.key_map, shortcut_parse("M-b"),         .MINI_PANEL_MOVE_BACKWARD_WORD);
+
+        key_map_register(*mini_panel.key_map, shortcut_parse("C-a"),         .MINI_PANEL_MOVE_TO_START_OF_LINE);
+        key_map_register(*mini_panel.key_map, shortcut_parse("C-e"),         .MINI_PANEL_MOVE_TO_END_OF_LINE);
+
+        key_map_register(*mini_panel.key_map, shortcut_parse("C-d"),         .MINI_PANEL_DELETE_FORWARD);
+        key_map_register(*mini_panel.key_map, shortcut_parse("<delete>"),    .MINI_PANEL_DELETE_FORWARD);
+        key_map_register(*mini_panel.key_map, shortcut_parse("<backspace>"), .MINI_PANEL_DELETE_BACKWARD);
+
+        key_map_register(*mini_panel.key_map, shortcut_parse("M-v"),         .MINI_PANEL_SCROLL_UP);
+        key_map_register(*mini_panel.key_map, shortcut_parse("C-v"),         .MINI_PANEL_SCROLL_DOWN);
+
+        key_map_register(*mini_panel.key_map, shortcut_parse("<enter>"),     .MINI_PANEL_CONFIRM);
+        key_map_register(*mini_panel.key_map, shortcut_parse("C-m"),         .MINI_PANEL_CONFIRM);
+
+        key_map_register(*mini_panel.key_map, shortcut_parse("C-g"),         .MINI_PANEL_CANCEL);
+
+        // Mini text buffer gets its own arena, because it survives longer than the items.
+        text_buffer_init(*mini_panel.buffer, make_arena(platform, .SMALL));
+
+        mini_panel.items_arena = make_arena(platform, .LARGE);
+        mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
+    }
 
     editor.messages.allocator = arena_allocator(editor.perm_arena);
 
@@ -364,6 +406,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .CODEPOINT; {
                     if editor.input_state.keys[Key.CTRL] & .DOWN {
                         if it.data.codepoint == {
+                            // TODO(jt): Move this to a global keymap.
+                            //
                             // TODO(jt): This works a little too well on Windows, we don't even need
                             // to press shift for the +. The problem is that Windows doesn't send us
                             // the TEXT_INPUT (WM_CHAR/WM_SYSCHAR) event at all if CTRL is down, so
@@ -372,17 +416,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             // the CTRL back in? I don't know.
                             case #char "+";  editor.font_size += 1; handled = true;
                             case #char "-";  editor.font_size = max(editor.font_size - 1, 4); handled = true;
-
-                            case #char "g";  #through;
-                            case #char "G";  handled = close_mini_panel(*editor.mini_panel);
-
-                            case #char "s";  #through;
-                            case #char "S";  {
-                                was_closed := open_mini_panel(*editor.mini_panel, .SEARCH);
-                                mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
-
-                                handled = was_closed;
-                            }
                         }
                     }
                 }
@@ -395,8 +428,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if !handled {
             if editor.mini_panel.open {
                 route_event_to_mini_panel(editor, it, platform, input, editor.input_state, editor.font.line_height_in_pixels);
-            } else if active_panel {
-                route_event_to_panel(active_panel, it, platform, input, editor.input_state, editor.font.line_height_in_pixels);
+            } else {
+                route_event_to_panel(editor, it, platform, input, editor.input_state, editor.font.line_height_in_pixels);
             }
         }
     }
@@ -908,62 +941,41 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     buffer_changed := false;
     old_item_index := mini_panel.item_index;
 
+    key_map_buffered, key_map_action := key_map_input(*editor.mini_panel.key_map, event);
+    if key_map_action == {
+        case .MINI_PANEL_MOVE_UP;                mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
+        case .MINI_PANEL_MOVE_DOWN;              mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
+        case .MINI_PANEL_MOVE_LEFT;              text_buffer_move_cursor_x(*mini_panel.buffer, -1, false);
+        case .MINI_PANEL_MOVE_RIGHT;             text_buffer_move_cursor_x(*mini_panel.buffer,  1, false);
+
+        case .MINI_PANEL_MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, false);
+        case .MINI_PANEL_MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, false);
+
+        case .MINI_PANEL_MOVE_TO_START_OF_LINE;  text_buffer_move_cursor_to_start_of_line(*mini_panel.buffer, false);
+        case .MINI_PANEL_MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, false);
+
+        case .MINI_PANEL_DELETE_FORWARD;         text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
+        case .MINI_PANEL_DELETE_BACKWARD;        text_buffer_delete_backward(*mini_panel.buffer); buffer_changed = true;
+
+        case .MINI_PANEL_SCROLL_UP;              mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+        case .MINI_PANEL_SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+
+        case .MINI_PANEL_CONFIRM;                mini_panel_confirm_proc(editor, platform, input, cell_h, buffer_changed, mini_panel.item_index != old_item_index);
+        case .MINI_PANEL_CANCEL;                 close_mini_panel(*editor.mini_panel);
+    }
+
     // TODO(jt): Do selecting in mini panel
     // TODO(jt): Do animated horizontal scroll of buffer in mini panel.
     // TODO(jt): Do animated vertical scroll of item list in mini_panel.
-    if event.flags & .PRESSED {
+    if !key_map_buffered && key_map_action == .NONE && event.flags & .PRESSED {
         if event.type == {
-            case .KEY; {
-                if event.data.key == {
-                    case .ARROW_UP;     mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
-                    case .ARROW_DOWN;   mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
-                    case .ARROW_LEFT;   text_buffer_move_cursor_x(*mini_panel.buffer, -1, false);
-                    case .ARROW_RIGHT;  text_buffer_move_cursor_x(*mini_panel.buffer,  1, false);
-                }
-            }
-
             case .CODEPOINT; {
                 codepoint := event.data.codepoint;
 
-                if input_state.keys[Key.CTRL] & .DOWN {
+                if !(input_state.keys[Key.CTRL] & .DOWN) && !(input_state.keys[Key.ALT] & .DOWN) {
                     if codepoint == {
-                        case #char "p";  #through;
-                        case #char "P";  mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
-                        case #char "n";  #through;
-                        case #char "N";  mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
-                        case #char "b";  #through;
-                        case #char "B";  text_buffer_move_cursor_x(*mini_panel.buffer, -1, false);
-                        case #char "f";  #through;
-                        case #char "F";  text_buffer_move_cursor_x(*mini_panel.buffer,  1, false);
-                        case #char "a";  #through;
-                        case #char "A";  text_buffer_move_cursor_to_start_of_line(*mini_panel.buffer, false);
-                        case #char "e";  #through;
-                        case #char "E";  text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, false);
-                        case #char "d";  #through;
-                        case #char "D";  text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
-
-                        case #char "v";  #through;
-                        case #char "V";  mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
-                    }
-                } else if input_state.keys[Key.ALT] & .DOWN {
-                    if codepoint == {
-                        case #char "b";  #through;
-                        case #char "B";  text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, false);
-                        case #char "f";  #through;
-                        case #char "F";  text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, false);
-
-                        case #char "v";  #through;
-                        case #char "V";  mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
-                    }
-                } else {
-                    if codepoint == {
-                        case .BACKSPACE;  text_buffer_delete_backward(*mini_panel.buffer); buffer_changed = true;
-                        case .DELETE;     text_buffer_delete_forward(*mini_panel.buffer);  buffer_changed = true;
-
-                        case .ENTER;      mini_panel_confirm_proc(editor, platform, input, cell_h, buffer_changed, mini_panel.item_index != old_item_index);
-
                         // TODO(jt): Make indentation configurable.
-                        case .TAB;        text_buffer_insert(*mini_panel.buffer, " "); buffer_changed = true;
+                        case .TAB;        text_buffer_insert(*mini_panel.buffer, "    "); buffer_changed = true;
                         case; {
                             // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
                             // this back to codepoints for its linedata tracking. Add
@@ -993,7 +1005,12 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     }
 }
 
-route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) {
+route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input, input_state: Input_State, cell_h: f32) {
+    panel := get_active_panel(editor);
+    if !panel {
+        return;
+    }
+
     document := panel.document;
     if !document {
         return;
@@ -1052,6 +1069,12 @@ route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, 
                         case .SPACEBAR;  panel.selecting = true;  text_buffer_join_cursors(*document.buffer);
                         case #char "g";  #through;
                         case #char "G";  panel.selecting = false; text_buffer_join_cursors(*document.buffer);
+
+                        case #char "s";  #through;
+                        case #char "S";  {
+                            was_closed := open_mini_panel(*editor.mini_panel, .SEARCH);
+                            mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
+                        }
 
                         case #char "k";  #through;
                         case #char "K"; {
@@ -1179,15 +1202,9 @@ route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, 
     }
 }
 
-init_mini_panel :: (mini_panel: *Mini_Panel, platform: Platform) {
-    // Mini text buffer gets its own arena, because it survives longer than the items.
-    text_buffer_init(*mini_panel.buffer, make_arena(platform, .SMALL));
-
-    mini_panel.items_arena = make_arena(platform, .LARGE);
-    mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
-}
-
 open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action, initial_text := "") -> was_closed: bool {
+    key_map_flush(*mini_panel.key_map);
+
     text_buffer_reset(*mini_panel.buffer);
     text_buffer_insert(*mini_panel.buffer, initial_text);
 
@@ -1391,6 +1408,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, ce
         if mini_panel.action == .SEARCH {
             // TODO(jt): @Cleanup This is the copypaste of the confirm action, except it does not close the mini panel.
 
+            // XXX: @Bug This assert went off!
             assert(mini_panel.item_index >= 0);
             item := *mini_panel.items[mini_panel.item_index];
 
