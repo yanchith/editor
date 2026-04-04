@@ -28,8 +28,8 @@ Input_Event :: struct  {
     Flags :: enum_flags u16 {
         NONE :: 0;
 
-        KEY_PRESSED :: 0x01; // Whether the key is right now pressed. Absence of this flag means released.
-        KEY_REPEAT  :: 0x02; // Whether the key is a synthetic OS repeat event. We currently don't use this?
+        PRESSED :: 0x01; // Whether the key is right now pressed. Absence of this flag means released.
+        REPEAT  :: 0x02; // Whether the key is a synthetic OS repeat event. We currently don't use this?
     }
 
 
@@ -114,6 +114,7 @@ Input_State :: struct {
 
 Key_State :: enum_flags u8 {
     NONE     :: 0;
+
     DOWN     :: 0x01;
     PRESSED  :: 0x02;
     RELEASED :: 0x04;
@@ -136,7 +137,7 @@ input_state_update_with_event :: (input_state: *Input_State, event: Input_Event)
     if event.type == .KEY {
         key := event.data.key;
 
-        if event.flags & .KEY_PRESSED {
+        if event.flags & .PRESSED {
             input_state.keys[key] |= .DOWN | .PRESSED;
             if input_state.mouse_inside_window {
                 input_state.keys[key] |= .LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW;
