@@ -92,6 +92,7 @@ operator==     :: Math.operator==;
 #load "platform.jai";
 #load "renderer.jai";
 #load "input.jai";
+#load "key_map.jai";
 #load "font.jai";
 #load "gap_buffer.jai";
 #load "text_buffer.jai";
@@ -308,7 +309,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Global events handled at the editor level.
         //
-        if it.flags & .KEY_PRESSED {
+        if it.flags & .PRESSED {
             editor.last_message_seen = true;
 
             if it.type == {
@@ -910,7 +911,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     // TODO(jt): Do selecting in mini panel
     // TODO(jt): Do animated horizontal scroll of buffer in mini panel.
     // TODO(jt): Do animated vertical scroll of item list in mini_panel.
-    if event.flags & .KEY_PRESSED {
+    if event.flags & .PRESSED {
         if event.type == {
             case .KEY; {
                 if event.data.key == {
@@ -998,7 +999,7 @@ route_event_to_panel :: (panel: *Panel, event: Input_Event, platform: Platform, 
         return;
     }
 
-    if event.flags & .KEY_PRESSED {
+    if event.flags & .PRESSED {
         if event.type == {
             case .KEY; {
                 // We can't go into global selecting mode if shift is down, because many
