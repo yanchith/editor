@@ -394,7 +394,7 @@ main :: () {
                         // TODO(jt): Send down repeats.
                         flags: Editor.Input_Event.Flags;
                         if it.key_pressed {
-                            flags |= .KEY_PRESSED;
+                            flags |= .PRESSED;
                         }
 
                         // The Input module's key_codes mirror ASCII in that range. However, for
@@ -473,7 +473,7 @@ main :: () {
 
                     case .TEXT_INPUT; {
                         flags: Editor.Input_Event.Flags;
-                        flags |= .KEY_PRESSED; // TEXT_INPUT implies key_pressed.
+                        flags |= .PRESSED; // TEXT_INPUT implies key_pressed.
 
                         data: Editor.Input_Event.Data;
                         data.codepoint = cast(Editor.Codepoint, it.utf32);
@@ -496,7 +496,7 @@ main :: () {
                         for 0..20 {
                             e := array_add(*input_events);
                             e.type = .KEY;
-                            e.flags |= .KEY_PRESSED;
+                            e.flags |= .PRESSED;
 
                             index := random_get(*fuzz_rng) % MOVES.count;
                             e.data.key = MOVES[index];
@@ -505,7 +505,7 @@ main :: () {
                         for 0..20 {
                             e := array_add(*input_events);
                             e.type = .CODEPOINT;
-                            e.flags |= .KEY_PRESSED;
+                            e.flags |= .PRESSED;
 
                             index := random_get(*fuzz_rng) % ADDS.count;
                             e.data.codepoint = ADDS[index];
@@ -514,7 +514,7 @@ main :: () {
                         for 0..20 {
                             e := array_add(*input_events);
                             e.type = .CODEPOINT;
-                            e.flags |= .KEY_PRESSED;
+                            e.flags |= .PRESSED;
 
                             index := random_get(*fuzz_rng) % DELETES.count;
                             e.data.codepoint = DELETES[index];
@@ -523,12 +523,12 @@ main :: () {
                         // C-g select
                         ctrl_press := array_add(*input_events);
                         ctrl_press.type = .KEY;
-                        ctrl_press.flags |= .KEY_PRESSED;
+                        ctrl_press.flags |= .PRESSED;
                         ctrl_press.data.key = .CTRL;
 
                         e := array_add(*input_events);
                         e.type = .CODEPOINT;
-                        e.flags |= .KEY_PRESSED;
+                        e.flags |= .PRESSED;
                         e.data.codepoint = .SPACEBAR;
 
                         ctrl_release := array_add(*input_events);
@@ -539,12 +539,12 @@ main :: () {
                         // Undo
                         ctrl_press := array_add(*input_events);
                         ctrl_press.type = .KEY;
-                        ctrl_press.flags |= .KEY_PRESSED;
+                        ctrl_press.flags |= .PRESSED;
                         ctrl_press.data.key = .CTRL;
 
                         e := array_add(*input_events);
                         e.type = .CODEPOINT;
-                        e.flags |= .KEY_PRESSED;
+                        e.flags |= .PRESSED;
                         e.data.codepoint = #char "/";
 
                         ctrl_release := array_add(*input_events);
@@ -555,12 +555,12 @@ main :: () {
                         // Redo
                         alt_press := array_add(*input_events);
                         alt_press.type = .KEY;
-                        alt_press.flags |= .KEY_PRESSED;
+                        alt_press.flags |= .PRESSED;
                         alt_press.data.key = .ALT;
 
                         e := array_add(*input_events);
                         e.type = .CODEPOINT;
-                        e.flags |= .KEY_PRESSED;
+                        e.flags |= .PRESSED;
                         e.data.codepoint = #char "/";
 
                         alt_release := array_add(*input_events);
@@ -571,7 +571,7 @@ main :: () {
                         for 0..20 {
                             e := array_add(*input_events);
                             e.type = .KEY;
-                            e.flags |= .KEY_PRESSED;
+                            e.flags |= .PRESSED;
 
                             e.data.key = .ARROW_RIGHT;
                         }
@@ -579,7 +579,7 @@ main :: () {
                         for 0..20 {
                             e := array_add(*input_events);
                             e.type = .CODEPOINT;
-                            e.flags |= .KEY_PRESSED;
+                            e.flags |= .PRESSED;
 
                             e.data.codepoint = .BACKSPACE;
                         }
@@ -587,7 +587,7 @@ main :: () {
                         for 0..20 {
                             e := array_add(*input_events);
                             e.type = .KEY;
-                            e.flags |= .KEY_PRESSED;
+                            e.flags |= .PRESSED;
 
                             e.data.key = .ARROW_LEFT;
                         }
@@ -595,7 +595,7 @@ main :: () {
                         for 0..20 {
                             e := array_add(*input_events);
                             e.type = .CODEPOINT;
-                            e.flags |= .KEY_PRESSED;
+                            e.flags |= .PRESSED;
 
                             e.data.codepoint = .DELETE;
                         }
