@@ -273,36 +273,37 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     //
     {
         mini_panel := *editor.mini_panel;
+        key_map    := *mini_panel.key_map;
 
-        mini_panel.key_map.allocator = arena_allocator(editor.perm_arena);
-        key_map_init(*mini_panel.key_map, 128);
+        key_map.allocator = arena_allocator(editor.perm_arena);
+        key_map_init(key_map, 128);
 
-        key_map_register(*mini_panel.key_map, shortcut_parse("C-p"),         .MINI_PANEL_MOVE_UP);
-        key_map_register(*mini_panel.key_map, shortcut_parse("C-n"),         .MINI_PANEL_MOVE_DOWN);
-        key_map_register(*mini_panel.key_map, shortcut_parse("C-b"),         .MINI_PANEL_MOVE_LEFT);
-        key_map_register(*mini_panel.key_map, shortcut_parse("C-f"),         .MINI_PANEL_MOVE_RIGHT);
-        key_map_register(*mini_panel.key_map, shortcut_parse("<up>"),        .MINI_PANEL_MOVE_UP);
-        key_map_register(*mini_panel.key_map, shortcut_parse("<down>"),      .MINI_PANEL_MOVE_DOWN);
-        key_map_register(*mini_panel.key_map, shortcut_parse("<left>"),      .MINI_PANEL_MOVE_LEFT);
-        key_map_register(*mini_panel.key_map, shortcut_parse("<right>"),     .MINI_PANEL_MOVE_RIGHT);
+        key_map_register(key_map, "C-p",         .MINI_PANEL_MOVE_UP);
+        key_map_register(key_map, "C-n",         .MINI_PANEL_MOVE_DOWN);
+        key_map_register(key_map, "C-b",         .MINI_PANEL_MOVE_LEFT);
+        key_map_register(key_map, "C-f",         .MINI_PANEL_MOVE_RIGHT);
+        key_map_register(key_map, "<up>",        .MINI_PANEL_MOVE_UP);
+        key_map_register(key_map, "<down>",      .MINI_PANEL_MOVE_DOWN);
+        key_map_register(key_map, "<left>",      .MINI_PANEL_MOVE_LEFT);
+        key_map_register(key_map, "<right>",     .MINI_PANEL_MOVE_RIGHT);
 
-        key_map_register(*mini_panel.key_map, shortcut_parse("M-f"),         .MINI_PANEL_MOVE_FORWARD_WORD);
-        key_map_register(*mini_panel.key_map, shortcut_parse("M-b"),         .MINI_PANEL_MOVE_BACKWARD_WORD);
+        key_map_register(key_map, "M-f",         .MINI_PANEL_MOVE_FORWARD_WORD);
+        key_map_register(key_map, "M-b",         .MINI_PANEL_MOVE_BACKWARD_WORD);
 
-        key_map_register(*mini_panel.key_map, shortcut_parse("C-a"),         .MINI_PANEL_MOVE_TO_START_OF_LINE);
-        key_map_register(*mini_panel.key_map, shortcut_parse("C-e"),         .MINI_PANEL_MOVE_TO_END_OF_LINE);
+        key_map_register(key_map, "C-a",         .MINI_PANEL_MOVE_TO_START_OF_LINE);
+        key_map_register(key_map, "C-e",         .MINI_PANEL_MOVE_TO_END_OF_LINE);
 
-        key_map_register(*mini_panel.key_map, shortcut_parse("C-d"),         .MINI_PANEL_DELETE_FORWARD);
-        key_map_register(*mini_panel.key_map, shortcut_parse("<delete>"),    .MINI_PANEL_DELETE_FORWARD);
-        key_map_register(*mini_panel.key_map, shortcut_parse("<backspace>"), .MINI_PANEL_DELETE_BACKWARD);
+        key_map_register(key_map, "C-d",         .MINI_PANEL_DELETE_FORWARD);
+        key_map_register(key_map, "<delete>",    .MINI_PANEL_DELETE_FORWARD);
+        key_map_register(key_map, "<backspace>", .MINI_PANEL_DELETE_BACKWARD);
 
-        key_map_register(*mini_panel.key_map, shortcut_parse("M-v"),         .MINI_PANEL_SCROLL_UP);
-        key_map_register(*mini_panel.key_map, shortcut_parse("C-v"),         .MINI_PANEL_SCROLL_DOWN);
+        key_map_register(key_map, "M-v",         .MINI_PANEL_SCROLL_UP);
+        key_map_register(key_map, "C-v",         .MINI_PANEL_SCROLL_DOWN);
 
-        key_map_register(*mini_panel.key_map, shortcut_parse("<enter>"),     .MINI_PANEL_CONFIRM);
-        key_map_register(*mini_panel.key_map, shortcut_parse("C-m"),         .MINI_PANEL_CONFIRM);
+        key_map_register(key_map, "<enter>",     .MINI_PANEL_CONFIRM);
+        key_map_register(key_map, "C-m",         .MINI_PANEL_CONFIRM);
 
-        key_map_register(*mini_panel.key_map, shortcut_parse("C-g"),         .MINI_PANEL_CANCEL);
+        key_map_register(key_map, "C-g",         .MINI_PANEL_CANCEL);
 
         // Mini text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*mini_panel.buffer, make_arena(platform, .SMALL));
