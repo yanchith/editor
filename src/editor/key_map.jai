@@ -211,7 +211,7 @@ key_map_register :: (key_map: *Key_Map, shortcut: Shortcut, action: Action) {
     array_add(*key_map.registered_actions, action);
 }
 
-key_map_flush :: (key_map: *Key_Map) {
+key_map_flush :: (key_map: *Key_Map, /* XXX current_modifier_keys: Modifier_Flags  (also move Modifier_Flags to input.jai and use them in input state) */) {
     key_map.buffered_input = {};
 }
 
