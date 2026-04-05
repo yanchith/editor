@@ -23,21 +23,18 @@ Action :: enum u32 {
 
     MINI_PANEL_CONFIRM;
     MINI_PANEL_CANCEL;
+
+    OPEN_FILE;
+    SAVE_FILE;
+
+    SWITCH_TO_DOCUMENT;
+    CLOSE_DOCUMENT;
 }
 
 Shortcut_Key :: struct {
     modifier_flags: Modifier_Flags;
     type: Input_Event.Type;
     data: Input_Event.Data;
-
-    Modifier_Flags :: enum_flags u16 {
-        NONE :: 0;
-
-        CTRL  :: 0x01;
-        ALT   :: 0x02;
-        SHIFT :: 0x04;
-        META  :: 0x08;
-    }
 }
 
 #assert size_of(Shortcut_Key) == 8;
@@ -112,8 +109,7 @@ shortcut_parse :: (_s: string) -> Shortcut {
 
         key: Shortcut_Key;
 
-        // XXX: @Bug s -> left
-        dash_found, l, r := String.split_from_left(s, #char "-");
+        dash_found, l, r := String.split_from_left(left, #char "-");
         while dash_found {
             if l == {
                 case "C"; key.modifier_flags |= .CTRL;
@@ -182,6 +178,70 @@ shortcut_begins_with_nocase :: (shortcut: Shortcut, prefix: Shortcut) -> bool {
     return true;
 }
 
+shortcut_sprint :: (shortcut: Shortcut) -> string {
+    size: s64 = 0;
+    for 0..shortcut.count - 1 {
+        key := shortcut.sequence[it];
+
+        if key.modifier_flags & .CTRL {
+            size += 2;
+        }
+        if key.modifier_flags & .ALT {
+            size += 2;
+        }
+        if key.modifier_flags & .SHIFT {
+            size += 2;
+        }
+        if key.modifier_flags & .META {
+            size += 2;
+        }
+
+        // TODO(jt): @Speed This will waste one byte for shortcuts that aren't sequences.
+        size += 2;
+    }
+
+    s := alloc_string(size);
+    index: s64 = 0;
+    for 0..shortcut.count - 1 {
+        key := shortcut.sequence[it];
+
+        if key.modifier_flags & .CTRL {
+            s[index]     = "C";
+            s[index + 1] = "-";
+
+            index += 2;
+        }
+        if key.modifier_flags & .ALT {
+            s[index]     = "M";
+            s[index + 1] = "-";
+
+            index += 2;
+        }
+        if key.modifier_flags & .SHIFT {
+            s[index]     = "S";
+            s[index + 1] = "-";
+
+            index += 2;
+        }
+        if key.modifier_flags & .META {
+            s[index]     = "X";
+            s[index + 1] = "-";
+
+            index += 2;
+        }
+
+        if key.type == {
+            case .KEY;        s[index] = cast(u8, key.data.key);
+            case .CODEPOINT;  s[index] = cast(u8, key.data.codepoint);
+        }
+        s[index + 1] = " ";
+
+        index += 2;
+    }
+
+    return s;
+}
+
 Key_Map :: struct {
     // XXX: Do this allocator spread thingu in text_buffer too, so we don't have to init?
     allocator: Allocator; // Will spread to all key map datastructures.
@@ -189,7 +249,6 @@ Key_Map :: struct {
     registered_actions:   [..] Action;
 
     buffered_input: Shortcut;
-    buffered_modifier_flags: Shortcut_Key.Modifier_Flags;
 }
 
 // You don't have to call init. It only pre-sizes the arrays. If you plan to set the allocator, do
@@ -211,25 +270,14 @@ key_map_register :: (key_map: *Key_Map, shortcut: Shortcut, action: Action) {
     array_add(*key_map.registered_actions, action);
 }
 
-key_map_flush :: (key_map: *Key_Map, /* XXX current_modifier_keys: Modifier_Flags  (also move Modifier_Flags to input.jai and use them in input state) */) {
+key_map_flush :: (key_map: *Key_Map) {
     key_map.buffered_input = {};
 }
 
-key_map_input :: (key_map: *Key_Map, event: Input_Event) -> buffered: bool, action: Action {
+key_map_input :: (key_map: *Key_Map, event: Input_Event, modifier_flags: Modifier_Flags) -> buffered: bool, action: Action {
     // Do nothing, if we haven't got shortcuts to compare against.
     if !key_map.registered_shortcuts.count {
         return false, .NONE;
-    }
-
-    modifier_flags := get_modifier_flags(event);
-    if modifier_flags != .NONE {
-        if event.flags & .PRESSED {
-            key_map.buffered_modifier_flags |= modifier_flags;
-        } else {
-            key_map.buffered_modifier_flags &= ~modifier_flags;
-        }
-
-        return true, .NONE;
     }
 
     if event.flags & .PRESSED {
@@ -240,7 +288,7 @@ key_map_input :: (key_map: *Key_Map, event: Input_Event) -> buffered: bool, acti
         }
 
         key: Shortcut_Key;
-        key.modifier_flags = key_map.buffered_modifier_flags;
+        key.modifier_flags = modifier_flags;
         key.type = event.type;
         key.data = event.data;
 
@@ -281,21 +329,4 @@ InitAllocators :: (key_map: *Key_Map) #expand {
             key_map.registered_actions.allocator = key_map.allocator;
         }
     }
-}
-
-get_modifier_flags :: inline (event: Input_Event) -> Shortcut_Key.Modifier_Flags {
-    modifier_flags: Shortcut_Key.Modifier_Flags;
-    if #complete event.type == {
-        case .CODEPOINT; // Nothing
-        case .KEY; {
-            if event.data.key == {
-                case .CTRL;   modifier_flags |= .CTRL;
-                case .ALT;    modifier_flags |= .ALT;
-                case .SHIFT;  modifier_flags |= .SHIFT;
-                case .META;   modifier_flags |= .META;
-            }
-        }
-    }
-
-    return modifier_flags;
 }
