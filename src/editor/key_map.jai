@@ -104,8 +104,6 @@ shortcut_equals_nocase :: (a: Shortcut, b: Shortcut) -> bool {
 // Parses stuff like "n" or "C-x" or "C-S-M <up>" into a shortcut sequence.
 // Note that modifiers (C/M/S) can not stand on their own - they'll just be parsed as the literal letters C/M/S.
 shortcut_parse :: (_s: string) -> Shortcut {
-    assert(_s.count > 0);
-
     shortcut: Shortcut;
 
     s := _s;
@@ -199,6 +197,11 @@ key_map_init :: (key_map: *Key_Map, size: s64) {
     InitAllocators(key_map);
     array_reserve(*key_map.registered_shortcuts, size);
     array_reserve(*key_map.registered_actions, size);
+}
+
+key_map_register :: (key_map: *Key_Map, shortcut_string: string, action: Action) {
+    shortcut := shortcut_parse(shortcut_string);
+    inline key_map_register(key_map, shortcut, action);
 }
 
 key_map_register :: (key_map: *Key_Map, shortcut: Shortcut, action: Action) {
