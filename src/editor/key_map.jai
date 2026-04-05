@@ -112,6 +112,7 @@ shortcut_parse :: (_s: string) -> Shortcut {
 
         key: Shortcut_Key;
 
+        // XXX: @Bug s -> left
         dash_found, l, r := String.split_from_left(s, #char "-");
         while dash_found {
             if l == {
