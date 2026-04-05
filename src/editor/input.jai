@@ -110,6 +110,7 @@ Input_State :: struct {
     mouse_inside_window: bool;
 
     keys: [KEY_COUNT] Key_State;
+    modifiers: Modifier_Flags;
 }
 
 Key_State :: enum_flags u8 {
@@ -120,6 +121,15 @@ Key_State :: enum_flags u8 {
     RELEASED :: 0x04;
 
     LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW :: 0x10; // This stays set after the key has been released, until it is pressed again.
+}
+
+Modifier_Flags :: enum_flags u8 {
+    NONE :: 0;
+
+    CTRL  :: 0x01;
+    ALT   :: 0x02;
+    SHIFT :: 0x04;
+    META  :: 0x08;
 }
 
 input_state_update_on_frame_start :: (input_state: *Input_State, input: Input) {
@@ -148,6 +158,27 @@ input_state_update_with_event :: (input_state: *Input_State, event: Input_Event)
             // Do not clear PRESSED. So that we can detect single-frame press and release.
             input_state.keys[key] &= ~.DOWN;
             input_state.keys[key] |= .RELEASED;
+        }
+    }
+
+    modifiers: Modifier_Flags;
+    if #complete event.type == {
+        case .CODEPOINT; // Nothing
+        case .KEY; {
+            if event.data.key == {
+                case .CTRL;   modifiers |= .CTRL;
+                case .ALT;    modifiers |= .ALT;
+                case .SHIFT;  modifiers |= .SHIFT;
+                case .META;   modifiers |= .META;
+            }
+        }
+    }
+
+    if modifiers != .NONE {
+        if event.flags & .PRESSED {
+            input_state.modifiers |= modifiers;
+        } else {
+            input_state.modifiers &= ~modifiers;
         }
     }
 }
