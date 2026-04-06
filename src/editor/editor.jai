@@ -557,6 +557,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         panel_w := window_w;
         panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
+        if editor.mini_panel.open {
+            // Currently, this only affects the culling.
+            //
+            // TODO(jt): In Emacs, this would also modify the scroll offset, if the cursor would be
+            // occluded by the newly visible mini panel. Should we do that?
+            panel_h = window_h - (2 + MINI_PANEL_LINES) * cell_h;
+        }
 
         //
         // Compute cursor position.
@@ -1070,7 +1077,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         case #char "e";  #through;
                         case #char "E";  text_buffer_move_cursor_to_end_of_line(*document.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
                         case #char "l";  #through;
-                        case #char "L";  recenter_panel(panel, input, editor.font.line_height_in_pixels);
+                        case #char "L";  recenter_active_panel(editor, input);
                         case #char "v";  #through;
                         case #char "V";  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
 
@@ -1421,16 +1428,13 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, ce
             x := item.highlight_x0;
             y := cast(s64, item.userdata);
 
-            sanity_assert(cast(bool, active_panel));
-            if active_panel && active_panel.document {
-                document := active_panel.document;
+            document := active_panel.document;
 
-                old_cursor_y := document.buffer.cursor0.y;
-                text_buffer_move_cursor_to(*document.buffer, x, y, false);
+            old_cursor_y := document.buffer.cursor0.y;
+            text_buffer_move_cursor_to(*document.buffer, x, y, false);
 
-                if document.buffer.cursor0.y != old_cursor_y {
-                    recenter_panel(active_panel, input, cell_h, true);
-                }
+            if document.buffer.cursor0.y != old_cursor_y {
+                recenter_active_panel(editor, input, true);
             }
         }
     }
@@ -1460,7 +1464,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
                 sanity_assert(cast(bool, active_panel));
                 if active_panel && active_panel.document {
                     text_buffer_move_cursor_to(*active_panel.document.buffer, x, y, false);
-                    recenter_panel(active_panel, input, cell_h, true);
+                    recenter_active_panel(editor, input, true);
                 }
             }
 
@@ -1498,7 +1502,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
 
                             if active_panel {
                                 set_panel_document(active_panel, document);
-                                recenter_panel(active_panel, input, cell_h, true);
+                                recenter_active_panel(editor, input, true);
                             }
                         }
                     } else {
@@ -1531,7 +1535,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, c
 
                     // TODO(jt): Emacs actually remembers the previous scroll of the panel in
                     // document. Do we want to do the same?
-                    recenter_panel(active_panel, input, cell_h, true);
+                    recenter_active_panel(editor, input, true);
                     finish_scroll_interpolation(active_panel);
                 }
             }
@@ -1663,17 +1667,27 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
 
 // TODO(jt): Add:   add_file_visiting_panel :: (editor: *Editor) {}
 
-recenter_panel :: (panel: *Panel, input: Input, cell_h: f32, force_center := false) {
+recenter_active_panel :: (editor: *Editor, input: Input, force_center := false) {
+    panel := get_active_panel(editor);
+    if !panel {
+        return;
+    }
+
     document := panel.document;
     if !document {
         return;
     }
 
-    cursor_y := document.buffer.cursor0.y * cell_h;
+    cursor_y := document.buffer.cursor0.y * editor.font.line_height_in_pixels;
 
-    center := cursor_y - 0.5 * input.window_size.y;
     top    := cursor_y;
-    bottom := cursor_y - input.window_size.y + cell_h;
+    center := cursor_y - 0.5 * input.window_size.y;
+    bottom := cursor_y - input.window_size.y + 3 * editor.font.line_height_in_pixels;
+
+    if editor.mini_panel.open {
+        center += 0.5 * MINI_PANEL_LINES * editor.font.line_height_in_pixels;
+        bottom += MINI_PANEL_LINES * editor.font.line_height_in_pixels;
+    }
 
     finish_scroll_interpolation(panel);
 
