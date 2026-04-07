@@ -1,8 +1,9 @@
-// TODO(jt): @Cleanup There is some overlap between key_map.jai and input.jai, for instance we
-// consume some types from input here. Should we attempt to unify?
-
 Action :: enum u32 {
     NONE;
+
+    //
+    // Mini panel stuff
+    //
 
     MINI_PANEL_MOVE_UP;
     MINI_PANEL_MOVE_DOWN;
@@ -23,6 +24,15 @@ Action :: enum u32 {
 
     MINI_PANEL_CONFIRM;
     MINI_PANEL_CANCEL;
+
+    //
+    // Mega panel stuff
+    //
+
+    MOVE_UP;
+    MOVE_DOWN;
+    MOVE_LEFT;
+    MOVE_RIGHT;
 
     OPEN_FILE;
     SAVE_FILE;
@@ -45,9 +55,26 @@ Shortcut_Key :: struct {
 // that at the source, if at all possible. (If not possible, I guess we can live without case
 // sensitive keyboard shortcuts.)
 
-shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key) -> bool {
-    if a.modifier_flags != b.modifier_flags  return false;
-    if a.type != b.type                      return false;
+shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key, allow_superset_b_modifiers: bool) -> bool {
+    if allow_superset_b_modifiers {
+        MODIFIERS :: Modifier_Flags.[.CTRL, .ALT, .SHIFT, .META];
+        for MODIFIERS {
+            a_has := a.modifier_flags & it;
+            b_has := b.modifier_flags & it;
+
+            if a_has && !b_has {
+                return false;
+            }
+        }
+    } else {
+        if a.modifier_flags != b.modifier_flags {
+            return false;
+        }
+    }
+
+    if a.type != b.type {
+        return false;
+    }
 
     if a.type == {
         case .KEY; {
@@ -90,7 +117,7 @@ shortcut_equals_nocase :: (a: Shortcut, b: Shortcut) -> bool {
         key_a := a.sequence[it];
         key_b := b.sequence[it];
 
-        if !shortcut_key_equals_nocase(key_a, key_b) {
+        if !shortcut_key_equals_nocase(key_a, key_b, it == a.count - 1) {
             return false;
         }
     }
@@ -170,7 +197,7 @@ shortcut_begins_with_nocase :: (shortcut: Shortcut, prefix: Shortcut) -> bool {
         key_a := shortcut.sequence[it];
         key_b := prefix.sequence[it];
 
-        if !shortcut_key_equals_nocase(key_a, key_b) {
+        if !shortcut_key_equals_nocase(key_a, key_b, it == prefix.count - 1) {
             return false;
         }
     }
@@ -243,8 +270,8 @@ shortcut_sprint :: (shortcut: Shortcut) -> string {
 }
 
 Key_Map :: struct {
-    // XXX: Do this allocator spread thingu in text_buffer too, so we don't have to init?
     allocator: Allocator; // Will spread to all key map datastructures.
+
     registered_shortcuts: [..] Shortcut;
     registered_actions:   [..] Action;
 
@@ -266,6 +293,20 @@ key_map_register :: (key_map: *Key_Map, shortcut_string: string, action: Action)
 
 key_map_register :: (key_map: *Key_Map, shortcut: Shortcut, action: Action) {
     InitAllocators(key_map);
+
+    // TODO(jt): We should validate against:
+    //
+    // - One keyboard shortcut being a prefix of another
+    // - One keyboard shortcut requiring a subset of the modifier keys of another in a branching
+    //   place, e.g.: 'C-M-x a' vs 'C-x a' or 'C-M-y' vs 'M-y'.
+    //
+    // The second one is only because of shift-selecting, and maybe we want to instead bind a
+    // different move action when shift is held:
+    //
+    // - C-S-n, S-<down>: MOVE_DOWN_KEEPING_SELECTION
+    // - C-n, <down>:     MOVE_DOWN
+    //
+
     array_add(*key_map.registered_shortcuts, shortcut);
     array_add(*key_map.registered_actions, action);
 }
