@@ -11,6 +11,10 @@ Gap_Buffer :: struct {
     gap_count: s64;
 }
 
+// TODO(jt): @Cleanup Bucket_Array has this nice trick where you set the allocator directly on the
+// bucket array and it propagates to the necessary structures when they first allocate. Let's try
+// doing this here and change gap_buffer_init so that it only allows you to set initial capacity.
+//
 // Init is optional. It is only here to help you initialize the allocator of the internal buffer. You can also set it manually.
 gap_buffer_init :: (gb: *Gap_Buffer, allocator: Allocator) {
     gb.buffer.allocator = allocator;
@@ -156,7 +160,6 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* P
 }
 
 // Deletes at the gap, moving backward. Returns number of actually deleted bytes.
-// TODO(jt): Return view of deleted bytes, like delete forward does.
 gap_buffer_delete_backward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* Pointing to this buffer */ {
     ProfileZone("gap_buffer_delete_backward");
 

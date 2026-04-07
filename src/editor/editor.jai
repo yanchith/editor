@@ -272,6 +272,15 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map.allocator = arena_allocator(editor.perm_arena);
         key_map_init(key_map, 128);
 
+        key_map_register(key_map, "C-p",     .MOVE_UP);
+        key_map_register(key_map, "<up>",    .MOVE_UP);
+        key_map_register(key_map, "C-n",     .MOVE_DOWN);
+        key_map_register(key_map, "<down>",  .MOVE_DOWN);
+        key_map_register(key_map, "C-b",     .MOVE_LEFT);
+        key_map_register(key_map, "<left>",  .MOVE_LEFT);
+        key_map_register(key_map, "C-f",     .MOVE_RIGHT);
+        key_map_register(key_map, "<right>", .MOVE_RIGHT);
+
         key_map_register(key_map, "C-x C-f", .OPEN_FILE);
         key_map_register(key_map, "C-x C-s", .SAVE_FILE);
         key_map_register(key_map, "C-x b",   .SWITCH_TO_DOCUMENT);
@@ -1000,8 +1009,15 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         return;
     }
 
+    shift_selecting := editor.input_state.modifiers & .SHIFT;
+
     key_map_buffered, key_map_action := key_map_input(*editor.key_map, event, editor.input_state.modifiers);
     if key_map_action == {
+        case .MOVE_UP;      text_buffer_move_cursor_y(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+        case .MOVE_DOWN;    text_buffer_move_cursor_y(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+        case .MOVE_LEFT;    text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+        case .MOVE_RIGHT;   text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+
         case .OPEN_FILE; {
             open_mini_panel(*editor.mini_panel, .OPEN_FILE, "./");
             mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
@@ -1034,18 +1050,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     if !key_map_buffered && key_map_action == .NONE && event.flags & .PRESSED {
         if event.type == {
             case .KEY; {
-                // We can't go into global selecting mode if shift is down, because many
-                // Emacs-like shortcuts require shift. Therefore we only enable it for arrow
-                // keys. If we selected something using shift selecting, we also turn off global
-                // buffer selecting.
-                shift_selecting := editor.input_state.modifiers & .SHIFT;
-
                 if event.data.key == {
-                    case .ARROW_UP;     text_buffer_move_cursor_y(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
-                    case .ARROW_DOWN;   text_buffer_move_cursor_y(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
-                    case .ARROW_LEFT;   text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
-                    case .ARROW_RIGHT;  text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
-
                     case .PAGE_UP;      scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
                     case .PAGE_DOWN;    scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
 
@@ -1064,14 +1069,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     }
                 } else if editor.input_state.modifiers & .CTRL {
                     if event.data.codepoint == {
-                        case #char "p";  #through;
-                        case #char "P";  text_buffer_move_cursor_y(*document.buffer, -1, panel.selecting); panel.clamp_scroll_to_cursor = true;
-                        case #char "n";  #through;
-                        case #char "N";  text_buffer_move_cursor_y(*document.buffer,  1, panel.selecting); panel.clamp_scroll_to_cursor = true;
-                        case #char "b";  #through;
-                        case #char "B";  text_buffer_move_cursor_x(*document.buffer, -1, panel.selecting); panel.clamp_scroll_to_cursor = true;
-                        case #char "f";  #through;
-                        case #char "F";  text_buffer_move_cursor_x(*document.buffer,  1, panel.selecting); panel.clamp_scroll_to_cursor = true;
                         case #char "a";  #through;
                         case #char "A";  text_buffer_move_cursor_to_start_of_line(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
                         case #char "e";  #through;

@@ -1,6 +1,17 @@
 // Currently, Gap_Buffer operates only on bytes and is oblivious to them being UTF8. The Text_Buffer
 // struct (this file) adds UTF8 knowledge. For now this is how it is.
 Text_Buffer :: struct {
+    // TODO(jt): @Cleanup Key_Map, inspired by Bucket_Array gives you a way to easily set the
+    // allocator in one place, so you can declare on stack and set the allocator, like you are used
+    // to with regular arrays:
+    //
+    // key_map: Key_Map;
+    // key_map.allocator = arena_allocator(editor.perm_arena);
+    // key_map_init(*key_map, 128);
+    //
+    // Let's think of a way of doing this with Text_Buffer and its two arenas. The problem here is
+    // the amount of entry points, but maybe that can be thought through?
+
     arena: *Arena;
     arena_mark: Arena_Mark;
 
