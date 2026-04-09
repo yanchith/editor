@@ -19,16 +19,24 @@ TODO(jt): Stuff to do:
 - [X] Messages
 - [X] Modeline
 - [~] Keymap support
-- [ ] Find/replace
+- [ ] Find/replace and modal/interactive commands.
 - [ ] Open non-utf8 text buffers and binary files in read only mode. Detecting is going be pain. We
       can do a few heuristics in the beginning (look for well known magic numbers), scan the first
       4k for zeroes, etc, but if none of these trigger, we still need to attempt parsing the file as
       UTF8 and bailing if that fails.
 
-TODO(jt): @Stream Minor things we can do on the stream:
+TODO(jt): @Stream things:
 
-- [ ] Open file starts in the directory of the currently open document
-- [ ] Open file, switch to buffer and close buffer get tab completions.
+- [ ] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
+- [ ] OPEN_FILE starts in the directory of the currently open document
+- [ ] OPEN_FILE, switch to buffer and close buffer get tab completions.
+- [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
+- [ ] M-d, C-<backspace>
+- [ ] M-u, M-l
+- [ ] M-x
+- [ ] C-M-p, C-M-n (move line up/down)
+- [ ] C-u C-<space> and cursor undo.
+- [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 
 TODO(jt): Fancy stuff to do:
 
@@ -37,12 +45,15 @@ TODO(jt): Fancy stuff to do:
 - [ ] Syntax Highlighting
 - [ ] Syntax aware indentation (C-i)
 - [ ] Syntax aware parentheses
-- [ ] Emacs-like undo?
-- [ ] Emacs-like kill ring
+- [ ] Multiple Cursors
+- [ ] *compilation* buffer
+- [ ] Projects (project settings, project compilations, project text search with jumping, project-wide find/replace)
+- [ ] Emacs-like undo? (If I find out I can't live without)
+- [ ] Emacs-like kill ring (If I find out I can't live without)
 - [ ] Lister panels (dired, etc)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
-- [ ] Very nice glyph rendering (Slug?)
+- [ ] Very nice text rendering (Slug?)
 - [ ] Git integration (via plugin?)
 - [ ] 4coder style floating annotations? (e.g. name of the function or if statement expresion after closing brace)
 - [ ] Customization and plugins
