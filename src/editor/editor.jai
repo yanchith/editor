@@ -18,25 +18,33 @@ TODO(jt): Stuff to do:
 - [X] Undo!
 - [X] Messages
 - [X] Modeline
-- [ ] Keymap support
+- [~] Keymap support
 - [ ] Find/replace
-- [ ] Panel splitting (we can move this to the fancy section)
-- [ ] Open non-utf8 text buffers.
+- [ ] Open non-utf8 text buffers and binary files in read only mode. Detecting is going be pain. We
+      can do a few heuristics in the beginning (look for well known magic numbers), scan the first
+      4k for zeroes, etc, but if none of these trigger, we still need to attempt parsing the file as
+      UTF8 and bailing if that fails.
+
+TODO(jt): @Stream Minor things we can do on the stream:
+
+- [ ] Open file starts in the directory of the currently open document
+- [ ] Open file, switch to buffer and close buffer get tab completions.
 
 TODO(jt): Fancy stuff to do:
 
-- [ ] Syntax Highlighting
+- [ ] Panel tiling
 - [ ] Themes
-- [ ] Automatic indentation (C-i)
+- [ ] Syntax Highlighting
+- [ ] Syntax aware indentation (C-i)
+- [ ] Syntax aware parentheses
 - [ ] Emacs-like undo?
 - [ ] Emacs-like kill ring
-- [ ] Lister panels
-- [ ] Read only mode. Automatically on for files that had to undergo load fixups, as well as lister panels.
+- [ ] Lister panels (dired, etc)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
 - [ ] Very nice glyph rendering (Slug?)
-- [ ] Git integration
-
+- [ ] Git integration (via plugin?)
+- [ ] 4coder style floating annotations? (e.g. name of the function or if statement expresion after closing brace)
 - [ ] Customization and plugins
 
 TODO(jt): Decide whether we want to be using context.allocator. The problem is that it is not always
@@ -929,7 +937,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     mini_panel := *editor.mini_panel;
     active_panel := get_active_panel(editor);
 
-    min_item_index := ifx mini_panel_can_select_text_line_proc(mini_panel) then -1 else 0;
+    min_item_index := ifx mini_panel_can_select_text_line_proc(editor, platform, input) then -1 else 0;
 
     buffer_changed := false;
     old_item_index := mini_panel.item_index;
@@ -953,7 +961,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .MINI_PANEL_SCROLL_UP;              mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
         case .MINI_PANEL_SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
 
-        case .MINI_PANEL_CONFIRM;                mini_panel_confirm_proc(editor, platform, input, editor.font.line_height_in_pixels, buffer_changed, mini_panel.item_index != old_item_index);
+        case .MINI_PANEL_CONFIRM;                mini_panel_confirm_proc(editor, platform, input, buffer_changed, mini_panel.item_index != old_item_index);
         case .MINI_PANEL_CANCEL;                 close_mini_panel(*editor.mini_panel);
     }
 
@@ -994,7 +1002,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         // calling this until they have all been processed. Otherwise we'll be doing expensive stuff
         // multiple times per frame. Maybe we need to move this one level up and track the dirty
         // flags on the mini panel itself?
-        mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, buffer_changed, mini_panel.item_index != old_item_index);
+        mini_panel_update_proc(editor, platform, input, buffer_changed, mini_panel.item_index != old_item_index);
     }
 }
 
@@ -1020,7 +1028,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
         case .OPEN_FILE; {
             open_mini_panel(*editor.mini_panel, .OPEN_FILE, "./");
-            mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
+            mini_panel_update_proc(editor, platform, input, true, true);
         }
         case .SAVE_FILE; {
             if document.backing_file_path.count {
@@ -1039,11 +1047,11 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         }
         case .SWITCH_TO_DOCUMENT; {
             open_mini_panel(*editor.mini_panel, .SWITCH_TO_DOCUMENT);
-            mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
+            mini_panel_update_proc(editor, platform, input, true, true);
         }
         case .CLOSE_DOCUMENT; {
             open_mini_panel(*editor.mini_panel, .CLOSE_DOCUMENT);
-            mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
+            mini_panel_update_proc(editor, platform, input, true, true);
         }
     }
 
@@ -1085,7 +1093,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         case #char "s";  #through;
                         case #char "S";  {
                             was_closed := open_mini_panel(*editor.mini_panel, .SEARCH);
-                            mini_panel_update_proc(editor, platform, input, editor.font.line_height_in_pixels, true, true);
+                            mini_panel_update_proc(editor, platform, input, true, true);
                         }
 
                         case #char "k";  #through;
@@ -1244,11 +1252,12 @@ close_mini_panel :: (mini_panel: *Mini_Panel) -> was_open: bool {
 
 // :MiniPanelAPI
 //
-// These mini_panel_*_proc routines currently switch on the action enum of the mini panel and do
-// hardcoded stuff, but are later expected to be the entry points for mini panel plugins.
+// These mini_panel_* procs currently switch on the action enum of the mini panel and do hardcoded
+// stuff, but are later expected to be the entry points for mini panel plugins. This is why some of
+// them get more parameters than they actually need.
 
-mini_panel_can_select_text_line_proc :: (mini_panel: Mini_Panel) -> bool {
-    if mini_panel.action == .OPEN_FILE {
+mini_panel_can_select_text_line_proc :: (editor: Editor, platform: Platform, input: Input) -> bool {
+    if editor.mini_panel.action == .OPEN_FILE {
         return true;
     }
 
@@ -1256,7 +1265,7 @@ mini_panel_can_select_text_line_proc :: (mini_panel: Mini_Panel) -> bool {
 }
 
 // buffer_changed can imply selected_line_changed.
-mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, cell_h: f32, buffer_changed: bool, selected_item_changed: bool) {
+mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
     ProfileZone("mini_panel_update");
 
     mini_panel := *editor.mini_panel;
@@ -1437,7 +1446,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, ce
     }
 }
 
-mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, cell_h: f32, buffer_changed: bool, selected_item_changed: bool) {
+mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
     mini_panel := *editor.mini_panel;
     active_panel := get_active_panel(editor);
 
