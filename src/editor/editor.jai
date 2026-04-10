@@ -18,7 +18,7 @@ TODO(jt): Stuff to do:
 - [X] Undo!
 - [X] Messages
 - [X] Modeline
-- [~] Keymap support
+- [X] Keymap support
 - [ ] Find/replace and modal/interactive commands.
 - [ ] Open non-utf8 text buffers and binary files in read only mode. Detecting is going be pain. We
       can do a few heuristics in the beginning (look for well known magic numbers), scan the first
@@ -301,10 +301,63 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_register(key_map, "C-f",     .MOVE_RIGHT);
         key_map_register(key_map, "<right>", .MOVE_RIGHT);
 
+        key_map_register(key_map, "C-s",     .SEARCH);
         key_map_register(key_map, "C-x C-f", .OPEN_FILE);
         key_map_register(key_map, "C-x C-s", .SAVE_FILE);
         key_map_register(key_map, "C-x b",   .SWITCH_TO_DOCUMENT);
         key_map_register(key_map, "C-x k",   .CLOSE_DOCUMENT);
+
+        key_map_register(key_map, "C-M-p",   .SWAP_LINE_UP);
+        key_map_register(key_map, "C-M-n",   .SWAP_LINE_DOWN);
+
+        key_map_register(key_map, "C-a",     .MOVE_TO_START_OF_LINE);
+        key_map_register(key_map, "C-e",     .MOVE_TO_END_OF_LINE);
+
+        key_map_register(key_map, "M-<",     .MOVE_TO_START_OF_DOCUMENT);
+        key_map_register(key_map, "<home>",  .MOVE_TO_START_OF_DOCUMENT);
+        key_map_register(key_map, "M->",     .MOVE_TO_END_OF_DOCUMENT);
+        key_map_register(key_map, "<end>",   .MOVE_TO_END_OF_DOCUMENT);
+
+        key_map_register(key_map, "M-p",     .MOVE_TO_PREVIOUS_BLANK_LINE);
+        key_map_register(key_map, "M-n",     .MOVE_TO_NEXT_BLANK_LINE);
+
+        key_map_register(key_map, "M-f",     .MOVE_FORWARD_WORD);
+        key_map_register(key_map, "M-b",     .MOVE_BACKWARD_WORD);
+
+        key_map_register(key_map, "C-l",     .RECENTER);
+        key_map_register(key_map, "M-v",     .SCROLL_UP);
+        key_map_register(key_map, "C-v",     .SCROLL_DOWN);
+        key_map_register(key_map, "<pageup>", .SCROLL_UP);
+        key_map_register(key_map, "<pagedown>", .SCROLL_DOWN);
+        key_map_register(key_map, "<prior>", .SCROLL_UP);
+        key_map_register(key_map, "<next>",  .SCROLL_DOWN);
+
+        key_map_register(key_map, "C-<space>", .START_SELECTING);
+        key_map_register(key_map, "C-g",     .STOP_SELECTING);
+
+        key_map_register(key_map, "C-k",     .DELETE_LINE);
+        key_map_register(key_map, "C-d",     .DELETE_FORWARD);
+        key_map_register(key_map, "<backspace>", .DELETE_BACKWARD);
+        key_map_register(key_map, "<delete>", .DELETE_FORWARD);
+
+        key_map_register(key_map, "M-d",     .DELETE_FORWARD_WORD);
+        key_map_register(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
+        key_map_register(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
+
+        key_map_register(key_map, "C-m",     .INSERT_LINE_BEFORE);
+        key_map_register(key_map, "<enter>", .INSERT_LINE_BEFORE);
+        key_map_register(key_map, "C-o",     .INSERT_LINE_AFTER);
+
+        key_map_register(key_map, "<tab>",   .INSERT_TAB);
+
+        key_map_register(key_map, "C-/",     .UNDO_EDIT);
+        key_map_register(key_map, "M-/",     .REDO_EDIT);
+
+        key_map_register(key_map, "M-w",     .COPY);
+        key_map_register(key_map, "C-w",     .CUT);
+        key_map_register(key_map, "C-y",     .PASTE);
+
+        log("Document keymap:\n%", key_map_sprint(key_map,, temp));
     }
 
 
@@ -351,6 +404,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_register(key_map, "C-g",         .MINI_PANEL_CANCEL);
 
+        log("Mini Panel keymap:\n%", key_map_sprint(key_map,, temp));
+
         // Mini text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*mini_panel.buffer, make_arena(platform, .SMALL));
 
@@ -359,6 +414,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     }
 
     editor.messages.allocator = arena_allocator(editor.perm_arena);
+
 
     renderer.create_texture_r8unorm(
         TEXTURE_ID_GLYPH_ATLAS,
@@ -1038,6 +1094,11 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .MOVE_LEFT;    text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
         case .MOVE_RIGHT;   text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
 
+        case .SEARCH; {
+            was_closed := open_mini_panel(*editor.mini_panel, .SEARCH);
+            mini_panel_update_proc(editor, platform, input, true, true);
+        }
+
         case .OPEN_FILE; {
             open_mini_panel(*editor.mini_panel, .OPEN_FILE, "./");
             mini_panel_update_proc(editor, platform, input, true, true);
@@ -1065,168 +1126,112 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             open_mini_panel(*editor.mini_panel, .CLOSE_DOCUMENT);
             mini_panel_update_proc(editor, platform, input, true, true);
         }
+
+        case .SWAP_LINE_UP; // TODO(jt)
+        case .SWAP_LINE_DOWN; // TODO(jt)
+
+        case .MOVE_TO_START_OF_LINE;        text_buffer_move_cursor_to_start_of_line(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
+        case .MOVE_TO_END_OF_LINE;          text_buffer_move_cursor_to_end_of_line(*document.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
+
+        case .MOVE_TO_START_OF_DOCUMENT;    text_buffer_move_cursor_to_start(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
+        case .MOVE_TO_END_OF_DOCUMENT;      text_buffer_move_cursor_to_end(*document.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
+
+        case .MOVE_TO_PREVIOUS_BLANK_LINE;  text_buffer_move_cursor_to_previous_blank_line(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
+        case .MOVE_TO_NEXT_BLANK_LINE;      text_buffer_move_cursor_to_next_blank_line(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
+
+        case .MOVE_FORWARD_WORD; {
+            panel.clamp_scroll_to_start_of_line |= text_buffer_move_cursor_to_next_word_boundary(*document.buffer, panel.selecting);
+            panel.clamp_scroll_to_cursor = true;
+        }
+        case .MOVE_BACKWARD_WORD; {
+            panel.clamp_scroll_to_end_of_line |= text_buffer_move_cursor_to_previous_word_boundary(*document.buffer, panel.selecting);
+            panel.clamp_scroll_to_cursor = true;
+        }
+
+        case .RECENTER;                     recenter_active_panel(editor, input);
+        case .SCROLL_UP;                    scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
+        case .SCROLL_DOWN;                  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
+
+        case .START_SELECTING;              panel.selecting = true;  text_buffer_join_cursors(*document.buffer);
+        case .STOP_SELECTING;               panel.selecting = false; text_buffer_join_cursors(*document.buffer);
+
+        case .DELETE_LINE; {
+            panel.selecting = false;
+            text := text_buffer_delete_line(*document.buffer);
+            if text {
+                platform.clipboard_set_text(text);
+            }
+        }
+        case .DELETE_FORWARD;               panel.selecting = false; text_buffer_delete_forward(*document.buffer);  panel.clamp_scroll_to_cursor = true;
+        case .DELETE_BACKWARD;              panel.selecting = false; text_buffer_delete_backward(*document.buffer); panel.clamp_scroll_to_cursor = true;
+
+        case .DELETE_FORWARD_WORD;          // TODO(jt): text_buffer_delete_until_next_word_boundary.
+        case .DELETE_BACKWARD_WORD;         // TODO(jt): text_buffer_delete_until_previous_word_boundary.
+
+        case .INSERT_LINE_BEFORE; {
+            // TODO(jt): Preserve CRLF in CRLF-only documents.
+            panel.selecting = false;
+            text_buffer_insert(*document.buffer, "\n", undo_barrier = true);
+            panel.clamp_scroll_to_cursor = true;
+        }
+        case .INSERT_LINE_AFTER; {
+            // TODO(jt): Preserve CRLF in CRLF-only documents.
+            panel.selecting = false;
+            text_buffer_insert(*document.buffer, "\n", undo_barrier = true);
+            text_buffer_move_cursor_y(*document.buffer, -1, false);
+            text_buffer_move_cursor_to_end_of_line(*document.buffer, false);
+        }
+
+        // TODO(jt): Make indentation configurable.
+        // TODO(jt): Preserve tab-ness in tab-only documents.
+        case .INSERT_TAB;                   text_buffer_insert(*document.buffer, "    ");  panel.clamp_scroll_to_cursor = true;
+
+        case .UNDO_EDIT;                    text_buffer_undo_edit(*document.buffer); panel.clamp_scroll_to_cursor = true;
+        case .REDO_EDIT;                    text_buffer_redo_edit(*document.buffer); panel.clamp_scroll_to_cursor = true;
+
+        case .COPY; {
+            panel.selecting = false;
+            text := text_buffer_make_view_between_cursors(document.buffer, document.buffer.cursor0, document.buffer.cursor1,, temp);
+            if text {
+                platform.clipboard_set_text(text);
+            }
+
+            text_buffer_join_cursors(*document.buffer);
+        }
+        case .CUT; {
+            panel.selecting = false;
+            deleted := text_buffer_delete_between_cursors(*document.buffer);
+            if deleted {
+                platform.clipboard_set_text(deleted);
+            }
+        }
+        case .PASTE; {
+            panel.selecting = false;
+            text := platform.clipboard_get_text(,, temp);
+            if text {
+                text_buffer_insert(*document.buffer, text, undo_barrier = true);
+                panel.clamp_scroll_to_cursor = true;
+            }
+        }
     }
 
     if !key_map_buffered && key_map_action == .NONE && event.flags & .PRESSED {
         if event.type == {
-            case .KEY; {
-                if event.data.key == {
-                    case .PAGE_UP;      scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
-                    case .PAGE_DOWN;    scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
-
-                    case .HOME;         text_buffer_move_cursor_to_start(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
-                    case .END;          text_buffer_move_cursor_to_end(*document.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
-                }
-            }
-
             case .CODEPOINT; {
-                if editor.input_state.modifiers & .CTRL && editor.input_state.modifiers & .ALT {
-                    if event.data.codepoint == {
-                        case #char "p";  #through;
-                        case #char "P";  // TODO(jt): Swap line with previous.
-                        case #char "n";  #through;
-                        case #char "N";  // TODO(jt): Swap line with next.
-                    }
-                } else if editor.input_state.modifiers & .CTRL {
-                    if event.data.codepoint == {
-                        case #char "a";  #through;
-                        case #char "A";  text_buffer_move_cursor_to_start_of_line(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
-                        case #char "e";  #through;
-                        case #char "E";  text_buffer_move_cursor_to_end_of_line(*document.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
-                        case #char "l";  #through;
-                        case #char "L";  recenter_active_panel(editor, input);
-                        case #char "v";  #through;
-                        case #char "V";  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
+                panel.selecting = false;
 
-                        case .SPACEBAR;  panel.selecting = true;  text_buffer_join_cursors(*document.buffer);
-                        case #char "g";  #through;
-                        case #char "G";  panel.selecting = false; text_buffer_join_cursors(*document.buffer);
+                codepoint := event.data.codepoint;
 
-                        case #char "s";  #through;
-                        case #char "S";  {
-                            was_closed := open_mini_panel(*editor.mini_panel, .SEARCH);
-                            mini_panel_update_proc(editor, platform, input, true, true);
-                        }
+                // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
+                // this back to codepoints for its linedata tracking. Add
+                // text_buffer_insert_utf32?
+                buf: [4] u8;
+                s: string;
+                s.data = buf.data;
+                Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
 
-                        case #char "k";  #through;
-                        case #char "K"; {
-                            panel.selecting = false;
-                            text := text_buffer_delete_line(*document.buffer);
-                            if text {
-                                platform.clipboard_set_text(text);
-                            }
-                        }
-                        case #char "d";  #through;
-                        case #char "D";  panel.selecting = false; text_buffer_delete_forward(*document.buffer);
-
-                        case #char "m";  #through;
-                        case #char "M"; {
-                            // TODO(jt): Preserve CRLF in CRLF-only documents.
-                            panel.selecting = false;
-                            text_buffer_insert(*document.buffer, "\n", undo_barrier = true);
-                            panel.clamp_scroll_to_cursor = true;
-                        }
-                        case #char "o";  #through;
-                        case #char "O"; {
-                            // TODO(jt): Preserve CRLF in CRLF-only documents.
-                            panel.selecting = false;
-                            text_buffer_insert(*document.buffer, "\n", undo_barrier = true);
-                            text_buffer_move_cursor_y(*document.buffer, -1, false);
-                            text_buffer_move_cursor_to_end_of_line(*document.buffer, false);
-                        }
-
-                        case #char "/";  text_buffer_undo_edit(*document.buffer); panel.clamp_scroll_to_cursor = true;
-
-                        case #char "w";  #through;
-                        case #char "W"; {
-                            panel.selecting = false;
-                            deleted := text_buffer_delete_between_cursors(*document.buffer);
-                            if deleted {
-                                platform.clipboard_set_text(deleted);
-                            }
-
-                        }
-                        case #char "y";  #through;
-                        case #char "Y"; {
-                            panel.selecting = false;
-                            text := platform.clipboard_get_text(,, temp);
-                            if text {
-                                text_buffer_insert(*document.buffer, text, undo_barrier = true);
-                                panel.clamp_scroll_to_cursor = true;
-                            }
-                        }
-                    }
-                } else if editor.input_state.modifiers & .ALT {
-                    if event.data.codepoint == {
-                        // TODO(jt): C-M
-                        case #char "p";  #through;
-                        case #char "P";  text_buffer_move_cursor_to_previous_blank_line(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
-                        case #char "n";  #through;
-                        case #char "N";  text_buffer_move_cursor_to_next_blank_line(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
-                        case #char "b";  #through;
-                        case #char "B"; {
-                            panel.clamp_scroll_to_end_of_line |= text_buffer_move_cursor_to_previous_word_boundary(*document.buffer, panel.selecting);
-                            panel.clamp_scroll_to_cursor = true;
-                        }
-                        case #char "f";  #through;
-                        case #char "F"; {
-                            panel.clamp_scroll_to_start_of_line |= text_buffer_move_cursor_to_next_word_boundary(*document.buffer, panel.selecting);
-                            panel.clamp_scroll_to_cursor = true;
-                        }
-
-                        case .BACKSPACE; // TODO(jt): text_buffer_delete_until_previous_word_boundary.
-                        case #char "d";  #through;
-                        case #char "D";  // TODO(jt): text_buffer_delete_until_next_word_boundary.
-
-                        case #char "v";  #through;
-                        case #char "V";  scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
-
-                        case #char "<";  text_buffer_move_cursor_to_start(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
-                        case #char ">";  text_buffer_move_cursor_to_end(*document.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
-
-                        case #char "/";  text_buffer_redo_edit(*document.buffer); panel.clamp_scroll_to_cursor = true;
-
-                        case #char "w";  #through;
-                        case #char "W";  {
-                            panel.selecting = false;
-                            text := text_buffer_make_view_between_cursors(document.buffer, document.buffer.cursor0, document.buffer.cursor1,, temp);
-                            if text {
-                                platform.clipboard_set_text(text);
-                            }
-
-                            text_buffer_join_cursors(*document.buffer);
-                        }
-                    }
-                } else {
-                    panel.selecting = false;
-
-                    codepoint := event.data.codepoint;
-                    if codepoint == {
-                        case .BACKSPACE;  text_buffer_delete_backward(*document.buffer); panel.clamp_scroll_to_cursor = true;
-                        case .DELETE;     text_buffer_delete_forward(*document.buffer);  panel.clamp_scroll_to_cursor = true;
-
-                        // TODO(jt): Make indentation configurable.
-                        // TODO(jt): Preserve tab-ness in tab-only documents.
-                        case .TAB;        text_buffer_insert(*document.buffer, "    ");  panel.clamp_scroll_to_cursor = true;
-                        case .SPACEBAR;   text_buffer_insert(*document.buffer, " ");     panel.clamp_scroll_to_cursor = true;
-
-                        // TODO(jt): Preserve CRLF in CRLF-only documents.
-                        case .ENTER;      text_buffer_insert(*document.buffer, "\n", undo_barrier = true); panel.clamp_scroll_to_cursor = true;
-
-                        case; {
-                            // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
-                            // this back to codepoints for its linedata tracking. Add
-                            // text_buffer_insert_utf32?
-                            buf: [4] u8;
-                            s: string;
-                            s.data = buf.data;
-                            Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
-
-                            text_buffer_insert(*document.buffer, s);
-                            panel.clamp_scroll_to_cursor = true;
-                        }
-                    }
-                }
+                text_buffer_insert(*document.buffer, s);
+                panel.clamp_scroll_to_cursor = true;
             }
         }
     }
