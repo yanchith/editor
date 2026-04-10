@@ -34,11 +34,54 @@ Action :: enum u32 {
     MOVE_LEFT;
     MOVE_RIGHT;
 
+    SEARCH;
+
     OPEN_FILE;
     SAVE_FILE;
 
     SWITCH_TO_DOCUMENT;
     CLOSE_DOCUMENT;
+
+    SWAP_LINE_UP;
+    SWAP_LINE_DOWN;
+
+    MOVE_TO_START_OF_LINE;
+    MOVE_TO_END_OF_LINE;
+
+    MOVE_TO_START_OF_DOCUMENT;
+    MOVE_TO_END_OF_DOCUMENT;
+
+    MOVE_TO_PREVIOUS_BLANK_LINE;
+    MOVE_TO_NEXT_BLANK_LINE;
+
+    MOVE_FORWARD_WORD;
+    MOVE_BACKWARD_WORD;
+
+    RECENTER;
+    SCROLL_UP;
+    SCROLL_DOWN;
+
+    START_SELECTING;
+    STOP_SELECTING;
+
+    DELETE_LINE;
+    DELETE_FORWARD;
+    DELETE_BACKWARD;
+
+    DELETE_FORWARD_WORD;
+    DELETE_BACKWARD_WORD;
+
+    INSERT_LINE_BEFORE;
+    INSERT_LINE_AFTER;
+
+    INSERT_TAB;
+
+    UNDO_EDIT;
+    REDO_EDIT;
+
+    COPY;
+    CUT;
+    PASTE;
 }
 
 Shortcut_Key :: struct {
@@ -127,7 +170,7 @@ shortcut_equals_nocase :: (a: Shortcut, b: Shortcut) -> bool {
 
 // Parses stuff like "n" or "C-x" or "C-S-M <up>" into a shortcut sequence.
 // Note that modifiers (C/M/S) can not stand on their own - they'll just be parsed as the literal letters C/M/S.
-shortcut_parse :: (_s: string) -> Shortcut {
+shortcut_parse :: (_s: string) -> success: bool, Shortcut {
     shortcut: Shortcut;
 
     s := _s;
@@ -142,6 +185,9 @@ shortcut_parse :: (_s: string) -> Shortcut {
                 case "C"; key.modifier_flags |= .CTRL;
                 case "M"; key.modifier_flags |= .ALT;
                 case "S"; key.modifier_flags |= .SHIFT;
+                case "X"; key.modifier_flags |= .META;
+
+                case; return false, shortcut;
             }
 
             dash_found, l, r = String.split_from_left(r, #char "-");
@@ -153,12 +199,20 @@ shortcut_parse :: (_s: string) -> Shortcut {
             case "<left>";       key.type = .KEY; key.data.key = .ARROW_LEFT;
             case "<right>";      key.type = .KEY; key.data.key = .ARROW_RIGHT;
 
+            case "<space>";      key.type = .CODEPOINT; key.data.codepoint = .SPACEBAR;
+            case "<tab>";        key.type = .CODEPOINT; key.data.codepoint = .TAB;
+
             case "<enter>";      key.type = .CODEPOINT; key.data.codepoint = .ENTER;
             case "<delete>";     key.type = .CODEPOINT; key.data.codepoint = .DELETE;
             case "<backspace>";  key.type = .CODEPOINT; key.data.codepoint = .BACKSPACE;
 
             case "<home>";       key.type = .KEY; key.data.key = .HOME;
             case "<end>";        key.type = .KEY; key.data.key = .END;
+
+            case "<prior>";     #through;
+            case "<pageup>";    key.type = .KEY; key.data.key = .PAGE_UP;
+            case "<next>";      #through;
+            case "<pagedown>";  key.type = .KEY; key.data.key = .PAGE_DOWN;
 
             case "<f1>";         key.type = .KEY; key.data.key = .F1;
             case "<f2>";         key.type = .KEY; key.data.key = .F2;
@@ -185,7 +239,7 @@ shortcut_parse :: (_s: string) -> Shortcut {
         s = right;
     }
 
-    return shortcut;
+    return true, shortcut;
 }
 
 shortcut_begins_with_nocase :: (shortcut: Shortcut, prefix: Shortcut) -> bool {
@@ -205,66 +259,79 @@ shortcut_begins_with_nocase :: (shortcut: Shortcut, prefix: Shortcut) -> bool {
     return true;
 }
 
-shortcut_sprint :: (shortcut: Shortcut) -> string {
-    size: s64 = 0;
+shortcut_print_to_builder :: (shortcut: Shortcut, b: *String_Builder) {
     for 0..shortcut.count - 1 {
         key := shortcut.sequence[it];
 
-        if key.modifier_flags & .CTRL {
-            size += 2;
-        }
-        if key.modifier_flags & .ALT {
-            size += 2;
-        }
-        if key.modifier_flags & .SHIFT {
-            size += 2;
-        }
-        if key.modifier_flags & .META {
-            size += 2;
-        }
-
-        // TODO(jt): @Speed This will waste one byte for shortcuts that aren't sequences.
-        size += 2;
-    }
-
-    s := alloc_string(size);
-    index: s64 = 0;
-    for 0..shortcut.count - 1 {
-        key := shortcut.sequence[it];
-
-        if key.modifier_flags & .CTRL {
-            s[index]     = "C";
-            s[index + 1] = "-";
-
-            index += 2;
-        }
-        if key.modifier_flags & .ALT {
-            s[index]     = "M";
-            s[index + 1] = "-";
-
-            index += 2;
-        }
-        if key.modifier_flags & .SHIFT {
-            s[index]     = "S";
-            s[index + 1] = "-";
-
-            index += 2;
-        }
-        if key.modifier_flags & .META {
-            s[index]     = "X";
-            s[index + 1] = "-";
-
-            index += 2;
-        }
+        if key.modifier_flags & .CTRL  print(b, "C-");
+        if key.modifier_flags & .ALT   print(b, "M-");
+        if key.modifier_flags & .SHIFT print(b, "S-");
+        if key.modifier_flags & .META  print(b, "X-");
 
         if key.type == {
-            case .KEY;        s[index] = cast(u8, key.data.key);
-            case .CODEPOINT;  s[index] = cast(u8, key.data.codepoint);
-        }
-        s[index + 1] = " ";
+            case .KEY; {
+                if key.data.key == {
+                    case .ARROW_UP;      print(b, "<up>");
+                    case .ARROW_DOWN;    print(b, "<down>");
+                    case .ARROW_LEFT;    print(b, "<left>");
+                    case .ARROW_RIGHT;   print(b, "<right>");
 
-        index += 2;
+                    case .HOME;          print(b, "<home>");
+                    case .END;           print(b, "<end>");
+
+                    case .PAGE_UP;       print(b, "<pageup>");
+                    case .PAGE_DOWN;     print(b, "<pagedown>");
+
+                    case .F1;            print(b, "<f1>");
+                    case .F2;            print(b, "<f2>");
+                    case .F3;            print(b, "<f3>");
+                    case .F4;            print(b, "<f4>");
+                    case .F5;            print(b, "<f5>");
+                    case .F6;            print(b, "<f6>");
+                    case .F7;            print(b, "<f7>");
+                    case .F8;            print(b, "<f8>");
+                    case .F9;            print(b, "<f9>");
+                    case .F10;           print(b, "<f10>");
+                    case .F11;           print(b, "<f11>");
+                    case .F12;           print(b, "<f12>");
+
+                    case;                print(b, "<unknown>");
+                }
+            }
+
+            case .CODEPOINT; {
+                if key.data.codepoint == {
+                    case .SPACEBAR;      print(b, "<space>");
+                    case .TAB;           print(b, "<tab>");
+
+                    case .ENTER;         print(b, "<enter>");
+                    case .DELETE;        print(b, "<delete>");
+                    case .BACKSPACE;     print(b, "<backspace>");
+
+                    case; {
+                        buf: [4] u8;
+                        s: string;
+                        s.data = buf.data;
+
+                        Unicode.character_utf32_to_utf8(cast(u32, key.data.codepoint), *s);
+
+                        print(b, s);
+                    }
+                }
+            }
+        }
+
+        print(b, " ");
     }
+}
+
+shortcut_sprint :: (shortcut: Shortcut) -> string {
+    b: String_Builder;
+    b.allocator = temp;
+
+    shortcut_print_to_builder(shortcut, *b);
+
+    s := builder_to_string(*b);
 
     return s;
 }
@@ -287,8 +354,12 @@ key_map_init :: (key_map: *Key_Map, size: s64) {
 }
 
 key_map_register :: (key_map: *Key_Map, shortcut_string: string, action: Action) {
-    shortcut := shortcut_parse(shortcut_string);
-    inline key_map_register(key_map, shortcut, action);
+    success, shortcut := shortcut_parse(shortcut_string);
+    if success {
+        key_map_register(key_map, shortcut, action);
+    } else {
+        log_error("Failed to parse and register shortcut % -> %", shortcut_string, action);
+    }
 }
 
 key_map_register :: (key_map: *Key_Map, shortcut: Shortcut, action: Action) {
@@ -311,6 +382,23 @@ key_map_register :: (key_map: *Key_Map, shortcut: Shortcut, action: Action) {
     array_add(*key_map.registered_actions, action);
 }
 
+key_map_sprint :: (key_map: Key_Map) -> string {
+    b: String_Builder;
+    b.allocator = temp;
+
+    for 0..key_map.registered_shortcuts.count - 1 {
+        shortcut := key_map.registered_shortcuts[it];
+        action   := key_map.registered_actions[it];
+
+        shortcut_print_to_builder(shortcut, *b);
+        print(*b, "    %\n", action);
+    }
+
+    s := builder_to_string(*b);
+
+    return s;
+}
+
 key_map_flush :: (key_map: *Key_Map) {
     key_map.buffered_input = {};
 }
@@ -319,6 +407,10 @@ key_map_input :: (key_map: *Key_Map, event: Input_Event, modifier_flags: Modifie
     // Do nothing, if we haven't got shortcuts to compare against.
     if !key_map.registered_shortcuts.count {
         return false, .NONE;
+    }
+
+    if is_modifier_key_event(event) {
+        return true, .NONE;
     }
 
     if event.flags & .PRESSED {
@@ -370,4 +462,19 @@ InitAllocators :: (key_map: *Key_Map) #expand {
             key_map.registered_actions.allocator = key_map.allocator;
         }
     }
+}
+
+is_modifier_key_event :: (event: Input_Event) -> bool {
+    if event.type == {
+        case .KEY; {
+            if event.data.key == {
+                case .CTRL;   return true;
+                case .ALT;    return true;
+                case .SHIFT;  return true;
+                case .META;   return true;
+            }
+        }
+    }
+
+    return false;
 }
