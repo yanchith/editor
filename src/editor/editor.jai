@@ -27,8 +27,8 @@ TODO(jt): Stuff to do:
 
 TODO(jt): @Stream things:
 
-- [ ] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
-- [ ] OPEN_FILE starts in the directory of the currently open document
+- [X] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
+- [X] OPEN_FILE starts in the directory of the currently open document
 - [ ] OPEN_FILE, switch to buffer and close buffer get tab completions.
 - [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
 - [ ] M-d, C-<backspace> (delete word forward/backward)
@@ -398,6 +398,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_register(key_map, "M-v",         .MINI_PANEL_SCROLL_UP);
         key_map_register(key_map, "C-v",         .MINI_PANEL_SCROLL_DOWN);
+
+        key_map_register(key_map, "<tab>",       .MINI_PANEL_AUTOCOMPLETE);
 
         key_map_register(key_map, "<enter>",     .MINI_PANEL_CONFIRM);
         key_map_register(key_map, "C-m",         .MINI_PANEL_CONFIRM);
@@ -906,10 +908,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // :MiniPanelAPI (mini_panel_render_proc)
         action_text: string;
         if editor.mini_panel.action == {
-            case .SEARCH;              action_text = "Search: ";
-            case .OPEN_FILE;           action_text = "Open file: ";
-            case .SWITCH_TO_DOCUMENT;  action_text = "Switch to document: ";
-            case .CLOSE_DOCUMENT;      action_text = "Close document: ";
+            case .SEARCH;              action_text = tprint("% Search: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
+            case .OPEN_FILE;           action_text = tprint("% Open file: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
+            case .SWITCH_TO_DOCUMENT;  action_text = tprint("% Switch to document: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
+            case .CLOSE_DOCUMENT;      action_text = tprint("% Close document: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
         }
 
         line_view := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
@@ -1029,7 +1031,9 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .MINI_PANEL_SCROLL_UP;              mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
         case .MINI_PANEL_SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
 
-        case .MINI_PANEL_CONFIRM;                mini_panel_confirm_proc(editor, platform, input, buffer_changed, mini_panel.item_index != old_item_index);
+        case .MINI_PANEL_AUTOCOMPLETE;           buffer_changed |= mini_panel_autocomplete_proc(editor, platform, input);
+
+        case .MINI_PANEL_CONFIRM;                mini_panel_confirm_proc(editor, platform, input);
         case .MINI_PANEL_CANCEL;                 close_mini_panel(*editor.mini_panel);
     }
 
@@ -1100,7 +1104,14 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         }
 
         case .OPEN_FILE; {
-            open_mini_panel(*editor.mini_panel, .OPEN_FILE, "./");
+            path := "./";
+
+            // TODO(jt): In the future, we could set the path to the project directory.
+            if panel.document.kind == .FILE && panel.document.backing_file_path.count {
+                path = String.path_strip_filename(panel.document.backing_file_path);
+            }
+
+            open_mini_panel(*editor.mini_panel, .OPEN_FILE, path);
             mini_panel_update_proc(editor, platform, input, true, true);
         }
         case .SAVE_FILE; {
@@ -1337,7 +1348,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                         if found {
                             s := "";
                             if line_text.count {
-                                s = arena_push_string(mini_panel.items_arena, line_text);
+                                s = sprint("%%", temp_right_pad(tprint("[%]", it + 1), 10), line_text,, arena_allocator(mini_panel.items_arena));
                             }
 
                             x0 := count_utf8_characters(String.slice(line_text, 0, found_index));
@@ -1463,7 +1474,39 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
     }
 }
 
-mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
+mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
+    mini_panel := *editor.mini_panel;
+
+    sanity_assert(mini_panel.open);
+    if !mini_panel.open {
+        return false;
+    }
+
+    if mini_panel.action == {
+        case .SWITCH_TO_DOCUMENT; #through;
+        case .CLOSE_DOCUMENT; {
+            if mini_panel.items.count == 1 {
+                // TODO(jt): The reset also nukes the edit history of the mini panel buffer... maybe
+                // we don't want that?
+                text_buffer_reset(*mini_panel.buffer);
+                text_buffer_insert(*mini_panel.buffer, mini_panel.items[0].text);
+
+                return true;
+            } else if mini_panel.items.count > 1 {
+                // TODO(jt): The reset also nukes the edit history of the mini panel buffer... maybe
+                // we don't want that?
+                text_buffer_reset(*mini_panel.buffer);
+                text_buffer_insert(*mini_panel.buffer, mini_panel.items[mini_panel.item_index].text);
+
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) {
     mini_panel := *editor.mini_panel;
     active_panel := get_active_panel(editor);
 
@@ -1510,6 +1553,8 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input, b
 
             success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
             if success {
+                String.path_overwrite_separators(file_absolute_path, "/");
+
                 document, document_newly_created := find_or_add_document(editor, platform, .FILE, file_absolute_path);
                 document.backing_file_exists = file_exists;
 
