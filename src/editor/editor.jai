@@ -1415,6 +1415,8 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
 
             case .SWITCH_TO_DOCUMENT; #through;
             case .CLOSE_DOCUMENT; {
+                // XXX: @Bug This does not find scratch for switching when we type in some text.
+
                 ProfileZone(":MiniPanelSwitchToDocumentOrCloseDocumentUpdate");
 
                 search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
