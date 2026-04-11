@@ -116,7 +116,7 @@ byte_is_utf8_character_boundary :: inline (b: u8) -> bool {
 
 // The javascript stuff...
 
-temp_left_pad :: (s: string, length: s64) -> string {
+left_pad :: (s: string, length: s64) -> string {
     builder: String_Builder;
     builder.allocator = temp;
 
@@ -126,18 +126,26 @@ temp_left_pad :: (s: string, length: s64) -> string {
 
     append(*builder, s);
 
-    return builder_to_string(*builder,, temp);
+    return builder_to_string(*builder);
+}
+
+right_pad :: (s: string, length: s64) -> string {
+    builder: String_Builder;
+    builder.allocator = temp;
+
+    append(*builder, s);
+
+    for s.count..length - 1 {
+        append(*builder, " ");
+    }
+
+    return builder_to_string(*builder);
+}
+
+temp_left_pad :: (s: string, length: s64) -> string {
+    return inline left_pad(s, length,, temp);
 }
 
 temp_right_pad :: (s: string, length: s64) -> string {
-    builder: String_Builder;
-    builder.allocator = temp;
-
-    append(*builder, s);
-
-    for s.count..length - 1 {
-        append(*builder, " ");
-    }
-
-    return builder_to_string(*builder,, temp);
+    return inline right_pad(s, length,, temp);
 }
