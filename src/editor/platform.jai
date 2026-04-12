@@ -19,6 +19,7 @@ Platform :: struct {
     get_absolute_path:   (path: string) -> success: bool, string;
 
     file_exists:         (path: string) -> bool;
+    file_is_directory:   (path: string) -> bool;
     read_file:           (path: string) -> success: bool, [] u8;
     write_file:          (path: string, data: [] u8) -> success: bool;
     delete_file:         (path: string) -> success: bool;
