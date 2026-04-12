@@ -629,7 +629,7 @@ text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64, inclu
 }
 
 // A 2x-ish faster, specialized version of text_buffer_make_view_between_cursors. Use if you can.
-text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
+text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false, force_allocate := false) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
     ProfileZone("text_buffer_make_view_for_line");
 
     assert_line_valid(buffer, line_index);
@@ -637,7 +637,7 @@ text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include
     line := buffer.lines[line_index];
 
     start_index := text_buffer_get_gap_buffer_index_for_line(buffer, line_index);
-    view        := gap_buffer_make_view(buffer.gb, start_index, line.byte_count);
+    view        := gap_buffer_make_view(buffer.gb, start_index, line.byte_count, force_allocate = force_allocate);
 
     if !include_newline {
         newline_advance := string_ends_with_newline(view);
@@ -663,7 +663,7 @@ text_buffer_byte_count_between_cursors :: (buffer: Text_Buffer, _start: Cursor, 
     return end_index - start_index;
 }
 
-text_buffer_make_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
+text_buffer_make_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor, force_allocate := false) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
     ProfileZone("text_buffer_make_view_between_cursors");
 
     assert_cursor_valid(buffer, _start);
@@ -676,7 +676,7 @@ text_buffer_make_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _
     start_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start);
     end_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end);
 
-    view := gap_buffer_make_view(buffer.gb, start_index, end_index - start_index);
+    view := gap_buffer_make_view(buffer.gb, start_index, end_index - start_index, force_allocate = force_allocate);
 
     return cast(string, view);
 }

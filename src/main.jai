@@ -179,6 +179,10 @@ main :: () {
         platform.file_exists = (path: string) -> bool {
             return File_Utilities.file_exists(path);
         }
+        platform.file_is_directory = (path: string) -> bool {
+            is_directory, success := File_Utilities.is_directory(path);
+            return success && is_directory;
+        }
         platform.read_file = (path: string) -> success: bool, [] u8 {
             // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
             // will start respecting context.allocator eventually, so we pass in temp there as well.

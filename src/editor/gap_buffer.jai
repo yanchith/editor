@@ -185,8 +185,10 @@ gap_buffer_delete_backward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* 
 //
 // The assert_that_we_don_not_allocate is here if you first made sure that the section of data you
 // are requesting does not cross the gap.
-gap_buffer_make_view :: (gb: Gap_Buffer, index: s64, count: s64, assert_that_we_do_not_allocate := false) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
+gap_buffer_make_view :: (gb: Gap_Buffer, index: s64, count: s64, force_allocate := false, assert_that_we_do_not_allocate := false) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
     ProfileZone("gap_buffer_make_view");
+
+    assert(!(force_allocate && assert_that_we_do_not_allocate), "You can't have both, duh!");
 
     assert_valid(gb);
 
@@ -200,12 +202,24 @@ gap_buffer_make_view :: (gb: Gap_Buffer, index: s64, count: s64, assert_that_we_
 
     if index + count <= gb.gap_index {
         // Simple case 1: return contiguous array view before the gap.
-        return array_view(gb.buffer, index, count);
+        view := array_view(gb.buffer, index, count);
+        if force_allocate {
+            array := array_copy(view);
+            return array;
+        } else {
+            return view;
+        }
     }
 
     if index >= gb.gap_index {
         // Simple case 2: return contiguous array view after the gap, modifying the index.
-        return array_view(gb.buffer, index + gb.gap_count, count);
+        view := array_view(gb.buffer, index + gb.gap_count, count);
+        if force_allocate {
+            array := array_copy(view);
+            return array;
+        } else {
+            return view;
+        }
     }
 
     assert(!assert_that_we_do_not_allocate);
