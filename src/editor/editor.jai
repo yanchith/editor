@@ -29,7 +29,7 @@ TODO(jt): @Stream things:
 
 - [X] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
 - [X] OPEN_FILE starts in the directory of the currently open document
-- [ ] OPEN_FILE, switch to buffer and close buffer get tab completions.
+- [X] OPEN_FILE, switch to buffer and close buffer get tab completions.
 - [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
 - [ ] M-d, C-<backspace> (delete word forward/backward)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
@@ -1026,7 +1026,35 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .MINI_PANEL_MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, false);
 
         case .MINI_PANEL_DELETE_FORWARD;         text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
-        case .MINI_PANEL_DELETE_BACKWARD;        text_buffer_delete_backward(*mini_panel.buffer); buffer_changed = true;
+        case .MINI_PANEL_DELETE_BACKWARD; {
+            // :MiniPanelAPI (mini_panel_text_update_proc ???)
+            //
+            // Some users of the mini panel might want to do fancier things when text is inserted or
+            // deleted. For now, this is just deleting path segments for .OPEN_FILE, so we hardcode
+            // that here, but eventually we want to pull this out into a proc that can be supplied
+            // by a plugin.
+
+            if mini_panel.action == .OPEN_FILE {
+                gb := *mini_panel.buffer.gb;
+
+                last_byte := ifx gb.count then gap_buffer_get_nongap_byte(gb, gb.count - 1) else 0;
+                if last_byte == "/" {
+                    buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
+                    buffer_text.count -= 1; // The trailing '/', so that path_strip_filename can treat the last segment as a filename.
+
+                    stripped_path := String.path_strip_filename(buffer_text);
+
+                    text_buffer_reset(*mini_panel.buffer);
+                    text_buffer_insert(*mini_panel.buffer, stripped_path);
+                } else {
+                    text_buffer_delete_backward(*mini_panel.buffer);
+                }
+            } else {
+                text_buffer_delete_backward(*mini_panel.buffer);
+            }
+
+            buffer_changed = true;
+        }
 
         case .MINI_PANEL_SCROLL_UP;              mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
         case .MINI_PANEL_SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
@@ -1047,8 +1075,6 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
 
                 if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
                     if codepoint == {
-                        // TODO(jt): Make indentation configurable.
-                        case .TAB;        text_buffer_insert(*mini_panel.buffer, "    "); buffer_changed = true;
                         case; {
                             // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
                             // this back to codepoints for its linedata tracking. Add
@@ -1284,6 +1310,10 @@ close_mini_panel :: (mini_panel: *Mini_Panel) -> was_open: bool {
 // stuff, but are later expected to be the entry points for mini panel plugins. This is why some of
 // them get more parameters than they actually need.
 
+Open_File_Userdata :: struct {
+    full_file_path: string;
+}
+
 mini_panel_can_select_text_line_proc :: (editor: Editor, platform: Platform, input: Input) -> bool {
     if editor.mini_panel.action == .OPEN_FILE {
         return true;
@@ -1393,20 +1423,32 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                 // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
                 file_list := platform.list_files(path_prefix,, temp);
                 for file_list {
-                    found_index, found := String.index_of_string_nocase(it.name, file_name_with_extension);
+                    visited_file_path := it.name;
+                    visited_filename := String.path_filename(it.name);
+
+                    found_index, found := String.index_of_string_nocase(visited_filename, file_name_with_extension);
                     if found {
                         s := "";
                         if it.name.count {
-                            s = arena_push_string(mini_panel.items_arena, it.name);
+                            s = arena_push_string(mini_panel.items_arena, visited_filename);
                         }
 
-                        x0 := count_utf8_characters(String.slice(it.name, 0, found_index));
+                        x0 := count_utf8_characters(String.slice(visited_filename, 0, found_index));
 
                         item := array_add(*mini_panel.items);
                         item.text = s;
                         item.highlight_x0 = x0;
                         item.highlight_x1 = x0 + file_name_with_extension_char_count;
                         item.userdata = null;
+
+                        if it.name.count {
+                            full_file_path := arena_push_string(mini_panel.items_arena, it.name);
+
+                            userdata := New(Open_File_Userdata,, arena_allocator(mini_panel.items_arena));
+                            userdata.full_file_path = full_file_path;
+
+                            item.userdata = userdata;
+                        }
                     }
                 }
 
@@ -1451,26 +1493,31 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                 }
             }
         }
+
+        mini_panel.item_index = min(mini_panel.items.count - 1, 0);
     }
 
     if selected_item_changed {
         if mini_panel.action == .SEARCH {
             // TODO(jt): @Cleanup This is the copypaste of the confirm action, except it does not close the mini panel.
 
-            // XXX: @Bug This assert went off!
-            assert(mini_panel.item_index >= 0);
-            item := *mini_panel.items[mini_panel.item_index];
+            // Changing the mini panel buffer OR the selected item can put the index to -1 (in case
+            // of search, -1 can only be achieved by changing the buffer), so in general we don't
+            // want to assert the index points to the array.
+            if mini_panel.item_index >= 0 {
+                item := *mini_panel.items[mini_panel.item_index];
 
-            x := item.highlight_x0;
-            y := cast(s64, item.userdata);
+                x := item.highlight_x0;
+                y := cast(s64, item.userdata);
 
-            document := active_panel.document;
+                document := active_panel.document;
 
-            old_cursor_y := document.buffer.cursor0.y;
-            text_buffer_move_cursor_to(*document.buffer, x, y, false);
+                old_cursor_y := document.buffer.cursor0.y;
+                text_buffer_move_cursor_to(*document.buffer, x, y, false);
 
-            if document.buffer.cursor0.y != old_cursor_y {
-                recenter_active_panel(editor, input, true);
+                if document.buffer.cursor0.y != old_cursor_y {
+                    recenter_active_panel(editor, input, true);
+                }
             }
         }
     }
@@ -1485,6 +1532,34 @@ mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Inp
     }
 
     if mini_panel.action == {
+        case .OPEN_FILE; {
+            userdata: *Open_File_Userdata;
+            if mini_panel.items.count == 1 {
+                userdata = mini_panel.items[0].userdata;
+            } else if mini_panel.items.count > 1 {
+                userdata = mini_panel.items[mini_panel.item_index].userdata;
+            }
+
+            if userdata && userdata.full_file_path.count {
+                completion_text := String.path_filename(mini_panel.items[0].text);
+                buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
+                buffer_path, _, _, buffer_filename := String.path_decomp(buffer_text);
+
+                completion_filename := String.path_filename(completion_text);
+
+                recomposed_path := tprint("%%", buffer_path, completion_filename);
+
+                text_buffer_reset(*mini_panel.buffer);
+                text_buffer_insert(*mini_panel.buffer, recomposed_path);
+
+                if platform.file_is_directory(recomposed_path) {
+                    text_buffer_insert(*mini_panel.buffer, "/");
+                }
+
+                return true;
+            }
+        }
+
         case .SWITCH_TO_DOCUMENT; #through;
         case .CLOSE_DOCUMENT; {
             if mini_panel.items.count == 1 {
@@ -1549,8 +1624,11 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) {
                 file_path = text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
                 file_exists = platform.file_exists(file_path);
             } else if mini_panel.items.count {
-                file_path = mini_panel.items[mini_panel.item_index].text;
-                file_exists = true; // Unless deleted since we last looked.
+                userdata: *Open_File_Userdata = mini_panel.items[mini_panel.item_index].userdata;
+                if userdata {
+                    file_path = userdata.full_file_path;
+                    file_exists = true; // Unless deleted since we last looked.
+                }
             }
 
             success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
