@@ -86,6 +86,102 @@ Action :: enum u32 {
     PASTE;
 }
 
+Action_Kind :: enum {
+    OTHER :: 0;
+    MOVE  :: 1;
+    EDIT  :: 2;
+}
+
+action_classify :: (action: Action) -> Action_Kind {
+    if #complete action == {
+        case .NONE;                              return .OTHER;
+
+        //
+        // Mini panel stuff
+        //
+
+        case .MINI_PANEL_MOVE_UP;                return .MOVE;
+        case .MINI_PANEL_MOVE_DOWN;              return .MOVE;
+        case .MINI_PANEL_MOVE_LEFT;              return .MOVE;
+        case .MINI_PANEL_MOVE_RIGHT;             return .MOVE;
+
+        case .MINI_PANEL_MOVE_FORWARD_WORD;      return .MOVE;
+        case .MINI_PANEL_MOVE_BACKWARD_WORD;     return .MOVE;
+
+        case .MINI_PANEL_MOVE_TO_START_OF_LINE;  return .MOVE;
+        case .MINI_PANEL_MOVE_TO_END_OF_LINE;    return .MOVE;
+
+        case .MINI_PANEL_DELETE_FORWARD;         return .EDIT;
+        case .MINI_PANEL_DELETE_BACKWARD;        return .EDIT;
+
+        case .MINI_PANEL_SCROLL_UP;              return .MOVE;
+        case .MINI_PANEL_SCROLL_DOWN;            return .MOVE;
+
+        case .MINI_PANEL_AUTOCOMPLETE;           return .EDIT;
+
+        case .MINI_PANEL_CONFIRM;                return .OTHER;
+        case .MINI_PANEL_CANCEL;                 return .OTHER;
+
+        //
+        // Mega panel stuff
+        //
+
+        case .MOVE_UP;                           return .MOVE;
+        case .MOVE_DOWN;                         return .MOVE;
+        case .MOVE_LEFT;                         return .MOVE;
+        case .MOVE_RIGHT;                        return .MOVE;
+
+        case .SEARCH;                            return .OTHER;
+
+        case .OPEN_FILE;                         return .OTHER;
+        case .SAVE_FILE;                         return .OTHER;
+
+        case .SWITCH_TO_DOCUMENT;                return .OTHER;
+        case .CLOSE_DOCUMENT;                    return .OTHER;
+
+        case .SWAP_LINE_UP;                      return .EDIT;
+        case .SWAP_LINE_DOWN;                    return .EDIT;
+
+        case .MOVE_TO_START_OF_LINE;             return .MOVE;
+        case .MOVE_TO_END_OF_LINE;               return .MOVE;
+
+        case .MOVE_TO_START_OF_DOCUMENT;         return .MOVE;
+        case .MOVE_TO_END_OF_DOCUMENT;           return .MOVE;
+
+        case .MOVE_TO_PREVIOUS_BLANK_LINE;       return .MOVE;
+        case .MOVE_TO_NEXT_BLANK_LINE;           return .MOVE;
+
+        case .MOVE_FORWARD_WORD;                 return .MOVE;
+        case .MOVE_BACKWARD_WORD;                return .MOVE;
+
+        case .RECENTER;                          return .MOVE;
+        case .SCROLL_UP;                         return .MOVE;
+        case .SCROLL_DOWN;                       return .MOVE;
+
+        case .START_SELECTING;                   return .OTHER;
+        case .STOP_SELECTING;                    return .OTHER;
+
+        case .DELETE_LINE;                       return .EDIT;
+        case .DELETE_FORWARD;                    return .EDIT;
+        case .DELETE_BACKWARD;                   return .EDIT;
+
+        case .DELETE_FORWARD_WORD;               return .EDIT;
+        case .DELETE_BACKWARD_WORD;              return .EDIT;
+
+        case .INSERT_LINE_BEFORE;                return .EDIT;
+        case .INSERT_LINE_AFTER;                 return .EDIT;
+
+        case .INSERT_TAB;                        return .EDIT;
+
+        case .UNDO_EDIT;                         return .EDIT;
+        case .REDO_EDIT;                         return .EDIT;
+
+        case .COPY;                              return .OTHER;
+        case .CUT;                               return .EDIT;
+        case .PASTE;                             return .EDIT;
+    }
+}
+
 Shortcut_Key :: struct {
     modifier_flags: Modifier_Flags;
     type: Input_Event.Type;
