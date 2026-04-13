@@ -1,29 +1,31 @@
 #import "Compiler";
 #import "File";
 
+Check    :: #import "Check";
 Profiler :: #import "Profiler"(IMPORT_MODE = .METAPROGRAM);
 
 build :: () {
     do_optimized_build := false;
     do_profiling_build := false;
-    do_sanity_build    := true;  // Will eventually default to false.
+    do_sanity_build    := true;
+    do_check           := true;
 
     for get_toplevel_command_line() {
-        if it == "-release"    do_optimized_build = true;
-        if it == "-optimized"  do_optimized_build = true;
-        if it == "-llvm"       do_optimized_build = false;
-        if it == "-x64"        do_optimized_build = false;
+        if it == "-o"                do_optimized_build = true;
+        if it == "-optimized"        do_optimized_build = true;
+        if it == "-od"               do_optimized_build = true;
+        if it == "-optimized_debug"  do_optimized_build = true;
+        if it == "-llvm"             do_optimized_build = false;
+        if it == "-x64"              do_optimized_build = false;
     }
 
     for get_build_options().compile_time_command_line {
-        // We could in theory detect the +Profiler flag from the top level command line, but that
-        // would cause the Default_Metaprogram to inject stuff here, where we import the profiler as
-        // a metaprogram plugin and not a runtime module. We could maybe do something about it so
-        // that it would work anyway, but maybe it's best to not cause more confusion.
         if it == "-profile"     do_profiling_build = true;
         if it == "-no-profile"  do_profiling_build = false;
         if it == "-sanity"      do_sanity_build = true;
         if it == "-no-sanity"   do_sanity_build = false;
+        if it == "-check"       do_check = true;
+        if it == "-no-check"    do_check = false;
     }
 
     make_directory_if_it_does_not_exist("build");
@@ -36,8 +38,7 @@ build :: () {
     options.intermediate_path      = "build/.build";
 
     if !do_optimized_build {
-        // This isn't enabled yet by default for debug builds.. and maybe they will only enable it
-        // for very_debug builds, so let's try it out.
+        // The compiler doesn't enable this yet by default for debug builds. Let's try it out!
         //
         // UPDATE: There's code in jai modules (and sometimes in our own code) that can trigger
         // this. So far it was always a bug, but it was usually a benign one, and the resulting
@@ -47,7 +48,9 @@ build :: () {
 
     set_build_options(options, w);
 
-    if do_profiling_build {
+    require_message_loop := do_profiling_build || do_check;
+
+    if require_message_loop {
         compiler_begin_intercept(w);
     }
 
@@ -57,13 +60,15 @@ build :: () {
 
     add_build_file("src/main.jai", w);
 
-    if do_profiling_build {
+    if require_message_loop {
         while true {
             message := compiler_wait_for_message();
 
-            // No need to actually call Profiler.get_plugin. The plugin would just pipe the message
-            // to the message procedure anyway.
-            Profiler.handle_message(message);
+            // The plugins we currently support (Profiler and Check) do not need any initialization,
+            // and their message routines do not use the *Metaprogram_Plugin argument.
+
+            if do_profiling_build  Profiler.message(null, message);
+            if do_check            Check.do_error_checking(null, message);
 
             if message.kind == .COMPLETE {
                 break;
