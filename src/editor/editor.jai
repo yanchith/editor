@@ -38,6 +38,8 @@ TODO(jt): @Stream things:
 - [ ] C-M-p, C-M-n (move line up/down)
 - [ ] C-u C-<space> and cursor undo.
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
+- [ ] Flash cursor with typing (needs tuning)
+- [ ] Trail behind cursor (needs tuning)
 
 TODO(jt): Fancy stuff to do:
 
@@ -124,7 +126,9 @@ operator==     :: Math.operator==;
 TEXTURE_ID_NONE        : Texture_ID : 0;
 TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 
-CURSOR_COLOR          : Vector4 : { 0.7, 0.8, 0.7, 1.0 };
+CURSOR_COLOR          : Vector4 : { 0.5, 0.8, 0.6, 1.0 };
+CURSOR_COLOR_ACTIVE   : Vector4 : { 1.0, 1.0, 1.0, 1.0 };
+CURSOR_SHADOW_COLOR   : Vector4 : { 0.5, 0.8, 0.6, 0.4 };
 SELECTION_COLOR       : Vector4 : { 0.7, 0.8, 0.7, 0.38 };
 LINE_COLOR            : Vector4 : { 0.0, 0.0, 0.0, 0.0 };
 MINI_PANEL_LINE_COLOR : Vector4 : { 0.7, 0.7, 0.9, 0.18 };
@@ -196,6 +200,20 @@ Document :: struct {
         SCRATCH;
         FILE;
     }
+
+    //
+    // Visuals
+    //
+
+    cursor_shadow_source: DVector2;
+    cursor_shadow_target: DVector2;
+    cursor_shadow_time_start: Apollo_Time;
+    cursor_shadow: DVector2;
+
+    cursor_flash_source: Vector4;
+    cursor_flash_target: Vector4;
+    cursor_flash_time_start: Apollo_Time;
+    cursor_flash: Vector4;
 }
 
 Panel :: struct {
@@ -449,8 +467,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Currently, there must always be at least one panel (and it must be active).
     active_panel: *Panel = get_active_panel(editor);
     assert(active_panel != null);
-
-    active_panel.document.time_of_last_interaction = input.time;
 
     for input.events {
         handled := false;
@@ -831,11 +847,31 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         {
             position := buffer_cursor0_position;
 
+            FLASH_TIME  : f64 : 0.50;
+            SHADOW_TIME : f64 : 0.20;
+
+            flash_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_flash_time_start)) / FLASH_TIME);
+            flash_t = clamp(flash_t, 0.0, 1.0);
+            flash_t = smoothstep(0.0, 1.0, flash_t);
+
+            shadow_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_shadow_time_start)) / SHADOW_TIME);
+            shadow_t = clamp(shadow_t, 0.0, 1.0);
+            shadow_t = smoothstep(0.0, 1.0, shadow_t);
+
+            if flash_t < 1.0 || shadow_t < 1.0 {
+                wants_next_frame = true;
+            }
+
+            document.cursor_flash = lerp(document.cursor_flash_source, document.cursor_flash_target, flash_t);
+            document.cursor_shadow = lerp(document.cursor_shadow_source, document.cursor_shadow_target, shadow_t);
+
             cursor_rect := drect_from_point_and_size(position.x, position.y, cell_w, cell_h) - panel.scroll;
+            shadow_rect := drect_from_point_and_size(document.cursor_shadow.x, document.cursor_shadow.y, cell_w, cell_h) - panel.scroll;
             line_rect: Rect = { 0, cast(f32, position.y - panel.scroll.y), window_w, cast(f32, position.y + cell_h - panel.scroll.y) };
 
             draw_rect(*render_rects, line_rect, LINE_COLOR);
-            draw_rect(*render_rects, drect_to_rect(cursor_rect), CURSOR_COLOR);
+            draw_rect(*render_rects, drect_to_rect(cursor_rect), document.cursor_flash);
+            draw_rect(*render_rects, drect_to_rect(shadow_rect), CURSOR_SHADOW_COLOR);
         }
 
         //
@@ -1115,14 +1151,17 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         return;
     }
 
+    document_cursor_before := document.buffer.cursor0;
+
     shift_selecting := editor.input_state.modifiers & .SHIFT;
 
     key_map_buffered, key_map_action := key_map_input(*editor.key_map, event, editor.input_state.modifiers);
+
     if key_map_action == {
-        case .MOVE_UP;      text_buffer_move_cursor_y(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
-        case .MOVE_DOWN;    text_buffer_move_cursor_y(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
-        case .MOVE_LEFT;    text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
-        case .MOVE_RIGHT;   text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+        case .MOVE_UP;     text_buffer_move_cursor_y(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+        case .MOVE_DOWN;   text_buffer_move_cursor_y(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+        case .MOVE_LEFT;   text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+        case .MOVE_RIGHT;  text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
 
         case .SEARCH; {
             was_closed := open_mini_panel(*editor.mini_panel, .SEARCH);
@@ -1252,6 +1291,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         }
     }
 
+    inserted := false;
     if !key_map_buffered && key_map_action == .NONE && event.flags & .PRESSED {
         if event.type == {
             case .CODEPOINT; {
@@ -1269,8 +1309,39 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                 text_buffer_insert(*document.buffer, s);
                 panel.clamp_scroll_to_cursor = true;
+
+                inserted = true;
             }
         }
+    }
+
+    action_kind := action_classify(key_map_action);
+    log("XXX %", action_kind);
+    if action_kind >= .MOVE || inserted {
+        log("XXX hit move");
+        document_cursor_after := document.buffer.cursor0;
+
+        line_view_before := text_buffer_make_view_for_line(document.buffer, document_cursor_before.y,, temp);
+        line_view_after  := text_buffer_make_view_for_line(document.buffer, document_cursor_after.y,, temp);
+
+        position_before: DVector2;
+        position_before.x = font_compute_position_on_line(editor.font, line_view_before, document_cursor_before.x);
+        position_before.y = cast(f64, document_cursor_before.y) * editor.font.line_height_in_pixels;
+
+        position_after: DVector2;
+        position_after.x = font_compute_position_on_line(editor.font, line_view_after, document_cursor_after.x);
+        position_after.y = cast(f64, document_cursor_after.y) * editor.font.line_height_in_pixels;
+
+        finish_cursor_shadow_interpolation(document);
+        setup_cursor_shadow_interpolation(document, input.time, position_before, position_after);
+        document.time_of_last_interaction = input.time;
+    }
+    if action_kind >= .EDIT || inserted {
+        log("XXX hit edit");
+
+        finish_cursor_flash_interpolation(document);
+        setup_cursor_flash_interpolation(document, input.time, CURSOR_COLOR_ACTIVE, CURSOR_COLOR);
+        document.time_of_last_interaction = input.time;
     }
 }
 
@@ -1726,6 +1797,11 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         document.backing_file_path = copy_string(backing_file_path,, arena_allocator(document_arena));
     }
 
+    document.cursor_flash_source = CURSOR_COLOR;
+    document.cursor_flash_target = CURSOR_COLOR;
+    document.cursor_flash_time_start = {};
+    document.cursor_flash = CURSOR_COLOR;
+
     locator, document_pointer := bucket_array_add(*editor.documents, document);
     document_pointer.locator = locator;
 
@@ -1888,18 +1964,44 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     }
 }
 
-finish_scroll_interpolation :: (panel: *Panel) {
-    panel.scroll_source = panel.scroll_target;
-    panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
-    panel.scroll = panel.scroll_target;
-}
-
 setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time) {
     panel.scroll_target.x = max(panel.scroll_target.x, 0.0);
     panel.scroll_target.y = max(panel.scroll_target.y, 0.0);
 
     panel.scroll_source = panel.scroll;
     panel.scroll_time_start = time;
+}
+
+finish_scroll_interpolation :: (panel: *Panel) {
+    panel.scroll_source = panel.scroll_target;
+    panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
+    panel.scroll = panel.scroll_target;
+}
+
+setup_cursor_shadow_interpolation :: (document: *Document, time: Apollo_Time, source: DVector2, target: DVector2) {
+    document.cursor_shadow_source = source;
+    document.cursor_shadow_target = target;
+    document.cursor_shadow_time_start = time;
+    document.cursor_shadow = source;
+}
+
+finish_cursor_shadow_interpolation :: (document: *Document) {
+    document.cursor_shadow_source = document.cursor_shadow_target;
+    document.cursor_shadow_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
+    document.cursor_shadow = document.cursor_shadow_target;
+}
+
+setup_cursor_flash_interpolation :: (document: *Document, time: Apollo_Time, source: Vector4, target: Vector4) {
+    document.cursor_flash_source = source;
+    document.cursor_flash_target = target;
+    document.cursor_flash_time_start = time;
+    document.cursor_flash = source;
+}
+
+finish_cursor_flash_interpolation :: (document: *Document) {
+    document.cursor_flash_source = document.cursor_flash_target;
+    document.cursor_flash_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
+    document.cursor_flash = document.cursor_flash_target;
 }
 
 draw_rect :: (render_rects: *[..] Render_Rect, x0: f32, y0: f32, x1: f32, y1: f32, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
