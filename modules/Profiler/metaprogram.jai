@@ -11,7 +11,12 @@
 
 get_plugin :: () -> *Metaprogram_Plugin {
     p := New(Metaprogram_Plugin);
-    p.message = handle_message;
+
+    p.before_intercept = null;  // Not needed.
+    p.add_source       = null;  // Not needed.
+    p.message          = message;
+    p.finish           = null;  // Not needed.
+    p.shutdown         = null;  // Not needed.
 
     return p;
 }
@@ -20,13 +25,8 @@ profiler_final_code_inserted := false;
 profiler_import: *Message_Import;
 profiler_colleted_zone_labels: [..] string;
 
-// At the moment we don't actually store anything on the plugin itself, so we also provide a
-// pluginless overload for handling messages tha can be called from custom metaprograms.
-handle_message :: (p: *Metaprogram_Plugin, message: *Message) {
-    handle_message(message);
-}
-
-handle_message :: (message: *Message) {
+// You can call message directly from your metaprogram and pass null for p.
+message :: (p: *Metaprogram_Plugin, message: *Message) {
     if message.kind == {
         case .PHASE; {
             message_phase := cast(*Message_Phase, message);
