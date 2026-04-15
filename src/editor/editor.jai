@@ -126,6 +126,9 @@ operator==     :: Math.operator==;
 TEXTURE_ID_NONE        : Texture_ID : 0;
 TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 
+// TODO(jt): Get the monitor refresh rate from platform instead!
+USUAL_DELTA_TIME : f64 : 1.0 / 60.0;
+
 CURSOR_COLOR          : Vector4 : { 0.5, 0.8, 0.6, 1.0 };
 CURSOR_COLOR_ACTIVE   : Vector4 : { 1.0, 0.6, 0.4, 1.0 };
 SELECTION_COLOR       : Vector4 : { 0.7, 0.8, 0.7, 0.38 };
@@ -453,9 +456,13 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
     profiler_start_frame("update_and_render");
 
-    // @Hack to constrain DT from sleeping frames. However, we should only be using DT in situations
-    // where we are already animating. Can we get rid of this, perhaps by framing the computations differently?
-    dt := min(to_float64_seconds(input.dtime), 0.33);
+    dt: f64;
+    if input.frame_triggered_by_animation {
+        dt = to_float64_seconds(input.dtime);
+    } else {
+        // No way to tell delta if we were sleeping, so we just put something in there.
+        dt = USUAL_DELTA_TIME;
+    }
 
     wants_quit       := false;
     wants_next_frame := false;
@@ -879,17 +886,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             flash_t = clamp(flash_t, 0.0, 1.0);
             flash_t = smoothstep(0.0, 1.0, flash_t);
 
-            // TODO(jt): Doing cursor position interpolation introduces at least a frame of lag,
-            // because anim_t starts out zero. We could artificially add delta time (or estimated
-            // delta time, in case we didn't run on the previous frame), but maybe there's a better
-            // integration method? (This is also true for all other interpolations, but for cursor,
-            // this is most visible.)
-            //
             // TODO(jt): For visuals, it would be nice, if the interpolated cursor left a trail
             // behind it as it moves, because currently, when it moves very fast, you can spot the
             // individual positions it occupies.
 
-            anim_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_anim_time_start)) / ANIM_TIME);
+            // TODO(jt): @Hack We add 1/2 of usual delta time to offset the lag, but maybe there's a
+            // better way to integrate the movement? I should study up on how Casey did this in
+            // Handmade Hero. In any case, this is barely noticeable, and the cursor still feels a
+            // little bit laggy even if I do this.
+            anim_t := cast(f32, (to_float64_seconds(input.time) + 0.5 * USUAL_DELTA_TIME - to_float64_seconds(document.cursor_anim_time_start)) / ANIM_TIME);
             anim_t = clamp(anim_t, 0.0, 1.0);
             anim_t = smoothstep(0.0, 1.0, anim_t);
 
