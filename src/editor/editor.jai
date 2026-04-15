@@ -127,8 +127,7 @@ TEXTURE_ID_NONE        : Texture_ID : 0;
 TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 
 CURSOR_COLOR          : Vector4 : { 0.5, 0.8, 0.6, 1.0 };
-CURSOR_COLOR_ACTIVE   : Vector4 : { 1.0, 1.0, 1.0, 1.0 };
-CURSOR_SHADOW_COLOR   : Vector4 : { 0.5, 0.8, 0.6, 0.4 };
+CURSOR_COLOR_ACTIVE   : Vector4 : { 1.0, 0.6, 0.4, 1.0 };
 SELECTION_COLOR       : Vector4 : { 0.7, 0.8, 0.7, 0.38 };
 LINE_COLOR            : Vector4 : { 0.0, 0.0, 0.0, 0.0 };
 MINI_PANEL_LINE_COLOR : Vector4 : { 0.7, 0.7, 0.9, 0.18 };
@@ -205,10 +204,14 @@ Document :: struct {
     // Visuals
     //
 
-    cursor_shadow_source: DVector2;
-    cursor_shadow_target: DVector2;
-    cursor_shadow_time_start: Apollo_Time;
-    cursor_shadow: DVector2;
+    // Preserved at the start of each frame to find out if we have kick off cursor animation.
+    old_cursor: Cursor;
+    old_cursor_position: DVector2;
+
+    cursor_anim_source: DVector2;
+    cursor_anim_target: DVector2;
+    cursor_anim_time_start: Apollo_Time;
+    cursor_anim: DVector2;
 
     cursor_flash_source: Vector4;
     cursor_flash_target: Vector4;
@@ -463,6 +466,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions.allocator = temp;
 
     input_state_update_on_frame_start(*editor.input_state, input);
+
+    // We do this for every panel instead of every document, so we don't unnecessarily compute the
+    // positions for documents we do not see.
+    for * editor.panels {
+        if it.document.old_cursor != it.document.buffer.cursor0 {
+            it.document.old_cursor = it.document.buffer.cursor0;
+            it.document.old_cursor_position = get_cursor_position(it.document, editor.font);
+        }
+
+        if it.document.cursor_anim_time_start == Apollo_Time.{ 0, 0 } {
+            setup_cursor_anim_interpolation(it.document, input.time, it.document.old_cursor_position, it.document.old_cursor_position);
+        }
+    }
 
     // Currently, there must always be at least one panel (and it must be active).
     active_panel: *Panel = get_active_panel(editor);
@@ -845,33 +861,62 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Draw cursor
         //
         {
-            position := buffer_cursor0_position;
+            new_cursor_position := buffer_cursor0_position;
 
-            FLASH_TIME  : f64 : 0.50;
-            SHADOW_TIME : f64 : 0.20;
+            // :CentralizedCursorInterpolationSetup
+            //
+            // Because the cursor position can be changed by both editing, mouse interaction,
+            // scrolling, etc, we detect cursor changes every frame here (instead of in all the
+            // places where the cursor can change).
+            if panel.document.old_cursor != panel.document.buffer.cursor0 {
+                setup_cursor_anim_interpolation(panel.document, input.time, panel.document.old_cursor_position, new_cursor_position);
+            }
+
+            FLASH_TIME : f64 : 0.50; // TODO(jt): Make flash time configurable. :Config
+            ANIM_TIME  : f64 : 0.05; // TODO(jt): Make anim time configurable. :Config
 
             flash_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_flash_time_start)) / FLASH_TIME);
             flash_t = clamp(flash_t, 0.0, 1.0);
             flash_t = smoothstep(0.0, 1.0, flash_t);
 
-            shadow_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_shadow_time_start)) / SHADOW_TIME);
-            shadow_t = clamp(shadow_t, 0.0, 1.0);
-            shadow_t = smoothstep(0.0, 1.0, shadow_t);
+            // TODO(jt): Doing cursor position interpolation introduces at least a frame of lag,
+            // because anim_t starts out zero. We could artificially add delta time (or estimated
+            // delta time, in case we didn't run on the previous frame), but maybe there's a better
+            // integration method? (This is also true for all other interpolations, but for cursor,
+            // this is most visible.)
+            //
+            // TODO(jt): For visuals, it would be nice, if the interpolated cursor left a trail
+            // behind it as it moves, because currently, when it moves very fast, you can spot the
+            // individual positions it occupies.
 
-            if flash_t < 1.0 || shadow_t < 1.0 {
+            anim_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_anim_time_start)) / ANIM_TIME);
+            anim_t = clamp(anim_t, 0.0, 1.0);
+            anim_t = smoothstep(0.0, 1.0, anim_t);
+
+            if flash_t < 1.0 || anim_t < 1.0 {
                 wants_next_frame = true;
             }
 
             document.cursor_flash = lerp(document.cursor_flash_source, document.cursor_flash_target, flash_t);
-            document.cursor_shadow = lerp(document.cursor_shadow_source, document.cursor_shadow_target, shadow_t);
+            document.cursor_anim = lerp(document.cursor_anim_source, document.cursor_anim_target, anim_t);
 
-            cursor_rect := drect_from_point_and_size(position.x, position.y, cell_w, cell_h) - panel.scroll;
-            shadow_rect := drect_from_point_and_size(document.cursor_shadow.x, document.cursor_shadow.y, cell_w, cell_h) - panel.scroll;
-            line_rect: Rect = { 0, cast(f32, position.y - panel.scroll.y), window_w, cast(f32, position.y + cell_h - panel.scroll.y) };
+            cursor_rect: DRect;
+            if ANIM_TIME == 0 {
+                // Straight to the new position to avoid one frame of lag (and results of division by zero).
+                cursor_rect = drect_from_point_and_size(new_cursor_position.x, new_cursor_position.y, cell_w, cell_h) - panel.scroll;
+            } else {
+                cursor_rect = drect_from_point_and_size(document.cursor_anim.x, document.cursor_anim.y, cell_w, cell_h) - panel.scroll;
+            }
+
+            line_rect: Rect = {
+                0,
+                cast(f32, new_cursor_position.y - panel.scroll.y),
+                window_w,
+                cast(f32, new_cursor_position.y + cell_h - panel.scroll.y),
+            };
 
             draw_rect(*render_rects, line_rect, LINE_COLOR);
             draw_rect(*render_rects, drect_to_rect(cursor_rect), document.cursor_flash);
-            draw_rect(*render_rects, drect_to_rect(shadow_rect), CURSOR_SHADOW_COLOR);
         }
 
         //
@@ -1151,8 +1196,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         return;
     }
 
-    document_cursor_before := document.buffer.cursor0;
-
     shift_selecting := editor.input_state.modifiers & .SHIFT;
 
     key_map_buffered, key_map_action := key_map_input(*editor.key_map, event, editor.input_state.modifiers);
@@ -1316,30 +1359,15 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 
     action_kind := action_classify(key_map_action);
-    log("XXX %", action_kind);
     if action_kind >= .MOVE || inserted {
-        log("XXX hit move");
-        document_cursor_after := document.buffer.cursor0;
-
-        line_view_before := text_buffer_make_view_for_line(document.buffer, document_cursor_before.y,, temp);
-        line_view_after  := text_buffer_make_view_for_line(document.buffer, document_cursor_after.y,, temp);
-
-        position_before: DVector2;
-        position_before.x = font_compute_position_on_line(editor.font, line_view_before, document_cursor_before.x);
-        position_before.y = cast(f64, document_cursor_before.y) * editor.font.line_height_in_pixels;
-
-        position_after: DVector2;
-        position_after.x = font_compute_position_on_line(editor.font, line_view_after, document_cursor_after.x);
-        position_after.y = cast(f64, document_cursor_after.y) * editor.font.line_height_in_pixels;
-
-        finish_cursor_shadow_interpolation(document);
-        setup_cursor_shadow_interpolation(document, input.time, position_before, position_after);
+        // The cursor position interpolation gets setup in a centralized place instead of here, because the
+        // cursor can be moved from other places than this one (e.g. mouse, SEARCH mini
+        // panel...).
+        //
+        // :CentralizedCursorInterpolationSetup
         document.time_of_last_interaction = input.time;
     }
     if action_kind >= .EDIT || inserted {
-        log("XXX hit edit");
-
-        finish_cursor_flash_interpolation(document);
         setup_cursor_flash_interpolation(document, input.time, CURSOR_COLOR_ACTIVE, CURSOR_COLOR);
         document.time_of_last_interaction = input.time;
     }
@@ -1964,6 +1992,19 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     }
 }
 
+get_cursor_position :: (document: Document, font: Font) -> DVector2 {
+    x := document.buffer.cursor0.x;
+    y := document.buffer.cursor0.y;
+
+    line_view := text_buffer_make_view_for_line(document.buffer, y,, temp);
+
+    position: DVector2;
+    position.x = font_compute_position_on_line(font, line_view, x);
+    position.y = cast(f64, y) * font.line_height_in_pixels;
+
+    return position;
+}
+
 setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time) {
     panel.scroll_target.x = max(panel.scroll_target.x, 0.0);
     panel.scroll_target.y = max(panel.scroll_target.y, 0.0);
@@ -1978,17 +2019,11 @@ finish_scroll_interpolation :: (panel: *Panel) {
     panel.scroll = panel.scroll_target;
 }
 
-setup_cursor_shadow_interpolation :: (document: *Document, time: Apollo_Time, source: DVector2, target: DVector2) {
-    document.cursor_shadow_source = source;
-    document.cursor_shadow_target = target;
-    document.cursor_shadow_time_start = time;
-    document.cursor_shadow = source;
-}
-
-finish_cursor_shadow_interpolation :: (document: *Document) {
-    document.cursor_shadow_source = document.cursor_shadow_target;
-    document.cursor_shadow_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
-    document.cursor_shadow = document.cursor_shadow_target;
+setup_cursor_anim_interpolation :: (document: *Document, time: Apollo_Time, source: DVector2, target: DVector2) {
+    document.cursor_anim_source = source;
+    document.cursor_anim_target = target;
+    document.cursor_anim_time_start = time;
+    document.cursor_anim = source;
 }
 
 setup_cursor_flash_interpolation :: (document: *Document, time: Apollo_Time, source: Vector4, target: Vector4) {
@@ -1996,12 +2031,6 @@ setup_cursor_flash_interpolation :: (document: *Document, time: Apollo_Time, sou
     document.cursor_flash_target = target;
     document.cursor_flash_time_start = time;
     document.cursor_flash = source;
-}
-
-finish_cursor_flash_interpolation :: (document: *Document) {
-    document.cursor_flash_source = document.cursor_flash_target;
-    document.cursor_flash_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
-    document.cursor_flash = document.cursor_flash_target;
 }
 
 draw_rect :: (render_rects: *[..] Render_Rect, x0: f32, y0: f32, x1: f32, y1: f32, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
