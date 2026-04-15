@@ -320,6 +320,7 @@ main :: () {
 
         input: Editor.Input;
         // input.time and input.dtime are zeroed.
+        // input.frame_triggered_by_animation is zeroed.
         input.window_size = { window_width, window_height };
         #if OS == .WINDOWS {
             input.window_scale_factor = cast(f32, GetDpiForWindow(window)) / 96.0;
@@ -622,6 +623,8 @@ main :: () {
             if wants_quit {
                 should_run = false;
             }
+
+            input.frame_triggered_by_animation = wants_next_frame;
 
             Simp.swap_buffers(window);
 
