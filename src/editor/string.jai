@@ -1,11 +1,10 @@
 // Common string utilities. Something like modules/Simple_String or modules/String, but more specific to what we need.
 
-
-string_starts_with_newline :: (bytes: [] u8) -> newline_byte_length: s64 {
+string_starts_with_newline :: (bytes: [] u8) -> newline_byte_length: u32 {
     return inline string_starts_with_newline(cast(string, bytes));
 }
 
-string_starts_with_newline :: (s: string) -> newline_byte_length: s64 {
+string_starts_with_newline :: (s: string) -> newline_byte_length: u32 {
     if s.count > 1 && s[0] == "\r" && s[1] == "\n" {
         return 2;
     } else if s.count > 0 && s[0] == "\n" {
@@ -15,11 +14,11 @@ string_starts_with_newline :: (s: string) -> newline_byte_length: s64 {
     return 0;
 }
 
-string_ends_with_newline :: (bytes: [] u8) -> newline_byte_length: s64 {
+string_ends_with_newline :: (bytes: [] u8) -> newline_byte_length: u32 {
     return inline string_ends_with_newline(cast(string, bytes));
 }
 
-string_ends_with_newline :: (s: string) -> newline_byte_length: s64 {
+string_ends_with_newline :: (s: string) -> newline_byte_length: u32 {
     if s.count > 1 && s[s.count - 2] == "\r" && s[s.count - 1] == "\n" {
         return 2;
     } else if s.count > 0 && s[s.count - 1] == "\n" {
@@ -50,12 +49,12 @@ count_utf8_characters :: (text: string) -> s64 {
     return count;
 }
 
-find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: s64 {
+find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
     found_index, scanned_count := find_next_utf8_character_boundary(cast(string, bytes), index);
     return found_index, scanned_count;
 }
 
-find_next_utf8_character_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: s64 {
+find_next_utf8_character_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: u32 {
     assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
     if index == text.count {
         return text.count, 0;
@@ -73,15 +72,15 @@ find_next_utf8_character_boundary :: (text: string, index: s64) -> found_index: 
     scanned_count := next_index - index;
     assert(scanned_count <= 4);
 
-    return next_index, scanned_count;
+    return next_index, cast(u32, scanned_count);
 }
 
-find_previous_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: s64 {
+find_previous_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
     found_index, scanned_count := inline find_previous_utf8_character_boundary(cast(string, bytes), index);
     return found_index, scanned_count;
 }
 
-find_previous_utf8_character_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: s64 {
+find_previous_utf8_character_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: u32 {
     assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
     if index == 0 {
         return 0, 0;
@@ -99,9 +98,8 @@ find_previous_utf8_character_boundary :: (text: string, index: s64) -> found_ind
     scanned_count := index - prev_index;
     assert(scanned_count <= 4);
 
-    return prev_index, index - prev_index;
+    return prev_index, cast(u32, scanned_count);
 }
-
 
 byte_is_utf8_character_boundary :: inline (b: u8) -> bool {
     /* Taken from Rust's std.
