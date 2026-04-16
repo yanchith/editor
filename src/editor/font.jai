@@ -348,6 +348,9 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
     }
 }
 
+// TODO(jt): @Speed For files with long lines (such as minified javascript), this very very
+// slow. We'll probably need to avoid calling it (or do early out, if position exceeds some given
+// value), or have make 100x faster.
 font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64) -> f64 {
     ProfileZone("font_compute_position_on_line");
 
