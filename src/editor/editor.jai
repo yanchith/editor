@@ -581,7 +581,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if input.mouse_wheel_delta != 0 && !(editor.input_state.modifiers & .CTRL) {
             // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
             active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
-            active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * cast(f64, active_panel.document.buffer.lines.count - 1));
+            active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
             finish_scroll_interpolation(active_panel);
         }
 
@@ -643,7 +643,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     boost := (mouse.y - (window_h - SCROLL_APRON)) * SCROLL_BOOST;
 
                     active_panel.scroll_target.y += SCROLL_SPEED * boost * dt;
-                    active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * cast(f64, active_panel.document.buffer.lines.count - 1));
+                    active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
                     finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
@@ -656,8 +656,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if row < 0 {
                 row = 0;
                 col = 0;
-            } else if row > active_panel.document.buffer.lines.count - 1 {
-                row = active_panel.document.buffer.lines.count - 1;
+            } else if row > active_panel.document.buffer.line_bytes.count - 1 {
+                row = active_panel.document.buffer.line_bytes.count - 1;
 
                 // Include newline, so that the cursor can go there.
                 line_view := text_buffer_make_view_for_line(active_panel.document.buffer, row, include_newline = true,, temp);
@@ -802,8 +802,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 // lines. If the lines are long, we do a lot of layout and draw.
                 //
                 // TODO(jt): @Speed Horizontal culling?
-                viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.lines.count - 1);
-                viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.lines.count - 1);
+                viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.line_bytes.count - 1);
+                viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_bytes.count - 1);
 
                 // Because we start the layout just before the current viewport, the rendering scroll Y offset
                 // is just the fractional part of the cell.
@@ -934,8 +934,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // lines. If the lines are long, we do a lot of layout and draw.
             //
             // TODO(jt): @Speed Horizontal culling?
-            viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.lines.count - 1);
-            viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.lines.count - 1);
+            viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.line_bytes.count - 1);
+            viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_bytes.count - 1);
 
             viewport_start := text_buffer_get_start_cursor_for_line(document.buffer, viewport_line_index_start);
             viewport_end   := text_buffer_get_end_cursor_for_line(document.buffer, viewport_line_index_end);
@@ -967,7 +967,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         draw_rect(*render_rects, 0, modeline_y, window_w, modeline_y + cell_h, MODELINE_COLOR);
 
         cursor  := active_panel.document.buffer.cursor0;
-        percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, active_panel.document.buffer.lines.count));
+        percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, active_panel.document.buffer.line_bytes.count));
 
         document_name: string;
         if #complete active_panel.document.kind == {
@@ -1453,11 +1453,11 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                     new_item_index := -1;
 
                     search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-                    search_text_char_count := mini_panel.buffer.lines[0].char_count;
+                    search_text_char_count := mini_panel.buffer.line_chars[0];
 
                     gb_index := 0;
-                    for 0..document.buffer.lines.count - 1 {
-                        gb_count := document.buffer.lines[it].byte_count;
+                    for 0..document.buffer.line_bytes.count - 1 {
+                        gb_count := document.buffer.line_bytes[it];
 
                         // We go straight to the gap buffer and count its indices manually, so that
                         // we avoid the quadratic behavior of calling get_gb_index_for_line each
@@ -1517,7 +1517,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                 ProfileZone(":MiniPanelOpenFileUpdate");
 
                 path_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-                path_text_char_count := mini_panel.buffer.lines[0].char_count;
+                path_text_char_count := mini_panel.buffer.line_chars[0];
 
                 path_prefix, _, _, file_name_with_extension := String.path_decomp(path_text);
                 path_prefix = String.trim_right(path_prefix, "/");
@@ -1566,7 +1566,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                 ProfileZone(":MiniPanelSwitchToDocumentOrCloseDocumentUpdate");
 
                 search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-                search_text_char_count := mini_panel.buffer.lines[0].char_count;
+                search_text_char_count := mini_panel.buffer.line_chars[0];
 
                 for * editor.documents {
                     if mini_panel.action == .CLOSE_DOCUMENT && it.kind == .SCRATCH {
@@ -1906,7 +1906,7 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
 
     // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
     // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
-    HELLO_SIZE : s64 : 64 << 10;
+    HELLO_SIZE : s64 : 1 << 30;
 
     hello_arena := make_arena(platform, .LARGE);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
@@ -1986,7 +1986,7 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     }
 
     delta_max := cast(s64, floor(input.window_size.y / cell_h));
-    delta     := min(document.buffer.lines.count - 1 - document.buffer.cursor0.y, delta_max);
+    delta     := min(document.buffer.line_bytes.count - 1 - document.buffer.cursor0.y, delta_max);
 
     text_buffer_move_cursor_y(*document.buffer, delta, panel.selecting);
 

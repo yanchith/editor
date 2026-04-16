@@ -19,7 +19,16 @@ Text_Buffer :: struct {
     cursor1: Cursor;
 
     gb: Gap_Buffer;   // Stores the UTF-8 bytes.
-    lines: [..] Line; // Stores line navigation data. Always at least one.
+    // SoA version of a line struct:
+    //
+    // Line :: struct {
+    //    char_count: s64; // Including newline at the end
+    //    byte_count: s64;
+    // }
+    //
+    line_bytes: [..] s64; // Always at least one.
+    line_chars: [..] s64; // Always at least one.
+    // XXX: Add line_count which can be used as a shorthand for either of the counts.
 
     edits: [..] Edit;
     // Undoing decreases this. Redoing increses. When editing, this is the same as edits.count,
@@ -38,11 +47,6 @@ Cursor :: struct {
 
 operator == :: (a: Cursor, b: Cursor) -> bool {
     return a.x == b.x && a.y == b.y;
-}
-
-Line :: struct {
-    char_count: s64; // Including newline at the end
-    byte_count: s64;
 }
 
 Edit :: struct {
@@ -93,7 +97,8 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, _edit_text_arena: *Are
 
     gap_buffer_init(*buffer.gb, arena_allocator(arena));
 
-    buffer.lines.allocator = arena_allocator(arena);
+    buffer.line_bytes.allocator = arena_allocator(arena);
+    buffer.line_chars.allocator = arena_allocator(arena);
     buffer.edits.allocator = arena_allocator(arena);
 
     edit_text_arena := ifx _edit_text_arena then _edit_text_arena else arena;
@@ -101,7 +106,9 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, _edit_text_arena: *Are
     buffer.edit_text_arena = edit_text_arena;
     buffer.edit_text_arena_mark = arena_get_mark(edit_text_arena);
 
-    array_add(*buffer.lines); // This is the only invariant we uphold for now.
+    // This is the only invariant we uphold for now.
+    array_add(*buffer.line_bytes);
+    array_add(*buffer.line_chars);
 
     assert_valid(buffer);
 }
@@ -111,7 +118,8 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
 
     gap_buffer_reset(*buffer.gb);
 
-    array_reset(*buffer.lines);
+    array_reset(*buffer.line_bytes);
+    array_reset(*buffer.line_chars);
     array_reset(*buffer.edits);
 
     arena_pop_to_mark(buffer.arena, buffer.arena_mark);
@@ -122,7 +130,9 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
 
     buffer.applied_edit_count = 0;
 
-    array_add(*buffer.lines); // This is the only invariant we uphold for now.
+    // This is the only invariant we uphold for now.
+    array_add(*buffer.line_bytes);
+    array_add(*buffer.line_chars);
 
     assert_valid(buffer);
 }
@@ -269,17 +279,18 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 
     newline_advance := string_starts_with_newline(bytes);
     if newline_advance {
-        assert(buffer.cursor0.y < buffer.lines.count - 1);                         // The last line can't have a newline.
-        assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1); // The newline has to be the last char.
+        assert(buffer.cursor0.y < buffer.line_chars.count - 1);              // The last line can't have a newline.
+        assert(buffer.cursor0.x == buffer.line_chars[buffer.cursor0.y] - 1); // The newline has to be the last char.
 
         // We treat \r\n as one character, if it happens to be in there.
-        buffer.lines[buffer.cursor0.y].char_count -= 1;
-        buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
+        buffer.line_chars[buffer.cursor0.y] -= 1;
+        buffer.line_bytes[buffer.cursor0.y] -= newline_advance;
 
-        buffer.lines[buffer.cursor0.y].char_count += buffer.lines[buffer.cursor0.y + 1].char_count;
-        buffer.lines[buffer.cursor0.y].byte_count += buffer.lines[buffer.cursor0.y + 1].byte_count;
+        buffer.line_chars[buffer.cursor0.y] += buffer.line_chars[buffer.cursor0.y + 1];
+        buffer.line_bytes[buffer.cursor0.y] += buffer.line_bytes[buffer.cursor0.y + 1];
 
-        array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y + 1);
+        array_ordered_remove_by_index(*buffer.line_bytes, buffer.cursor0.y + 1);
+        array_ordered_remove_by_index(*buffer.line_chars, buffer.cursor0.y + 1);
 
         deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
         assert(newline_advance == deleted.count);
@@ -304,8 +315,8 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     } else {
         _, codepoint_advance := find_next_utf8_character_boundary(bytes, 0);
         if codepoint_advance {
-            buffer.lines[buffer.cursor0.y].char_count -= 1;
-            buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
+            buffer.line_chars[buffer.cursor0.y] -= 1;
+            buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
 
             deleted := gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
             assert(codepoint_advance == deleted.count);
@@ -359,15 +370,16 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
         assert(buffer.cursor0.x == 0);
         assert(buffer.cursor0.y > 0);
 
-        new_cursor_x := buffer.lines[buffer.cursor0.y - 1].char_count - 1;
+        new_cursor_x := buffer.line_chars[buffer.cursor0.y - 1] - 1;
 
-        buffer.lines[buffer.cursor0.y - 1].char_count -= 1;
-        buffer.lines[buffer.cursor0.y - 1].byte_count -= newline_advance;
+        buffer.line_chars[buffer.cursor0.y - 1] -= 1;
+        buffer.line_bytes[buffer.cursor0.y - 1] -= newline_advance;
 
-        buffer.lines[buffer.cursor0.y - 1].char_count += buffer.lines[buffer.cursor0.y].char_count;
-        buffer.lines[buffer.cursor0.y - 1].byte_count += buffer.lines[buffer.cursor0.y].byte_count;
+        buffer.line_chars[buffer.cursor0.y - 1] += buffer.line_chars[buffer.cursor0.y];
+        buffer.line_bytes[buffer.cursor0.y - 1] += buffer.line_bytes[buffer.cursor0.y];
 
-        array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y);
+        array_ordered_remove_by_index(*buffer.line_bytes, buffer.cursor0.y);
+        array_ordered_remove_by_index(*buffer.line_chars, buffer.cursor0.y);
 
         old_cursor := buffer.cursor0;
 
@@ -397,8 +409,8 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
     } else {
         _, codepoint_advance := find_previous_utf8_character_boundary(bytes, bytes.count);
         if codepoint_advance {
-            buffer.lines[buffer.cursor0.y].char_count -= 1;
-            buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
+            buffer.line_chars[buffer.cursor0.y] -= 1;
+            buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
 
             old_cursor := buffer.cursor0;
 
@@ -608,12 +620,12 @@ text_buffer_get_start_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) 
 text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false) -> Cursor {
     assert_line_valid(buffer, line_index);
 
-    line := buffer.lines[line_index];
+    line_chars := buffer.line_chars[line_index];
     endx: s64;
-    if include_newline || line_index == buffer.lines.count - 1 {
-        endx = line.char_count;
+    if include_newline || line_index == buffer.line_chars.count - 1 {
+        endx = line_chars;
     } else {
-        endx = line.char_count - 1;
+        endx = line_chars - 1;
     }
 
     end: Cursor = { endx, line_index };
@@ -634,10 +646,10 @@ text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include
 
     assert_line_valid(buffer, line_index);
 
-    line := buffer.lines[line_index];
+    line_bytes := buffer.line_bytes[line_index];
 
     start_index := text_buffer_get_gap_buffer_index_for_line(buffer, line_index);
-    view        := gap_buffer_make_view(buffer.gb, start_index, line.byte_count, force_allocate = force_allocate);
+    view        := gap_buffer_make_view(buffer.gb, start_index, line_bytes, force_allocate = force_allocate);
 
     if !include_newline {
         newline_advance := string_ends_with_newline(view);
@@ -690,9 +702,9 @@ text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
         while delta > 0 {
             // Cursor can be past the last non-newline character. However, the last line does not
             // have the newline character, so we only pretend it does.
-            if buffer.cursor0.y == buffer.lines.count - 1 {
-                buffer.cursor0.x = min(buffer.cursor0.x + 1, buffer.lines[buffer.cursor0.y].char_count);
-            } else if buffer.cursor0.x < buffer.lines[buffer.cursor0.y].char_count - 1 {
+            if buffer.cursor0.y == buffer.line_chars.count - 1 {
+                buffer.cursor0.x = min(buffer.cursor0.x + 1, buffer.line_chars[buffer.cursor0.y]);
+            } else if buffer.cursor0.x < buffer.line_chars[buffer.cursor0.y] - 1 {
                 buffer.cursor0.x += 1;
             } else {
                 buffer.cursor0.x = 0;
@@ -708,7 +720,7 @@ text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
             } else if buffer.cursor0.x > 0 {
                 buffer.cursor0.x -= 1;
             } else {
-                buffer.cursor0.x = buffer.lines[buffer.cursor0.y - 1].char_count - 1;
+                buffer.cursor0.x = buffer.line_chars[buffer.cursor0.y - 1] - 1;
                 buffer.cursor0.y -= 1;
             }
 
@@ -729,13 +741,13 @@ text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
     assert_valid(buffer);
 
     // Cursor can not be past the last line
-    buffer.cursor0.y = clamp(buffer.cursor0.y + delta, 0, buffer.lines.count - 1);
+    buffer.cursor0.y = clamp(buffer.cursor0.y + delta, 0, buffer.line_chars.count - 1);
 
     // Clamp X.
-    if buffer.cursor0.y == buffer.lines.count - 1 {
-        buffer.cursor0.x = clamp(buffer.cursor0.x, 0, buffer.lines[buffer.cursor0.y].char_count);
+    if buffer.cursor0.y == buffer.line_chars.count - 1 {
+        buffer.cursor0.x = clamp(buffer.cursor0.x, 0, buffer.line_chars[buffer.cursor0.y]);
     } else {
-        buffer.cursor0.x = clamp(buffer.cursor0.x, 0, buffer.lines[buffer.cursor0.y].char_count - 1);
+        buffer.cursor0.x = clamp(buffer.cursor0.x, 0, buffer.line_chars[buffer.cursor0.y] - 1);
     }
 
     if !selecting {
@@ -750,8 +762,8 @@ text_buffer_move_cursor_to :: (buffer: *Text_Buffer, _x: s64, _y: s64, selecting
 
     assert_valid(buffer);
 
-    y := clamp(_y, 0, buffer.lines.count);
-    x := clamp(_x, 0, buffer.lines[y].char_count);
+    y := clamp(_y, 0, buffer.line_chars.count);
+    x := clamp(_x, 0, buffer.line_chars[y]);
 
     buffer.cursor0 = { x, y };
 
@@ -781,8 +793,8 @@ text_buffer_move_cursor_to_end :: (buffer: *Text_Buffer, selecting: bool) {
 
     assert_valid(buffer);
 
-    y := buffer.lines.count - 1;
-    x := buffer.lines[y].char_count;
+    y := buffer.line_chars.count - 1;
+    x := buffer.line_chars[y];
     buffer.cursor0 = { x, y };
 
     if !selecting {
@@ -1048,7 +1060,7 @@ text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: 
     found_index := -1;
     {
         line_index := buffer.cursor0.y + 1;
-        while !found && line_index < buffer.lines.count {
+        while !found && line_index < buffer.line_bytes.count {
             line_view := text_buffer_make_view_for_line(buffer, line_index,, temp);
 
             // We can avoid utf8 parsing, because we are looking strictly for whitespace-only lines
@@ -1116,14 +1128,14 @@ text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s
 
     assert_line_valid(buffer, line_index);
 
-    if line_index >= buffer.lines.count {
+    if line_index >= buffer.line_bytes.count {
         // We are past the last line. Return index past the last byte in the gap buffer.
         return buffer.gb.count;
     }
 
     index := 0;
     for 0..line_index - 1 {
-        index += buffer.lines[it].byte_count;
+        index += buffer.line_bytes[it];
     }
 
     return index;
@@ -1135,14 +1147,14 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
     assert_cursor_valid(buffer, cursor);
 
     line_index := cursor.y;
-    if line_index >= buffer.lines.count {
+    if line_index >= buffer.line_bytes.count {
         // We are past the last line. Return index past the last byte in the gap buffer.
         return buffer.gb.count;
     }
 
     index := 0;
     for 0..line_index - 1 {
-        index += buffer.lines[it].byte_count;
+        index += buffer.line_bytes[it];
     }
 
     for 0..cursor.x - 1 {
@@ -1170,26 +1182,32 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
 assert_valid :: (buffer: Text_Buffer) {
     ProfileZone("assert_valid");
 
-    assert(buffer.lines.count > 0, "Text_Buffer not initialized (has to have at least one line). Call text_buffer_init().");
+    assert(buffer.line_bytes.count > 0, "Text_Buffer not initialized (has to have at least one line). Call text_buffer_init().");
+    assert(buffer.line_bytes.count == buffer.line_chars.count, "Line arrays desync");
     assert_cursor_valid(buffer, buffer.cursor0);
     assert_cursor_valid(buffer, buffer.cursor1);
 
     // This is too expensive to do in shipping builds. We completely recreate lines from text.
     #if SANITY {
-        lines: [..] Line;
-        lines.allocator = temp;
+        line_bytes: [..] s64;
+        line_chars: [..] s64;
+        line_bytes.allocator = temp;
+        line_chars.allocator = temp;
 
-        array_reserve(*lines, buffer.lines.count);
-        array_add(*lines);
+        array_reserve(*line_bytes, buffer.line_bytes.count);
+        array_reserve(*line_chars, buffer.line_chars.count);
+        array_add(*line_bytes);
+        array_add(*line_chars);
 
         view := cast(string, gap_buffer_make_view(buffer.gb, 0, buffer.gb.count,, temp));
         while view.count {
             newline_advance := string_starts_with_newline(view);
             if newline_advance {
-                lines[lines.count - 1].char_count += 1;
-                lines[lines.count - 1].byte_count += newline_advance;
+                line_chars[line_chars.count - 1] += 1;
+                line_bytes[line_bytes.count - 1] += newline_advance;
 
-                array_add(*lines);
+                array_add(*line_bytes);
+                array_add(*line_chars);
 
                 advance(*view, newline_advance);
             } else {
@@ -1198,35 +1216,37 @@ assert_valid :: (buffer: Text_Buffer) {
                 _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, view), 0);
                 assert(codepoint_advance == codepoint_advance_check);
 
-                lines[lines.count - 1].char_count += 1;
-                lines[lines.count - 1].byte_count += codepoint_advance;
+                line_chars[line_chars.count - 1] += 1;
+                line_bytes[line_bytes.count - 1] += codepoint_advance;
 
                 advance(*view, codepoint_advance);
             }
         }
 
-        assert(lines.count == buffer.lines.count);
-        for lines {
-            want_chars := it.char_count;
-            have_chars := buffer.lines[it_index].char_count;
-            want_bytes := it.byte_count;
-            have_bytes := buffer.lines[it_index].byte_count;
+        assert(line_bytes.count == line_chars.count);
+        assert(line_bytes.count == buffer.line_bytes.count);
+        assert(line_chars.count == buffer.line_chars.count);
+        for 0..line_bytes.count - 1 {
+            want_chars := line_chars[it];
+            have_chars := buffer.line_chars[it];
+            want_bytes := line_bytes[it];
+            have_bytes := buffer.line_bytes[it];
 
-            assert(want_chars == have_chars, "Different char count on line %: % (computed) != % (stored)", it_index, want_chars, have_chars);
-            assert(want_bytes == have_bytes, "Different byte count on line %: % (computed) != % (stored)", it_index, want_bytes, have_bytes);
+            assert(want_chars == have_chars, "Different char count on line %: % (computed) != % (stored)", it, want_chars, have_chars);
+            assert(want_bytes == have_bytes, "Different byte count on line %: % (computed) != % (stored)", it, want_bytes, have_bytes);
         }
     }
 }
 
 assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
-    assert(line_index < buffer.lines.count);
+    assert(line_index < buffer.line_bytes.count);
 }
 
 assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
-    assert(cursor.y >= 0 && cursor.y < buffer.lines.count);
+    assert(cursor.y >= 0 && cursor.y < buffer.line_bytes.count);
     // The cursor can go past the last non-newline character, or past the last character on the last
     // line, where there is no newline at the end.
-    assert(cursor.x >= 0 && cursor.x <= buffer.lines[cursor.y].char_count);
+    assert(cursor.x >= 0 && cursor.x <= buffer.line_chars[cursor.y]);
 }
 
 discard_unapplied_edits :: (buffer: *Text_Buffer) {
@@ -1265,17 +1285,18 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
     while text.count {
         newline_advance := string_starts_with_newline(text);
         if newline_advance {
-            char_count_after_cursor := buffer.lines[buffer.cursor0.y].char_count - buffer.cursor0.x;
-            byte_count_after_cursor := buffer.lines[buffer.cursor0.y].byte_count - bytes_on_line_before_cursor;
+            char_count_after_cursor := buffer.line_chars[buffer.cursor0.y] - buffer.cursor0.x;
+            byte_count_after_cursor := buffer.line_bytes[buffer.cursor0.y] - bytes_on_line_before_cursor;
 
             advance(*text, newline_advance);
 
-            buffer.lines[buffer.cursor0.y].char_count += 1 - char_count_after_cursor;
-            buffer.lines[buffer.cursor0.y].byte_count += newline_advance - byte_count_after_cursor;
+            buffer.line_chars[buffer.cursor0.y] += 1 - char_count_after_cursor;
+            buffer.line_bytes[buffer.cursor0.y] += newline_advance - byte_count_after_cursor;
 
             // TODO(jt): @Speed We do this in a loop. Could we at least do the reserve and copy
             // first and then fill one by one?
-            array_insert_at(*buffer.lines, { char_count_after_cursor, byte_count_after_cursor }, buffer.cursor0.y + 1);
+            array_insert_at(*buffer.line_bytes, byte_count_after_cursor, buffer.cursor0.y + 1);
+            array_insert_at(*buffer.line_chars, char_count_after_cursor, buffer.cursor0.y + 1);
 
             buffer.cursor0.y += 1;
             buffer.cursor0.x = 0;
@@ -1302,8 +1323,8 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
 
         advance(*text, codepoint_advance);
 
-        buffer.lines[buffer.cursor0.y].char_count += 1;
-        buffer.lines[buffer.cursor0.y].byte_count += codepoint_advance;
+        buffer.line_chars[buffer.cursor0.y] += 1;
+        buffer.line_bytes[buffer.cursor0.y] += codepoint_advance;
         buffer.cursor0.x += 1;
 
         bytes_on_line_before_cursor += codepoint_advance;
@@ -1324,24 +1345,25 @@ update_after_delete_selection :: (buffer: *Text_Buffer, _text: string) {
     while text.count {
         newline_advance := string_starts_with_newline(text);
         if newline_advance {
-            assert(buffer.cursor0.y < buffer.lines.count - 1);                         // The last line can't have a newline.
-            assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1); // The newline has to be the last char.
+            assert(buffer.cursor0.y < buffer.line_bytes.count - 1);              // The last line can't have a newline.
+            assert(buffer.cursor0.x == buffer.line_chars[buffer.cursor0.y] - 1); // The newline has to be the last char.
 
-            buffer.lines[buffer.cursor0.y].char_count -= 1;
-            buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
+            buffer.line_chars[buffer.cursor0.y] -= 1;
+            buffer.line_bytes[buffer.cursor0.y] -= newline_advance;
 
-            buffer.lines[buffer.cursor0.y].char_count += buffer.lines[buffer.cursor0.y + 1].char_count;
-            buffer.lines[buffer.cursor0.y].byte_count += buffer.lines[buffer.cursor0.y + 1].byte_count;
+            buffer.line_chars[buffer.cursor0.y] += buffer.line_chars[buffer.cursor0.y + 1];
+            buffer.line_bytes[buffer.cursor0.y] += buffer.line_bytes[buffer.cursor0.y + 1];
 
-            array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y + 1);
+            array_ordered_remove_by_index(*buffer.line_bytes, buffer.cursor0.y + 1);
+            array_ordered_remove_by_index(*buffer.line_chars, buffer.cursor0.y + 1);
 
             advance(*text, newline_advance);
             assert(text.count >= 0);
         } else {
             _, codepoint_advance := find_next_utf8_character_boundary(text, 0);
             if codepoint_advance {
-                buffer.lines[buffer.cursor0.y].char_count -= 1;
-                buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
+                buffer.line_chars[buffer.cursor0.y] -= 1;
+                buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
 
                 advance(*text, codepoint_advance);
                 assert(text.count >= 0);
@@ -1362,24 +1384,25 @@ update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
     while text.count {
         newline_advance := string_starts_with_newline(text);
         if newline_advance {
-            assert(buffer.cursor0.y < buffer.lines.count - 1);                         // The last line can't have a newline.
-            assert(buffer.cursor0.x == buffer.lines[buffer.cursor0.y].char_count - 1); // The newline has to be the last char.
+            assert(buffer.cursor0.y < buffer.line_chars.count - 1);              // The last line can't have a newline.
+            assert(buffer.cursor0.x == buffer.line_chars[buffer.cursor0.y] - 1); // The newline has to be the last char.
 
-            buffer.lines[buffer.cursor0.y].char_count -= 1;
-            buffer.lines[buffer.cursor0.y].byte_count -= newline_advance;
+            buffer.line_chars[buffer.cursor0.y] -= 1;
+            buffer.line_bytes[buffer.cursor0.y] -= newline_advance;
 
-            buffer.lines[buffer.cursor0.y].char_count += buffer.lines[buffer.cursor0.y + 1].char_count;
-            buffer.lines[buffer.cursor0.y].byte_count += buffer.lines[buffer.cursor0.y + 1].byte_count;
+            buffer.line_chars[buffer.cursor0.y] += buffer.line_chars[buffer.cursor0.y + 1];
+            buffer.line_bytes[buffer.cursor0.y] += buffer.line_bytes[buffer.cursor0.y + 1];
 
-            array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y + 1);
+            array_ordered_remove_by_index(*buffer.line_bytes, buffer.cursor0.y + 1);
+            array_ordered_remove_by_index(*buffer.line_chars, buffer.cursor0.y + 1);
 
             advance(*text, newline_advance);
             assert(text.count >= 0);
         } else {
             _, codepoint_advance := find_next_utf8_character_boundary(text, 0);
             if codepoint_advance {
-                buffer.lines[buffer.cursor0.y].char_count -= 1;
-                buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
+                buffer.line_chars[buffer.cursor0.y] -= 1;
+                buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
 
                 advance(*text, codepoint_advance);
                 assert(text.count >= 0);
@@ -1404,15 +1427,16 @@ update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
             assert(buffer.cursor0.x == 0);
             assert(buffer.cursor0.y > 0);
 
-            new_cursor_x := buffer.lines[buffer.cursor0.y - 1].char_count - 1;
+            new_cursor_x := buffer.line_chars[buffer.cursor0.y - 1] - 1;
 
-            buffer.lines[buffer.cursor0.y - 1].char_count -= 1;
-            buffer.lines[buffer.cursor0.y - 1].byte_count -= newline_advance;
+            buffer.line_chars[buffer.cursor0.y - 1] -= 1;
+            buffer.line_bytes[buffer.cursor0.y - 1] -= newline_advance;
 
-            buffer.lines[buffer.cursor0.y - 1].char_count += buffer.lines[buffer.cursor0.y].char_count;
-            buffer.lines[buffer.cursor0.y - 1].byte_count += buffer.lines[buffer.cursor0.y].byte_count;
+            buffer.line_chars[buffer.cursor0.y - 1] += buffer.line_chars[buffer.cursor0.y];
+            buffer.line_bytes[buffer.cursor0.y - 1] += buffer.line_bytes[buffer.cursor0.y];
 
-            array_ordered_remove_by_index(*buffer.lines, buffer.cursor0.y);
+            array_ordered_remove_by_index(*buffer.line_bytes, buffer.cursor0.y);
+            array_ordered_remove_by_index(*buffer.line_chars, buffer.cursor0.y);
 
             buffer.cursor0.x = new_cursor_x;
             buffer.cursor0.y -= 1;
@@ -1422,8 +1446,8 @@ update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
         } else {
             _, codepoint_advance := find_previous_utf8_character_boundary(text, text.count);
             if codepoint_advance {
-                buffer.lines[buffer.cursor0.y].char_count -= 1;
-                buffer.lines[buffer.cursor0.y].byte_count -= codepoint_advance;
+                buffer.line_chars[buffer.cursor0.y] -= 1;
+                buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
 
                 buffer.cursor0.x -= 1;
 
