@@ -28,7 +28,7 @@ Text_Buffer :: struct {
     //
     line_bytes: [..] s64; // Always at least one.
     line_chars: [..] s64; // Always at least one.
-    // XXX: Add line_count which can be used as a shorthand for either of the counts.
+    line_count: s64;
 
     edits: [..] Edit;
     // Undoing decreases this. Redoing increses. When editing, this is the same as edits.count,
@@ -106,9 +106,7 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, _edit_text_arena: *Are
     buffer.edit_text_arena = edit_text_arena;
     buffer.edit_text_arena_mark = arena_get_mark(edit_text_arena);
 
-    // This is the only invariant we uphold for now.
-    array_add(*buffer.line_bytes);
-    array_add(*buffer.line_chars);
+    add_line(buffer); // This is the only invariant we uphold for now.
 
     assert_valid(buffer);
 }
@@ -120,6 +118,8 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
 
     array_reset(*buffer.line_bytes);
     array_reset(*buffer.line_chars);
+    buffer.line_count = 0;
+
     array_reset(*buffer.edits);
 
     arena_pop_to_mark(buffer.arena, buffer.arena_mark);
@@ -130,9 +130,7 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
 
     buffer.applied_edit_count = 0;
 
-    // This is the only invariant we uphold for now.
-    array_add(*buffer.line_bytes);
-    array_add(*buffer.line_chars);
+    add_line(buffer); // This is the only invariant we uphold for now.
 
     assert_valid(buffer);
 }
@@ -287,8 +285,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
         buffer.line_chars[buffer.cursor0.y] += buffer.line_chars[buffer.cursor0.y + 1];
         buffer.line_bytes[buffer.cursor0.y] += buffer.line_bytes[buffer.cursor0.y + 1];
 
-        array_ordered_remove_by_index(*buffer.line_bytes, buffer.cursor0.y + 1);
-        array_ordered_remove_by_index(*buffer.line_chars, buffer.cursor0.y + 1);
+        remove_line(buffer, buffer.cursor0.y + 1);
 
         deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
         assert(newline_advance == deleted.count);
@@ -376,8 +373,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
         buffer.line_chars[buffer.cursor0.y - 1] += buffer.line_chars[buffer.cursor0.y];
         buffer.line_bytes[buffer.cursor0.y - 1] += buffer.line_bytes[buffer.cursor0.y];
 
-        array_ordered_remove_by_index(*buffer.line_bytes, buffer.cursor0.y);
-        array_ordered_remove_by_index(*buffer.line_chars, buffer.cursor0.y);
+        remove_line(buffer, buffer.cursor0.y);
 
         old_cursor := buffer.cursor0;
 
@@ -1313,8 +1309,7 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
 
             // TODO(jt): @Speed We do this in a loop. Could we at least do the reserve and copy
             // first and then fill one by one?
-            array_insert_at(*buffer.line_bytes, byte_count_after_cursor, buffer.cursor0.y + 1);
-            array_insert_at(*buffer.line_chars, char_count_after_cursor, buffer.cursor0.y + 1);
+            insert_line(buffer, buffer.cursor0.y + 1, byte_count_after_cursor, char_count_after_cursor);
 
             buffer.cursor0.y += 1;
             buffer.cursor0.x = 0;
@@ -1372,8 +1367,7 @@ update_after_delete_selection :: (buffer: *Text_Buffer, _text: string) {
             buffer.line_chars[buffer.cursor0.y] += buffer.line_chars[buffer.cursor0.y + 1];
             buffer.line_bytes[buffer.cursor0.y] += buffer.line_bytes[buffer.cursor0.y + 1];
 
-            array_ordered_remove_by_index(*buffer.line_bytes, buffer.cursor0.y + 1);
-            array_ordered_remove_by_index(*buffer.line_chars, buffer.cursor0.y + 1);
+            remove_line(buffer, buffer.cursor0.y + 1);
 
             advance(*text, newline_advance);
             assert(text.count >= 0);
@@ -1411,8 +1405,7 @@ update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
             buffer.line_chars[buffer.cursor0.y] += buffer.line_chars[buffer.cursor0.y + 1];
             buffer.line_bytes[buffer.cursor0.y] += buffer.line_bytes[buffer.cursor0.y + 1];
 
-            array_ordered_remove_by_index(*buffer.line_bytes, buffer.cursor0.y + 1);
-            array_ordered_remove_by_index(*buffer.line_chars, buffer.cursor0.y + 1);
+            remove_line(buffer, buffer.cursor0.y + 1);
 
             advance(*text, newline_advance);
             assert(text.count >= 0);
@@ -1453,8 +1446,7 @@ update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
             buffer.line_chars[buffer.cursor0.y - 1] += buffer.line_chars[buffer.cursor0.y];
             buffer.line_bytes[buffer.cursor0.y - 1] += buffer.line_bytes[buffer.cursor0.y];
 
-            array_ordered_remove_by_index(*buffer.line_bytes, buffer.cursor0.y);
-            array_ordered_remove_by_index(*buffer.line_chars, buffer.cursor0.y);
+            remove_line(buffer, buffer.cursor0.y);
 
             buffer.cursor0.x = new_cursor_x;
             buffer.cursor0.y -= 1;
@@ -1476,6 +1468,33 @@ update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
     }
 
     // The calling code must manage cursor1
+}
+
+add_line :: (buffer: *Text_Buffer) {
+    sanity_assert(buffer.line_count == buffer.line_bytes.count);
+    sanity_assert(buffer.line_count == buffer.line_chars.count);
+
+    array_add(*buffer.line_bytes);
+    array_add(*buffer.line_chars);
+    buffer.line_count += 1;
+}
+
+insert_line :: (buffer: *Text_Buffer, index: s64, byte_count: s64, char_count: s64) {
+    sanity_assert(buffer.line_count == buffer.line_bytes.count);
+    sanity_assert(buffer.line_count == buffer.line_chars.count);
+
+    array_insert_at(*buffer.line_bytes, byte_count, index);
+    array_insert_at(*buffer.line_chars, char_count, index);
+    buffer.line_count += 1;
+}
+
+remove_line :: (buffer: *Text_Buffer, index: s64) {
+    sanity_assert(buffer.line_count == buffer.line_bytes.count);
+    sanity_assert(buffer.line_count == buffer.line_chars.count);
+
+    array_ordered_remove_by_index(*buffer.line_bytes, index);
+    array_ordered_remove_by_index(*buffer.line_chars, index);
+    buffer.line_count -= 1;
 }
 
 is_through_edit :: (text: string) -> bool {

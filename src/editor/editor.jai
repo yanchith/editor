@@ -1906,7 +1906,7 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
 
     // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
     // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
-    HELLO_SIZE : s64 : 1 << 30;
+    HELLO_SIZE : s64 : 64 << 10;
 
     hello_arena := make_arena(platform, .LARGE);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
