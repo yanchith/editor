@@ -141,8 +141,6 @@ text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false
     inline text_buffer_insert(buffer, cast(string, bytes), undo_barrier);
 }
 
-// TODO(jt): @Speed Inserting 1GB of prose takes almost 6 seconds, most of which is spent parsing
-// unicode and updating the line metadata. We could do it SIMD?
 text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false) {
     ProfileZone("text_buffer_insert");
 
@@ -1133,6 +1131,15 @@ text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s
         return buffer.gb.count;
     }
 
+    // TODO(jt): @Speed SIMD this!
+    //
+    // TODO(jt): After doing SoA on the line arrays, this got a big boost. Likely another big boost
+    // would be to pack the data tighter, but that introduces a lot of noisy casts in places, so
+    // we'll have to try multiple versions and pick the least ugly, e.g. making only these line
+    // arrays u32, or also making cursor u32, decide where to put the casts, etc.
+    //
+    // @Speed I tried unrolling this loop manually, but the speed benefits very negligible. Maybe
+    // the compiler already unrolls?
     index := 0;
     for 0..line_index - 1 {
         index += buffer.line_bytes[it];
@@ -1152,6 +1159,15 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
         return buffer.gb.count;
     }
 
+    // TODO(jt): @Speed SIMD this!
+    //
+    // TODO(jt): After doing SoA on the line arrays, this got a big boost. Likely another big boost
+    // would be to pack the data tighter, but that introduces a lot of noisy casts in places, so
+    // we'll have to try multiple versions and pick the least ugly, e.g. making only these line
+    // arrays u32, or also making cursor u32, decide where to put the casts, etc.
+    //
+    // @Speed I tried unrolling this loop manually, but the speed benefits very negligible. Maybe
+    // the compiler already unrolls?
     index := 0;
     for 0..line_index - 1 {
         index += buffer.line_bytes[it];
@@ -1265,6 +1281,8 @@ discard_unapplied_edits :: (buffer: *Text_Buffer) {
     }
 }
 
+// TODO(jt): @Speed This is super slow on large data to the point that it takes the most of the
+// time. We could parse lines with SIMD?
 update_after_insert :: (buffer: *Text_Buffer, text: string) {
     ProfileZone("update_after_insert");
 
