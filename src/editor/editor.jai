@@ -38,8 +38,8 @@ TODO(jt): @Stream things:
 - [ ] C-M-p, C-M-n (move line up/down)
 - [ ] C-u C-<space> and cursor undo.
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
-- [ ] Flash cursor with typing (needs tuning)
-- [ ] Trail behind cursor (needs tuning)
+- [X] Flash cursor with typing (needs tuning)
+- [X] Trail behind cursor (needs tuning)
 
 TODO(jt): Fancy stuff to do:
 
@@ -48,6 +48,7 @@ TODO(jt): Fancy stuff to do:
 - [ ] Syntax Highlighting
 - [ ] Syntax aware indentation (C-i)
 - [ ] Syntax aware parentheses
+- [ ] Hex mode
 - [ ] Multiple Cursors
 - [ ] *compilation* buffer
 - [ ] Projects (project settings, project compilations, project text search with jumping, project-wide find/replace)
@@ -109,7 +110,6 @@ operator==     :: Math.operator==;
 #load "assert.jai";
 #load "bits.jai";
 #load "string.jai";
-#load "unicode.jai";
 #load "math.jai";
 #load "platform.jai";
 #load "renderer.jai";
@@ -297,7 +297,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
 
-    editor.font_size = 16;
+    editor.font_size = 20;
     log("Current font pixel height: %", editor.font_size);
 
     physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
@@ -325,6 +325,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_register(key_map, "C-f",     .MOVE_RIGHT);
         key_map_register(key_map, "<right>", .MOVE_RIGHT);
 
+        // XXX: Disable .SEARCH for binary files. Our current line based search wouldn't work well
+        // anyway, and eventually we want to do something much better.
         key_map_register(key_map, "C-s",     .SEARCH);
         key_map_register(key_map, "C-x C-f", .OPEN_FILE);
         key_map_register(key_map, "C-x C-s", .SAVE_FILE);
@@ -621,7 +623,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     // Clamp to zero, so we don't end up scrolling the other way if the line is
                     // short. (Happens if you start scrolling on a long line, but then vertically
                     // scroll to a short line.)
-                    max_x := max(font_compute_position_on_line(editor.font, line_view, active_panel.document.buffer.cursor0.x) - window_w + apron, 0);
+                    max_x := max(font_compute_position_on_line(editor.font, line_view, active_panel.document.buffer.cursor0.x, binary = active_panel.document.buffer.binary_mode) - window_w + apron, 0);
 
                     active_panel.scroll_target.x += SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.x = min(active_panel.scroll_target.x, max_x);
@@ -661,11 +663,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 // Include newline, so that the cursor can go there.
                 line_view := text_buffer_make_view_for_line(active_panel.document.buffer, row, include_newline = true,, temp);
-                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x);
+                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x, binary = active_panel.document.buffer.binary_mode);
             } else {
                 // Include newline, so that the cursor can go there.
                 line_view := text_buffer_make_view_for_line(active_panel.document.buffer, row, include_newline = true,, temp);
-                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x);
+                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x, binary = active_panel.document.buffer.binary_mode);
             }
 
             text_buffer_move_cursor_to(*active_panel.document.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
@@ -700,9 +702,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             c0_line_start, c0_line_end := text_buffer_get_cursors_for_line(document.buffer, document.buffer.cursor0.y);
             c0_line_view := text_buffer_make_view_between_cursors(document.buffer, c0_line_start, c0_line_end,, temp);
 
-            buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, document.buffer.cursor0.x);
+            buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, document.buffer.cursor0.x, binary = document.buffer.binary_mode);
             buffer_cursor0_position.y = cast(f64, document.buffer.cursor0.y) * cell_h;
-            buffer_cursor0_line_end_x = font_compute_position_on_line(editor.font, c0_line_view, c0_line_end.x);
+            buffer_cursor0_line_end_x = font_compute_position_on_line(editor.font, c0_line_view, c0_line_end.x, binary = document.buffer.binary_mode);
         }
 
         //
@@ -788,8 +790,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 view_before_cursor   := text_buffer_make_view_between_cursors(document.buffer, line_start, cursor_start,, temp);
                 view_between_cursors := text_buffer_make_view_between_cursors(document.buffer, cursor_start, cursor_end,, temp);
 
-                selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
-                selection_x1 := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x) + selection_x0;
+                selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
+                selection_x1 := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0;
                 selection_y0 := cast(f64, cursor_start.y) * cell_h;
                 selection_y1 := selection_y0 + cell_h;
                 selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
@@ -820,8 +822,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     view_before_cursor := text_buffer_make_view_between_cursors(document.buffer, line_start, cursor_start,, temp);
                     view_after_cursor  := text_buffer_make_view_between_cursors(document.buffer, cursor_start, line_end,, temp);
 
-                    selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x);
-                    selection_x1 := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x) + selection_x0;
+                    selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
+                    selection_x1 := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0;
                     selection_y0 := cast(f64, cursor_start.y) * cell_h;
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
@@ -839,7 +841,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     line_end  := text_buffer_get_end_cursor_for_line(document.buffer, it);
                     line_view := text_buffer_make_view_for_line(document.buffer, it,, temp);
                     selection_x0 := 0.0;
-                    selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x);
+                    selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x, binary = document.buffer.binary_mode);
                     selection_y0 := cast(f64, it) * cell_h;
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
@@ -854,7 +856,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     view_before_cursor := text_buffer_make_view_between_cursors(document.buffer, line_start, cursor_end,, temp);
 
                     selection_x0 := 0.0;
-                    selection_x1 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x);
+                    selection_x1 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x, binary = document.buffer.binary_mode);
                     selection_y0 := cast(f64, cursor_end.y) * cell_h;
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
@@ -953,7 +955,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
             // to the left of the screen, but we don't have to emit render rects for it.
-            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, is_new_frame = true);
+            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, is_new_frame = true, binary = document.buffer.binary_mode);
         }
 
         panel.clamp_scroll_to_cursor        = false;
@@ -1721,6 +1723,10 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) {
         case .OPEN_FILE; {
             // XXX: @Bug If the file does not exist, get_absolute_path will fail on macOS. We need
             // to do something about it.
+            //
+            // XXX: @Bug Confirm proc allows selecting directories. We should append the directory
+            // to the current path in the mini buffer. Emacs opens directories in dired, but we
+            // don't have a lister panel yet. what do we do?
 
             file_path: string;
             file_exists: bool;
@@ -2004,7 +2010,7 @@ get_cursor_position :: (document: Document, font: Font) -> DVector2 {
     line_view := text_buffer_make_view_for_line(document.buffer, y,, temp);
 
     position: DVector2;
-    position.x = font_compute_position_on_line(font, line_view, x);
+    position.x = font_compute_position_on_line(font, line_view, x, binary = document.buffer.binary_mode);
     position.y = cast(f64, y) * font.line_height_in_pixels;
 
     return position;

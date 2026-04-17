@@ -3,6 +3,8 @@ ATLAS_HEIGHT_IN_PIXELS :: 2048;
 
 R64 : f32 : 1.0 / 64.0;
 
+UNICODE_REPLACEMENT_CODEPOINT : u32 : 0x0000fffd;
+
 Font :: struct {
     //
     // "Inputs"
@@ -21,6 +23,8 @@ Font :: struct {
 
     ft_library: FT_Library;
     ft_face:    FT_Face;
+
+    glyph_index_for_replacement_character: u32;
 
     //
     // Scaled metrics for currently set pixel_height in the FreeType 26:6 fixed point format. (64-bit, because FT_Pos is 64-bit on Unix)
@@ -113,6 +117,8 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
         return font;
     }
 
+    font.glyph_index_for_replacement_character = FT_Get_Char_Index(font.ft_face, UNICODE_REPLACEMENT_CODEPOINT);
+
     font_reset_for_pixel_height(*font, pixel_height);
 
     return font;
@@ -185,7 +191,21 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame := false) {
+// XXX: @Cleanup !!! The font routines are copypasted two times each, depending on whether they are
+// processing binary data or utf8. I did not want to do this, but both autobake with manual
+// branching preamble and #code/#insert created a cycle in the compiler. This code can not stay like
+// this. I don't want the routines to diverge.
+
+
+font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame := false, binary := false) {
+    if binary {
+        _font_layout_and_draw_text_binary(font, text, render_rects, update_regions, offset, is_new_frame);
+    } else {
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, is_new_frame);
+    }
+}
+
+_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame := false) {
     ProfileZone("font_layout_and_draw_text");
 
     if is_new_frame {
@@ -201,7 +221,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
     cursor_x: s64 = 0;
     cursor_y: s64 = font.ascender;
 
-    for :utf8_iter text {
+    for :Unicode.utf8_iter text {
         if it == #char "\r" {
             continue; // Not rendered.
         }
@@ -214,8 +234,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 
         glyph_index := FT_Get_Char_Index(font.ft_face, it);
         if glyph_index == 0 {
-            // TODO(jt): Replacement character!
-            continue;
+            glyph_index = font.glyph_index_for_replacement_character;
         }
 
         // These get filled in one of the branches below. Either we compute them, or we get them from the cache.
@@ -274,8 +293,10 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
             {
                 ProfileZone("FT_Load_GLyph(FT_LOAD_RENDER)");
                 error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER);
+
+                // TODO(jt): Decide what to do, if FT_Load_Glyph fails. Freetype already found the
+                // index, but the glyph is not there? Or something.
                 if error {
-                    // TODO(jt): Replacement character!
                     continue;
                 }
             }
@@ -348,27 +369,200 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
     }
 }
 
+_font_layout_and_draw_text_binary :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame := false) {
+    ProfileZone("font_layout_and_draw_text");
+
+    if is_new_frame {
+        #no_aoc {
+            font.glyph_cache_stamp += 1;
+        }
+
+        font.glyph_cache_hits = 0;
+        font.glyph_cache_misses = 0;
+    }
+
+    // Cursors are in 26:6 pixels (64-bit, because on Unix, FT_Pos is 64-bit even if they only use 32 bits).
+    cursor_x: s64 = 0;
+    cursor_y: s64 = font.ascender;
+
+    for text {
+        if it == #char "\r" {
+            continue; // Not rendered.
+        }
+
+        if it == #char "\n" {
+            cursor_x = 0;
+            cursor_y += font.line_height;
+            continue;
+        }
+
+        glyph_index := FT_Get_Char_Index(font.ft_face, it);
+        if glyph_index == 0 {
+            glyph_index = font.glyph_index_for_replacement_character;
+        }
+
+        // These get filled in one of the branches below. Either we compute them, or we get them from the cache.
+        glyph_advance: s32;       // In 26:6 pixels.
+        glyph_offset_x: s32;      // In integer pixels.
+        glyph_offset_y: s32;      // In integer pixels.
+        glyph_bitmap_width: s32;  // In integer pixels.
+        glyph_bitmap_height: s32; // In integer pixels.
+
+        glyph_cell_x: s32;
+        glyph_cell_y: s32;
+
+        // TODO(jt): Factor out cache manipulation and just return the all necessary metadata.
+        entry_index_pointer := table_find_pointer(*font.glyph_table, cast(s32, glyph_index));
+        if entry_index_pointer {
+            font.glyph_cache_hits += 1;
+
+            entry_index := entry_index_pointer.*;
+            entry := *font.glyph_entries[entry_index];
+            sanity_assert(entry.glyph_index == cast(s32, glyph_index));
+
+            entry.stamp = font.glyph_cache_stamp;
+
+            glyph_advance       = entry.glyph_advance;
+            glyph_offset_x      = entry.glyph_offset_x;
+            glyph_offset_y      = entry.glyph_offset_y;
+            glyph_bitmap_width  = entry.glyph_bitmap_width;
+            glyph_bitmap_height = entry.glyph_bitmap_height;
+
+            // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
+            glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
+            glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
+
+
+            move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
+            sanity_assert(font.glyph_entries_tail == entry_index);
+        } else {
+            font.glyph_cache_misses += 1;
+
+            entry_index := font.glyph_entries_head;
+            entry := *font.glyph_entries[entry_index];
+
+            // We can't overwrite an entry we wrote to this frame, as we would be evicting something
+            // else we also wrote this frame that we need. If we want to handle this case, we could
+            // flush our rendering here and continue where we left of, but better to just have a
+            // larger cache, especially now that we call this routine from multiple places.
+            if entry.stamp == font.glyph_cache_stamp {
+                log_error("Overwriting glyph cache slot % during same frame. Rendering will be incorrect.", entry_index);
+            }
+
+            table_remove(*font.glyph_table, entry.glyph_index);
+
+            entry.stamp = font.glyph_cache_stamp;
+            entry.glyph_index = cast(s32, glyph_index);
+
+            {
+                ProfileZone("FT_Load_GLyph(FT_LOAD_RENDER)");
+                error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER);
+
+                // TODO(jt): Decide what to do, if FT_Load_Glyph fails. Freetype already found the
+                // index, but the glyph is not there? Or something.
+                if error {
+                    continue;
+                }
+            }
+
+            glyph         := font.ft_face.glyph; // unlike metrics and bitmap, glyph is a pointer
+            glyph_metrics := *font.ft_face.glyph.metrics;
+            glyph_bitmap  := *font.ft_face.glyph.bitmap;
+
+            // On Unix, FT_Pos is defined as s64, even if they only utilize only 32 bits.
+            entry.glyph_advance       = cast(s32, glyph_metrics.horiAdvance);
+            entry.glyph_offset_x      = glyph.bitmap_left;
+            entry.glyph_offset_y      = -glyph.bitmap_top; // Vertical flip
+            entry.glyph_bitmap_width  = cast(s32, glyph_bitmap.width);
+            entry.glyph_bitmap_height = cast(s32, glyph_bitmap.rows);
+
+            glyph_advance       = entry.glyph_advance;
+            glyph_offset_x      = entry.glyph_offset_x;
+            glyph_offset_y      = entry.glyph_offset_y;
+            glyph_bitmap_width  = entry.glyph_bitmap_width;
+            glyph_bitmap_height = entry.glyph_bitmap_height;
+
+            // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
+            glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
+            glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
+
+            dest := font.glyph_atlas.data +
+                font.glyph_atlas_width_in_pixels * glyph_cell_y * font.glyph_atlas_cell_height_in_pixels +
+                glyph_cell_x * font.glyph_atlas_cell_width_in_pixels;
+
+            clear_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels);
+            copy_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels,
+                            glyph_bitmap.buffer, cast(s32, glyph_bitmap.width), cast(s32, glyph_bitmap.rows), cast(s32, glyph_bitmap.pitch));
+
+            table_add(*font.glyph_table, cast(s32, glyph_index), entry_index);
+            array_add(
+                update_regions,
+                irect_from_point_and_size(
+                    glyph_cell_x * font.glyph_atlas_cell_width_in_pixels,
+                    glyph_cell_y * font.glyph_atlas_cell_height_in_pixels,
+                    glyph_bitmap_width,
+                    glyph_bitmap_height,
+                ),
+            );
+
+            move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
+            sanity_assert(font.glyph_entries_tail == entry_index);
+        }
+
+        // Order of operations here is somewhat important. Cursor and offset can be big, so
+        // we subtract those first, so that the small glyph offset doesn't get destroyed.
+        rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
+        ry := cast(f64, cursor_y) * R64 + offset.y + glyph_offset_y;
+
+        rr := array_add(render_rects);
+        rr.rect = rect_from_point_and_size(
+            cast(f32, rx),
+            cast(f32, ry),
+            cast(f32, glyph_bitmap_width),
+            cast(f32, glyph_bitmap_height),
+        );
+        rr.texture_rect = rect_from_point_and_size(
+            cast(f32, glyph_cell_x * font.glyph_atlas_cell_width_in_pixels) / font.glyph_atlas_width_in_pixels,
+            cast(f32, glyph_cell_y * font.glyph_atlas_cell_height_in_pixels) / font.glyph_atlas_height_in_pixels,
+            cast(f32, glyph_bitmap_width) / font.glyph_atlas_width_in_pixels,
+            cast(f32, glyph_bitmap_height) / font.glyph_atlas_height_in_pixels,
+        );
+        rr.texture_id = font.texture_id;
+
+        cursor_x += glyph_advance;
+    }
+}
+
+font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, binary := false) -> f64 {
+    if binary {
+        return _font_compute_position_on_line_binary(font, line_text, character_index);
+    } else {
+        return _font_compute_position_on_line(font, line_text, character_index);
+    }
+}
+
 // TODO(jt): @Speed For files with long lines (such as minified javascript), this very very
 // slow. We'll probably need to avoid calling it (or do early out, if position exceeds some given
 // value), or have make 100x faster.
-font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64) -> f64 {
+_font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64) -> f64 {
     ProfileZone("font_compute_position_on_line");
 
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
-    for :utf8_iter line_text {
+
+    for :Unicode.utf8_iter line_text {
         if it_index >= character_index {
             break;
         }
 
         glyph_index := FT_Get_Char_Index(font.ft_face, it);
         if glyph_index == 0 {
-            // TODO(jt): Replacement character! (?)
-            continue;
+            glyph_index = font.glyph_index_for_replacement_character;
         }
 
         error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_DEFAULT);
         if error {
-            // TODO(jt): Replacement character! (?)
+            // TODO(jt): Decide what to do, if FT_Load_Glyph fails. Freetype already found the
+            // index, but the glyph is not there? Or something.
             continue;
         }
 
@@ -380,13 +574,56 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
     return scaled_advance;
 }
 
-font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) -> s64 {
+// TODO(jt): @Speed For files with long lines (such as minified javascript), this very very
+// slow. We'll probably need to avoid calling it (or do early out, if position exceeds some given
+// value), or have make 100x faster.
+_font_compute_position_on_line_binary :: (font: Font, line_text: string, character_index: s64) -> f64 {
+    ProfileZone("font_compute_position_on_line");
+
+    advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
+
+    for line_text {
+        if it_index >= character_index {
+            break;
+        }
+
+        glyph_index := FT_Get_Char_Index(font.ft_face, it);
+        if glyph_index == 0 {
+            glyph_index = font.glyph_index_for_replacement_character;
+        }
+
+        error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_DEFAULT);
+        if error {
+            // TODO(jt): Decide what to do, if FT_Load_Glyph fails. Freetype already found the
+            // index, but the glyph is not there? Or something.
+            continue;
+        }
+
+        advance += font.ft_face.glyph.metrics.horiAdvance;
+    }
+
+    scaled_advance: f64 = cast(f64, advance) * R64;
+
+    return scaled_advance;
+}
+
+
+font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, binary := false) -> s64 {
+    if binary {
+        return _font_compute_character_index_on_line_binary(font, line_text, x);
+    } else {
+        return _font_compute_character_index_on_line(font, line_text, x);
+    }
+}
+
+_font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) -> s64 {
     ProfileZone("font_compute_character_index_on_line");
 
     character_index: s64 = 0;
 
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
-    for :utf8_iter line_text {
+
+    for :Unicode.utf8_iter line_text {
         scaled_advance: f64 = cast(f64, advance) * R64;
         if scaled_advance >= x {
             break;
@@ -396,18 +633,51 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64) 
 
         glyph_index := FT_Get_Char_Index(font.ft_face, it);
         if glyph_index == 0 {
-            // TODO(jt): Replacement character! (?)
-            continue;
+            glyph_index = font.glyph_index_for_replacement_character;
         }
 
         error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_DEFAULT);
         if error {
-            // TODO(jt): Replacement character! (?)
+            // TODO(jt): Decide what to do, if FT_Load_Glyph fails. Freetype already found the
+            // index, but the glyph is not there? Or something.
             continue;
         }
 
         advance += font.ft_face.glyph.metrics.horiAdvance;
-    }
+    };
+
+    return character_index;
+}
+
+_font_compute_character_index_on_line_binary :: (font: Font, line_text: string, x: f64) -> s64 {
+    ProfileZone("font_compute_character_index_on_line");
+
+    character_index: s64 = 0;
+
+    advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
+
+    for line_text {
+        scaled_advance: f64 = cast(f64, advance) * R64;
+        if scaled_advance >= x {
+            break;
+        }
+
+        character_index = it_index;
+
+        glyph_index := FT_Get_Char_Index(font.ft_face, it);
+        if glyph_index == 0 {
+            glyph_index = font.glyph_index_for_replacement_character;
+        }
+
+        error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_DEFAULT);
+        if error {
+            // TODO(jt): Decide what to do, if FT_Load_Glyph fails. Freetype already found the
+            // index, but the glyph is not there? Or something.
+            continue;
+        }
+
+        advance += font.ft_face.glyph.metrics.horiAdvance;
+    };
 
     return character_index;
 }
@@ -467,6 +737,19 @@ copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s3
             source_p := source + y * source_pitch + x;
             dest_p.* = source_p.*;
         }
+    }
+}
+
+// XXX: Potentially remove?
+// TODO(jt): Can we refer to the OG string expansion, so we don't have to wrap it like this?
+string_binary_for_expansion :: (s: *string, body: Code, flags: For_Flags) #expand {
+    `it := ---;
+    `it_index : s64 = ---;
+
+    for s_it_index, s_it: s.* {
+        it = s_it;
+        it_index = s_it_index;
+        #insert body;
     }
 }
 
