@@ -1205,51 +1205,54 @@ assert_valid :: (buffer: Text_Buffer) {
 
     // This is too expensive to do in shipping builds. We completely recreate lines from text.
     #if SANITY {
-        line_bytes: [..] s64;
-        line_chars: [..] s64;
-        line_bytes.allocator = temp;
-        line_chars.allocator = temp;
+        // XXX: Does this check make sense in binary mode at all?
+        if !buffer.binary_mode {
+            line_bytes: [..] s64;
+            line_chars: [..] s64;
+            line_bytes.allocator = temp;
+            line_chars.allocator = temp;
 
-        array_reserve(*line_bytes, buffer.line_bytes.count);
-        array_reserve(*line_chars, buffer.line_chars.count);
-        array_add(*line_bytes);
-        array_add(*line_chars);
+            array_reserve(*line_bytes, buffer.line_bytes.count);
+            array_reserve(*line_chars, buffer.line_chars.count);
+            array_add(*line_bytes);
+            array_add(*line_chars);
 
-        view := cast(string, gap_buffer_make_view(buffer.gb, 0, buffer.gb.count,, temp));
-        while view.count {
-            newline_advance := string_starts_with_newline(view);
-            if newline_advance {
-                line_chars[line_chars.count - 1] += 1;
-                line_bytes[line_bytes.count - 1] += newline_advance;
+            view := cast(string, gap_buffer_make_view(buffer.gb, 0, buffer.gb.count,, temp));
+            while view.count {
+                newline_advance := string_starts_with_newline(view);
+                if newline_advance {
+                    line_chars[line_chars.count - 1] += 1;
+                    line_bytes[line_bytes.count - 1] += newline_advance;
 
-                array_add(*line_bytes);
-                array_add(*line_chars);
+                    array_add(*line_bytes);
+                    array_add(*line_chars);
 
-                advance(*view, newline_advance);
-            } else {
-                codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[view[0]], 1, 4);
+                    advance(*view, newline_advance);
+                } else {
+                    codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[view[0]], 1, 4);
 
-                _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, view), 0);
-                assert(codepoint_advance == codepoint_advance_check);
+                    _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, view), 0);
+                    assert(codepoint_advance == codepoint_advance_check);
 
-                line_chars[line_chars.count - 1] += 1;
-                line_bytes[line_bytes.count - 1] += codepoint_advance;
+                    line_chars[line_chars.count - 1] += 1;
+                    line_bytes[line_bytes.count - 1] += codepoint_advance;
 
-                advance(*view, codepoint_advance);
+                    advance(*view, codepoint_advance);
+                }
             }
-        }
 
-        assert(line_bytes.count == line_chars.count);
-        assert(line_bytes.count == buffer.line_bytes.count);
-        assert(line_chars.count == buffer.line_chars.count);
-        for 0..line_bytes.count - 1 {
-            want_chars := line_chars[it];
-            have_chars := buffer.line_chars[it];
-            want_bytes := line_bytes[it];
-            have_bytes := buffer.line_bytes[it];
+            assert(line_bytes.count == line_chars.count);
+            assert(line_bytes.count == buffer.line_bytes.count);
+            assert(line_chars.count == buffer.line_chars.count);
+            for 0..line_bytes.count - 1 {
+                want_chars := line_chars[it];
+                have_chars := buffer.line_chars[it];
+                want_bytes := line_bytes[it];
+                have_bytes := buffer.line_bytes[it];
 
-            assert(want_chars == have_chars, "Different char count on line %: % (computed) != % (stored)", it, want_chars, have_chars);
-            assert(want_bytes == have_bytes, "Different byte count on line %: % (computed) != % (stored)", it, want_bytes, have_bytes);
+                assert(want_chars == have_chars, "Different char count on line %: % (computed) != % (stored)", it, want_chars, have_chars);
+                assert(want_bytes == have_bytes, "Different byte count on line %: % (computed) != % (stored)", it, want_bytes, have_bytes);
+            }
         }
     }
 }
@@ -1336,33 +1339,61 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
 
             bytes_on_line_before_cursor += 1;
         } else {
+
             // TODO(jt): The Unicode module actually doesn't clamp this by itself and it can be as much
             // as 6 (this was valid in older specs?). Cleanup?
             codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
 
             // We 'continue' without advancing the text in a few places in the block below, so the
             // next time through the loop the binary mode will see the same byte.
-            if codepoint_advance > text.count {
+
+            log("XXX text.count = %, byte = %, codepoint_advance = %", text.count, text[0], codepoint_advance);
+            _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
+            if codepoint_advance != codepoint_advance_check {
+                log("XXX switch to binary (mismatch)");
+
                 buffer.binary_mode = true;
                 continue;
-            } else if codepoint_advance < text.count {
-                if !byte_is_utf8_character_boundary(text[codepoint_advance]) {
-                    buffer.binary_mode = true;
-                    continue;
+            }
+
+            if !byte_is_utf8_character_boundary(text[0]) {
+                log("XXX switch to binary (boundary 1)");
+
+                buffer.binary_mode = true;
+                continue;
+            }
+
+            if codepoint_advance > text.count {
+                log("XXX switch to binary (OOB)");
+
+                buffer.binary_mode = true;
+                continue;
+            }
+
+            zero_found: bool = false;
+            for 0..codepoint_advance - 1 {
+                log("XXX byte is %", text[it]);
+                if text[it] == 0 {
+                    zero_found = true;
+                    break;
                 }
             }
 
-            // TODO(jt): This probably shouldn't be an assert, but we need to do something about
-            // incorrect unicode coming in and prevent it getting into the buffer. If we are ingesting a
-            // new file, we should probably check ahead for encoding or something. If we are in
-            // interactive mode, maybe it is okay to not insert.
-            //
-            // UPDATE: Also shouldn't be an assert, because we have already inserted stuff into the gap
-            // buffer, so maybe we want to revert that.
-            #if SANITY {
-                _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
-                assert(codepoint_advance == codepoint_advance_check);
+            if zero_found {
+                log("XXX switch to binary (zero byte)");
+
+                buffer.binary_mode = true;
+                continue;
             }
+
+            if codepoint_advance < text.count && !byte_is_utf8_character_boundary(text[codepoint_advance]) {
+                log("XXX switch to binary (boundary 2)");
+
+                buffer.binary_mode = true;
+                continue;
+            }
+
+            assert(!buffer.binary_mode);
 
             advance(*text, codepoint_advance);
 
