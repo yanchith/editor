@@ -40,6 +40,7 @@ TODO(jt): @Stream things:
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Flash cursor with typing (needs tuning)
 - [X] Trail behind cursor (needs tuning)
+- [ ] When switching-to/closing documents, sort by most recent first.
 
 TODO(jt): Fancy stuff to do:
 
@@ -180,12 +181,11 @@ Editor :: struct {
 Document :: struct {
     locator: Bucket_Locator;
 
-    time_of_last_interaction: Apollo_Time;
-
     kind: Kind;
-    buffer: Text_Buffer;
-
+    time_of_last_interaction: Apollo_Time;
     // TODO(jt): Read-only flag.
+
+    buffer: Text_Buffer;
 
     // The arena is currently just for backing_file_path. The buffer has its own arenas. I don't
     // like this, but maybe it will become clear what to do later, once we have more stuff here.
@@ -1764,19 +1764,19 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) {
                             text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
                             if active_panel {
-                                set_panel_document(active_panel, document);
+                                set_panel_document(editor, active_panel, document);
                                 recenter_active_panel(editor, input, true);
                             }
                         }
                     } else {
                         editor_log(editor, "Opening new file with path: %", file_absolute_path);
                         if active_panel {
-                            set_panel_document(active_panel, document);
+                            set_panel_document(editor, active_panel, document);
                         }
                     }
                 } else {
                     if active_panel {
-                        set_panel_document(active_panel, document);
+                        set_panel_document(editor, active_panel, document);
                     }
                 }
             } else {
@@ -1794,7 +1794,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) {
                 document := cast(*Document, item.userdata);
 
                 if active_panel {
-                    set_panel_document(active_panel, document);
+                    set_panel_document(editor, active_panel, document);
 
                     // TODO(jt): Emacs actually remembers the previous scroll of the panel in
                     // document. Do we want to do the same?
@@ -1825,6 +1825,8 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         if it.kind != kind                            continue;
         if it.backing_file_path != backing_file_path  continue;
 
+        it.time_of_last_interaction = editor.input_state.time;
+
         return it, false;
     }
 
@@ -1834,6 +1836,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     document: Document;
     document.kind = kind;
+    document.time_of_last_interaction = editor.input_state.time;
     text_buffer_init(*document.buffer, buffer_arena, buffer_edit_text_arena);
 
     document.arena = document_arena;
@@ -1866,6 +1869,11 @@ close_document :: (editor: *Editor, document: *Document) {
         }
     }
 
+    // This means we have to find a document with time_of_last_interaction > 0. If we don't find it,
+    // we either have no documents (bad, becuase *scratch* shouldn't be closeable), or their
+    // time_of_last_interaction was not properly set everywhere it should be.
+    assert(document_to_show != null);
+
     // Make sure nobody references the document anymore.
     for * editor.panels {
         if it.document == document {
@@ -1884,7 +1892,7 @@ close_document :: (editor: *Editor, document: *Document) {
     bucket_array_remove(*editor.documents, locator);
 }
 
-set_panel_document :: (panel: *Panel, document: *Document) {
+set_panel_document :: (editor: Editor, panel: *Panel, document: *Document) {
     panel.scroll_source = { 0, 0 };
     panel.scroll_target = { 0, 0 };
     panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes for e.g. to_float64_seconds.
@@ -1896,6 +1904,8 @@ set_panel_document :: (panel: *Panel, document: *Document) {
 
     panel.selecting = false;
     panel.document = document;
+
+    document.time_of_last_interaction = editor.input_state.time;
 }
 
 set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, platform: Platform) {

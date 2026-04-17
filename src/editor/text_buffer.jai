@@ -1360,6 +1360,7 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
 
             // Must be first, because the rest doesn't check for OOB.
             if codepoint_advance > text.count {
+                log("XXX OOB");
                 buffer.binary_mode = true;
                 continue;
             }
@@ -1371,24 +1372,21 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
                 }
 
                 if zero_found {
+                    log("XXX ZERO");
                     buffer.binary_mode = true;
                     continue;
                 }
             }
 
             if !byte_is_utf8_character_boundary(text[0]) {
+                log("XXX CHAR BOUNDARY");
                 buffer.binary_mode = true;
                 continue;
             }
 
             _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
             if codepoint_advance != codepoint_advance_check {
-                buffer.binary_mode = true;
-                continue;
-            }
-
-
-            if codepoint_advance < text.count && !byte_is_utf8_character_boundary(text[codepoint_advance]) {
+                log("XXX PARSE MISMATCH");
                 buffer.binary_mode = true;
                 continue;
             }
