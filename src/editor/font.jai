@@ -1,3 +1,5 @@
+#import "freetype";
+
 ATLAS_WIDTH_IN_PIXELS  :: 2048;
 ATLAS_HEIGHT_IN_PIXELS :: 2048;
 
@@ -191,11 +193,12 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 }
 
-// XXX: @Cleanup !!! The font routines are copypasted two times each, depending on whether they are
-// processing binary data or utf8. I did not want to do this, but both autobake with manual
-// branching preamble and #code/#insert created a cycle in the compiler. This code can not stay like
-// this. I don't want the routines to diverge.
-
+// TODO(jt): @Cleanup We do a pattern where we have a function with a regular parameter, and in that
+// function we 'if' on that parameter and call an autobaked function. This is alright, but the
+// problem is that the autobaked routine uses #code and #insert instead of putting the for_expansion
+// into a constant, which would be much more readable (and debugable?). (Also, macros currently lack
+// a lot of compile time checking.) Try putting the for_expansion into a constant again? Beware,
+// last time we tried this, the compiler encountered a dependency cycle.
 
 font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame := false, binary := false) {
     ProfileZone("font_layout_and_draw_text");
@@ -534,18 +537,3 @@ copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s3
         }
     }
 }
-
-// XXX: Potentially remove?
-// TODO(jt): Can we refer to the OG string expansion, so we don't have to wrap it like this?
-string_binary_for_expansion :: (s: *string, body: Code, flags: For_Flags) #expand {
-    `it := ---;
-    `it_index : s64 = ---;
-
-    for s_it_index, s_it: s.* {
-        it = s_it;
-        it_index = s_it_index;
-        #insert body;
-    }
-}
-
-#import "freetype"; // Move to scope exported scope, since the info field is visible anyway?
