@@ -762,7 +762,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             t = clamp(t, 0.0, 1.0);
             t = smoothstep(0.0, 1.0, t);
 
-            panel.scroll = lerp(panel.scroll_source, panel.scroll_target, t);
+            if SCROLL_TIME == 0 {
+                panel.scroll = panel.scroll_target;
+            } else {
+                panel.scroll = lerp(panel.scroll_source, panel.scroll_target, t);
+            }
 
             if t < 1.0 {
                 wants_next_frame = true;
@@ -884,6 +888,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             FLASH_TIME : f64 : 0.50; // TODO(jt): Make flash time configurable. :Config
             ANIM_TIME  : f64 : 0.05; // TODO(jt): Make anim time configurable. :Config
 
+            // TODO(jt): Division by zero. (We work around it for scroll and cursor animation.)
             flash_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_flash_time_start)) / FLASH_TIME);
             flash_t = clamp(flash_t, 0.0, 1.0);
             flash_t = smoothstep(0.0, 1.0, flash_t);
