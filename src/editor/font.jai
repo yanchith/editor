@@ -198,6 +198,7 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
 
 
 font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame := false, binary := false) {
+    ProfileZone("font_layout_and_draw_text");
     if binary {
         _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, is_new_frame, true);
     } else {
@@ -206,8 +207,6 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 }
 
 _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame: bool, $binary: bool) {
-    ProfileZone("font_layout_and_draw_text");
-
     if is_new_frame {
         #no_aoc {
             font.glyph_cache_stamp += 1;
@@ -380,6 +379,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
 }
 
 font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, binary := false) -> f64 {
+    ProfileZone("font_compute_position_on_line");
     if binary {
         return _font_compute_position_on_line(font, line_text, character_index, true);
     } else {
@@ -391,8 +391,6 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
 // slow. We'll probably need to avoid calling it (or do early out, if position exceeds some given
 // value), or have make 100x faster.
 _font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, $binary: bool) -> f64 {
-    ProfileZone("font_compute_position_on_line");
-
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
 
     LoopBody :: () #expand {
@@ -431,6 +429,7 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
 }
 
 font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, binary := false) -> s64 {
+    ProfileZone("font_compute_character_index_on_line");
     if binary {
         return _font_compute_character_index_on_line(font, line_text, x, true);
     } else {
@@ -439,10 +438,7 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, 
 }
 
 _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, $binary: bool) -> s64 {
-    ProfileZone("font_compute_character_index_on_line");
-
     character_index: s64 = 0;
-
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
 
     LoopBody :: () #expand {
