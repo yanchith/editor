@@ -15,6 +15,8 @@ Text_Buffer :: struct {
     arena: *Arena;
     arena_mark: Arena_Mark;
 
+    binary_mode: bool;
+
     cursor0: Cursor;
     cursor1: Cursor;
 
@@ -113,6 +115,8 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, _edit_text_arena: *Are
 
 text_buffer_reset :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
+
+    buffer.binary_mode = false;
 
     gap_buffer_reset(*buffer.gb);
 
@@ -861,7 +865,7 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
 
         found := false;
         dx := 0;
-        for < :utf8_iter line_view {
+        for < :Unicode.utf8_iter line_view {
             is_nonword := character_is_nonword_character(it);
 
             if !inside_word_initial_set {
@@ -940,7 +944,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
 
         found := false;
         dx := 0;
-        for :utf8_iter line_view {
+        for :Unicode.utf8_iter line_view {
             is_nonword := character_is_nonword_character(it);
 
             if !inside_word_initial_set {
@@ -1319,28 +1323,55 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
             continue;
         }
 
-        // TODO(jt): The Unicode module actually doesn't clamp this by itself and it can be as much
-        // as 6 (this was valid in older specs?). Cleanup?
-        codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
-        // TODO(jt): This probably shouldn't be an assert, but we need to do something about
-        // incorrect unicode coming in and prevent it getting into the buffer. If we are ingesting a
-        // new file, we should probably check ahead for encoding or something. If we are in
-        // interactive mode, maybe it is okay to not insert.
-        //
-        // UPDATE: Also shouldn't be an assert, because we have already inserted stuff into the gap
-        // buffer, so maybe we want to revert that.
-        #if SANITY {
-            _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
-            assert(codepoint_advance == codepoint_advance_check);
+        if buffer.binary_mode {
+            // TODO(jt): @Speed Once we detect we are doing binary, we should jump to a fast path
+            // for that, as there is much less branchy stuff to do there... basically we just care
+            // about ascii, newlines, and other unreadable bytes.
+
+            advance(*text, 1);
+
+            buffer.line_chars[buffer.cursor0.y] += 1;
+            buffer.line_bytes[buffer.cursor0.y] += 1;
+            buffer.cursor0.x += 1;
+
+            bytes_on_line_before_cursor += 1;
+        } else {
+            // TODO(jt): The Unicode module actually doesn't clamp this by itself and it can be as much
+            // as 6 (this was valid in older specs?). Cleanup?
+            codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
+
+            // We 'continue' without advancing the text in a few places in the block below, so the
+            // next time through the loop the binary mode will see the same byte.
+            if codepoint_advance > text.count {
+                buffer.binary_mode = true;
+                continue;
+            } else if codepoint_advance < text.count {
+                if !byte_is_utf8_character_boundary(text[codepoint_advance]) {
+                    buffer.binary_mode = true;
+                    continue;
+                }
+            }
+
+            // TODO(jt): This probably shouldn't be an assert, but we need to do something about
+            // incorrect unicode coming in and prevent it getting into the buffer. If we are ingesting a
+            // new file, we should probably check ahead for encoding or something. If we are in
+            // interactive mode, maybe it is okay to not insert.
+            //
+            // UPDATE: Also shouldn't be an assert, because we have already inserted stuff into the gap
+            // buffer, so maybe we want to revert that.
+            #if SANITY {
+                _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
+                assert(codepoint_advance == codepoint_advance_check);
+            }
+
+            advance(*text, codepoint_advance);
+
+            buffer.line_chars[buffer.cursor0.y] += 1;
+            buffer.line_bytes[buffer.cursor0.y] += codepoint_advance;
+            buffer.cursor0.x += 1;
+
+            bytes_on_line_before_cursor += codepoint_advance;
         }
-
-        advance(*text, codepoint_advance);
-
-        buffer.line_chars[buffer.cursor0.y] += 1;
-        buffer.line_bytes[buffer.cursor0.y] += codepoint_advance;
-        buffer.cursor0.x += 1;
-
-        bytes_on_line_before_cursor += codepoint_advance;
     }
 
     // The calling code must manage cursor1
