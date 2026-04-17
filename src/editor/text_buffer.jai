@@ -1344,51 +1344,51 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
             // as 6 (this was valid in older specs?). Cleanup?
             codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
 
-            // We 'continue' without advancing the text in a few places in the block below, so the
-            // next time through the loop the binary mode will see the same byte.
+            // For binary mode detect, we 'continue' without advancing the text in a few places in
+            // the block below, so the next time through the loop the binary mode will see the same
+            // byte.
+            //
+            // TODO(jt): This binary mode detection is likely very slow. It makes the insert 2x
+            // slower. Can we do something to make it faster?
+            //
+            // TODO(jt): This binary mode detection is likely also not very robust... Let's make it
+            // robust, e.g. by block scanning for zeros.
+            //
+            // TODO(jt): Also maybe get rid of assuming utf8 everywhere, if we can? That's not too robust.
+            //
+            // XXX: HERE ^
 
-            log("XXX text.count = %, byte = %, codepoint_advance = %", text.count, text[0], codepoint_advance);
-            _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
-            if codepoint_advance != codepoint_advance_check {
-                log("XXX switch to binary (mismatch)");
-
-                buffer.binary_mode = true;
-                continue;
-            }
-
-            if !byte_is_utf8_character_boundary(text[0]) {
-                log("XXX switch to binary (boundary 1)");
-
-                buffer.binary_mode = true;
-                continue;
-            }
-
+            // Must be first, because the rest doesn't check for OOB.
             if codepoint_advance > text.count {
-                log("XXX switch to binary (OOB)");
-
                 buffer.binary_mode = true;
                 continue;
             }
 
-            zero_found: bool = false;
-            for 0..codepoint_advance - 1 {
-                log("XXX byte is %", text[it]);
-                if text[it] == 0 {
-                    zero_found = true;
-                    break;
+            {
+                zero_found := false;
+                for 0..codepoint_advance - 1 {
+                    zero_found |= text[it] == 0;
+                }
+
+                if zero_found {
+                    buffer.binary_mode = true;
+                    continue;
                 }
             }
 
-            if zero_found {
-                log("XXX switch to binary (zero byte)");
-
+            if !byte_is_utf8_character_boundary(text[0]) {
                 buffer.binary_mode = true;
                 continue;
             }
 
-            if codepoint_advance < text.count && !byte_is_utf8_character_boundary(text[codepoint_advance]) {
-                log("XXX switch to binary (boundary 2)");
+            _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
+            if codepoint_advance != codepoint_advance_check {
+                buffer.binary_mode = true;
+                continue;
+            }
 
+
+            if codepoint_advance < text.count && !byte_is_utf8_character_boundary(text[codepoint_advance]) {
                 buffer.binary_mode = true;
                 continue;
             }
