@@ -5,8 +5,6 @@ ATLAS_HEIGHT_IN_PIXELS :: 2048;
 
 R64 : f32 : 1.0 / 64.0;
 
-UNICODE_REPLACEMENT_CODEPOINT : u32 : 0x0000fffd;
-
 Font :: struct {
     //
     // "Inputs"
@@ -25,8 +23,6 @@ Font :: struct {
 
     ft_library: FT_Library;
     ft_face:    FT_Face;
-
-    glyph_index_for_replacement_character: u32;
 
     //
     // Scaled metrics for currently set pixel_height in the FreeType 26:6 fixed point format. (64-bit, because FT_Pos is 64-bit on Unix)
@@ -119,8 +115,6 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
         return font;
     }
 
-    font.glyph_index_for_replacement_character = FT_Get_Char_Index(font.ft_face, UNICODE_REPLACEMENT_CODEPOINT);
-
     font_reset_for_pixel_height(*font, pixel_height);
 
     return font;
@@ -193,15 +187,7 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 }
 
-// TODO(jt): @Cleanup We do a pattern where we have a function with a regular parameter, and in that
-// function we 'if' on that parameter and call an autobaked function. This is alright, but the
-// problem is that the autobaked routine uses #code and #insert instead of putting the for_expansion
-// into a constant, which would be much more readable (and debugable?). (Also, macros currently lack
-// a lot of compile time checking.) Try putting the for_expansion into a constant again? Beware,
-// last time we tried this, the compiler encountered a dependency cycle.
-
 font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame := false, binary := false) {
-    ProfileZone("font_layout_and_draw_text");
     if binary {
         _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, is_new_frame, true);
     } else {
@@ -209,7 +195,9 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
     }
 }
 
-_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame: bool, $binary: bool) {
+_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame: bool, $binary := false) {
+    ProfileZone("font_layout_and_draw_text");
+
     if is_new_frame {
         #no_aoc {
             font.glyph_cache_stamp += 1;
@@ -223,21 +211,21 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
     cursor_x: s64 = 0;
     cursor_y: s64 = font.ascender;
 
-    LoopBody :: () #expand {
-        if `it == #char "\r" {
+    ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
+    for :ITERATOR text {
+        if it == #char "\r" {
             continue; // Not rendered.
         }
 
-        if `it == #char "\n" {
+        if it == #char "\n" {
             cursor_x = 0;
             cursor_y += font.line_height;
             continue;
         }
 
-        glyph_index := FT_Get_Char_Index(font.ft_face, `it);
-        if glyph_index == 0 {
-            glyph_index = font.glyph_index_for_replacement_character;
-        }
+        // FT_Get_Char_Index returns 0, if it can't find the character. 0 also automatically maps to
+        // 'missing glyph' in FT_Load_Glyph.
+        glyph_index := FT_Get_Char_Index(font.ft_face, it);
 
         // These get filled in one of the branches below. Either we compute them, or we get them from the cache.
         glyph_advance: s32;       // In 26:6 pixels.
@@ -249,7 +237,6 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
         glyph_cell_x: s32;
         glyph_cell_y: s32;
 
-        // TODO(jt): Factor out cache manipulation and just return the all necessary metadata.
         entry_index_pointer := table_find_pointer(*font.glyph_table, cast(s32, glyph_index));
         if entry_index_pointer {
             font.glyph_cache_hits += 1;
@@ -296,9 +283,8 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
                 ProfileZone("FT_Load_GLyph(FT_LOAD_RENDER)");
                 error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER);
 
-                // TODO(jt): Decide what to do, if FT_Load_Glyph fails. Freetype already found the
-                // index, but the glyph is not there? Or something.
                 if error {
+                    // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
                     continue;
                 }
             }
@@ -369,20 +355,9 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
 
         cursor_x += glyph_advance;
     }
-
-    #if binary {
-        for text {
-            LoopBody();
-        }
-    } else {
-        for :Unicode.utf8_iter text {
-            LoopBody();
-        }
-    }
 }
 
 font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, binary := false) -> f64 {
-    ProfileZone("font_compute_position_on_line");
     if binary {
         return _font_compute_position_on_line(font, line_text, character_index, true);
     } else {
@@ -393,37 +368,23 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
 // TODO(jt): @Speed For files with long lines (such as minified javascript), this very very
 // slow. We'll probably need to avoid calling it (or do early out, if position exceeds some given
 // value), or have make 100x faster.
-_font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, $binary: bool) -> f64 {
+_font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, $binary := false) -> f64 {
+    ProfileZone("font_compute_position_on_line");
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
 
-    LoopBody :: () #expand {
-        if `it_index >= character_index {
+    ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
+    for :ITERATOR line_text {
+        if it_index >= character_index {
             break;
         }
 
-        glyph_index := FT_Get_Char_Index(font.ft_face, `it);
-        if glyph_index == 0 {
-            glyph_index = font.glyph_index_for_replacement_character;
-        }
-
-        error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_DEFAULT);
+        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT);
         if error {
-            // TODO(jt): Decide what to do, if FT_Load_Glyph fails. Freetype already found the
-            // index, but the glyph is not there? Or something.
+            // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
             continue;
         }
 
         advance += font.ft_face.glyph.metrics.horiAdvance;
-    }
-
-    #if binary {
-        for line_text {
-            LoopBody();
-        }
-    } else {
-        for :Unicode.utf8_iter line_text {
-            LoopBody();
-        }
     }
 
     scaled_advance: f64 = cast(f64, advance) * R64;
@@ -432,7 +393,6 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
 }
 
 font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, binary := false) -> s64 {
-    ProfileZone("font_compute_character_index_on_line");
     if binary {
         return _font_compute_character_index_on_line(font, line_text, x, true);
     } else {
@@ -440,42 +400,28 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, 
     }
 }
 
-_font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, $binary: bool) -> s64 {
+_font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, $binary := false) -> s64 {
+    ProfileZone("font_compute_character_index_on_line");
     character_index: s64 = 0;
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
 
-    LoopBody :: () #expand {
+    ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
+    for :ITERATOR line_text {
         scaled_advance: f64 = cast(f64, advance) * R64;
         if scaled_advance >= x {
             break;
         }
 
-        character_index = `it_index;
+        character_index = it_index;
 
-        glyph_index := FT_Get_Char_Index(font.ft_face, `it);
-        if glyph_index == 0 {
-            glyph_index = font.glyph_index_for_replacement_character;
-        }
-
-        error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_DEFAULT);
+        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT);
         if error {
-            // TODO(jt): Decide what to do, if FT_Load_Glyph fails. Freetype already found the
-            // index, but the glyph is not there? Or something.
+            // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
             continue;
         }
 
         advance += font.ft_face.glyph.metrics.horiAdvance;
     };
-
-    #if binary {
-        for line_text {
-            LoopBody();
-        }
-    } else {
-        for :Unicode.utf8_iter line_text {
-            LoopBody();
-        }
-    }
 
     return character_index;
 }
@@ -520,7 +466,6 @@ clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
     ProfileZone("clear_glyph_cell");
     for y: 0..height - 1 {
         for x: 0..width - 1 {
-            // TODO(jt): @Speed memset each row span aboce some threshold?
             p := dest + y * pitch + x;
             p.* = 0;
         }
@@ -535,5 +480,18 @@ copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s3
             source_p := source + y * source_pitch + x;
             dest_p.* = source_p.*;
         }
+    }
+}
+
+// I can't see a way to reference the builtin string iteration, so this wrapper exists.
+bytes_iter :: (s: *string, body: Code, flags: For_Flags) #expand {
+    `it: u8;
+    `it_index: s64;
+
+    for s_it, s_it_index: s.* {
+        it = s_it;
+        it_index = s_it_index;
+
+        #insert body;
     }
 }
