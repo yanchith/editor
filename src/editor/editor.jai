@@ -326,8 +326,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_register(key_map, "C-f",     .MOVE_RIGHT);
         key_map_register(key_map, "<right>", .MOVE_RIGHT);
 
-        // XXX: Disable .SEARCH for binary files. Our current line based search wouldn't work well
-        // anyway, and eventually we want to do something much better.
         key_map_register(key_map, "C-s",     .SEARCH);
         key_map_register(key_map, "C-x C-f", .OPEN_FILE);
         key_map_register(key_map, "C-x C-s", .SAVE_FILE);
