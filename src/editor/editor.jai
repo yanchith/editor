@@ -49,6 +49,7 @@ TODO(jt): Fancy stuff to do:
 - [ ] Syntax Highlighting
 - [ ] Syntax aware indentation (C-i)
 - [ ] Syntax aware parentheses
+- [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode
 - [ ] Multiple Cursors
 - [ ] *compilation* buffer
@@ -1492,7 +1493,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                                 s = sprint("%%", temp_right_pad(tprint("[%]", it + 1), 10), line_text,, arena_allocator(mini_panel.items_arena));
                             }
 
-                            // XXX: @Bug, if we try to .SEARCH a binary, this will assert. We could go around it.
+                            // XXX: @Bug, if we try to .SEARCH a binary, this will assert.
                             x0 := count_utf8_characters(String.slice(line_text, 0, found_index));
 
                             item_index := mini_panel.items.count;
