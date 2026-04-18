@@ -1169,15 +1169,11 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
     for 0..cursor.x - 1 {
         first_byte := buffer.gb[index];
 
+        // :CarriageReturn
+        //
         // Even if in ascii \r\n is two characters, we treat them as one character when moving
         // cursors around, and we can't really have a byte index that goes in between these two, if
         // they are next to each other.
-        //
-        // :CarriageReturn
-        //
-        // TODO(jt): We don't accept a lone \r, currently. Should we? But then again, we don't
-        // accept malformed unicode either - we just trust trailingBytes. What's our strategy for
-        // malformed input?
         continuation_bytes := ifx first_byte == #char "\r" then 1 else Unicode.trailingBytesForUTF8[first_byte];
 
         index += 1 + continuation_bytes;
