@@ -158,11 +158,6 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
         return;
     }
 
-    // TODO(jt): So we insert the text into the gap buffer regardless of whether it is valid, and then
-    // process the string to update our navigation structures. If we detect invalid unicode, we just
-    // assert for now, but we should eventually patch the invalid sequences with unicode replacement
-    // chararacters. (And go to read-only mode?)
-
     gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, text_buffer_get_min_cursor(buffer));
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     gap_buffer_insert(*buffer.gb, text);
@@ -259,7 +254,7 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, __start: Cursor, __
 }
 
 // TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
-// text_buffer_delete_between_cursors does. There's also an update function we can call.
+// text_buffer_delete_between_cursors does. There's also an update index function we can call.
 text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_delete_forward");
 
@@ -346,7 +341,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 }
 
 // TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
-// text_buffer_delete_between_cursors does. There's also an update function we can call.
+// text_buffer_delete_between_cursors does. There's also an update index function we can call.
 text_buffer_delete_backward :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_delete_backward");
 
@@ -1118,9 +1113,9 @@ text_buffer_get_max_cursor :: (buffer: Text_Buffer) -> Cursor {
 }
 
 // TODO(jt): @Speed For 1GB files of regular prose, this takes too long, especially if called tens
-// or hundreds of times per frame. Can we do something about it? Maintain a list of "paragraphs"
-// that have a stable mapping to lines that we could use to skip over most lines? The mapping would
-// have to survive adding and deleting lines - we don't want to update every below the edit.
+// or hundreds of times per frame. Can we do something about it? Maintain a list of chunks that have
+// a stable mapping to lines that we could use to skip over most lines? The mapping would have to
+// survive adding and deleting lines - we don't want to update everything below the edit.
 text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s64) -> s64 {
     ProfileZone("text_buffer_get_gap_buffer_index_for_line");
 
@@ -1133,12 +1128,12 @@ text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s
 
     // TODO(jt): @Speed SIMD this!
     //
-    // TODO(jt): After doing SoA on the line arrays, this got a big boost. Likely another big boost
-    // would be to pack the data tighter, but that introduces a lot of noisy casts in places, so
-    // we'll have to try multiple versions and pick the least ugly, e.g. making only these line
+    // TODO(jt): @Speed After doing SoA on the line arrays, this got a big boost. Likely another big
+    // boost would be to pack the data tighter, but that introduces a lot of noisy casts in places,
+    // so we'll have to try multiple versions and pick the least ugly, e.g. making only these line
     // arrays u32, or also making cursor u32, decide where to put the casts, etc.
     //
-    // @Speed I tried unrolling this loop manually, but the speed benefits very negligible. Maybe
+    // @Speed I tried unrolling this loop manually, but the speed benefits were negligible. Maybe
     // the compiler already unrolls?
     index := 0;
     for 0..line_index - 1 {
@@ -1161,12 +1156,12 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
 
     // TODO(jt): @Speed SIMD this!
     //
-    // TODO(jt): After doing SoA on the line arrays, this got a big boost. Likely another big boost
-    // would be to pack the data tighter, but that introduces a lot of noisy casts in places, so
-    // we'll have to try multiple versions and pick the least ugly, e.g. making only these line
+    // TODO(jt): @Speed After doing SoA on the line arrays, this got a big boost. Likely another big
+    // boost would be to pack the data tighter, but that introduces a lot of noisy casts in places,
+    // so we'll have to try multiple versions and pick the least ugly, e.g. making only these line
     // arrays u32, or also making cursor u32, decide where to put the casts, etc.
     //
-    // @Speed I tried unrolling this loop manually, but the speed benefits very negligible. Maybe
+    // @Speed I tried unrolling this loop manually, but the speed benefits were negligible. Maybe
     // the compiler already unrolls?
     index := 0;
     for 0..line_index - 1 {
@@ -1286,6 +1281,9 @@ discard_unapplied_edits :: (buffer: *Text_Buffer) {
     }
 }
 
+// XXX: The update_after_x routines should probably be called update_index_for_x, because might not
+// necessarily run them *after* the data has been copied.
+
 // TODO(jt): @Speed This is super slow on large data to the point that it takes the most of the
 // time. We could parse lines with SIMD?
 update_after_insert :: (buffer: *Text_Buffer, text: string) {
@@ -1319,8 +1317,6 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
             buffer.line_chars[buffer.cursor0.y] += 1 - char_count_after_cursor;
             buffer.line_bytes[buffer.cursor0.y] += newline_advance - byte_count_after_cursor;
 
-            // TODO(jt): @Speed We do this in a loop. Could we at least do the reserve and copy
-            // first and then fill one by one?
             insert_line(buffer, buffer.cursor0.y + 1, byte_count_after_cursor, char_count_after_cursor);
 
             buffer.cursor0.y += 1;
@@ -1346,21 +1342,13 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
             bytes_on_line_before_cursor += 1;
         } else {
 
-            // TODO(jt): The Unicode module actually doesn't clamp this by itself and it can be as much
-            // as 6 (this was valid in older specs?). Cleanup?
+            // TODO(jt): @Cleanup The Unicode module actually doesn't clamp this by itself and it can be as much
+            // as 6 (this was valid in older specs?). Get the real table from the RFC (or Rust's std).
             codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
 
             // For binary mode detect, we 'continue' without advancing the text in a few places in
             // the block below, so the next time through the loop the binary mode will see the same
             // byte.
-            //
-            // TODO(jt): This binary mode detection is likely very slow. It makes the insert 2x
-            // slower. Can we do something to make it faster?
-            //
-            // TODO(jt): This binary mode detection is likely also not very robust... Let's make it
-            // robust, e.g. by block scanning for zeros.
-            //
-            // TODO(jt): Also maybe get rid of assuming utf8 everywhere, if we can? That's not too robust.
             //
             // XXX: HERE Make Text_Buffer handle utf8 as well as binary-as-text. Once we detect
             // non-utf8, we have to recompute the index from scratch in binary mode, otherwise we
@@ -1368,40 +1356,39 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
             // would look differently).
             //
             // text_buffer_insert should receive a strategy parameter on what to do when it finds
-            // binary: automatically-switch, assert, ask-for-confirmation?
+            // binary bytes: automatically-switch, assert (, and maybe revert-and-report).
             //
 
-            // Must be first, because the rest doesn't check for OOB.
-            if codepoint_advance > text.count {
-                log("XXX OOB");
-                buffer.binary_mode = true;
-                continue;
-            }
-
+            // XXX: Do Proper RFC-compliant utf8 validation. We also need to make it fast.
             {
-                zero_found := false;
-                for 0..codepoint_advance - 1 {
-                    zero_found |= text[it] == 0;
-                }
-
-                if zero_found {
-                    log("XXX ZERO");
+                // Must be first, because the rest doesn't check for OOB.
+                if codepoint_advance > text.count {
                     buffer.binary_mode = true;
                     continue;
                 }
-            }
 
-            if !byte_is_utf8_character_boundary(text[0]) {
-                log("XXX CHAR BOUNDARY");
-                buffer.binary_mode = true;
-                continue;
-            }
+                {
+                    zero_found := false;
+                    for 0..codepoint_advance - 1 {
+                        zero_found |= text[it] == 0;
+                    }
 
-            _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
-            if codepoint_advance != codepoint_advance_check {
-                log("XXX PARSE MISMATCH");
-                buffer.binary_mode = true;
-                continue;
+                    if zero_found {
+                        buffer.binary_mode = true;
+                        continue;
+                    }
+                }
+
+                if !byte_is_utf8_character_boundary(text[0]) {
+                    buffer.binary_mode = true;
+                    continue;
+                }
+
+                _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
+                if codepoint_advance != codepoint_advance_check {
+                    buffer.binary_mode = true;
+                    continue;
+                }
             }
 
             assert(!buffer.binary_mode);

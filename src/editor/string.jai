@@ -1,4 +1,4 @@
-// Common string utilities. Something like modules/Simple_String or modules/String, but more specific to what we need.
+// Common string utilities. Something like modules/Simple_String or modules/String, but specific to what we need.
 
 string_starts_with_newline :: (bytes: [] u8) -> newline_byte_length: u32 {
     return inline string_starts_with_newline(cast(string, bytes));
@@ -39,6 +39,7 @@ count_utf8_characters :: (text: string) -> s64 {
 
     assert(byte_is_utf8_character_boundary(text[0]));
 
+    // TODO(jt): @Speed SIMD this!
     count := 1;
     for 1..text.count - 1 {
         if byte_is_utf8_character_boundary(text[it]) {
@@ -48,6 +49,9 @@ count_utf8_characters :: (text: string) -> s64 {
 
     return count;
 }
+
+// TODO(jt): @Speed If we trust the input, we can do a much faster version of
+// find_next/previous_utf8_character_boundary.
 
 find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
     found_index, scanned_count := find_next_utf8_character_boundary(cast(string, bytes), index);
