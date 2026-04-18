@@ -68,12 +68,12 @@ MyWindowProc :: (hwnd: HWND, message: u32,
           case WM_ACTIVATEAPP;
             if wParam {  // We are being activated.
 
-                    // We do our best to provide the application with reliable key states without brute force sampling every key.
-                    // The intended rules are that a key down event will be sent when a key is depressed and will be followed
-                    // by zero or more key down events with the repeat flag set as long as the key remains down.  A key up event
-                    // will be sent when the key is released.
-                    // In practice:
-                    // 1. An application will always be notified when it has or gains focus if a key is up.
+                // We do our best to provide the application with reliable key states without brute force sampling every key.
+                // The intended rules are that a key down event will be sent when a key is depressed and will be followed
+                // by zero or more key down events with the repeat flag set as long as the key remains down.  A key up event
+                // will be sent when the key is released.
+                // In practice:
+                // 1. An application will always be notified when it has or gains focus if a key is up.
                 // 2. An application will always be notified when it has focus if a key is down.
                 // 3. An application will *usually* be notified when it gains focus if a key is down.
                 // So the one thing you can't rely on is being notified if a key is pressed while the application is out of
@@ -346,42 +346,32 @@ MyWindowProc :: (hwnd: HWND, message: u32,
 
             return DefWindowProcW(hwnd, message, wParam, lParam);
 
+
           case WM_CREATE;
-            // Look for already-existing xbox controllers
-            dev := SetupDiGetClassDevsW(*XBOX_GUID, null, null, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
-            if dev == INVALID_HANDLE_VALUE return DefWindowProcW(hwnd, message, wParam, lParam);
-            idata: SP_DEVICE_INTERFACE_DATA;
-            idata.cbSize = size_of(SP_DEVICE_INTERFACE_DATA);
+            xbox_db := DEV_BROADCAST_DEVICEINTERFACE_W.{
+                 dbcc_size = size_of(DEV_BROADCAST_DEVICEINTERFACE_W),
+                 dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE,
+                 dbcc_classguid = XBOX_GUID,
+            };
 
-            index: u32 = 0;
-            while SetupDiEnumDeviceInterfaces(dev, null, *XBOX_GUID, index, *idata) {
-                size: u32;
-                SetupDiGetDeviceInterfaceDetailW(dev, *idata, null, 0, *size, null);
-                detail := cast(*SP_DEVICE_INTERFACE_DETAIL_DATA_W)alloc(size,, temp);
-                detail.cbSize = size_of(SP_DEVICE_INTERFACE_DETAIL_DATA_W); // yes, sizeof of structure, not allocated memory
+            RegisterDeviceNotificationW(hwnd, *xbox_db, DEVICE_NOTIFY_WINDOW_HANDLE);
 
-                data: SP_DEVINFO_DATA;
-                data.cbSize = size_of(SP_DEVINFO_DATA);
-
-                if SetupDiGetDeviceInterfaceDetailW(dev, *idata, detail, size, *size, *data) {
-                    xbox_connect(detail.DevicePath.data);
-                }
-                index += 1;
-            }
-
-            SetupDiDestroyDeviceInfoList(dev);
-
-
+            hid_db := DEV_BROADCAST_DEVICEINTERFACE_W.{
+                 dbcc_size = size_of(DEV_BROADCAST_DEVICEINTERFACE_W),
+                 dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE,
+                 dbcc_classguid = GUID_DEVINTERFACE_HID,
+            };
+            RegisterDeviceNotificationW(hwnd, *hid_db, DEVICE_NOTIFY_WINDOW_HANDLE);
 
           case WM_DEVICECHANGE;
+            if !the_gamepad_handler return DefWindowProcW(hwnd, message, wParam, lParam);
             hdr := cast(*DEV_BROADCAST_HDR)lParam;
             if !hdr || hdr.dbch_devicetype != DBT_DEVTYP_DEVICEINTERFACE return DefWindowProcW(hwnd, message, wParam, lParam);
             dif := cast(*DEV_BROADCAST_DEVICEINTERFACE_W)hdr;
+            is_xbox := dif.dbcc_classguid == XBOX_GUID;
             if wParam == {
-                case DBT_DEVICEARRIVAL;
-                    xbox_connect(dif.dbcc_name.data);
-                case DBT_DEVICEREMOVECOMPLETE;
-                    xbox_disconnect(dif.dbcc_name.data);
+                case DBT_DEVICEARRIVAL;        the_gamepad_handler(dif.dbcc_name.data, connect=true,  is_xbox);
+                case DBT_DEVICEREMOVECOMPLETE; the_gamepad_handler(dif.dbcc_name.data, connect=false, is_xbox);
                 case;
                     return DefWindowProcW(hwnd, message, wParam, lParam);
             }
@@ -471,48 +461,10 @@ update_window_events :: () {
     }
 }
 
-xbox_devices: [8] struct { handle: HANDLE; path: string; };
-the_rawinput_handler: (product_id: u16, device_id: u16, handle: HANDLE, data: *u8, length: int);
+
+the_gamepad_handler: (wide_path: *u16, connect: bool, is_xbox: bool);
 
 #scope_file
-
-xbox_connect :: (wide_path: *u16) {
-    path := wide_to_utf8(wide_path);
-    // SetupDi* and WM_DEVICECHANGE use different case paths.
-    // The example code I saw used _wcsicmp, a wide char case-insensitive comparison function in the crt.
-    // However, that depends on the locale of the program, so I don't want to do this.
-    // The path I am seeing on my computer has only ascii characters. I will do this for now.
-    to_lower_in_place(path);
-
-    for xbox_devices {
-        if !it.handle || it.path != path continue;
-        free(path);
-        return;
-    }
-
-    handle := CreateFileW(wide_path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, null, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, null);
-    if handle == INVALID_HANDLE_VALUE return;
-
-    for * xbox_devices {
-        if it.handle continue;
-        it.* = .{ handle = handle, path = path };
-        break;
-    }
-}
-
-xbox_disconnect :: (wide_path: *u16) {
-    path := wide_to_utf8(wide_path,, temp);
-    to_lower_in_place(path);
-
-    for * xbox_devices {
-        if !it.handle || it.path != path continue;
-        free(it.path);
-        it.* = {};
-        break;
-    }
-}
-
-
 shift_state := false;
 ctrl_state  := false;
 alt_state   := false;
@@ -585,49 +537,6 @@ process_raw_input :: (handle: HRAWINPUT) {
         raw_key := raw.data.keyboard.MakeCode;
 
         handle_keyboard_event(is_left, is_right, is_down, vkey, raw_key);
-    } else if raw.header.dwType == RIM_TYPEHID {
-        RID_DEVICE_INFO_MOUSE :: struct {
-            dwId: u32;
-            dwNumberOfButtons: u32;
-            dwSampleRate: u32;
-            fHasHorizontalWheel: BOOL;
-        }
-
-        RID_DEVICE_INFO_KEYBOARD :: struct {
-            dwType: u32;
-            dwSubType: u32;
-            dwKeyboardMode: u32;
-            dwNumberOfFunctionKeys: u32;
-            dwNumberOfIndicators: u32;
-            dwNumberOfKeysTotal: u32;
-        }
-
-        RID_DEVICE_INFO_HID :: struct {
-            dwVendorId: u32;
-            dwProductId: u32;
-            dwVersionNumber: u32;
-            usUsagePage: u16;
-            usUsage: u16;
-        }
-
-        RID_DEVICE_INFO :: struct {
-            cbSize: u32;
-            dwType: u32;
-
-            union {
-                mouse:    RID_DEVICE_INFO_MOUSE;
-                keyboard: RID_DEVICE_INFO_KEYBOARD;
-                hid:      RID_DEVICE_INFO_HID;
-            }
-        }
-
-        RIDI_DEVICEINFO :: 0x2000000b;
-
-        device_info: RID_DEVICE_INFO;
-        device_info_size := cast(u32)size_of(RID_DEVICE_INFO);
-        if GetRawInputDeviceInfoA(raw.header.hDevice, RIDI_DEVICEINFO, *device_info, *device_info_size) == -1 return;
-        if device_info.dwType != RIM_TYPEHID return;
-        if the_rawinput_handler the_rawinput_handler(xx device_info.hid.dwVendorId, xx device_info.hid.dwProductId, raw.header.hDevice, raw.data.hid.bRawData.data, raw.data.hid.dwSizeHid);
     }
 }
 
@@ -654,12 +563,6 @@ init_input_system :: () {
         // This means that we are not blocking the windows logo key and that pressing it will cause the app to lose the focus.
         .{ usUsagePage = HID_USAGE_PAGE_GENERIC,
            usUsage     = HID_USAGE_GENERIC_KEYBOARD
-         },
-        .{ usUsagePage = HID_USAGE_PAGE_GENERIC,
-           usUsage     = HID_USAGE_GENERIC_JOYSTICK
-         },
-        .{ usUsagePage = HID_USAGE_PAGE_GENERIC,
-           usUsage     = HID_USAGE_GENERIC_GAMEPAD
          }
     ];
 
@@ -823,17 +726,23 @@ send_key_event :: (key_code: Key_Code, key_down: bool, repeat := false) {
     event.repeat = repeat;
     array_add(*events_this_frame, event);
 
+    // NOTE(Charles): If send_key_event is called for the same key twice in one frame, first with !key_down
+    // then with key_down, the state will end up being .START | .DOWN | .END, the next call to
+    // input_per_frame_event_and_flag_update will see the .END and clear all flags.
+    // So, the final event we triggered was a Press, but the keys state is NONE when it should be DOWN!
+    //
+    // I don't think this can actually happen for windows key inputs, but this can happen on platforms with
+    // an api that gives you a give you a "history" of states, and you are running at lowish framerates.
+    // Windows is in some sense the "reference" implementation, so I am commenting this here in hopes
+    // that it will be found by future people implementing new platforms. :InputStateIssueAtLowFramerate
     input_button_states[key_code] |= ifx key_down then (Key_Current_State.DOWN | .START) else .END;
 }
 
 #scope_file;
 HID_USAGE_GENERIC_MOUSE    :: 2;
-HID_USAGE_GENERIC_JOYSTICK :: 4;
-HID_USAGE_GENERIC_GAMEPAD  :: 5;
 HID_USAGE_GENERIC_KEYBOARD :: 6;
 
 HID_USAGE_PAGE_GENERIC :: 1;
-HID_USAGE_PAGE_GAME    :: 5;
 
 set_array_count :: (array: *[..] $T, count: s64) {
     if array.allocated >= count {
@@ -861,8 +770,8 @@ init_key_code_tables :: () {
 
     // Make the tables at least kind of big so we don't flail.
     INITIAL_TABLE_SIZE :: 512;
-    init(*vk_to_key_code, INITIAL_TABLE_SIZE);
-    init(*key_code_to_vk, INITIAL_TABLE_SIZE);
+    table_resize(*vk_to_key_code, INITIAL_TABLE_SIZE);
+    table_resize(*key_code_to_vk, INITIAL_TABLE_SIZE);
 
     // ASCII characters:
     for i: 48..cast(u32)90 {
