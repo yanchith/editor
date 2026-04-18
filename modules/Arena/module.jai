@@ -392,7 +392,7 @@ arena_pop_to_mark :: (arena: *Arena, _mark: Arena_Mark, overwrite_memory := AREN
 
     sanity_assert(arena.allocated >= mark.allocated);
     if overwrite_memory && arena.allocated > mark.allocated {
-        STAMP :: 0xcc;
+        STAMP :: 0xcd;
         overwrite_base := arena.memory_start + mark.allocated;
         overwrite_size := arena.allocated - mark.allocated;
 

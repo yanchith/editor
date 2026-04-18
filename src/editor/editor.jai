@@ -1129,9 +1129,9 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
             // by a plugin.
 
             if mini_panel.action == .OPEN_FILE {
-                gb := *mini_panel.buffer.gb;
+                gb := mini_panel.buffer.gb;
 
-                last_byte := ifx gb.count then gap_buffer_get_nongap_byte(gb, gb.count - 1) else 0;
+                last_byte := ifx gb.count then gb[gb.count - 1] else 0;
                 if last_byte == "/" {
                     buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
                     buffer_text.count -= 1; // The trailing '/', so that path_strip_filename can treat the last segment as a filename.
