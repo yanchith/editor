@@ -97,7 +97,7 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, _edit_text_arena: *Are
     buffer.arena = arena;
     buffer.arena_mark = arena_get_mark(arena);
 
-    gap_buffer_init(*buffer.gb, arena_allocator(arena));
+    buffer.gb.allocator = arena_allocator(arena);
 
     buffer.line_bytes.allocator = arena_allocator(arena);
     buffer.line_chars.allocator = arena_allocator(arena);
@@ -1169,7 +1169,7 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
     }
 
     for 0..cursor.x - 1 {
-        first_byte := gap_buffer_get_nongap_byte(buffer.gb, index);
+        first_byte := buffer.gb[index];
 
         // Even if in ascii \r\n is two characters, we treat them as one character when moving
         // cursors around, and we can't really have a byte index that goes in between these two, if
