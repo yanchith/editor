@@ -1,5 +1,3 @@
-// Currently, Gap_Buffer operates only on bytes and is oblivious to them being UTF8. The Text_Buffer
-// struct (this file) adds UTF8 knowledge. For now this is how it is.
 Text_Buffer :: struct {
     // TODO(jt): @Cleanup Key_Map, inspired by Bucket_Array gives you a way to easily set the
     // allocator in one place, so you can declare on stack and set the allocator, like you are used
@@ -183,7 +181,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
 
     buffer.applied_edit_count = buffer.edits.count;
 
-    update_after_insert(buffer, text);
+    update_index_for_insert(buffer, text);
 
     edit.cursor0_after = buffer.cursor0;
     edit.cursor1_after = buffer.cursor0;
@@ -246,7 +244,7 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, __start: Cursor, __
 
     buffer.applied_edit_count = buffer.edits.count;
 
-    update_after_delete_selection(buffer, deleted);
+    update_index_for_delete_selection(buffer, deleted);
 
     assert_valid(buffer);
 
@@ -482,22 +480,22 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
 
-                update_after_delete_backward(buffer, cast(string, deleted_bytes));
+                update_index_for_delete_backward(buffer, cast(string, deleted_bytes));
             }
 
             case .DELETE_SELECTION; {
                 gap_buffer_insert(*buffer.gb, edit.text);
-                update_after_insert(buffer, edit.text);
+                update_index_for_insert(buffer, edit.text);
             }
 
             case .DELETE_FORWARD; {
                 gap_buffer_insert(*buffer.gb, edit.text);
-                update_after_insert(buffer, edit.text);
+                update_index_for_insert(buffer, edit.text);
             }
 
             case .DELETE_BACKWARD; {
                 gap_buffer_insert(*buffer.gb, edit.text);
-                update_after_insert(buffer, edit.text);
+                update_index_for_insert(buffer, edit.text);
             }
         };
 
@@ -549,28 +547,28 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
         if edit.type == {
             case .INSERT; {
                 gap_buffer_insert(*buffer.gb, edit.text);
-                update_after_insert(buffer, edit.text);
+                update_index_for_insert(buffer, edit.text);
             }
 
             case .DELETE_SELECTION; {
                 deleted_bytes := gap_buffer_delete_forward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
 
-                update_after_delete_selection(buffer, cast(string, deleted_bytes));
+                update_index_for_delete_selection(buffer, cast(string, deleted_bytes));
             }
 
             case .DELETE_FORWARD; {
                 deleted_bytes := gap_buffer_delete_forward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
 
-                update_after_delete_forward(buffer, cast(string, deleted_bytes));
+                update_index_for_delete_forward(buffer, cast(string, deleted_bytes));
             }
 
             case .DELETE_BACKWARD; {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
 
-                update_after_delete_backward(buffer, cast(string, deleted_bytes));
+                update_index_for_delete_backward(buffer, cast(string, deleted_bytes));
             }
         };
 
@@ -1281,13 +1279,10 @@ discard_unapplied_edits :: (buffer: *Text_Buffer) {
     }
 }
 
-// XXX: The update_after_x routines should probably be called update_index_for_x, because might not
-// necessarily run them *after* the data has been copied.
-
 // TODO(jt): @Speed This is super slow on large data to the point that it takes the most of the
 // time. We could parse lines with SIMD?
-update_after_insert :: (buffer: *Text_Buffer, text: string) {
-    ProfileZone("update_after_insert");
+update_index_for_insert :: (buffer: *Text_Buffer, text: string) {
+    ProfileZone("update_index_for_insert");
 
     // Insert never happens for spread cursors.
     assert(buffer.cursor0 == buffer.cursor1);
@@ -1408,8 +1403,8 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
 
 // TODO(jt): @Cleanup delete_selection is almost like delete_forward, but it accepts and sorts
 // spread cursors. Maybe we should unify?
-update_after_delete_selection :: (buffer: *Text_Buffer, _text: string) {
-    ProfileZone("update_after_delete_forward");
+update_index_for_delete_selection :: (buffer: *Text_Buffer, _text: string) {
+    ProfileZone("update_index_for_delete_selection");
 
     // The selection delete sorts cursors, and so must we.
     sort_cursors(*buffer.cursor0, *buffer.cursor1);
@@ -1446,8 +1441,8 @@ update_after_delete_selection :: (buffer: *Text_Buffer, _text: string) {
     // The calling code must manage cursor1
 }
 
-update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
-    ProfileZone("update_after_delete_forward");
+update_index_for_delete_forward :: (buffer: *Text_Buffer, _text: string) {
+    ProfileZone("update_index_for_delete_forward");
 
     // Delete forward never happens for spread cursors.
     assert(buffer.cursor0 == buffer.cursor1);
@@ -1484,8 +1479,8 @@ update_after_delete_forward :: (buffer: *Text_Buffer, _text: string) {
     // The calling code must manage cursor1
 }
 
-update_after_delete_backward :: (buffer: *Text_Buffer, _text: string) {
-    ProfileZone("update_after_delete_backward");
+update_index_for_delete_backward :: (buffer: *Text_Buffer, _text: string) {
+    ProfileZone("update_index_for_delete_backward");
 
     text := _text;
 
