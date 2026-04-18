@@ -1203,10 +1203,12 @@ assert_valid :: (buffer: Text_Buffer) {
     assert_cursor_valid(buffer, buffer.cursor0);
     assert_cursor_valid(buffer, buffer.cursor1);
 
-    // This is too expensive to do in shipping builds. We completely recreate lines from text.
+    // This is too expensive to do in shipping builds. We completely recreate the line index from
+    // the buffer contents and compare.
     #if SANITY {
-        // XXX: Does this check make sense in binary mode at all?
-        if !buffer.binary_mode {
+        if buffer.binary_mode {
+            // TODO(jt): Do binary mode equivalent of the full index recomputation below.
+        } else {
             line_bytes: [..] s64;
             line_chars: [..] s64;
             line_bytes.allocator = temp;
@@ -1306,6 +1308,9 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
     while text.count {
         newline_advance := string_starts_with_newline(text);
         if newline_advance {
+            // TODO(jt): @Cleanup @Speed The only place where byte/char_count_after_cursor is
+            // nonzero is on the first line. After that, this is always zero. Maybe we should move
+            // the handling of that to a preamble?
             char_count_after_cursor := buffer.line_chars[buffer.cursor0.y] - buffer.cursor0.x;
             byte_count_after_cursor := buffer.line_bytes[buffer.cursor0.y] - bytes_on_line_before_cursor;
 
@@ -1329,7 +1334,8 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
         if buffer.binary_mode {
             // TODO(jt): @Speed Once we detect we are doing binary, we should jump to a fast path
             // for that, as there is much less branchy stuff to do there... basically we just care
-            // about ascii, newlines, and other unreadable bytes.
+            // about newlines, which we should detect with SIMD. (The only reason we are doing the
+            // slow stuff for utf8 is to count characters while we are doing the parsing).
 
             advance(*text, 1);
 
@@ -1356,7 +1362,14 @@ update_after_insert :: (buffer: *Text_Buffer, text: string) {
             //
             // TODO(jt): Also maybe get rid of assuming utf8 everywhere, if we can? That's not too robust.
             //
-            // XXX: HERE ^
+            // XXX: HERE Make Text_Buffer handle utf8 as well as binary-as-text. Once we detect
+            // non-utf8, we have to recompute the index from scratch in binary mode, otherwise we
+            // would be inconsistent (the same text above and below the switch-to-binary point
+            // would look differently).
+            //
+            // text_buffer_insert should receive a strategy parameter on what to do when it finds
+            // binary: automatically-switch, assert, ask-for-confirmation?
+            //
 
             // Must be first, because the rest doesn't check for OOB.
             if codepoint_advance > text.count {
