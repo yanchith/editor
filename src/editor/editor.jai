@@ -1176,7 +1176,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
                             s.data = buf.data;
                             Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
 
-                            if !string_starts_with_newline(s) {
+                            if !string_starts_with_newline(s, binary_handling = false) {
                                 text_buffer_insert(*mini_panel.buffer, s);
                                 buffer_changed = true;
                             }

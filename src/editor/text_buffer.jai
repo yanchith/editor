@@ -1,3 +1,6 @@
+// TODO(jt): We use Unicode.trailingBytesForUTF8 throughout this file. Let's replace this with our
+// own table that we don't have to clamp afteerwards.
+
 Text_Buffer :: struct {
     // TODO(jt): @Cleanup Key_Map, inspired by Bucket_Array gives you a way to easily set the
     // allocator in one place, so you can declare on stack and set the allocator, like you are used
@@ -26,6 +29,7 @@ Text_Buffer :: struct {
     //    byte_count: s64;
     // }
     //
+    // TODO(jt): @Speed keep line_chars empty in binary mode, because they are the same as bytes.
     line_bytes: [..] s64; // Always at least one.
     line_chars: [..] s64; // Always at least one.
     line_count: s64;
@@ -138,9 +142,12 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
 }
 
 text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false) {
-    inline text_buffer_insert(buffer, cast(string, bytes), undo_barrier);
+    /*inline*/ text_buffer_insert(buffer, cast(string, bytes), undo_barrier);
 }
 
+// TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
+// switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so it would
+// suply .REVERT, etc.
 text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false) {
     ProfileZone("text_buffer_insert");
 
@@ -244,7 +251,7 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, __start: Cursor, __
 
     buffer.applied_edit_count = buffer.edits.count;
 
-    update_index_for_delete_selection(buffer, deleted);
+    update_index_for_delete_forward(buffer, deleted, deleting_selection = true);
 
     assert_valid(buffer);
 
@@ -270,7 +277,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 
     bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
 
-    newline_advance := string_starts_with_newline(bytes);
+    newline_advance := string_starts_with_newline(bytes, binary_handling = buffer.binary_mode);
     if newline_advance {
         assert(buffer.cursor0.y < buffer.line_chars.count - 1);              // The last line can't have a newline.
         assert(buffer.cursor0.x == buffer.line_chars[buffer.cursor0.y] - 1); // The newline has to be the last char.
@@ -305,7 +312,15 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
-        _, codepoint_advance := find_next_utf8_char_boundary(bytes, 0);
+        codepoint_advance: s64 = 1;
+        if !buffer.binary_mode {
+            codepoint_advance = clamp(1 + Unicode.trailingBytesForUTF8[bytes[0]], 1, 4);
+            #if SANITY {
+                _, codepoint_advance_check := find_next_utf8_char_boundary(bytes, 0);
+                assert(codepoint_advance == codepoint_advance_check);
+            }
+        }
+
         if codepoint_advance {
             buffer.line_chars[buffer.cursor0.y] -= 1;
             buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
@@ -357,7 +372,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 
     bytes := gap_buffer_get_bytes_before_gap(buffer.gb);
 
-    newline_advance := string_ends_with_newline(bytes);
+    newline_advance := string_ends_with_newline(bytes, binary_handling = buffer.binary_mode);
     if newline_advance {
         assert(buffer.cursor0.x == 0);
         assert(buffer.cursor0.y > 0);
@@ -398,7 +413,15 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
-        _, codepoint_advance := find_previous_utf8_char_boundary(bytes, bytes.count);
+        codepoint_advance: s64 = 1;
+        if !buffer.binary_mode {
+            _, codepoint_advance = find_previous_utf8_char_boundary(bytes, bytes.count);
+            #if SANITY {
+                codepoint_advance_check := clamp(1 + Unicode.trailingBytesForUTF8[bytes[bytes.count - codepoint_advance]], 1, 4);
+                assert(codepoint_advance == codepoint_advance_check);
+            }
+        }
+
         if codepoint_advance {
             buffer.line_chars[buffer.cursor0.y] -= 1;
             buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
@@ -554,7 +577,7 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
                 deleted_bytes := gap_buffer_delete_forward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
 
-                update_index_for_delete_selection(buffer, cast(string, deleted_bytes));
+                update_index_for_delete_forward(buffer, cast(string, deleted_bytes), deleting_selection = true);
             }
 
             case .DELETE_FORWARD; {
@@ -643,7 +666,7 @@ text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include
     view        := gap_buffer_make_view(buffer.gb, start_index, line_bytes, force_allocate = force_allocate);
 
     if !include_newline {
-        newline_advance := string_ends_with_newline(view);
+        newline_advance := string_ends_with_newline(view, binary_handling = buffer.binary_mode);
         view.count -= newline_advance;
     }
 
@@ -847,7 +870,8 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
 
     y_changed := false;
 
-    search_line_backward :: (line_view: string) -> found: bool, inside_word: bool, dx: s64 {
+    // XXX: @Bug This does not work on ascii inside binary data
+    _search_line_backward :: (line_view: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
         // The line is empty, so we couldn't have started inside a word.
         if line_view.count == 0 {
             return false, false, 0;
@@ -858,7 +882,9 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
 
         found := false;
         dx := 0;
-        for < :Unicode.utf8_iter line_view {
+
+        ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
+        for < :ITERATOR line_view {
             is_nonword := char_is_nonword(it);
 
             if !inside_word_initial_set {
@@ -881,10 +907,20 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
         return found, inside_word, dx;
     }
 
+    search_line_backward :: (line_view: string, binary: bool) -> found: bool, inside_word: bool, dx: s64 {
+        if binary {
+            found, inside_word, dx :=  _search_line_backward(line_view, true);
+            return found, inside_word, dx;
+        } else {
+            found, inside_word, dx :=  _search_line_backward(line_view, false);
+            return found, inside_word, dx;
+        }
+    }
+
     line_start         := text_buffer_get_start_cursor_for_line(buffer, buffer.cursor0.y);
     view_before_cursor := text_buffer_make_view_between_cursors(buffer, line_start, buffer.cursor0,, temp);
 
-    found, inside_word, dx := search_line_backward(view_before_cursor);
+    found, inside_word, dx := search_line_backward(view_before_cursor, buffer.binary_mode);
     if found || inside_word {
         buffer.cursor0.x -= dx;
     } else {
@@ -902,7 +938,7 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
             line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
             line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
 
-            found, inside_word, dx = search_line_backward(line_view);
+            found, inside_word, dx = search_line_backward(line_view, buffer.binary_mode);
             if found || inside_word {
                 buffer.cursor0.x -= dx;
                 break;
@@ -926,7 +962,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
 
     y_changed := false;
 
-    search_line_forward :: (line_view: string) -> found: bool, inside_word: bool, dx: s64 {
+    _search_line_forward :: (line_view: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
         // The line is empty, so we couldn't have started inside a word.
         if line_view.count == 0 {
             return false, false, 0;
@@ -937,6 +973,8 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
 
         found := false;
         dx := 0;
+
+        ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
         for :Unicode.utf8_iter line_view {
             is_nonword := char_is_nonword(it);
 
@@ -960,10 +998,20 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
         return found, inside_word, dx;
     }
 
+    search_line_forward :: (line_view: string, binary: bool) -> found: bool, inside_word: bool, dx: s64 {
+        if binary {
+            found, inside_word, dx :=  _search_line_forward(line_view, true);
+            return found, inside_word, dx;
+        } else {
+            found, inside_word, dx :=  _search_line_forward(line_view, false);
+            return found, inside_word, dx;
+        }
+    }
+
     line_end          := text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
     view_after_cursor := text_buffer_make_view_between_cursors(buffer, buffer.cursor0, line_end,, temp);
 
-    found, inside_word, dx := search_line_forward(view_after_cursor);
+    found, inside_word, dx := search_line_forward(view_after_cursor, buffer.binary_mode);
     if found || inside_word {
         buffer.cursor0.x += dx;
     } else {
@@ -981,7 +1029,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
             line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
             line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
 
-            found, inside_word, dx = search_line_forward(line_view);
+            found, inside_word, dx = search_line_forward(line_view, buffer.binary_mode);
             if found || inside_word {
                 buffer.cursor0.x += dx;
                 break;
@@ -1110,6 +1158,49 @@ text_buffer_get_max_cursor :: (buffer: Text_Buffer) -> Cursor {
     }
 }
 
+text_buffer_switch_to_binary_mode :: (buffer: *Text_Buffer) {
+    buffer.binary_mode = true;
+
+    array_reset_keeping_memory(*buffer.line_bytes);
+    array_reset_keeping_memory(*buffer.line_chars);
+    buffer.line_count = 0;
+
+    add_line(buffer);
+
+    // TODO(jt): Because we currently can't preserve cursors when switching to binary mode, we
+    // should probably ask for confirmation or something before we let people insert binary into
+    // text documents. Hmmm.
+
+    // TODO(jt): The edit cursors may become invalid after we switch to binary_mode. We currently
+    // destroy the undo history, but perhaps, we could recompute the edit cursor positions. :BinaryMode
+    array_reset_keeping_memory(*buffer.edits);
+    if (buffer.edit_text_arena != buffer.arena) {
+        arena_pop_to_mark(buffer.edit_text_arena, buffer.edit_text_arena_mark);
+    }
+
+    buffer.applied_edit_count = 0;
+
+    for buffer.gb {
+        lb := peek_pointer(buffer.line_bytes);
+        lc := peek_pointer(buffer.line_chars);
+
+        lb.* += 1;
+        lc.* += 1;
+
+        if it == #char "\n" {
+            add_line(buffer);
+        }
+    }
+
+    // XXX: I think we can preserve cursors by converting them to gap buffer indices and back?
+    //
+    // TODO(jt): When pasting binary data from clipboard, we want to preserve the cursor. :BinaryMode
+    buffer.cursor0 = { 0, 0 };
+    buffer.cursor1 = { 0, 0 };
+
+    buffer.line_count = buffer.line_bytes.count;
+}
+
 // TODO(jt): @Speed For 1GB files of regular prose, this takes too long, especially if called tens
 // or hundreds of times per frame. Can we do something about it? Maintain a list of chunks that have
 // a stable mapping to lines that we could use to skip over most lines? The mapping would have to
@@ -1169,12 +1260,15 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
     for 0..cursor.x - 1 {
         first_byte := buffer.gb[index];
 
-        // :CarriageReturn
-        //
-        // Even if in ascii \r\n is two characters, we treat them as one character when moving
-        // cursors around, and we can't really have a byte index that goes in between these two, if
-        // they are next to each other.
-        continuation_bytes := ifx first_byte == #char "\r" then 1 else Unicode.trailingBytesForUTF8[first_byte];
+        continuation_bytes: s64 = 0;
+        if !buffer.binary_mode {
+            // :CarriageReturn
+            //
+            // Even if in ascii \r\n is two characters, we treat them as one character when moving
+            // cursors around, and we can't really have a byte index that goes in between these two,
+            // if they are next to each other.
+            continuation_bytes = ifx first_byte == #char "\r" then 1 else Unicode.trailingBytesForUTF8[first_byte];
+        }
 
         index += 1 + continuation_bytes;
     }
@@ -1196,7 +1290,42 @@ assert_valid :: (buffer: Text_Buffer) {
     // the buffer contents and compare.
     #if SANITY {
         if buffer.binary_mode {
-            // TODO(jt): Do binary mode equivalent of the full index recomputation below.
+            line_bytes: [..] s64;
+            line_bytes.allocator = temp;
+
+            array_reserve(*line_bytes, buffer.line_bytes.count);
+            array_add(*line_bytes);
+
+            view := cast(string, gap_buffer_make_view(buffer.gb, 0, buffer.gb.count,, temp));
+            while view.count {
+                newline_advance := string_starts_with_newline(view, binary_handling = true);
+                if newline_advance {
+                    assert(newline_advance == 1);
+                    line_bytes[line_bytes.count - 1] += 1;
+
+                    array_add(*line_bytes);
+
+                    advance(*view, newline_advance);
+                } else {
+                    line_bytes[line_bytes.count - 1] += 1;
+
+                    advance(*view, 1);
+                }
+            }
+
+            assert(line_bytes.count == buffer.line_bytes.count);
+            assert(line_bytes.count == buffer.line_chars.count);
+            assert(line_bytes.count == buffer.line_count);
+
+            for 0..line_bytes.count - 1 {
+                want_bytes := line_bytes[it];
+                want_chars := want_bytes;
+                have_bytes := buffer.line_bytes[it];
+                have_chars := buffer.line_chars[it];
+
+                assert(want_bytes == have_bytes, "Different byte count on line %: % (computed) != % (stored)", it, want_bytes, have_bytes);
+                assert(want_chars == have_chars, "Different char count on line %: % (computed) != % (stored)", it, want_chars, have_chars);
+            }
         } else {
             line_bytes: [..] s64;
             line_chars: [..] s64;
@@ -1210,7 +1339,7 @@ assert_valid :: (buffer: Text_Buffer) {
 
             view := cast(string, gap_buffer_make_view(buffer.gb, 0, buffer.gb.count,, temp));
             while view.count {
-                newline_advance := string_starts_with_newline(view);
+                newline_advance := string_starts_with_newline(view, binary_handling = false);
                 if newline_advance {
                     line_chars[line_chars.count - 1] += 1;
                     line_bytes[line_bytes.count - 1] += newline_advance;
@@ -1222,7 +1351,7 @@ assert_valid :: (buffer: Text_Buffer) {
                 } else {
                     codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[view[0]], 1, 4);
 
-                    _, codepoint_advance_check := find_next_utf8_char_boundary(cast([] u8, view), 0);
+                    _, codepoint_advance_check := find_next_utf8_char_boundary(view, 0);
                     assert(codepoint_advance == codepoint_advance_check);
 
                     line_chars[line_chars.count - 1] += 1;
@@ -1235,14 +1364,15 @@ assert_valid :: (buffer: Text_Buffer) {
             assert(line_bytes.count == line_chars.count);
             assert(line_bytes.count == buffer.line_bytes.count);
             assert(line_chars.count == buffer.line_chars.count);
+            assert(line_bytes.count == buffer.line_count);
             for 0..line_bytes.count - 1 {
                 want_chars := line_chars[it];
                 have_chars := buffer.line_chars[it];
                 want_bytes := line_bytes[it];
                 have_bytes := buffer.line_bytes[it];
 
-                assert(want_chars == have_chars, "Different char count on line %: % (computed) != % (stored)", it, want_chars, have_chars);
                 assert(want_bytes == have_bytes, "Different byte count on line %: % (computed) != % (stored)", it, want_bytes, have_bytes);
+                assert(want_chars == have_chars, "Different char count on line %: % (computed) != % (stored)", it, want_chars, have_chars);
             }
         }
     }
@@ -1277,11 +1407,13 @@ discard_unapplied_edits :: (buffer: *Text_Buffer) {
 
 // TODO(jt): @Speed This is super slow on large data to the point that it takes the most of the
 // time. We could parse lines with SIMD?
-update_index_for_insert :: (buffer: *Text_Buffer, text: string) {
+update_index_for_insert :: (buffer: *Text_Buffer, _text: string) {
     ProfileZone("update_index_for_insert");
 
     // Insert never happens for spread cursors.
     assert(buffer.cursor0 == buffer.cursor1);
+
+    text := _text;
 
     // While we could compute bytes_on_line_before_cursor by asking our procedure to do that for
     // every line, that procedure has to iterate the lines array, and it would result in quadractic
@@ -1294,68 +1426,69 @@ update_index_for_insert :: (buffer: *Text_Buffer, text: string) {
         bytes_on_line_before_cursor = text_buffer_byte_count_between_cursors(buffer, line_start, buffer.cursor0);
     }
 
-    while text.count {
-        newline_advance := string_starts_with_newline(text);
-        if newline_advance {
-            // TODO(jt): @Cleanup @Speed The only place where byte/char_count_after_cursor is
-            // nonzero is on the first line. After that, this is always zero. Maybe we should move
-            // the handling of that to a preamble?
-            char_count_after_cursor := buffer.line_chars[buffer.cursor0.y] - buffer.cursor0.x;
-            byte_count_after_cursor := buffer.line_bytes[buffer.cursor0.y] - bytes_on_line_before_cursor;
+    if buffer.binary_mode {
+        log("bytes before cursor: %", bytes_on_line_before_cursor); // nocheckin
 
-            advance(*text, newline_advance);
+        for text {
+            if it == "\n" {
+                count_after_cursor := buffer.line_bytes[buffer.cursor0.y] - bytes_on_line_before_cursor;
 
-            buffer.line_chars[buffer.cursor0.y] += 1 - char_count_after_cursor;
-            buffer.line_bytes[buffer.cursor0.y] += newline_advance - byte_count_after_cursor;
+                buffer.line_bytes[buffer.cursor0.y] += 1 - count_after_cursor;
+                buffer.line_chars[buffer.cursor0.y] += 1 - count_after_cursor;
 
-            insert_line(buffer, buffer.cursor0.y + 1, byte_count_after_cursor, char_count_after_cursor);
+                insert_line(buffer, buffer.cursor0.y + 1, count_after_cursor, count_after_cursor);
 
-            buffer.cursor0.y += 1;
-            buffer.cursor0.x = 0;
+                buffer.cursor0.x = 0;
+                buffer.cursor1.y += 1;
 
-            bytes_on_line_before_cursor = 0;
+                bytes_on_line_before_cursor = 0;
 
-            continue;
-        }
+                continue;
+            }
 
-        if buffer.binary_mode {
-            // TODO(jt): @Speed Once we detect we are doing binary, we should jump to a fast path
-            // for that, as there is much less branchy stuff to do there... basically we just care
-            // about newlines, which we should detect with SIMD. (The only reason we are doing the
-            // slow stuff for utf8 is to count characters while we are doing the parsing).
-
-            advance(*text, 1);
-
-            buffer.line_chars[buffer.cursor0.y] += 1;
             buffer.line_bytes[buffer.cursor0.y] += 1;
+            buffer.line_chars[buffer.cursor0.y] += 1;
+
             buffer.cursor0.x += 1;
 
             bytes_on_line_before_cursor += 1;
-        } else {
+        }
+    } else {
+        while text.count {
+            newline_advance := string_starts_with_newline(text, binary_handling = false);
+            if newline_advance {
+                byte_count_after_cursor := buffer.line_bytes[buffer.cursor0.y] - bytes_on_line_before_cursor;
+                char_count_after_cursor := buffer.line_chars[buffer.cursor0.y] - buffer.cursor0.x;
 
-            // TODO(jt): @Cleanup The Unicode module actually doesn't clamp this by itself and it can be as much
-            // as 6 (this was valid in older specs?). Get the real table from the RFC (or Rust's std).
+                advance(*text, newline_advance);
+
+                buffer.line_bytes[buffer.cursor0.y] += newline_advance - byte_count_after_cursor;
+                buffer.line_chars[buffer.cursor0.y] += 1 - char_count_after_cursor;
+
+                insert_line(buffer, buffer.cursor0.y + 1, byte_count_after_cursor, char_count_after_cursor);
+
+                buffer.cursor0.y += 1;
+                buffer.cursor0.x = 0;
+
+                bytes_on_line_before_cursor = 0;
+
+                continue;
+            }
+
             codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
 
-            // For binary mode detect, we 'continue' without advancing the text in a few places in
-            // the block below, so the next time through the loop the binary mode will see the same
-            // byte.
-            //
-            // XXX: HERE Make Text_Buffer handle utf8 as well as binary-as-text. Once we detect
-            // non-utf8, we have to recompute the index from scratch in binary mode, otherwise we
-            // would be inconsistent (the same text above and below the switch-to-binary point
-            // would look differently).
-            //
-            // text_buffer_insert should receive a strategy parameter on what to do when it finds
-            // binary bytes: automatically-switch, assert (, and maybe revert-and-report).
-            //
-
-            // XXX: Do Proper RFC-compliant utf8 validation. We also need to make it fast.
             {
+                // TODO(jt): Do Proper RFC-compliant utf8 validation. We also need to make it fast.
+                //
+                // if !validate_utf8_codepoint(s) {
+                //     text_buffer_switch_to_binary_mode(buffer);
+                //     return;
+                // }
+
                 // Must be first, because the rest doesn't check for OOB.
                 if codepoint_advance > text.count {
-                    buffer.binary_mode = true;
-                    continue;
+                    text_buffer_switch_to_binary_mode(buffer);
+                    return;
                 }
 
                 {
@@ -1365,20 +1498,20 @@ update_index_for_insert :: (buffer: *Text_Buffer, text: string) {
                     }
 
                     if zero_found {
-                        buffer.binary_mode = true;
-                        continue;
+                        text_buffer_switch_to_binary_mode(buffer);
+                        return;
                     }
                 }
 
                 if !byte_is_utf8_char_boundary(text[0]) {
-                    buffer.binary_mode = true;
-                    continue;
+                    text_buffer_switch_to_binary_mode(buffer);
+                    return;
                 }
 
-                _, codepoint_advance_check := find_next_utf8_char_boundary(cast([] u8, text), 0);
+                _, codepoint_advance_check := find_next_utf8_char_boundary(text, 0);
                 if codepoint_advance != codepoint_advance_check {
-                    buffer.binary_mode = true;
-                    continue;
+                    text_buffer_switch_to_binary_mode(buffer);
+                    return;
                 }
             }
 
@@ -1386,8 +1519,8 @@ update_index_for_insert :: (buffer: *Text_Buffer, text: string) {
 
             advance(*text, codepoint_advance);
 
-            buffer.line_chars[buffer.cursor0.y] += 1;
             buffer.line_bytes[buffer.cursor0.y] += codepoint_advance;
+            buffer.line_chars[buffer.cursor0.y] += 1;
             buffer.cursor0.x += 1;
 
             bytes_on_line_before_cursor += codepoint_advance;
@@ -1397,17 +1530,18 @@ update_index_for_insert :: (buffer: *Text_Buffer, text: string) {
     // The calling code must manage cursor1
 }
 
-// TODO(jt): @Cleanup delete_selection is almost like delete_forward, but it accepts and sorts
-// spread cursors. Maybe we should unify?
-update_index_for_delete_selection :: (buffer: *Text_Buffer, _text: string) {
-    ProfileZone("update_index_for_delete_selection");
+update_index_for_delete_forward :: (buffer: *Text_Buffer, _text: string, deleting_selection := false) {
+    ProfileZone("update_index_for_delete_forward");
 
-    // The selection delete sorts cursors, and so must we.
-    sort_cursors(*buffer.cursor0, *buffer.cursor1);
+    if deleting_selection {
+        // The selection delete sorts cursors, and so must we.
+        sort_cursors(*buffer.cursor0, *buffer.cursor1);
+    }
 
     text := _text;
+
     while text.count {
-        newline_advance := string_starts_with_newline(text);
+        newline_advance := string_starts_with_newline(text, binary_handling = buffer.binary_mode);
         if newline_advance {
             assert(buffer.cursor0.y < buffer.line_bytes.count - 1);              // The last line can't have a newline.
             assert(buffer.cursor0.x == buffer.line_chars[buffer.cursor0.y] - 1); // The newline has to be the last char.
@@ -1423,52 +1557,20 @@ update_index_for_delete_selection :: (buffer: *Text_Buffer, _text: string) {
             advance(*text, newline_advance);
             assert(text.count >= 0);
         } else {
-            _, codepoint_advance := find_next_utf8_char_boundary(text, 0);
-            if codepoint_advance {
-                buffer.line_chars[buffer.cursor0.y] -= 1;
-                buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
-
-                advance(*text, codepoint_advance);
-                assert(text.count >= 0);
+            codepoint_advance: s64 = 1;
+            if !buffer.binary_mode {
+                codepoint_advance = clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
+                #if SANITY {
+                    _, codepoint_advance_check := find_next_utf8_char_boundary(text, 0);
+                    assert(codepoint_advance == codepoint_advance_check);
+                }
             }
-        }
-    }
-
-    // The calling code must manage cursor1
-}
-
-update_index_for_delete_forward :: (buffer: *Text_Buffer, _text: string) {
-    ProfileZone("update_index_for_delete_forward");
-
-    // Delete forward never happens for spread cursors.
-    assert(buffer.cursor0 == buffer.cursor1);
-
-    text := _text;
-    while text.count {
-        newline_advance := string_starts_with_newline(text);
-        if newline_advance {
-            assert(buffer.cursor0.y < buffer.line_chars.count - 1);              // The last line can't have a newline.
-            assert(buffer.cursor0.x == buffer.line_chars[buffer.cursor0.y] - 1); // The newline has to be the last char.
 
             buffer.line_chars[buffer.cursor0.y] -= 1;
-            buffer.line_bytes[buffer.cursor0.y] -= newline_advance;
+            buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
 
-            buffer.line_chars[buffer.cursor0.y] += buffer.line_chars[buffer.cursor0.y + 1];
-            buffer.line_bytes[buffer.cursor0.y] += buffer.line_bytes[buffer.cursor0.y + 1];
-
-            remove_line(buffer, buffer.cursor0.y + 1);
-
-            advance(*text, newline_advance);
+            advance(*text, codepoint_advance);
             assert(text.count >= 0);
-        } else {
-            _, codepoint_advance := find_next_utf8_char_boundary(text, 0);
-            if codepoint_advance {
-                buffer.line_chars[buffer.cursor0.y] -= 1;
-                buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
-
-                advance(*text, codepoint_advance);
-                assert(text.count >= 0);
-            }
         }
     }
 
@@ -1484,7 +1586,7 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, _text: string) {
     assert(buffer.cursor0 == buffer.cursor1);
 
     while text.count {
-        newline_advance := string_ends_with_newline(text);
+        newline_advance := string_ends_with_newline(text, binary_handling = buffer.binary_mode);
         if newline_advance {
             assert(buffer.cursor0.x == 0);
             assert(buffer.cursor0.y > 0);
@@ -1505,7 +1607,15 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, _text: string) {
             text.count -= newline_advance;
             assert(text.count >= 0);
         } else {
-            _, codepoint_advance := find_previous_utf8_char_boundary(text, text.count);
+            codepoint_advance: s64 = 1;
+            if !buffer.binary_mode {
+                _, codepoint_advance = find_previous_utf8_char_boundary(text, text.count);
+                #if SANITY {
+                    codepoint_advance_check := clamp(1 + Unicode.trailingBytesForUTF8[text[text.count - codepoint_advance]], 1, 4);
+                    assert(codepoint_advance == codepoint_advance_check);
+                }
+            }
+
             if codepoint_advance {
                 buffer.line_chars[buffer.cursor0.y] -= 1;
                 buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
@@ -1589,5 +1699,18 @@ char_is_nonword :: inline (c: u32) -> bool {
         case #char "\"";  #through;
         case #char "'";   return true;
         case;             return false;
+    }
+}
+
+// TODO(jt): @Cleanup I can't see a way to reference the builtin string iteration, so this wrapper exists.
+bytes_iter :: (s: *string, body: Code, flags: For_Flags) #expand {
+    `it: u8;
+    `it_index: s64;
+
+    for s_it, s_it_index: s.* {
+        it = s_it;
+        it_index = s_it_index;
+
+        #insert body;
     }
 }
