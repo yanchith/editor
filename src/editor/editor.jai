@@ -275,6 +275,7 @@ Mini_Panel :: struct {
 
     Item :: struct {
         text: string;
+        flags: Flags;
         highlight_x0: s64;
         highlight_x1: s64;
 
@@ -285,6 +286,12 @@ Mini_Panel :: struct {
         //
         // :MiniPanelAPI
         userdata: *void;
+
+        Flags :: enum_flags u64 {
+            NONE :: 0;
+
+            BINARY :: 0x01;
+        }
     }
 }
 
@@ -1031,8 +1038,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
                 // that can resume where it left of last time. In can see multiple places in this
                 // file where that would be useful. It will become more important for long lines.
-                x0 := font_compute_position_on_line(editor.font, item.text, item.highlight_x0);
-                x1 := font_compute_position_on_line(editor.font, item.text, item.highlight_x1);
+                //
+                // XXX: @Bug There's an off-by-one error here, if we search editor.pdb for 'source_identifier'
+                x0 := font_compute_position_on_line(editor.font, item.text, item.highlight_x0, binary = cast(bool, item.flags & .BINARY));
+                x1 := font_compute_position_on_line(editor.font, item.text, item.highlight_x1, binary = cast(bool, item.flags & .BINARY));
+
                 draw_rect(*render_rects, cast(f32, x0), y0, cast(f32, x1), y1, SELECTION_COLOR);
             }
 
@@ -1420,6 +1430,10 @@ close_mini_panel :: (mini_panel: *Mini_Panel) -> was_open: bool {
 // stuff, but are later expected to be the entry points for mini panel plugins. This is why some of
 // them get more parameters than they actually need.
 
+Search_Userdata :: struct {
+    cursor: Cursor;
+}
+
 Open_File_Userdata :: struct {
     full_file_path: string;
 }
@@ -1487,19 +1501,34 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                         }
                         if found {
                             s := "";
+                            line_number_prefix_length := 0;
+
                             if line_text.count {
-                                s = sprint("%%", temp_right_pad(tprint("[%]", it + 1), 10), line_text,, arena_allocator(mini_panel.items_arena));
+                                line_number_prefix := temp_right_pad(tprint("[%]", it + 1), 10);
+
+                                s = sprint("%%", line_number_prefix, line_text,, arena_allocator(mini_panel.items_arena));
+                                line_number_prefix_length = line_number_prefix.count;
                             }
 
-                            // XXX: @Bug, if we try to .SEARCH a binary, this will assert.
-                            x0 := count_utf8_chars(String.slice(line_text, 0, found_index));
+                            x0 := found_index;
+                            if !document.buffer.binary_mode {
+                                x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
+                            }
 
                             item_index := mini_panel.items.count;
                             item := array_add(*mini_panel.items);
                             item.text = s;
-                            item.highlight_x0 = x0;
-                            item.highlight_x1 = x0 + search_text_char_count;
-                            item.userdata = cast(*void, it);
+                            if document.buffer.binary_mode {
+                                item.flags |= .BINARY;
+                            }
+                            item.highlight_x0 = line_number_prefix_length + x0;
+                            item.highlight_x1 = line_number_prefix_length + x0 + search_text_char_count;
+                            // XXX: Should search_text_char_count be binary?
+
+                            userdata := New(Search_Userdata,, arena_allocator(mini_panel.items_arena));
+                            userdata.cursor = { x0, it };
+
+                            item.userdata = userdata;
 
                             if new_item_index == -1 && it >= old_cursor_y {
                                 new_item_index = item_index;
@@ -1618,8 +1647,9 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
             if mini_panel.item_index >= 0 {
                 item := *mini_panel.items[mini_panel.item_index];
 
-                x := item.highlight_x0;
-                y := cast(s64, item.userdata);
+                userdata: *Search_Userdata = item.userdata;
+                x := userdata.cursor.x;
+                y := userdata.cursor.y;
 
                 document := active_panel.document;
 
@@ -1712,8 +1742,9 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) {
                 assert(mini_panel.item_index >= 0);
                 item := *mini_panel.items[mini_panel.item_index];
 
-                x := item.highlight_x0;
-                y := cast(s64, item.userdata);
+                userdata := cast(*Search_Userdata, item.userdata);
+                x := userdata.cursor.x;
+                y := userdata.cursor.y;
 
                 sanity_assert(cast(bool, active_panel));
                 if active_panel && active_panel.document {
