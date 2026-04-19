@@ -221,16 +221,20 @@ gap_buffer_make_view :: (gb: Gap_Buffer, index: s64, count: s64, force_allocate 
 }
 
 for_expansion :: (gb: *Gap_Buffer, body: Code, flags: For_Flags) #expand {
-    `it_index: s64;
-
     REVERSE :: cast(bool, flags & .REVERSE);
     POINTER :: cast(bool, flags & .POINTER);
     #assert !REVERSE "Gap_Buffer does not support reverse iteration (yet)";
     #assert !POINTER "Gap_Buffer does not support pointer iteration (yet)";
 
+    // TODO(jt): @Speed Byte iteration is slow, iterate by u64 or SIMD or something.
     for i: 0..gb.count - 1 {
         `it_index := i;
-        `it       := inline gap_buffer_get_nongap_byte(gb, i);
+        `it: u8;
+        if it_index <= gb.gap_index {
+            it = gb.bytes[i];
+        } else {
+            it = gb.bytes[i + gb.gap_count];
+        }
 
         #insert (remove=#assert(false, "Gap_Buffer iteration does not support 'remove'")) body;
     }
