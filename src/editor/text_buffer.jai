@@ -305,7 +305,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
-        _, codepoint_advance := find_next_utf8_character_boundary(bytes, 0);
+        _, codepoint_advance := find_next_utf8_char_boundary(bytes, 0);
         if codepoint_advance {
             buffer.line_chars[buffer.cursor0.y] -= 1;
             buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
@@ -398,7 +398,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
-        _, codepoint_advance := find_previous_utf8_character_boundary(bytes, bytes.count);
+        _, codepoint_advance := find_previous_utf8_char_boundary(bytes, bytes.count);
         if codepoint_advance {
             buffer.line_chars[buffer.cursor0.y] -= 1;
             buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
@@ -859,7 +859,7 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
         found := false;
         dx := 0;
         for < :Unicode.utf8_iter line_view {
-            is_nonword := character_is_nonword_character(it);
+            is_nonword := char_is_nonword(it);
 
             if !inside_word_initial_set {
                 inside_word             = !is_nonword;
@@ -938,7 +938,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
         found := false;
         dx := 0;
         for :Unicode.utf8_iter line_view {
-            is_nonword := character_is_nonword_character(it);
+            is_nonword := char_is_nonword(it);
 
             if !inside_word_initial_set {
                 inside_word             = !is_nonword;
@@ -1222,7 +1222,7 @@ assert_valid :: (buffer: Text_Buffer) {
                 } else {
                     codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[view[0]], 1, 4);
 
-                    _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, view), 0);
+                    _, codepoint_advance_check := find_next_utf8_char_boundary(cast([] u8, view), 0);
                     assert(codepoint_advance == codepoint_advance_check);
 
                     line_chars[line_chars.count - 1] += 1;
@@ -1370,12 +1370,12 @@ update_index_for_insert :: (buffer: *Text_Buffer, text: string) {
                     }
                 }
 
-                if !byte_is_utf8_character_boundary(text[0]) {
+                if !byte_is_utf8_char_boundary(text[0]) {
                     buffer.binary_mode = true;
                     continue;
                 }
 
-                _, codepoint_advance_check := find_next_utf8_character_boundary(cast([] u8, text), 0);
+                _, codepoint_advance_check := find_next_utf8_char_boundary(cast([] u8, text), 0);
                 if codepoint_advance != codepoint_advance_check {
                     buffer.binary_mode = true;
                     continue;
@@ -1423,7 +1423,7 @@ update_index_for_delete_selection :: (buffer: *Text_Buffer, _text: string) {
             advance(*text, newline_advance);
             assert(text.count >= 0);
         } else {
-            _, codepoint_advance := find_next_utf8_character_boundary(text, 0);
+            _, codepoint_advance := find_next_utf8_char_boundary(text, 0);
             if codepoint_advance {
                 buffer.line_chars[buffer.cursor0.y] -= 1;
                 buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
@@ -1461,7 +1461,7 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, _text: string) {
             advance(*text, newline_advance);
             assert(text.count >= 0);
         } else {
-            _, codepoint_advance := find_next_utf8_character_boundary(text, 0);
+            _, codepoint_advance := find_next_utf8_char_boundary(text, 0);
             if codepoint_advance {
                 buffer.line_chars[buffer.cursor0.y] -= 1;
                 buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
@@ -1505,7 +1505,7 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, _text: string) {
             text.count -= newline_advance;
             assert(text.count >= 0);
         } else {
-            _, codepoint_advance := find_previous_utf8_character_boundary(text, text.count);
+            _, codepoint_advance := find_previous_utf8_char_boundary(text, text.count);
             if codepoint_advance {
                 buffer.line_chars[buffer.cursor0.y] -= 1;
                 buffer.line_bytes[buffer.cursor0.y] -= codepoint_advance;
@@ -1568,7 +1568,7 @@ sort_cursors :: (start: *Cursor, end: *Cursor) {
 }
 
 // TODO(jt): Make this configurable?
-character_is_nonword_character :: inline (c: u32) -> bool {
+char_is_nonword :: inline (c: u32) -> bool {
     if c == {
         case #char " ";   #through;
         case #char "\t";  #through;

@@ -1492,7 +1492,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                             }
 
                             // XXX: @Bug, if we try to .SEARCH a binary, this will assert.
-                            x0 := count_utf8_characters(String.slice(line_text, 0, found_index));
+                            x0 := count_utf8_chars(String.slice(line_text, 0, found_index));
 
                             item_index := mini_panel.items.count;
                             item := array_add(*mini_panel.items);
@@ -1529,7 +1529,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                 path_prefix, _, _, file_name_with_extension := String.path_decomp(path_text);
                 path_prefix = String.trim_right(path_prefix, "/");
 
-                file_name_with_extension_char_count := count_utf8_characters(file_name_with_extension);
+                file_name_with_extension_char_count := count_utf8_chars(file_name_with_extension);
 
                 // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
                 file_list := platform.list_files(path_prefix,, temp);
@@ -1544,7 +1544,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                             s = arena_push_string(mini_panel.items_arena, visited_filename);
                         }
 
-                        x0 := count_utf8_characters(String.slice(visited_filename, 0, found_index));
+                        x0 := count_utf8_chars(String.slice(visited_filename, 0, found_index));
 
                         item := array_add(*mini_panel.items);
                         item.text = s;
@@ -1593,7 +1593,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                             s = arena_push_string(mini_panel.items_arena, document_name);
                         }
 
-                        x0 := count_utf8_characters(String.slice(document_name, 0, found_index));
+                        x0 := count_utf8_chars(String.slice(document_name, 0, found_index));
 
                         item := array_add(*mini_panel.items);
                         item.text = s;
