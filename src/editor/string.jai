@@ -28,21 +28,21 @@ string_ends_with_newline :: (s: string) -> newline_byte_length: u32 {
     return 0;
 }
 
-count_utf8_characters :: (bytes: [] u8) -> s64 {
-    return inline count_utf8_characters(cast(string, bytes));
+count_utf8_chars :: (bytes: [] u8) -> s64 {
+    return inline count_utf8_chars(cast(string, bytes));
 }
 
-count_utf8_characters :: (text: string) -> s64 {
+count_utf8_chars :: (text: string) -> s64 {
     if text.count == 0 {
         return 0;
     }
 
-    assert(byte_is_utf8_character_boundary(text[0]));
+    assert(byte_is_utf8_char_boundary(text[0]));
 
     // TODO(jt): @Speed SIMD this!
     count := 1;
     for 1..text.count - 1 {
-        if byte_is_utf8_character_boundary(text[it]) {
+        if byte_is_utf8_char_boundary(text[it]) {
             count += 1;
         }
     }
@@ -51,61 +51,60 @@ count_utf8_characters :: (text: string) -> s64 {
 }
 
 // TODO(jt): @Speed If we trust the input, we can do a much faster version of
-// find_next/previous_utf8_character_boundary.
+// find_next/previous_utf8_char_boundary.
 
-find_next_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
-    found_index, scanned_count := find_next_utf8_character_boundary(cast(string, bytes), index);
+find_next_utf8_char_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
+    found_index, scanned_count := inline find_next_utf8_char_boundary(cast(string, bytes), index);
     return found_index, scanned_count;
 }
 
-find_next_utf8_character_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: u32 {
+find_next_utf8_char_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: u32 {
     assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
     if index == text.count {
         return text.count, 0;
     }
 
-    assert(byte_is_utf8_character_boundary(text[index]));
+    assert(byte_is_utf8_char_boundary(text[index]));
 
     // When scanning forward, we could also trust the unicode and advance based on what we read? Not
     // sure if that's going to be faster, since it introduces a data dependency.
     next_index := index + 1;
-    while next_index < text.count && !byte_is_utf8_character_boundary(text[next_index]) {
+    while next_index < text.count && !byte_is_utf8_char_boundary(text[next_index]) {
         next_index += 1;
     }
 
     scanned_count := next_index - index;
-    assert(scanned_count <= 4);
+    assert(scanned_count <= 4); // If we need to run this on malformed utf8, we should not assert.
 
     return next_index, cast(u32, scanned_count);
 }
 
-find_previous_utf8_character_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
-    found_index, scanned_count := inline find_previous_utf8_character_boundary(cast(string, bytes), index);
+find_previous_utf8_char_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
+    found_index, scanned_count := inline find_previous_utf8_char_boundary(cast(string, bytes), index);
     return found_index, scanned_count;
 }
 
-find_previous_utf8_character_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: u32 {
+find_previous_utf8_char_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: u32 {
     assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
     if index == 0 {
         return 0, 0;
     }
 
-    if index < text.count { // Otherwise index == count, which is a valid starting point.
-        assert(byte_is_utf8_character_boundary(text[index]));
-    }
+    // index == count is also a valid starting point.
+    assert(index == text.count || byte_is_utf8_char_boundary(text[index]));
 
     prev_index := index - 1;
-    while prev_index > 0 && !byte_is_utf8_character_boundary(text[prev_index]) {
+    while prev_index > 0 && !byte_is_utf8_char_boundary(text[prev_index]) {
         prev_index -= 1;
     }
 
     scanned_count := index - prev_index;
-    assert(scanned_count <= 4);
+    assert(scanned_count <= 4); // If we need to run this on malformed utf8, we should not assert.
 
     return prev_index, cast(u32, scanned_count);
 }
 
-byte_is_utf8_character_boundary :: inline (b: u8) -> bool {
+byte_is_utf8_char_boundary :: inline (b: u8) -> bool {
     /* Taken from Rust's std.
 
     pub(crate) const fn is_utf8_char_boundary(self) -> bool {
