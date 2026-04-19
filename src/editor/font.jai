@@ -483,7 +483,7 @@ copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s3
     }
 }
 
-// I can't see a way to reference the builtin string iteration, so this wrapper exists.
+// TODO(jt): @Cleanup I can't see a way to reference the builtin string iteration, so this wrapper exists.
 bytes_iter :: (s: *string, body: Code, flags: For_Flags) #expand {
     `it: u8;
     `it_index: s64;
