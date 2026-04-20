@@ -991,7 +991,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         percent_string := temp_right_pad(tprint("%\%", percent), 5);
 
         s := tprint("  % % (%,%)", temp_right_pad(document_name, 20), percent_string, cursor.y + 1, cursor.x);
-        font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, is_new_frame = false);
+        _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, is_new_frame = false, binary = false);
     }
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
@@ -1021,7 +1021,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         main_line := tprint("%%", action_text, line_view);
 
-        font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, is_new_frame = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, is_new_frame = false, binary = false);
 
         index0 := max(editor.mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
         index1 := min(index0 + MINI_PANEL_LINES, editor.mini_panel.items.count - 1);
@@ -1038,8 +1038,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
                 // that can resume where it left of last time. In can see multiple places in this
                 // file where that would be useful. It will become more important for long lines.
-                //
-                // XXX: @Bug There's an off-by-one error here, if we search editor.pdb for 'source_identifier'
                 x0 := font_compute_position_on_line(editor.font, item.text, item.highlight_x0, binary = cast(bool, item.flags & .BINARY));
                 x1 := font_compute_position_on_line(editor.font, item.text, item.highlight_x1, binary = cast(bool, item.flags & .BINARY));
 
@@ -1047,7 +1045,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false);
+            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false, binary = cast(bool, item.flags & .BINARY));
 
             it_index += 1;
         }
@@ -1057,7 +1055,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         if editor.messages.count && !editor.last_message_seen {
             message := editor.messages[editor.messages.count - 1];
-            font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, is_new_frame = false);
+            _font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, is_new_frame = false, binary = false);
         }
     }
 
@@ -1186,7 +1184,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
                             s.data = buf.data;
                             Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
 
-                            if !string_starts_with_newline(s, binary_handling = false) {
+                            if !string_starts_with_newline(s, binary = false) {
                                 text_buffer_insert(*mini_panel.buffer, s);
                                 buffer_changed = true;
                             }
@@ -1510,6 +1508,8 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                                 line_number_prefix_length = line_number_prefix.count;
                             }
 
+                            // XXX: @Bug There's an off-by-one error here, if we search editor.pdb for
+                            // 'source_identifier'. Why is found_index wrong?
                             x0 := found_index;
                             if !document.buffer.binary_mode {
                                 x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
@@ -1523,7 +1523,6 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                             }
                             item.highlight_x0 = line_number_prefix_length + x0;
                             item.highlight_x1 = line_number_prefix_length + x0 + search_text_char_count;
-                            // XXX: Should search_text_char_count be binary?
 
                             userdata := New(Search_Userdata,, arena_allocator(mini_panel.items_arena));
                             userdata.cursor = { x0, it };
