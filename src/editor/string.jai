@@ -1,11 +1,11 @@
 // Common string utilities. Something like modules/Simple_String or modules/String, but specific to what we need.
 
-string_starts_with_newline :: (bytes: [] u8, binary_handling: bool) -> newline_byte_length: u32 {
-    return inline string_starts_with_newline(cast(string, bytes), binary_handling);
+string_starts_with_newline :: (bytes: [] u8, binary: bool) -> newline_byte_length: u32 {
+    return inline string_starts_with_newline(cast(string, bytes), binary);
 }
 
-string_starts_with_newline :: (s: string, binary_handling: bool) -> newline_byte_length: u32 {
-    if binary_handling {
+string_starts_with_newline :: (s: string, binary: bool) -> newline_byte_length: u32 {
+    if binary {
         if s.count > 0 && s[0] == "\n" {
             return 1;
         }
@@ -20,12 +20,12 @@ string_starts_with_newline :: (s: string, binary_handling: bool) -> newline_byte
     return 0;
 }
 
-string_ends_with_newline :: (bytes: [] u8, binary_handling: bool) -> newline_byte_length: u32 {
-    return inline string_ends_with_newline(cast(string, bytes), binary_handling);
+string_ends_with_newline :: (bytes: [] u8, binary: bool) -> newline_byte_length: u32 {
+    return inline string_ends_with_newline(cast(string, bytes), binary);
 }
 
-string_ends_with_newline :: (s: string, binary_handling: bool) -> newline_byte_length: u32 {
-    if binary_handling {
+string_ends_with_newline :: (s: string, binary: bool) -> newline_byte_length: u32 {
+    if binary {
         if s.count > 0 && s[s.count - 1] == "\n" {
             return 1;
         }
