@@ -195,15 +195,15 @@ arena_init :: (arena: *Arena) {
     arena.low_water_mark = 0;
 }
 
-// Release all the memory back to the OS. You don't have to do it your program is going to end anyway.
-// If the arena was created with arena_allocate, don't use the pointer after.
+// Release all the memory back to the OS. You don't have to do it, if your program is going to end
+// anyway. If the arena was created with arena_allocate, don't use the pointer after.
 arena_release :: (arena: *Arena) {
     if !arena.memory_start {
         return;
     }
 
     // Arena may or may not have been created with arena_allocate. In case it wasn't and it is still
-    // accessible after, we clear it to zero.
+    // accessible after, we clear it to zero and it can be initialized again with arena_init.
 
     memory_start := arena.memory_start;
     memory_end   := arena.memory_end;
