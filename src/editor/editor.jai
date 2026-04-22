@@ -1886,7 +1886,7 @@ close_document :: (editor: *Editor, document: *Document) {
     editor_log(editor, "Closing document % %", document.kind, document.backing_file_path);
 
     document_to_show: *Document;
-    document_to_show_time: Apollo_Time;
+    document_to_show_time: Apollo_Time = APOLLO_TIME_INVALID; // The maximum negative time. Anything valid will compare higher.
     for * editor.documents {
         if it != document {
             if it.time_of_last_interaction > document_to_show_time {
@@ -1898,7 +1898,8 @@ close_document :: (editor: *Editor, document: *Document) {
 
     // This means we have to find a document with time_of_last_interaction > 0. If we don't find it,
     // we either have no documents (bad, becuase *scratch* shouldn't be closeable), or their
-    // time_of_last_interaction was not properly set everywhere it should be.
+    // time_of_last_interaction was not properly set everywhere it should be. We could do a fallback
+    // here to find ANY document.
     assert(document_to_show != null);
 
     // Make sure nobody references the document anymore.
