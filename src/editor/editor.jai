@@ -719,8 +719,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if panel.clamp_scroll_to_cursor || panel.clamp_scroll_to_start_of_line || panel.clamp_scroll_to_end_of_line {
             ProfileZone(":ClampScroll");
 
-            SCROLL_PADDING_CELLS_X :: 3; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
-            SCROLL_PADDING_CELLS_Y :: 3; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
+            SCROLL_PADDING_CELLS_X :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
+            SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
             scroll_padding_x := min(panel_w * 0.25, cell_w * SCROLL_PADDING_CELLS_X);
             scroll_padding_y := min(panel_h * 0.25, cell_h * SCROLL_PADDING_CELLS_Y);
 
@@ -762,9 +762,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Scroll animation
         //
         {
-            SCROLL_TIME : f64 : 0.08;
+            SCROLL_TIME : f64 : 0.15; // TODO(jt): Make this configurable. :Config
 
-            t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(panel.scroll_time_start)) / SCROLL_TIME);
+            // TODO(jt): @Hack We add 1/2 of usual delta time to offset the lag, but maybe there's a
+            // better way to integrate the movement? I should study up on how Casey did this in
+            // Handmade Hero.
+            t := cast(f32, (to_float64_seconds(input.time) + 0.5 * USUAL_DELTA_TIME - to_float64_seconds(panel.scroll_time_start)) / SCROLL_TIME);
             t = clamp(t, 0.0, 1.0);
             t = smoothstep(0.0, 1.0, t);
 
@@ -891,8 +894,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 setup_cursor_anim_interpolation(panel.document, input.time, panel.document.old_cursor_position, new_cursor_position);
             }
 
-            FLASH_TIME : f64 : 0.50; // TODO(jt): Make flash time configurable. :Config
-            ANIM_TIME  : f64 : 0.05; // TODO(jt): Make anim time configurable. :Config
+            FLASH_TIME : f64 : 0.25; // TODO(jt): Make flash time configurable. :Config
+            ANIM_TIME  : f64 : 0.00; // TODO(jt): Make anim time configurable. I didn't like the lag, so I turned it off :Config
 
             // TODO(jt): Division by zero. (We work around it for scroll and cursor animation.)
             flash_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_flash_time_start)) / FLASH_TIME);
