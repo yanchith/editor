@@ -1,6 +1,6 @@
 /*
 
-TODO(jt): Stuff to do:
+TODO(jt): Early stuff to do:
 
 - [X] Implement Arena, or use Flat_Pool.
 - [X] Display text on screen
@@ -131,13 +131,14 @@ TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 // TODO(jt): Get the monitor refresh rate from platform instead!
 USUAL_DELTA_TIME : f64 : 1.0 / 60.0;
 
-CURSOR_COLOR          : Vector4 : { 0.5, 0.8, 0.6, 1.0 };
-CURSOR_COLOR_ACTIVE   : Vector4 : { 1.0, 0.6, 0.4, 1.0 };
-SELECTION_COLOR       : Vector4 : { 0.7, 0.8, 0.7, 0.38 };
-LINE_COLOR            : Vector4 : { 0.0, 0.0, 0.0, 0.0 };
-MINI_PANEL_LINE_COLOR : Vector4 : { 0.7, 0.7, 0.9, 0.18 };
-MODELINE_COLOR        : Vector4 : { 0.8, 0.8, 0.8, 1.0 };
-BACKGROUND_COLOR      : Vector4 : { 1.0, 1.0, 1.0, 1.0 };
+// TODO(jt): Make the colors themeable. :Config
+CURSOR_COLOR          : Vector4 : { 0.50, 0.80, 0.60, 1.00 };
+CURSOR_COLOR_ACTIVE   : Vector4 : { 1.00, 0.60, 0.40, 1.00 };
+SELECTION_COLOR       : Vector4 : { 0.70, 0.80, 0.70, 0.38 };
+LINE_COLOR            : Vector4 : { 0.00, 0.00, 0.00, 0.00 };
+MINI_PANEL_LINE_COLOR : Vector4 : { 0.70, 0.70, 0.90, 0.18 };
+MODELINE_COLOR        : Vector4 : { 0.80, 0.80, 0.80, 1.00 };
+BACKGROUND_COLOR      : Vector4 : { 1.00, 1.00, 1.00, 1.00 };
 
 SLOW_FRAME_THRESHOLD_MILLIS : f64 : 10;
 
@@ -590,7 +591,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
             active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
             active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
-            finish_scroll_interpolation(active_panel);
+
+            // TODO(jt): Consider clamping cursor to viewport?
         }
 
         //
@@ -615,7 +617,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     active_panel.scroll_target.x -= SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.x = max(active_panel.scroll_target.x, 0);
-                    finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
                 } else if mouse.x > window_w - SCROLL_APRON {
@@ -634,8 +635,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     active_panel.scroll_target.x += SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.x = min(active_panel.scroll_target.x, max_x);
 
-                    finish_scroll_interpolation(active_panel);
-
                     wants_next_frame = true;
                 }
 
@@ -644,7 +643,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     active_panel.scroll_target.y -= SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.y = max(active_panel.scroll_target.y, 0);
-                    finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
                 } else if mouse.y > window_h - SCROLL_APRON {
@@ -652,7 +650,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     active_panel.scroll_target.y += SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
-                    finish_scroll_interpolation(active_panel);
 
                     wants_next_frame = true;
                 }
@@ -714,7 +711,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
 
         //
-        // Scroll buffer to cursor, if buffer changed. Clamp cursor to buffer, if buffer scrolled.
+        // Scroll buffer to cursor, if buffer changed.
         //
         if panel.clamp_scroll_to_cursor || panel.clamp_scroll_to_start_of_line || panel.clamp_scroll_to_end_of_line {
             ProfileZone(":ClampScroll");
@@ -723,8 +720,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
             scroll_padding_x := min(panel_w * 0.25, cell_w * SCROLL_PADDING_CELLS_X);
             scroll_padding_y := min(panel_h * 0.25, cell_h * SCROLL_PADDING_CELLS_Y);
-
-            cursor0 := document.buffer.cursor0;
 
             // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
@@ -738,23 +733,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             if scroll_to_rect.x1 > viewport_rect.x1 {
-                finish_scroll_interpolation(panel);
-                panel.scroll_target.x = scroll_to_rect.x0 - panel_w + drect_width(scroll_to_rect) + scroll_padding_x;
-                setup_scroll_interpolation(panel, input.time);
+                target := panel.scroll_target;
+                target.x = scroll_to_rect.x0 - panel_w + drect_width(scroll_to_rect) + scroll_padding_x;
+                setup_scroll_interpolation(panel, input.time, panel.scroll, target);
             } else if scroll_to_rect.x0 < viewport_rect.x0 {
-                finish_scroll_interpolation(panel);
-                panel.scroll_target.x = scroll_to_rect.x0 - scroll_padding_x;
-                setup_scroll_interpolation(panel, input.time);
+                target := panel.scroll_target;
+                target.x = scroll_to_rect.x0 - scroll_padding_x;
+                setup_scroll_interpolation(panel, input.time, panel.scroll, target);
             }
 
             if scroll_to_rect.y1 > viewport_rect.y1 {
-                finish_scroll_interpolation(panel);
-                panel.scroll_target.y = scroll_to_rect.y0 - panel_h + drect_height(scroll_to_rect) + scroll_padding_y;
-                setup_scroll_interpolation(panel, input.time);
+                target := panel.scroll_target;
+                target.y = scroll_to_rect.y0 - panel_h + drect_height(scroll_to_rect) + scroll_padding_y;
+                setup_scroll_interpolation(panel, input.time, panel.scroll, target);
             } else if scroll_to_rect.y0 < viewport_rect.y0 {
-                finish_scroll_interpolation(panel);
-                panel.scroll_target.y = scroll_to_rect.y0 - scroll_padding_y;
-                setup_scroll_interpolation(panel, input.time);
+                target := panel.scroll_target;
+                target.y = scroll_to_rect.y0 - scroll_padding_y;
+                setup_scroll_interpolation(panel, input.time, panel.scroll, target);
             }
         }
 
@@ -1831,8 +1826,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) {
 
                     // TODO(jt): Emacs actually remembers the previous scroll of the panel in
                     // document. Do we want to do the same?
-                    recenter_active_panel(editor, input, true);
-                    finish_scroll_interpolation(active_panel);
+                    recenter_active_panel(editor, input, force_center = true, skip_interpolation = true);
                 }
             }
 
@@ -1976,9 +1970,9 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
     arena_release(hello_arena);
 }
 
-// TODO(jt): Add:   add_file_visiting_panel :: (editor: *Editor) {}
-
-recenter_active_panel :: (editor: *Editor, input: Input, force_center := false) {
+// TODO(jt): The user experience of this kind of sucks. The first C-l should always recenter. But
+// then we need to remember if it is the first press.
+recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, skip_interpolation := false) {
     panel := get_active_panel(editor);
     if !panel {
         return;
@@ -2000,19 +1994,24 @@ recenter_active_panel :: (editor: *Editor, input: Input, force_center := false) 
         bottom += MINI_PANEL_LINES * editor.font.line_height_in_pixels;
     }
 
-    finish_scroll_interpolation(panel);
+    target: DVector2;
+    target.x = panel.scroll_target.x;
 
     if force_center {
-        panel.scroll_target.y = center;
+        target.y = center;
     } else if panel.scroll_target.y == center {
-        panel.scroll_target.y = top;
+        target.y = top;
     } else if panel.scroll_target.y == top {
-        panel.scroll_target.y = bottom;
+        target.y = bottom;
     } else {
-        panel.scroll_target.y = center;
+        target.y = center;
     }
 
-    setup_scroll_interpolation(panel, input.time);
+    if skip_interpolation {
+        setup_instant_scroll_interpolation(panel, target);
+    } else {
+        setup_scroll_interpolation(panel, input.time, panel.scroll, target);
+    }
 }
 
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
@@ -2026,10 +2025,11 @@ scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
 
     text_buffer_move_cursor_y(*document.buffer, -delta, panel.selecting);
 
-    finish_scroll_interpolation(panel);
     if delta == delta_max {
-        panel.scroll_target.y -= delta * cell_h;
-        setup_scroll_interpolation(panel, input.time);
+        target := panel.scroll_target;
+        target.y -= delta * cell_h;
+
+        setup_scroll_interpolation(panel, input.time, panel.scroll, target);
     }
 }
 
@@ -2044,10 +2044,11 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
 
     text_buffer_move_cursor_y(*document.buffer, delta, panel.selecting);
 
-    finish_scroll_interpolation(panel);
     if delta == delta_max {
-        panel.scroll_target.y += delta * cell_h;
-        setup_scroll_interpolation(panel, input.time);
+        target := panel.scroll_target;
+        target.y += delta * cell_h;
+
+        setup_scroll_interpolation(panel, input.time, panel.scroll, target);
     }
 }
 
@@ -2064,18 +2065,25 @@ get_cursor_position :: (document: Document, font: Font) -> DVector2 {
     return position;
 }
 
-setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time) {
-    panel.scroll_target.x = max(panel.scroll_target.x, 0.0);
-    panel.scroll_target.y = max(panel.scroll_target.y, 0.0);
-
-    panel.scroll_source = panel.scroll;
+setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time, source: DVector2, target: DVector2) {
     panel.scroll_time_start = time;
+
+    panel.scroll_source.x = max(source.x, 0.0);
+    panel.scroll_source.y = max(source.y, 0.0);
+
+    panel.scroll_target.x = max(target.x, 0.0);
+    panel.scroll_target.y = max(target.y, 0.0);
+
+    panel.scroll = panel.scroll_source;
 }
 
-finish_scroll_interpolation :: (panel: *Panel) {
-    panel.scroll_source = panel.scroll_target;
+setup_instant_scroll_interpolation :: (panel: *Panel, target: DVector2) {
     panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
-    panel.scroll = panel.scroll_target;
+
+    panel.scroll_source.x = max(target.x, 0.0);
+    panel.scroll_source.y = max(target.y, 0.0);
+    panel.scroll_target = panel.scroll_source;
+    panel.scroll = panel.scroll_source;
 }
 
 setup_cursor_anim_interpolation :: (document: *Document, time: Apollo_Time, source: DVector2, target: DVector2) {
