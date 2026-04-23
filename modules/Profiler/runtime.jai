@@ -16,11 +16,14 @@
 // invocations of the actual macro: __ProfileZone.
 ProfileZone  :: ($label: string) #expand {}
 
+// The zone is 32 bytes and is also aligned to 32 bytes to not straddle cache lines. You always get
+// two per cache line.
+#assert size_of(Profiler_Zone) == 32;
 Profiler_Zone :: struct {
-    elapsed_inclusive: u64 #align 32; // Aligned to not straddle cache lines.
+    elapsed_inclusive: u64 #align 32;
     elapsed_exclusive: u64;
     hits: u64;
-    // u64 padding, created by #align above. Maybe we can put some useful info here?
+    // u64 padding; Created by #align above. Maybe we can put some useful info here?
 }
 
 // Call this to get your labels assigned to zones.
@@ -166,7 +169,7 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
 
             parent_zone := *__profiler.zones[parent_zone_index];
             #no_aoc {
-                // #no_aoc, because we subtract from parent before we add. This always triggers.
+                // #no_aoc, because we subtract from parent before we add. This is expected.
                 parent_zone.elapsed_exclusive -= elapsed;
             }
 
