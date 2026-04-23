@@ -89,7 +89,7 @@ f64 :: float64;
 #import "Arena";
 #import "Bucket_Array";
 #import "Hash_Table";
-#import "Profiler"(IMPORT_MODE = .RUNTIME);
+#import "Profiler";
 
 String  :: #import "String";
 Math    :: #import "Math";
@@ -297,8 +297,7 @@ Mini_Panel :: struct {
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
-    profiler_init();
-    profiler_start_frame("init");
+    ProfileZone("init");
 
     editor.perm_arena = make_arena(platform, .LARGE);
 
@@ -457,13 +456,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         editor.font.glyph_atlas_width_in_pixels,
         editor.font.glyph_atlas_height_in_pixels,
     );
-
-    time_scale := profiler_end_frame();
-    print_profile_for_slow_frames(SLOW_FRAME_THRESHOLD_MILLIS, time_scale);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
-    profiler_start_frame("update_and_render");
+    ProfileZone("update_and_render");
 
     dt: f64;
     if input.frame_triggered_by_animation {
@@ -1065,11 +1061,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         draw_rect(*render_rects, 0, 0, w, h, { 0.89, 0.89, 0.95, 1 });
         draw_rect(*render_rects, 0, 0, w, h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
     }
-
-    // Moved above the rendering code below, because OpenGL blocks and waits for surface, and we
-    // don't want to time that. When we switch to a better driver, we can move this to the bottom.
-    time_scale := profiler_end_frame();
-    print_profile_for_slow_frames(SLOW_FRAME_THRESHOLD_MILLIS, time_scale);
 
     {
         r := irect_union_or_zero(update_regions);
@@ -2131,27 +2122,4 @@ make_arena :: (platform: Platform, size: Arena_Size) -> *Arena {
     arena := arena_allocate(procs, reserve_size = reserve_size);
 
     return arena;
-}
-
-print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
-    zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
-    if zones.count {
-        frame_time := 1000.0 * time_scale * zones[0].elapsed_inclusive;
-        if frame_time >= threshold_millis {
-            print("\nFrame took more than % millis. Printing profiling info for % zones:\n\n", threshold_millis, zones.count);
-
-            print("      zone                                                               hits    inclusive millis    exclusive millis\n");
-            print("---------------------------------------------------------------------------------------------------------------------\n");
-            for zones {
-                print(
-                    "% %      %     %     %\n",
-                    temp_right_pad(tprint("[%]", it_index), 5),
-                    temp_right_pad(zone_labels[it_index], 50),
-                    formatInt(it.hits, minimum_digits = 15, padding = #char " "),
-                    formatFloat(1000 * time_scale * it.elapsed_inclusive, width = 15, trailing_width = 3),
-                    formatFloat(1000 * time_scale * it.elapsed_exclusive, width = 15, trailing_width = 3),
-                );
-            }
-        }
-    }
 }
