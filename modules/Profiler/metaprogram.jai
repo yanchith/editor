@@ -6,7 +6,7 @@
 // This metaprogram plugin works with the Default_Metaprogram by supplying the +Profiler argument.
 //
 // It can also be used from custom metaprograms by importing it in the .METAPROGRAM mode and calling
-// handle_message manually in the message loop.
+// message manually in the message loop with null first argument.
 //
 
 get_plugin :: () -> *Metaprogram_Plugin {
