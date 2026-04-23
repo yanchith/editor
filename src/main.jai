@@ -34,6 +34,7 @@ f64 :: float64;
 
 #import "Basic";
 #import "Hash_Table";
+#import "Profiler"()(IMPORT_MODE = .RUNTIME);
 
 Random         :: #import "Random";
 String         :: #import "String";
@@ -55,12 +56,25 @@ IRect :: Editor.IRect;
 // TODO(jt): @Cleanup We borrow this file from editor. But maybe this file shouldn't exist at all.
 #load "editor/string.jai";
 
+SLOW_FRAME_THRESHOLD_MILLIS :: 10;
+SLOW_INIT_THRESHOLD_MILLIS :: 100;
+
 // TODO(jt): These globals are fine for now, but maybe we want to pass userdata through the renderer API?
 renderer_textures: Table(Editor.Texture_ID, Simp.Texture);
-renderer_shader: Simp.Shader;
+renderer_text_shader: Simp.Shader;
+
+// Simp does immediate_flush when we change the pipeline without checking whether the pipeline is the same. Let's not do that.
+renderer_current_shader: Renderer_Shader = .NONE;
+Renderer_Shader :: enum {
+    NONE  :: 0;
+    TEXT  :: 1;
+    COLOR :: 2;
+}
 
 main :: () {
     time_program_start := current_time_monotonic();
+
+    profiler_init();
 
     context_logger_data := Context_Logger_Data.{ time_program_start };
 
@@ -118,22 +132,27 @@ main :: () {
 
             platform.page_size = info.dwPageSize;
             platform.mem_reserve = (size: s64) -> *void {
+                ProfileZone("platform.mem_reserve");
                 return VirtualAlloc(null, cast(u64, size), MEM_RESERVE, PAGE_READWRITE);
             };
             platform.mem_release = (pointer: *void, size: s64) {
+                ProfileZone("platform.mem_release");
                 VirtualFree(pointer, 0, MEM_RELEASE);
             }
             platform.mem_commit = (pointer: *void, size: s64) -> bool {
+                ProfileZone("platform.mem_commit");
                 result := VirtualAlloc(pointer, cast(u64, size), MEM_COMMIT, PAGE_READWRITE);
                 return result != null;
             }
             platform.mem_decommit = (pointer: *void, size: s64) {
+                ProfileZone("platform.mem_decommit");
                 VirtualFree(pointer, cast(u64, size), MEM_DECOMMIT);
             };
         } else #if OS_IS_UNIX {
             // :VirtualMemoryProcs
             platform.page_size = sysconf(_SC_PAGE_SIZE);
             platform.mem_reserve = (size: s64) -> *void {
+                ProfileZone("platform.mem_reserve");
                 result := mmap(null, cast(u64, size), PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
                 if result == MAP_FAILED {
                     result = null;
@@ -142,19 +161,23 @@ main :: () {
                 return result;
             }
             platform.mem_release = (pointer: *void, size: s64) {
+                ProfileZone("platform.mem_release");
                 munmap(pointer, cast(u64, size));
             }
             platform.mem_commit = (pointer: *void, size: s64) -> bool {
+                ProfileZone("platform.mem_commit");
                 result := mprotect(pointer, cast(u64, size), PROT_READ | PROT_WRITE);
                 return result == 0;
             }
             platform.mem_decommit = (pointer: *void, size: s64) {
+                ProfileZone("platform.mem_decommit");
                 madvise(pointer, cast(u64, size), MADV_DONTNEED);
                 mprotect(pointer, cast(u64, size), PROT_NONE);
             }
         }
 
         platform.get_absolute_path = (path: string) -> success: bool, string {
+            ProfileZone("platform.get_absolute_path");
             // TODO(jt): Raphael says that unix (presumably macOS?) get_absolute_path doesn't work
             // for non-existing files. We might have to deal with that.
             //
@@ -177,13 +200,18 @@ main :: () {
         }
 
         platform.file_exists = (path: string) -> bool {
+            ProfileZone("platform.file_exists");
             return File_Utilities.file_exists(path);
         }
         platform.file_is_directory = (path: string) -> bool {
+            ProfileZone("platform.file_is_directory");
+
             is_directory, success := File_Utilities.is_directory(path);
             return success && is_directory;
         }
         platform.read_file = (path: string) -> success: bool, [] u8 {
+            ProfileZone("platform.read_file");
+
             // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
             // will start respecting context.allocator eventually, so we pass in temp there as well.
             absolute_path, success := File.get_absolute_path(path,, temp);
@@ -196,6 +224,8 @@ main :: () {
             return success, cast([] u8, data);
         }
         platform.write_file = (path: string, data: [] u8) -> success: bool {
+            ProfileZone("platform.write_file");
+
             // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
             // will start respecting context.allocator eventually, so we pass in temp there as well.
             absolute_path, success := File.get_absolute_path(path,, temp);
@@ -212,6 +242,8 @@ main :: () {
         // TODO(jt): platform.delete_directory
 
         platform.list_files = (path: string) -> [] Editor.File_Info /* Allocated with context.allocator */ {
+            ProfileZone("platform.list_files");
+
             file_infos: [..] Editor.File_Info; // context.allocator
 
             visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] Editor.File_Info) {
@@ -231,17 +263,21 @@ main :: () {
         }
 
         platform.clipboard_get_text = () -> string {
+            ProfileZone("platform.clipboard_get_text");
             return Clipboard.os_clipboard_get_text();
         }
         platform.clipboard_set_text = (text: string) {
+            ProfileZone("platform.clipboard_set_text");
             Clipboard.os_clipboard_set_text(text);
         }
 
-        renderer_shader.gl_handle = Simp.get_shader_program(SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL);
-        renderer_shader.alpha_blend = true;
+        renderer_text_shader.gl_handle = Simp.get_shader_program(SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL);
+        renderer_text_shader.alpha_blend = true;
 
         renderer: Editor.Renderer;
         renderer.create_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, width: s32, height: s32) {
+            ProfileZone("renderer.create_texture_r8unorm");
+
             bitmap: Simp.Bitmap;
             Simp.bitmap_alloc(*bitmap, width, height, .R8,, temp);
             bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
@@ -256,6 +292,8 @@ main :: () {
             table_add(*renderer_textures, texture_id, texture);
         }
         renderer.update_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, update_rect: IRect) {
+            ProfileZone("renderer.update_texture_r8unorm");
+
             texture := table_find_pointer(*renderer_textures, texture_id);
             if !texture {
                 log_error("Can't update nonexistent texture: %", texture_id);
@@ -275,6 +313,8 @@ main :: () {
             Simp.texture_load_from_bitmap(texture, *bitmap);
         }
         renderer.draw_rects = (render_rects: [] Editor.Render_Rect) {
+            ProfileZone("renderer.draw_rects");
+
             // TODO(jt): @Speed Realistically, they all point to the same texture, so maybe we want
             // to shape the API such that there is only one texture binding followed by an instanced
             // draw command instead of looping and binding per iteration. If they for some reason
@@ -282,22 +322,31 @@ main :: () {
             for render_rects {
                 texture := table_find_pointer(*renderer_textures, it.texture_id);
                 if texture {
-                    // NOTE(jt): This is where we'd normally call
-                    // Simp.set_shader_for_images(texture), but we instead pass in our modified
-                    // shader, so we have to do a little bit more work.
-                    Simp.immediate_flush();
+                    ProfileZone(":UseTextPipeline");
+                    if renderer_current_shader != .TEXT {
+                        renderer_current_shader = .TEXT;
+                        // NOTE(jt): This is where we'd normally call
+                        // Simp.set_shader_for_images(texture), but we instead pass in our modified
+                        // shader, so we have to do a little bit more work.
+                        Simp.immediate_flush();
 
-                    target_shader := *renderer_shader;
-                    if context.simp.current_shader != target_shader {
-                        Simp.immediate_set_shader(target_shader);
-                        Simp.set_projection();
+                        target_shader := *renderer_text_shader;
+                        if context.simp.current_shader != target_shader {
+                            Simp.immediate_set_shader(target_shader);
+                            Simp.set_projection();
+                        }
+
+                        Simp.immediate_set_texture(texture);
                     }
-
-                    Simp.immediate_set_texture(texture);
                 } else {
-                    Simp.set_shader_for_color(enable_blend = true);
+                    ProfileZone(":UseColorPipeline");
+                    if renderer_current_shader != .COLOR {
+                        renderer_current_shader = .COLOR;
+                        Simp.set_shader_for_color(enable_blend = true);
+                    }
                 }
 
+                ProfileZone(":ImmediateQuad");
                 Simp.immediate_quad(
                     { it.rect.x0, it.rect.y0 },
                     { it.rect.x0, it.rect.y1 },
@@ -342,12 +391,19 @@ main :: () {
         // input.events is zeroed.
 
         editor: Editor.Editor;
-        Editor.init(*editor, platform, renderer, input);
+        {
+            profiler_start_frame("init");
+            Editor.init(*editor, platform, renderer, input);
+            time_scale := profiler_end_frame();
+            print_profile_for_slow_frames(SLOW_INIT_THRESHOLD_MILLIS, time_scale);
+        }
 
         should_run  := true;
         should_fuzz := false;
 
         while should_run {
+            profiler_start_frame("frame");
+
             time_frame_start := current_time_monotonic();
             time_since_program_start := time_frame_start - time_program_start;
 
@@ -626,6 +682,9 @@ main :: () {
 
             input.frame_triggered_by_animation = wants_next_frame;
 
+            time_scale := profiler_end_frame();
+            print_profile_for_slow_frames(SLOW_FRAME_THRESHOLD_MILLIS, time_scale);
+
             Simp.swap_buffers(window);
 
             reset_temporary_storage();
@@ -643,6 +702,29 @@ main :: () {
                     // (with NO as the last parameter so that we don't dequeue).
                     NSApplication.nextEventMatchingMask(NSApp, NSEventMaskAny, NSDate.distantFuture(), NSDefaultRunLoopMode, NO);
                 }
+            }
+        }
+    }
+}
+
+print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
+    zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
+    if zones.count {
+        frame_time := 1000.0 * time_scale * zones[0].elapsed_inclusive;
+        if frame_time >= threshold_millis {
+            print("\nFrame took more than % millis. Printing profiling info for % zones:\n\n", threshold_millis, zones.count);
+
+            print("      zone                                                               hits    inclusive millis    exclusive millis\n");
+            print("---------------------------------------------------------------------------------------------------------------------\n");
+            for zones {
+                print(
+                    "% %      %     %     %\n",
+                    temp_right_pad(tprint("[%]", it_index), 5),
+                    temp_right_pad(zone_labels[it_index], 50),
+                    formatInt(it.hits, minimum_digits = 15, padding = #char " "),
+                    formatFloat(1000 * time_scale * it.elapsed_inclusive, width = 15, trailing_width = 3),
+                    formatFloat(1000 * time_scale * it.elapsed_exclusive, width = 15, trailing_width = 3),
+                );
             }
         }
     }

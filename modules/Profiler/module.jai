@@ -1,4 +1,4 @@
-#module_parameters(IMPORT_MODE := Import_Mode.METAPROGRAM) {
+#module_parameters()(IMPORT_MODE := Import_Mode.METAPROGRAM) {
     Import_Mode :: enum u8 {
         METAPROGRAM :: 0;
         RUNTIME     :: 1;

@@ -2,7 +2,7 @@
 #import "File";
 
 Check    :: #import "Check";
-Profiler :: #import "Profiler"(IMPORT_MODE = .METAPROGRAM);
+Profiler :: #import "Profiler"()(IMPORT_MODE = .METAPROGRAM);
 
 build :: () {
     do_optimized_build := false;
