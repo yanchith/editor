@@ -1497,8 +1497,6 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                                 line_number_prefix_length = line_number_prefix.count;
                             }
 
-                            // XXX: @Bug There's an off-by-one error here, if we search editor.pdb for
-                            // 'source_identifier'. Why is found_index wrong?
                             x0 := found_index;
                             if !document.buffer.binary_mode {
                                 x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
