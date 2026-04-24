@@ -1062,12 +1062,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         draw_rect(*render_rects, 0, 0, w, h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
     }
 
-    {
-        r := irect_union_or_zero(update_regions);
+    update_region := irect_union_or_zero(update_regions);
 
-        renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, r);
-        renderer.draw_rects(render_rects);
-    }
+    // TODO(jt): @Speed OpenGL is doing some kind of synchronization here. Depending on whether
+    // update_texture_r8unorm does early return (because the update region is empty), either it or
+    // draw_rects blocks for about 10ms, but at least one of them does.
+    renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, update_region);
+    renderer.draw_rects(render_rects);
 
     return wants_quit, wants_next_frame;
 }

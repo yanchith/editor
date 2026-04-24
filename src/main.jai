@@ -34,6 +34,7 @@ f64 :: float64;
 
 #import "Basic";
 #import "Hash_Table";
+#import "GL";
 #import "Profiler"()(IMPORT_MODE = .RUNTIME);
 
 Random         :: #import "Random";
@@ -297,20 +298,29 @@ main :: () {
             texture := table_find_pointer(*renderer_textures, texture_id);
             if !texture {
                 log_error("Can't update nonexistent texture: %", texture_id);
+                return;
             }
 
-            // TODO(jt): @Correctness @Speed This function re-uploads everything, because Simp does
-            // glTexImage2D. Whatever backend we end up using, we want to limit the upload to just
-            // the update rect.
+            update_xoffset := update_rect.x0;
+            update_yoffset := update_rect.y0;
+            update_width   := update_rect.x1 - update_rect.x0;
+            update_height  := update_rect.y1 - update_rect.y0;
 
-            bitmap: Simp.Bitmap;
-            Simp.bitmap_alloc(*bitmap, texture.width, texture.height, .R8,, temp);
-            bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
+            if update_width == 0 || update_height == 0 {
+                return;
+            }
 
-            assert(bitmap.data.count == data.count);
-            memcpy(bitmap.data.data, data.data, data.count);
+            gl_texture := texture.specific.gl_handle;
+            glBindTexture(GL_TEXTURE_2D, gl_texture);
 
-            Simp.texture_load_from_bitmap(texture, *bitmap);
+            // TODO(jt): @Speed We could do glTexSubImage2D and copy just the updated region, but it
+            // makes no difference on my machine. Maybe it makes a difference somewhere else? Maybe
+            // if we use something better than OpenGL?
+            glTexImage2D(GL_TEXTURE_2D, 0,
+                         GL_R8,
+                         cast(u32, texture.width), cast(u32, texture.height), 0,
+                         GL_RED, GL_UNSIGNED_BYTE,
+                         data.data);
         }
         renderer.draw_rects = (render_rects: [] Editor.Render_Rect) {
             ProfileZone("renderer.draw_rects");
@@ -322,7 +332,6 @@ main :: () {
             for render_rects {
                 texture := table_find_pointer(*renderer_textures, it.texture_id);
                 if texture {
-                    ProfileZone(":UseTextPipeline");
                     if renderer_current_shader != .TEXT {
                         renderer_current_shader = .TEXT;
                         // NOTE(jt): This is where we'd normally call
@@ -339,14 +348,12 @@ main :: () {
                         Simp.immediate_set_texture(texture);
                     }
                 } else {
-                    ProfileZone(":UseColorPipeline");
                     if renderer_current_shader != .COLOR {
                         renderer_current_shader = .COLOR;
                         Simp.set_shader_for_color(enable_blend = true);
                     }
                 }
 
-                ProfileZone(":ImmediateQuad");
                 Simp.immediate_quad(
                     { it.rect.x0, it.rect.y0 },
                     { it.rect.x0, it.rect.y1 },
