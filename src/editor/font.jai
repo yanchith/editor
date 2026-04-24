@@ -213,14 +213,20 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
 
     ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
     for :ITERATOR text {
-        if it == #char "\r" {
-            continue; // Not rendered.
-        }
-
         if it == #char "\n" {
             cursor_x = 0;
             cursor_y += font.line_height;
             continue;
+        }
+
+        #if binary {
+            if it < 32 || it >= 127 {
+                it = 0;
+            }
+        }
+
+        if it == #char "\r" {
+            continue; // Not rendered.
         }
 
         // FT_Get_Char_Index returns 0, if it can't find the character. 0 also automatically maps to
@@ -378,6 +384,12 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
             break;
         }
 
+        #if binary {
+            if it < 32 || it >= 127 {
+                it = 0;
+            }
+        }
+
         error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT);
         if error {
             // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
@@ -413,6 +425,12 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
         }
 
         character_index = it_index;
+
+        #if binary {
+            if it < 32 || it >= 127 {
+                it = 0;
+            }
+        }
 
         error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT);
         if error {
