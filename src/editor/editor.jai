@@ -1584,8 +1584,6 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
 
             case .SWITCH_TO_DOCUMENT; #through;
             case .CLOSE_DOCUMENT; {
-                // XXX: @Bug This does not find scratch for switching when we type in some text.
-
                 ProfileZone(":MiniPanelSwitchToDocumentOrCloseDocumentUpdate");
 
                 search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
@@ -1602,7 +1600,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                         case .FILE;     document_name = it.backing_file_path; // TODO(jt): Strip path prefix common for all items.
                     }
 
-                    found_index, found := String.index_of_string_nocase(it.backing_file_path, search_text);
+                    found_index, found := String.index_of_string_nocase(document_name, search_text);
                     if found {
                         s := "";
                         if document_name.count {
