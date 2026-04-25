@@ -179,13 +179,11 @@ main :: () {
 
         platform.get_absolute_path = (path: string) -> success: bool, string {
             ProfileZone("platform.get_absolute_path");
-            // TODO(jt): Raphael says that unix (presumably macOS?) get_absolute_path doesn't work
-            // for non-existing files. We might have to deal with that.
-            //
-            // TODO(jt): @Cleanup get_absulute_path returns a string in temporary storage, but we
-            // want to sometimes make it permanent. We only copy it to caller provided storage if it
-            // also isn't temp.
-            _absolute_path, success := File.get_absolute_path(path,, temp); // The temp here is future-proofing.
+
+            // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
+            // respecting context.allocator eventually, so we pass in temp there as well.
+            success, _absolute_path := get_absolute_path_hack(path,, temp); // The temp here is future-proofing.
+
             if !success {
                 return false, "";
             }
@@ -213,9 +211,9 @@ main :: () {
         platform.read_file = (path: string) -> success: bool, [] u8 {
             ProfileZone("platform.read_file");
 
-            // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
-            // will start respecting context.allocator eventually, so we pass in temp there as well.
-            absolute_path, success := File.get_absolute_path(path,, temp);
+            // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
+            // respecting context.allocator eventually, so we pass in temp there as well.
+            success, absolute_path := get_absolute_path_hack(path,, temp);
             if !success {
                 return false, .[];
             }
@@ -227,9 +225,9 @@ main :: () {
         platform.write_file = (path: string, data: [] u8) -> success: bool {
             ProfileZone("platform.write_file");
 
-            // NOTE(jt): get_absolute_path goes to Temporary_Storage all the time, but I suspect it
-            // will start respecting context.allocator eventually, so we pass in temp there as well.
-            absolute_path, success := File.get_absolute_path(path,, temp);
+            // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
+            // respecting context.allocator eventually, so we pass in temp there as well.
+            success, absolute_path := get_absolute_path_hack(path,, temp);
             if !success {
                 return false;
             }
@@ -714,6 +712,28 @@ main :: () {
     }
 }
 
+// realpath on unix doesn't work for non-existing files, so we go one step further and
+// try it on the directory, appending the file name back.
+//
+// TODO(jt): Eventually we'll need to do this for arbitrarily deep nonexistent suffixes, because
+// we'll want to create files in nonexistent directories.
+get_absolute_path_hack :: (path: string) -> success: bool, absolute_path: string {
+    absolute_path, success := File.get_absolute_path(path);
+
+    #if OS_IS_UNIX {
+        if !success {
+            dir_path, _, _, filename := String.path_decomp(path);
+            dir_absolute_path:, success = File.get_absolute_path(dir_path);
+
+            if success {
+                absolute_path = String.join(dir_absolute_path, filename, separator = "/");
+            }
+        }
+    }
+
+    return success, absolute_path;
+}
+
 print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
     zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
     if zones.count {
@@ -736,6 +756,38 @@ print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
         }
     }
 }
+
+// This is a modified version of SHADER_SPRITE_LEFT_HANDED from Simp, so that we can pass in a
+// single-channel texture and have the colors map the way we want.
+SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL :: #string END
+OUT_IN vec2 v_tex_coords;
+OUT_IN vec4 v_color;
+
+#ifdef VERTEX_SHADER
+in vec4 vert_position;
+in vec4 vert_color;
+in vec2 vert_uv0;
+
+uniform mat4 projection;
+
+void main() {
+    v_tex_coords = vert_uv0.xy;
+    v_color = vert_color;
+    gl_Position = projection * vec4(vert_position.xy, 0.0, 1.0);
+}
+#endif
+
+#ifdef FRAGMENT_SHADER
+out vec4 color;
+
+uniform sampler2D diffuse_texture;
+
+void main () {
+    float a = texture(diffuse_texture, v_tex_coords).r;
+    color = v_color * vec4(1, 1, 1, a);
+}
+#endif
+END
 
 Context_Logger_Data :: struct {
     time_program_start: Apollo_Time;
@@ -771,8 +823,8 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
         if index != -1 {
             source_prefix = advance(path, index + MODULES.count);
         } else {
-            _, _, _, basename_with_extension := String.path_decomp(path);
-            source_prefix = basename_with_extension;
+            filename := String.path_filename(path);
+            source_prefix = filename;
         }
 
         source_prefix = temp_right_pad(source_prefix, LENGTH + 1);
@@ -780,35 +832,3 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
 
     write_strings(time_prefix, log_level_prefix, source_prefix, message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
 }
-
-// This is a modified version of SHADER_SPRITE_LEFT_HANDED from Simp, so that we can pass in a
-// single-channel texture and have the colors map the way we want.
-SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL :: #string END
-OUT_IN vec2 v_tex_coords;
-OUT_IN vec4 v_color;
-
-#ifdef VERTEX_SHADER
-in vec4 vert_position;
-in vec4 vert_color;
-in vec2 vert_uv0;
-
-uniform mat4 projection;
-
-void main() {
-    v_tex_coords = vert_uv0.xy;
-    v_color = vert_color;
-    gl_Position = projection * vec4(vert_position.xy, 0.0, 1.0);
-}
-#endif
-
-#ifdef FRAGMENT_SHADER
-out vec4 color;
-
-uniform sampler2D diffuse_texture;
-
-void main () {
-    float a = texture(diffuse_texture, v_tex_coords).r;
-    color = v_color * vec4(1, 1, 1, a);
-}
-#endif
-END
