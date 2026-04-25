@@ -308,7 +308,7 @@ main :: () {
                 return;
             }
 
-            gl_texture := texture.specific.gl_handle;
+            gl_texture := texture.gl_handle;
             glBindTexture(GL_TEXTURE_2D, gl_texture);
 
             // TODO(jt): @Speed We could do glTexSubImage2D and copy just the updated region, but it
