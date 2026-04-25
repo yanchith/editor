@@ -1132,10 +1132,10 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
                     buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
                     buffer_text.count -= 1; // The trailing '/', so that path_strip_filename can treat the last segment as a filename.
 
-                    stripped_path := String.path_strip_filename(buffer_text);
+                    dir_path := String.path_strip_filename(buffer_text);
 
                     text_buffer_reset(*mini_panel.buffer);
-                    text_buffer_insert(*mini_panel.buffer, stripped_path);
+                    text_buffer_insert(*mini_panel.buffer, dir_path);
                 } else {
                     text_buffer_delete_backward(*mini_panel.buffer);
                 }
@@ -1542,30 +1542,30 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                 path_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
                 path_text_char_count := mini_panel.buffer.line_chars[0];
 
-                path_prefix, _, _, file_name_with_extension := String.path_decomp(path_text);
+                path_prefix, _, _, filename := String.path_decomp(path_text);
                 path_prefix = String.trim_right(path_prefix, "/");
 
-                file_name_with_extension_char_count := count_utf8_chars(file_name_with_extension);
+                filename_char_count := count_utf8_chars(filename);
 
                 // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
                 file_list := platform.list_files(path_prefix,, temp);
                 for file_list {
-                    visited_file_path := it.name;
-                    visited_filename := String.path_filename(it.name);
+                    listed_file_path := it.name;
+                    listed_filename := String.path_filename(it.name);
 
-                    found_index, found := String.index_of_string_nocase(visited_filename, file_name_with_extension);
+                    found_index, found := String.index_of_string_nocase(listed_filename, filename);
                     if found {
                         s := "";
                         if it.name.count {
-                            s = arena_push_string(mini_panel.items_arena, visited_filename);
+                            s = arena_push_string(mini_panel.items_arena, listed_filename);
                         }
 
-                        x0 := count_utf8_chars(String.slice(visited_filename, 0, found_index));
+                        x0 := count_utf8_chars(String.slice(listed_filename, 0, found_index));
 
                         item := array_add(*mini_panel.items);
                         item.text = s;
                         item.highlight_x0 = x0;
-                        item.highlight_x1 = x0 + file_name_with_extension_char_count;
+                        item.highlight_x1 = x0 + filename_char_count;
                         item.userdata = null;
 
                         if it.name.count {
@@ -1742,9 +1742,6 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) {
         }
 
         case .OPEN_FILE; {
-            // XXX: @Bug If the file does not exist, get_absolute_path will fail on macOS. We need
-            // to do something about it.
-            //
             // XXX: @Bug Confirm proc allows selecting directories. We should append the directory
             // to the current path in the mini buffer. Emacs opens directories in dired, but we
             // don't have a lister panel yet. what do we do?
