@@ -37,7 +37,6 @@ f64 :: float64;
 #import "GL";
 #import "Profiler"()(IMPORT_MODE = .RUNTIME);
 
-Random         :: #import "Random";
 String         :: #import "String";
 File           :: #import "File";
 File_Utilities :: #import "File_Utilities";
@@ -46,11 +45,6 @@ Input          :: #import "Input"; // This is our modified version. See :Modifie
 Clipboard      :: #import "Clipboard";
 Simp           :: #import "Simp";
 Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY);
-
-Random_State           :: Random.Random_State;
-random_seed            :: Random.random_seed;
-random_get             :: Random.random_get;
-random_get_zero_to_one :: Random.random_get_zero_to_one;
 
 IRect :: Editor.IRect;
 
@@ -82,9 +76,6 @@ main :: () {
     editor_context := context;
     editor_context.logger      = context_logger;
     editor_context.logger_data = *context_logger_data;
-
-    fuzz_rng: Random_State;
-    random_seed(*fuzz_rng, 1);
 
     push_context editor_context {
         #if OS == .WINDOWS {
@@ -404,7 +395,6 @@ main :: () {
         }
 
         should_run  := true;
-        should_fuzz := false;
 
         while should_run {
             profiler_start_frame("frame");
@@ -467,51 +457,51 @@ main :: () {
                         // control characters outside of the ASCII range we use our own enum.
                         if it.key_code == {
                             // keycodes that are also in ASCII
-                            case .BACKSPACE;               array_add(*input_events, { .CODEPOINT, flags, { codepoint = .BACKSPACE } });
-                            case .TAB;                     array_add(*input_events, { .CODEPOINT, flags, { codepoint = .TAB } });
-                            case .LINEFEED;                array_add(*input_events, { .CODEPOINT, flags, { codepoint = .LINEFEED } });
-                            case .ENTER;                   array_add(*input_events, { .CODEPOINT, flags, { codepoint = .ENTER } });
-                            case .ESCAPE;                  array_add(*input_events, { .CODEPOINT, flags, { codepoint = .ESCAPE } });
+                            case .BACKSPACE;            array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .BACKSPACE });
+                            case .TAB;                  array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .TAB });
+                            case .LINEFEED;             array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .LINEFEED });
+                            case .ENTER;                array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .ENTER });
+                            case .ESCAPE;               array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .ESCAPE });
                             // SPACEBAR also gets sent as a text event, so we capture it there.
-                            case .DELETE;                  array_add(*input_events, { .CODEPOINT, flags, { codepoint = .DELETE } });
+                            case .DELETE;               array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .DELETE });
 
                             // keycodes that are not in ASCII
-                            case .CTRL;                    array_add(*input_events, { .KEY, flags, { key = .CTRL} });
-                            case .ALT;                     array_add(*input_events, { .KEY, flags, { key = .ALT } });
-                            case .SHIFT;                   array_add(*input_events, { .KEY, flags, { key = .SHIFT } });
-                            case .META;                    array_add(*input_events, { .KEY, flags, { key = .META } });
+                            case .CTRL;                 array_add(*input_events, { type = .KEY, flags = flags, key = .CTRL });
+                            case .ALT;                  array_add(*input_events, { type = .KEY, flags = flags, key = .ALT });
+                            case .SHIFT;                array_add(*input_events, { type = .KEY, flags = flags, key = .SHIFT });
+                            case .META;                 array_add(*input_events, { type = .KEY, flags = flags, key = .META });
 
-                            case .ARROW_UP;                array_add(*input_events, { .KEY, flags, { key = .ARROW_UP } });
-                            case .ARROW_DOWN;              array_add(*input_events, { .KEY, flags, { key = .ARROW_DOWN } });
-                            case .ARROW_LEFT;              array_add(*input_events, { .KEY, flags, { key = .ARROW_LEFT } });
-                            case .ARROW_RIGHT;             array_add(*input_events, { .KEY, flags, { key = .ARROW_RIGHT } });
+                            case .ARROW_UP;             array_add(*input_events, { type = .KEY, flags = flags, key = .ARROW_UP });
+                            case .ARROW_DOWN;           array_add(*input_events, { type = .KEY, flags = flags, key = .ARROW_DOWN });
+                            case .ARROW_LEFT;           array_add(*input_events, { type = .KEY, flags = flags, key = .ARROW_LEFT });
+                            case .ARROW_RIGHT;          array_add(*input_events, { type = .KEY, flags = flags, key = .ARROW_RIGHT });
 
-                            case .PAGE_UP;                 array_add(*input_events, { .KEY, flags, { key = .PAGE_UP } });
-                            case .PAGE_DOWN;               array_add(*input_events, { .KEY, flags, { key = .PAGE_DOWN } });
+                            case .PAGE_UP;              array_add(*input_events, { type = .KEY, flags = flags, key = .PAGE_UP });
+                            case .PAGE_DOWN;            array_add(*input_events, { type = .KEY, flags = flags, key = .PAGE_DOWN });
 
-                            case .HOME;                    array_add(*input_events, { .KEY, flags, { key = .HOME } });
-                            case .END;                     array_add(*input_events, { .KEY, flags, { key = .END } });
+                            case .HOME;                 array_add(*input_events, { type = .KEY, flags = flags, key = .HOME });
+                            case .END;                  array_add(*input_events, { type = .KEY, flags = flags, key = .END });
 
-                            case .INSERT;                  array_add(*input_events, { .KEY, flags, { key = .INSERT } });
+                            case .INSERT;               array_add(*input_events, { type = .KEY, flags = flags, key = .INSERT });
 
-                            case .F1;                      array_add(*input_events, { .KEY, flags, { key = .F1 } });
-                            case .F2;                      array_add(*input_events, { .KEY, flags, { key = .F2 } });
-                            case .F3;                      array_add(*input_events, { .KEY, flags, { key = .F3 } });
-                            case .F4;                      array_add(*input_events, { .KEY, flags, { key = .F4 } });
-                            case .F5;                      array_add(*input_events, { .KEY, flags, { key = .F5 } });
-                            case .F6;                      array_add(*input_events, { .KEY, flags, { key = .F6 } });
-                            case .F7;                      array_add(*input_events, { .KEY, flags, { key = .F7 } });
-                            case .F8;                      array_add(*input_events, { .KEY, flags, { key = .F8 } });
-                            case .F9;                      array_add(*input_events, { .KEY, flags, { key = .F9 } });
-                            case .F10;                     array_add(*input_events, { .KEY, flags, { key = .F10 } });
-                            case .F11;                     array_add(*input_events, { .KEY, flags, { key = .F11 } });
-                            case .F12;                     array_add(*input_events, { .KEY, flags, { key = .F12 } }); if it.key_pressed then should_fuzz = !should_fuzz;
+                            case .F1;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F1 });
+                            case .F2;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F2 });
+                            case .F3;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F3 });
+                            case .F4;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F4 });
+                            case .F5;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F5 });
+                            case .F6;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F6 });
+                            case .F7;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F7 });
+                            case .F8;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F8 });
+                            case .F9;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F9 });
+                            case .F10;                  array_add(*input_events, { type = .KEY, flags = flags, key = .F10 });
+                            case .F11;                  array_add(*input_events, { type = .KEY, flags = flags, key = .F11 });
+                            case .F12;                  array_add(*input_events, { type = .KEY, flags = flags, key = .F12 });
 
-                            case .PRINT_SCREEN;            array_add(*input_events, { .KEY, flags, { key = .PRINT_SCREEN } });
+                            case .PRINT_SCREEN;         array_add(*input_events, { type = .KEY, flags = flags, key = .PRINT_SCREEN });
 
-                            case .MOUSE_BUTTON_LEFT;       array_add(*input_events, { .KEY, flags, { key = .MB_LEFT } });
-                            case .MOUSE_BUTTON_RIGHT;      array_add(*input_events, { .KEY, flags, { key = .MB_RIGHT } });
-                            case .MOUSE_BUTTON_MIDDLE;     array_add(*input_events, { .KEY, flags, { key = .MB_MIDDLE } });
+                            case .MOUSE_BUTTON_LEFT;    array_add(*input_events, { type = .KEY, flags = flags, key = .MB_LEFT });
+                            case .MOUSE_BUTTON_RIGHT;   array_add(*input_events, { type = .KEY, flags = flags, key = .MB_RIGHT });
+                            case .MOUSE_BUTTON_MIDDLE;  array_add(*input_events, { type = .KEY, flags = flags, key = .MB_MIDDLE });
 
                             case; {
                                 // TODO(jt): @Cleanup @Hack Both Windows and macOS have their quirks
@@ -531,7 +521,7 @@ main :: () {
                                 // there.
 
                                 if it.ctrl_pressed && it.text_input_count == 0 {
-                                    array_add(*input_events, { .CODEPOINT, flags, { codepoint = cast(Editor.Codepoint, it.key_code) } });
+                                    array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = cast(Editor.Codepoint, it.key_code) });
                                 }
                             }
                         }
@@ -541,130 +531,7 @@ main :: () {
                         flags: Editor.Input_Event.Flags;
                         flags |= .PRESSED; // TEXT_INPUT implies key_pressed.
 
-                        data: Editor.Input_Event.Data;
-                        data.codepoint = cast(Editor.Codepoint, it.utf32);
-
-                        array_add(*input_events, { .CODEPOINT, flags, data });
-                    }
-                }
-            }
-
-            // TODO(jt): Generate all possible actions from a keymap.
-            if should_fuzz {
-                MOVES   :: Editor.Key.[.ARROW_UP, .ARROW_DOWN, .ARROW_LEFT, .ARROW_RIGHT];
-                ADDS    :: Editor.Codepoint.[.ENTER, .SPACEBAR, .TAB, #char "A", #char "B", #char "C", #char "D", #char "E", #char "F", #char "š", #char "č", #char "ť", #char "か", #char "わ", #char "い", #char "可", #char "愛"];
-                DELETES :: Editor.Codepoint.[.BACKSPACE, .DELETE];
-
-                for 0..10 {
-                    r := random_get_zero_to_one(*fuzz_rng);
-
-                    if r < 0.2 {
-                        for 0..20 {
-                            e := array_add(*input_events);
-                            e.type = .KEY;
-                            e.flags |= .PRESSED;
-
-                            index := random_get(*fuzz_rng) % MOVES.count;
-                            e.data.key = MOVES[index];
-                        }
-                    } else if r < 0.4 {
-                        for 0..20 {
-                            e := array_add(*input_events);
-                            e.type = .CODEPOINT;
-                            e.flags |= .PRESSED;
-
-                            index := random_get(*fuzz_rng) % ADDS.count;
-                            e.data.codepoint = ADDS[index];
-                        }
-                    } else if r < 0.6 {
-                        for 0..20 {
-                            e := array_add(*input_events);
-                            e.type = .CODEPOINT;
-                            e.flags |= .PRESSED;
-
-                            index := random_get(*fuzz_rng) % DELETES.count;
-                            e.data.codepoint = DELETES[index];
-                        }
-                    } else if r < 0.7 {
-                        // C-g select
-                        ctrl_press := array_add(*input_events);
-                        ctrl_press.type = .KEY;
-                        ctrl_press.flags |= .PRESSED;
-                        ctrl_press.data.key = .CTRL;
-
-                        e := array_add(*input_events);
-                        e.type = .CODEPOINT;
-                        e.flags |= .PRESSED;
-                        e.data.codepoint = .SPACEBAR;
-
-                        ctrl_release := array_add(*input_events);
-                        ctrl_release.type = .KEY;
-                        ctrl_release.flags = .NONE;
-                        ctrl_release.data.key = .CTRL;
-                    } else if r < 0.75 {
-                        // Undo
-                        ctrl_press := array_add(*input_events);
-                        ctrl_press.type = .KEY;
-                        ctrl_press.flags |= .PRESSED;
-                        ctrl_press.data.key = .CTRL;
-
-                        e := array_add(*input_events);
-                        e.type = .CODEPOINT;
-                        e.flags |= .PRESSED;
-                        e.data.codepoint = #char "/";
-
-                        ctrl_release := array_add(*input_events);
-                        ctrl_release.type = .KEY;
-                        ctrl_release.flags = .NONE;
-                        ctrl_release.data.key = .CTRL;
-                    } else if r < 0.8 {
-                        // Redo
-                        alt_press := array_add(*input_events);
-                        alt_press.type = .KEY;
-                        alt_press.flags |= .PRESSED;
-                        alt_press.data.key = .ALT;
-
-                        e := array_add(*input_events);
-                        e.type = .CODEPOINT;
-                        e.flags |= .PRESSED;
-                        e.data.codepoint = #char "/";
-
-                        alt_release := array_add(*input_events);
-                        alt_release.type = .KEY;
-                        alt_release.flags = .NONE;
-                        alt_release.data.key = .ALT;
-                    } else if r < 0.9 {
-                        for 0..20 {
-                            e := array_add(*input_events);
-                            e.type = .KEY;
-                            e.flags |= .PRESSED;
-
-                            e.data.key = .ARROW_RIGHT;
-                        }
-
-                        for 0..20 {
-                            e := array_add(*input_events);
-                            e.type = .CODEPOINT;
-                            e.flags |= .PRESSED;
-
-                            e.data.codepoint = .BACKSPACE;
-                        }
-                    } else if r < 1.0 {
-                        for 0..20 {
-                            e := array_add(*input_events);
-                            e.type = .KEY;
-                            e.flags |= .PRESSED;
-
-                            e.data.key = .ARROW_LEFT;
-                        }
-
-                        for 0..20 {
-                            e := array_add(*input_events);
-                            e.type = .CODEPOINT;
-                            e.flags |= .PRESSED;
-
-                            e.data.codepoint = .DELETE;
-                        }
+                        array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = cast(Editor.Codepoint, it.utf32) });
                     }
                 }
             }
@@ -680,7 +547,6 @@ main :: () {
             Simp.clear_render_target(1, 1, 1, 1);
 
             wants_quit, wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
-            wants_next_frame |= should_fuzz;
             if wants_quit {
                 should_run = false;
             }

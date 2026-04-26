@@ -96,6 +96,12 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
             message_typechecked := cast(*Message_Typechecked, message);
 
             for tc: message_typechecked.procedure_bodies {
+                // TODO(jt): We currently instrument each instantiation of the polymorphic/autobaked
+                // procedure. That is probably okay, but maybe we should enhance the label so we can
+                // distinguish between them? Or should we instrument just the original procedure and
+                // not the instatiations? Maybe we need a per-zone config for this (if both are even
+                // possible to do)?
+
                 body := tc.expression;
 
                 // We could guard against ALREADY_MODIFIED, but because we only replace our own
@@ -191,7 +197,7 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
         call_ident := cast(*Code_Ident, call.procedure_expression);
 
         // @Hack we are doing very little checking before we replace the macro invocation. We used
-        // to crawl to the actual header of the called procedure, which can then be matched agains.
+        // to crawl to the actual header of the called procedure, which can then be matched against.
         // However, if our ProfileZone invocation is inside something that makes it impossible to
         // resolve at the time we see it, e.g. a macro/#insert/for_expansion, we can't reach the
         // actual declaration to check that it is the one in our module.

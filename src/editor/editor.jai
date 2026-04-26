@@ -509,14 +509,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             if it.type == {
                 case .KEY; {
-                    if it.data.key == {
+                    if it.key == {
                         case .F1;  editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture; handled = true;
                     }
                 }
 
                 case .CODEPOINT; {
                     if editor.input_state.modifiers & .CTRL {
-                        if it.data.codepoint == {
+                        if it.codepoint == {
                             // TODO(jt): Move this to a global keymap.
                             //
                             // TODO(jt): This works a little too well on Windows, we don't even need
@@ -1161,7 +1161,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     if !key_map_buffered && key_map_action == .NONE && event.flags & .PRESSED {
         if event.type == {
             case .CODEPOINT; {
-                codepoint := event.data.codepoint;
+                codepoint := event.codepoint;
 
                 if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
                     if codepoint == {
@@ -1349,7 +1349,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             case .CODEPOINT; {
                 panel.selecting = false;
 
-                codepoint := event.data.codepoint;
+                codepoint := event.codepoint;
 
                 // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
                 // this back to codepoints for its linedata tracking. Add
@@ -1999,6 +1999,9 @@ recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, 
         setup_scroll_interpolation(panel, input.time, panel.scroll, target);
     }
 }
+
+// XXX: @Bug Scrolling the hello text up till the end let's cursor get off the screen temporarily
+// (until it is clamped another operation).
 
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     document := panel.document;

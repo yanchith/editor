@@ -185,7 +185,10 @@ action_classify :: (action: Action) -> Action_Kind {
 Shortcut_Key :: struct {
     modifier_flags: Modifier_Flags;
     type: Input_Event.Type;
-    data: Input_Event.Data;
+
+    data: u32;
+    #overlay (data) key: Key;
+    #overlay (data) codepoint: Codepoint;
 }
 
 #assert size_of(Shortcut_Key) == 8;
@@ -220,20 +223,20 @@ shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key, allow_superset_
     if a.type == {
         case .KEY; {
             // TODO(jt): should we also handle to_lower here?
-            if a.data.key != b.data.key {
+            if a.key != b.key {
                 return false;
             }
         }
         case .CODEPOINT; {
-            if a.data.codepoint < 127 && b.data.codepoint < 127 {
-                ascii_a := cast(u8, a.data.codepoint);
-                ascii_b := cast(u8, b.data.codepoint);
+            if a.codepoint < 127 && b.codepoint < 127 {
+                ascii_a := cast(u8, a.codepoint);
+                ascii_b := cast(u8, b.codepoint);
 
                 // TODO(jt): We need a Unicode version of to_lower here eventually.
                 if to_lower(ascii_a) != to_lower(ascii_b) {
                     return false;
                 }
-            } else if a.data.codepoint != b.data.codepoint {
+            } else if a.codepoint != b.codepoint {
                 return false;
             }
         }
@@ -292,42 +295,42 @@ shortcut_parse :: (_s: string) -> success: bool, Shortcut {
         }
 
         if l == {
-            case "<up>";         key.type = .KEY; key.data.key = .ARROW_UP;
-            case "<down>";       key.type = .KEY; key.data.key = .ARROW_DOWN;
-            case "<left>";       key.type = .KEY; key.data.key = .ARROW_LEFT;
-            case "<right>";      key.type = .KEY; key.data.key = .ARROW_RIGHT;
+            case "<up>";         key.type = .KEY; key.key = .ARROW_UP;
+            case "<down>";       key.type = .KEY; key.key = .ARROW_DOWN;
+            case "<left>";       key.type = .KEY; key.key = .ARROW_LEFT;
+            case "<right>";      key.type = .KEY; key.key = .ARROW_RIGHT;
 
-            case "<space>";      key.type = .CODEPOINT; key.data.codepoint = .SPACEBAR;
-            case "<tab>";        key.type = .CODEPOINT; key.data.codepoint = .TAB;
+            case "<space>";      key.type = .CODEPOINT; key.codepoint = .SPACEBAR;
+            case "<tab>";        key.type = .CODEPOINT; key.codepoint = .TAB;
 
-            case "<enter>";      key.type = .CODEPOINT; key.data.codepoint = .ENTER;
-            case "<delete>";     key.type = .CODEPOINT; key.data.codepoint = .DELETE;
-            case "<backspace>";  key.type = .CODEPOINT; key.data.codepoint = .BACKSPACE;
+            case "<enter>";      key.type = .CODEPOINT; key.codepoint = .ENTER;
+            case "<delete>";     key.type = .CODEPOINT; key.codepoint = .DELETE;
+            case "<backspace>";  key.type = .CODEPOINT; key.codepoint = .BACKSPACE;
 
-            case "<home>";       key.type = .KEY; key.data.key = .HOME;
-            case "<end>";        key.type = .KEY; key.data.key = .END;
+            case "<home>";       key.type = .KEY; key.key = .HOME;
+            case "<end>";        key.type = .KEY; key.key = .END;
 
             case "<prior>";     #through;
-            case "<pageup>";    key.type = .KEY; key.data.key = .PAGE_UP;
+            case "<pageup>";    key.type = .KEY; key.key = .PAGE_UP;
             case "<next>";      #through;
-            case "<pagedown>";  key.type = .KEY; key.data.key = .PAGE_DOWN;
+            case "<pagedown>";  key.type = .KEY; key.key = .PAGE_DOWN;
 
-            case "<f1>";         key.type = .KEY; key.data.key = .F1;
-            case "<f2>";         key.type = .KEY; key.data.key = .F2;
-            case "<f3>";         key.type = .KEY; key.data.key = .F3;
-            case "<f4>";         key.type = .KEY; key.data.key = .F4;
-            case "<f5>";         key.type = .KEY; key.data.key = .F5;
-            case "<f6>";         key.type = .KEY; key.data.key = .F6;
-            case "<f7>";         key.type = .KEY; key.data.key = .F7;
-            case "<f8>";         key.type = .KEY; key.data.key = .F8;
-            case "<f9>";         key.type = .KEY; key.data.key = .F9;
-            case "<f10>";        key.type = .KEY; key.data.key = .F10;
-            case "<f11>";        key.type = .KEY; key.data.key = .F11;
-            case "<f12>";        key.type = .KEY; key.data.key = .F12;
+            case "<f1>";         key.type = .KEY; key.key = .F1;
+            case "<f2>";         key.type = .KEY; key.key = .F2;
+            case "<f3>";         key.type = .KEY; key.key = .F3;
+            case "<f4>";         key.type = .KEY; key.key = .F4;
+            case "<f5>";         key.type = .KEY; key.key = .F5;
+            case "<f6>";         key.type = .KEY; key.key = .F6;
+            case "<f7>";         key.type = .KEY; key.key = .F7;
+            case "<f8>";         key.type = .KEY; key.key = .F8;
+            case "<f9>";         key.type = .KEY; key.key = .F9;
+            case "<f10>";        key.type = .KEY; key.key = .F10;
+            case "<f11>";        key.type = .KEY; key.key = .F11;
+            case "<f12>";        key.type = .KEY; key.key = .F12;
             case; {
                 c := Unicode.character_utf8_to_utf32(l.data, l.count);
                 key.type = .CODEPOINT;
-                key.data.codepoint = cast(Codepoint, c);
+                key.codepoint = cast(Codepoint, c);
             }
         }
 
@@ -368,7 +371,7 @@ shortcut_print_to_builder :: (shortcut: Shortcut, b: *String_Builder) {
 
         if key.type == {
             case .KEY; {
-                if key.data.key == {
+                if key.key == {
                     case .ARROW_UP;      print(b, "<up>");
                     case .ARROW_DOWN;    print(b, "<down>");
                     case .ARROW_LEFT;    print(b, "<left>");
@@ -398,7 +401,7 @@ shortcut_print_to_builder :: (shortcut: Shortcut, b: *String_Builder) {
             }
 
             case .CODEPOINT; {
-                if key.data.codepoint == {
+                if key.codepoint == {
                     case .SPACEBAR;      print(b, "<space>");
                     case .TAB;           print(b, "<tab>");
 
@@ -411,7 +414,7 @@ shortcut_print_to_builder :: (shortcut: Shortcut, b: *String_Builder) {
                         s: string;
                         s.data = buf.data;
 
-                        Unicode.character_utf32_to_utf8(cast(u32, key.data.codepoint), *s);
+                        Unicode.character_utf32_to_utf8(cast(u32, key.codepoint), *s);
 
                         print(b, s);
                     }
@@ -565,7 +568,7 @@ InitAllocators :: (key_map: *Key_Map) #expand {
 is_modifier_key_event :: (event: Input_Event) -> bool {
     if event.type == {
         case .KEY; {
-            if event.data.key == {
+            if event.key == {
                 case .CTRL;   return true;
                 case .ALT;    return true;
                 case .SHIFT;  return true;
