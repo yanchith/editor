@@ -20,7 +20,12 @@ Input :: struct {
 Input_Event :: struct  {
     type: Type;
     flags: Flags;
-    data: Data;
+
+    data: u32;
+
+    // Overlay instead of tagged union for more control over data data layout.
+    #overlay (data) key: Key;
+    #overlay (data) codepoint: Codepoint;
 
     Type :: enum u16 {
         KEY       :: 0;
@@ -32,15 +37,6 @@ Input_Event :: struct  {
 
         PRESSED :: 0x01; // Whether the key is right now pressed. Absence of this flag means released.
         REPEAT  :: 0x02; // Whether the key is a synthetic OS repeat event. We currently don't use this?
-    }
-
-
-    // TODO(jt): This is not a discriminated union (yet?), because currently the tag is the first
-    // member and we can't pack Keyboard_Event into 8 bytes because of padding this
-    // introduces. Therefore the tag is stored outside.
-    Data :: union {
-        key: Key;
-        codepoint: Codepoint;
     }
 }
 
@@ -147,7 +143,7 @@ input_state_update_on_frame_start :: (input_state: *Input_State, input: Input) {
 
 input_state_update_with_event :: (input_state: *Input_State, event: Input_Event) {
     if event.type == .KEY {
-        key := event.data.key;
+        key := event.key;
 
         if event.flags & .PRESSED {
             input_state.keys[key] |= .DOWN | .PRESSED;
@@ -167,7 +163,7 @@ input_state_update_with_event :: (input_state: *Input_State, event: Input_Event)
     if #complete event.type == {
         case .CODEPOINT; // Nothing
         case .KEY; {
-            if event.data.key == {
+            if event.key == {
                 case .CTRL;   modifiers |= .CTRL;
                 case .ALT;    modifiers |= .ALT;
                 case .SHIFT;  modifiers |= .SHIFT;
