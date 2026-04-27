@@ -58,7 +58,7 @@ SLOW_INIT_THRESHOLD_MILLIS :: 100;
 renderer_textures: Table(Editor.Texture_ID, Simp.Texture);
 renderer_text_shader: Simp.Shader;
 
-// Simp does immediate_flush when we change the pipeline without checking whether the pipeline is the same. Let's not do that.
+// Simp does immediate_flush when we change the pipeline without checking whether the pipeline is the same. Let's save it some work.
 renderer_current_shader: Renderer_Shader = .NONE;
 Renderer_Shader :: enum {
     NONE  :: 0;
@@ -67,11 +67,11 @@ Renderer_Shader :: enum {
 }
 
 main :: () {
-    time_program_start := current_time_monotonic();
+    time_of_program_start := current_time_monotonic();
 
     profiler_init();
 
-    context_logger_data := Context_Logger_Data.{ time_program_start };
+    context_logger_data: Context_Logger_Data = { time_of_program_start };
 
     editor_context := context;
     editor_context.logger      = context_logger;
@@ -110,7 +110,7 @@ main :: () {
             }
         }
 
-        time_last_frame_start := time_program_start;
+        time_of_last_frame_start := time_of_program_start;
 
         window := Window.create_window(1600, 900, "editor");
 
@@ -399,11 +399,11 @@ main :: () {
         while should_run {
             profiler_start_frame("frame");
 
-            time_frame_start := current_time_monotonic();
-            time_since_program_start := time_frame_start - time_program_start;
+            time_of_frame_start := current_time_monotonic();
+            time_since_program_start := time_of_frame_start - time_of_program_start;
 
-            dtime := time_frame_start - time_last_frame_start;
-            time_last_frame_start = time_frame_start;
+            dtime := time_of_frame_start - time_of_last_frame_start;
+            time_of_last_frame_start = time_of_frame_start;
 
             input.time = time_since_program_start;
             input.dtime = dtime;
@@ -656,7 +656,7 @@ void main () {
 END
 
 Context_Logger_Data :: struct {
-    time_program_start: Apollo_Time;
+    time_of_program_start: Apollo_Time;
 }
 
 context_logger :: (message: string, data: *void, info: Log_Info) {
@@ -667,7 +667,7 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
     context_logger_data := cast(*Context_Logger_Data, data);
 
     // Add time since launch. Pad to up to 4 leading digits and 6 decimal digits.
-    time_start           := context_logger_data.time_program_start;
+    time_start           := context_logger_data.time_of_program_start;
     time_now             := current_time_monotonic();
     time_since_start     := time_now - time_start;
     time_since_start_str := tprint("% ", formatFloat(to_float64_seconds(time_since_start), trailing_width = 6, zero_removal = .NO));
