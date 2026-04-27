@@ -154,10 +154,10 @@ Editor :: struct {
 
     key_map: Key_Map;
 
-    // Documents are referenced by panels. A document can be referenced by multiple panels. When we
-    // close a panel, or switch a panel to a different document, the original document remains. When
-    // we close/unload a document, we need to go through every panel and make sure it does not
-    // reference that document.
+    // Documents are referenced by panels (one document, many panels). When we close a panel or
+    // switch a panel to a different document, the original document remains. When we close/unload a
+    // document, we need to go through every panel and make sure it does not reference that
+    // document.
     documents: Bucket_Array(Document, 16);
 
     // :MultiplePanels
@@ -492,7 +492,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    // Currently, there must always be at least one panel (and it must be active).
+    // Currently, there must always be at least one panel. We can relax this in the future.
     active_panel: *Panel = get_active_panel(editor);
     assert(active_panel != null);
 
@@ -568,8 +568,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // documents are big. Beware multiplying cell_W and cell_h with integers (such as line count),
     // as that autocasts the integers to f32, but we want to manually cast them to f64. See :FloatPrecision
     //
-    // TODO(jt): cell_w should be width of letter M or something, because width of widest glyph is
-    // too much in variable-spaced fonts.
+    // TODO(jt): cell_w is incorrect in variable-spaced fonts. It should be the width of the current
+    // character (of width of a space, if we are pointing past line content).
     cell_w := editor.font.max_glyph_width_in_pixels;
     cell_h := editor.font.line_height_in_pixels;
     window_w := cast(f32, input.window_size.x);
@@ -685,7 +685,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         panel_w := window_w;
         panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
         if editor.mini_panel.open {
-            // Currently, this only affects the culling.
+            // Currently, this only affects culling.
             //
             // TODO(jt): In Emacs, this would also modify the scroll offset, if the cursor would be
             // occluded by the newly visible mini panel. Should we do that?
@@ -756,8 +756,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             SCROLL_TIME : f64 : 0.15; // TODO(jt): Make this configurable. :Config
 
             // TODO(jt): @Hack We add 1/2 of usual delta time to offset the lag, but maybe there's a
-            // better way to integrate the movement? I should study up on how Casey did this in
-            // Handmade Hero.
+            // better way to integrate the movement? I should study up on how to integrate this.
             t := cast(f32, (to_float64_seconds(input.time) + 0.5 * USUAL_DELTA_TIME - to_float64_seconds(panel.scroll_time_start)) / SCROLL_TIME);
             t = clamp(t, 0.0, 1.0);
             t = smoothstep(0.0, 1.0, t);
