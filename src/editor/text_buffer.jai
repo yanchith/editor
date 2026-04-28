@@ -276,6 +276,9 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
 
     bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
+    if bytes.count == 0 {
+        return;
+    }
 
     newline_advance := string_starts_with_newline(bytes, binary = buffer.binary_mode);
     if newline_advance {
@@ -371,6 +374,9 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
 
     bytes := gap_buffer_get_bytes_before_gap(buffer.gb);
+    if bytes.count == 0 {
+        return;
+    }
 
     newline_advance := string_ends_with_newline(bytes, binary = buffer.binary_mode);
     if newline_advance {
