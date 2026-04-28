@@ -243,6 +243,7 @@ Panel :: struct {
     clamp_scroll_to_cursor: bool;
     clamp_scroll_to_start_of_line: bool;
     clamp_scroll_to_end_of_line: bool;
+    clamp_cursor_to_scroll: bool;
 
     selecting: bool;
 
@@ -707,7 +708,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
 
         //
-        // Scroll buffer to cursor, if buffer changed.
+        // Scroll buffer to cursor
         //
         if panel.clamp_scroll_to_cursor || panel.clamp_scroll_to_start_of_line || panel.clamp_scroll_to_end_of_line {
             ProfileZone(":ClampScroll");
@@ -746,6 +747,26 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 target := panel.scroll_target;
                 target.y = scroll_to_rect.y0 - scroll_padding_y;
                 setup_scroll_interpolation(panel, input.time, panel.scroll, target);
+            }
+        }
+
+        if panel.clamp_cursor_to_scroll {
+            ProfileZone(":ClampCursor");
+
+            // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
+            viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
+            cursor_rect   := drect_from_point_and_size(buffer_cursor0_position.x, buffer_cursor0_position.y, cell_w, cell_h);
+
+            SCROLL_PADDING :: 3; // TODO(jt): Make this configurable. :Config
+
+            if viewport_rect.y0 > cursor_rect.y1 {
+                // Move cursor down
+                delta := cast(s64, ceil((viewport_rect.y0 - cursor_rect.y1) / cell_h)) + SCROLL_PADDING;
+                text_buffer_move_cursor_y(*document.buffer, delta, panel.selecting);
+            } else if viewport_rect.y1 < cursor_rect.y0 {
+                // Move cursor up
+                delta := cast(s64, ceil((cursor_rect.y0 - viewport_rect.y1) / cell_h)) + SCROLL_PADDING;
+                text_buffer_move_cursor_y(*document.buffer, -delta, panel.selecting);
             }
         }
 
@@ -965,6 +986,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         panel.clamp_scroll_to_cursor        = false;
         panel.clamp_scroll_to_start_of_line = false;
         panel.clamp_scroll_to_end_of_line   = false;
+        panel.clamp_cursor_to_scroll        = false;
     }
 
     {
@@ -2020,26 +2042,23 @@ recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, 
     }
 }
 
-// XXX: @Bug Scrolling the hello text up till the end let's cursor get off the screen temporarily
-// (until it is clamped another operation).
-
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     document := panel.document;
     if !document {
         return;
     }
 
-    delta_max := cast(s64, floor(input.window_size.y / cell_h));
-    delta     := min(document.buffer.cursor0.y, delta_max);
+    top: f64 = 0; // Just here for symmetry with scrolling
 
-    text_buffer_move_cursor_y(*document.buffer, -delta, panel.selecting);
+    // TODO(jt): Scroll by less? :Config
+    delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
+    delta = min(delta, panel.scroll_target.y - top);
 
-    if delta == delta_max {
-        target := panel.scroll_target;
-        target.y -= delta * cell_h;
+    target := panel.scroll_target;
+    target.y -= delta;
+    setup_scroll_interpolation(panel, input.time, panel.scroll, target);
 
-        setup_scroll_interpolation(panel, input.time, panel.scroll, target);
-    }
+    panel.clamp_cursor_to_scroll = true;
 }
 
 scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
@@ -2048,17 +2067,18 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
         return;
     }
 
-    delta_max := cast(s64, floor(input.window_size.y / cell_h));
-    delta     := min(document.buffer.line_bytes.count - 1 - document.buffer.cursor0.y, delta_max);
+    bottom := cast(f64, panel.document.buffer.line_count) * cell_h;
+    sanity_assert(bottom >= panel.scroll_target.y);
 
-    text_buffer_move_cursor_y(*document.buffer, delta, panel.selecting);
+    // TODO(jt): Scroll by less? :Config
+    delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
+    delta = min(delta, bottom - (panel.scroll_target.y + delta));
 
-    if delta == delta_max {
-        target := panel.scroll_target;
-        target.y += delta * cell_h;
+    target := panel.scroll_target;
+    target.y += delta;
+    setup_scroll_interpolation(panel, input.time, panel.scroll, target);
 
-        setup_scroll_interpolation(panel, input.time, panel.scroll, target);
-    }
+    panel.clamp_cursor_to_scroll = true;
 }
 
 get_cursor_position :: (document: Document, font: Font) -> DVector2 {
@@ -2075,6 +2095,13 @@ get_cursor_position :: (document: Document, font: Font) -> DVector2 {
 }
 
 setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time, source: DVector2, target: DVector2) {
+    // This early return prevents changing current interpolation to one that's just slightly
+    // different, and thus prolonging the animation and making it jittery. This happens, when we
+    // hold down a button (e.g. C-v) that triggers us setting up the interepolation.
+    if target == panel.scroll_target {
+        return;
+    }
+
     panel.scroll_time_start = time;
 
     panel.scroll_source.x = max(source.x, 0.0);
