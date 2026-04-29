@@ -323,72 +323,73 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     {
         key_map := *editor.key_map;
         key_map.allocator = arena_allocator(editor.perm_arena);
-        key_map_init(key_map, 128);
 
-        key_map_register(key_map, "C-p",     .MOVE_UP);
-        key_map_register(key_map, "<up>",    .MOVE_UP);
-        key_map_register(key_map, "C-n",     .MOVE_DOWN);
-        key_map_register(key_map, "<down>",  .MOVE_DOWN);
-        key_map_register(key_map, "C-b",     .MOVE_LEFT);
-        key_map_register(key_map, "<left>",  .MOVE_LEFT);
-        key_map_register(key_map, "C-f",     .MOVE_RIGHT);
-        key_map_register(key_map, "<right>", .MOVE_RIGHT);
+        key_map_reserve(key_map, 128);
 
-        key_map_register(key_map, "C-s",     .SEARCH);
-        key_map_register(key_map, "C-x C-f", .OPEN_FILE);
-        key_map_register(key_map, "C-x C-s", .SAVE_FILE);
-        key_map_register(key_map, "C-x b",   .SWITCH_TO_DOCUMENT);
-        key_map_register(key_map, "C-x k",   .CLOSE_DOCUMENT);
+        key_map_add(key_map, "C-p",     .MOVE_UP);
+        key_map_add(key_map, "<up>",    .MOVE_UP);
+        key_map_add(key_map, "C-n",     .MOVE_DOWN);
+        key_map_add(key_map, "<down>",  .MOVE_DOWN);
+        key_map_add(key_map, "C-b",     .MOVE_LEFT);
+        key_map_add(key_map, "<left>",  .MOVE_LEFT);
+        key_map_add(key_map, "C-f",     .MOVE_RIGHT);
+        key_map_add(key_map, "<right>", .MOVE_RIGHT);
 
-        key_map_register(key_map, "C-M-p",   .SWAP_LINE_UP);
-        key_map_register(key_map, "C-M-n",   .SWAP_LINE_DOWN);
+        key_map_add(key_map, "C-s",     .SEARCH);
+        key_map_add(key_map, "C-x C-f", .OPEN_FILE);
+        key_map_add(key_map, "C-x C-s", .SAVE_FILE);
+        key_map_add(key_map, "C-x b",   .SWITCH_TO_DOCUMENT);
+        key_map_add(key_map, "C-x k",   .CLOSE_DOCUMENT);
 
-        key_map_register(key_map, "C-a",     .MOVE_TO_START_OF_LINE);
-        key_map_register(key_map, "C-e",     .MOVE_TO_END_OF_LINE);
+        key_map_add(key_map, "C-M-p",   .SWAP_LINE_UP);
+        key_map_add(key_map, "C-M-n",   .SWAP_LINE_DOWN);
 
-        key_map_register(key_map, "M-<",     .MOVE_TO_START_OF_DOCUMENT);
-        key_map_register(key_map, "<home>",  .MOVE_TO_START_OF_DOCUMENT);
-        key_map_register(key_map, "M->",     .MOVE_TO_END_OF_DOCUMENT);
-        key_map_register(key_map, "<end>",   .MOVE_TO_END_OF_DOCUMENT);
+        key_map_add(key_map, "C-a",     .MOVE_TO_START_OF_LINE);
+        key_map_add(key_map, "C-e",     .MOVE_TO_END_OF_LINE);
 
-        key_map_register(key_map, "M-p",     .MOVE_TO_PREVIOUS_BLANK_LINE);
-        key_map_register(key_map, "M-n",     .MOVE_TO_NEXT_BLANK_LINE);
+        key_map_add(key_map, "M-<",     .MOVE_TO_START_OF_DOCUMENT);
+        key_map_add(key_map, "<home>",  .MOVE_TO_START_OF_DOCUMENT);
+        key_map_add(key_map, "M->",     .MOVE_TO_END_OF_DOCUMENT);
+        key_map_add(key_map, "<end>",   .MOVE_TO_END_OF_DOCUMENT);
 
-        key_map_register(key_map, "M-f",     .MOVE_FORWARD_WORD);
-        key_map_register(key_map, "M-b",     .MOVE_BACKWARD_WORD);
+        key_map_add(key_map, "M-p",     .MOVE_TO_PREVIOUS_BLANK_LINE);
+        key_map_add(key_map, "M-n",     .MOVE_TO_NEXT_BLANK_LINE);
 
-        key_map_register(key_map, "C-l",     .RECENTER);
-        key_map_register(key_map, "M-v",     .SCROLL_UP);
-        key_map_register(key_map, "C-v",     .SCROLL_DOWN);
-        key_map_register(key_map, "<pageup>", .SCROLL_UP);
-        key_map_register(key_map, "<pagedown>", .SCROLL_DOWN);
-        key_map_register(key_map, "<prior>", .SCROLL_UP);
-        key_map_register(key_map, "<next>",  .SCROLL_DOWN);
+        key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
+        key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
 
-        key_map_register(key_map, "C-<space>", .START_SELECTING);
-        key_map_register(key_map, "C-g",     .STOP_SELECTING);
+        key_map_add(key_map, "C-l",     .RECENTER);
+        key_map_add(key_map, "M-v",     .SCROLL_UP);
+        key_map_add(key_map, "C-v",     .SCROLL_DOWN);
+        key_map_add(key_map, "<pageup>", .SCROLL_UP);
+        key_map_add(key_map, "<pagedown>", .SCROLL_DOWN);
+        key_map_add(key_map, "<prior>", .SCROLL_UP);
+        key_map_add(key_map, "<next>",  .SCROLL_DOWN);
 
-        key_map_register(key_map, "C-k",     .DELETE_LINE);
-        key_map_register(key_map, "C-d",     .DELETE_FORWARD);
-        key_map_register(key_map, "<backspace>", .DELETE_BACKWARD);
-        key_map_register(key_map, "<delete>", .DELETE_FORWARD);
+        key_map_add(key_map, "C-<space>", .START_SELECTING);
+        key_map_add(key_map, "C-g",     .STOP_SELECTING);
 
-        key_map_register(key_map, "M-d",     .DELETE_FORWARD_WORD);
-        key_map_register(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
-        key_map_register(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
+        key_map_add(key_map, "C-k",     .DELETE_LINE);
+        key_map_add(key_map, "C-d",     .DELETE_FORWARD);
+        key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
+        key_map_add(key_map, "<delete>", .DELETE_FORWARD);
 
-        key_map_register(key_map, "C-m",     .INSERT_LINE_BEFORE);
-        key_map_register(key_map, "<enter>", .INSERT_LINE_BEFORE);
-        key_map_register(key_map, "C-o",     .INSERT_LINE_AFTER);
+        key_map_add(key_map, "M-d",     .DELETE_FORWARD_WORD);
+        key_map_add(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
+        key_map_add(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
 
-        key_map_register(key_map, "<tab>",   .INSERT_TAB);
+        key_map_add(key_map, "C-m",     .INSERT_LINE_BEFORE);
+        key_map_add(key_map, "<enter>", .INSERT_LINE_BEFORE);
+        key_map_add(key_map, "C-o",     .INSERT_LINE_AFTER);
 
-        key_map_register(key_map, "C-/",     .UNDO_EDIT);
-        key_map_register(key_map, "M-/",     .REDO_EDIT);
+        key_map_add(key_map, "<tab>",   .INSERT_TAB);
 
-        key_map_register(key_map, "M-w",     .COPY);
-        key_map_register(key_map, "C-w",     .CUT);
-        key_map_register(key_map, "C-y",     .PASTE);
+        key_map_add(key_map, "C-/",     .UNDO_EDIT);
+        key_map_add(key_map, "M-/",     .REDO_EDIT);
+
+        key_map_add(key_map, "M-w",     .COPY);
+        key_map_add(key_map, "C-w",     .CUT);
+        key_map_add(key_map, "C-y",     .PASTE);
 
         log("Document keymap:\n%", key_map_sprint(key_map,, temp));
     }
@@ -405,39 +406,40 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     //
     {
         mini_panel := *editor.mini_panel;
-        key_map    := *mini_panel.key_map;
 
+        key_map := *mini_panel.key_map;
         key_map.allocator = arena_allocator(editor.perm_arena);
-        key_map_init(key_map, 128);
 
-        key_map_register(key_map, "C-p",         .MINI_PANEL_MOVE_UP);
-        key_map_register(key_map, "C-n",         .MINI_PANEL_MOVE_DOWN);
-        key_map_register(key_map, "C-b",         .MINI_PANEL_MOVE_LEFT);
-        key_map_register(key_map, "C-f",         .MINI_PANEL_MOVE_RIGHT);
-        key_map_register(key_map, "<up>",        .MINI_PANEL_MOVE_UP);
-        key_map_register(key_map, "<down>",      .MINI_PANEL_MOVE_DOWN);
-        key_map_register(key_map, "<left>",      .MINI_PANEL_MOVE_LEFT);
-        key_map_register(key_map, "<right>",     .MINI_PANEL_MOVE_RIGHT);
+        key_map_reserve(key_map, 128);
 
-        key_map_register(key_map, "M-f",         .MINI_PANEL_MOVE_FORWARD_WORD);
-        key_map_register(key_map, "M-b",         .MINI_PANEL_MOVE_BACKWARD_WORD);
+        key_map_add(key_map, "C-p",         .MINI_PANEL_MOVE_UP);
+        key_map_add(key_map, "C-n",         .MINI_PANEL_MOVE_DOWN);
+        key_map_add(key_map, "C-b",         .MINI_PANEL_MOVE_LEFT);
+        key_map_add(key_map, "C-f",         .MINI_PANEL_MOVE_RIGHT);
+        key_map_add(key_map, "<up>",        .MINI_PANEL_MOVE_UP);
+        key_map_add(key_map, "<down>",      .MINI_PANEL_MOVE_DOWN);
+        key_map_add(key_map, "<left>",      .MINI_PANEL_MOVE_LEFT);
+        key_map_add(key_map, "<right>",     .MINI_PANEL_MOVE_RIGHT);
 
-        key_map_register(key_map, "C-a",         .MINI_PANEL_MOVE_TO_START_OF_LINE);
-        key_map_register(key_map, "C-e",         .MINI_PANEL_MOVE_TO_END_OF_LINE);
+        key_map_add(key_map, "M-f",         .MINI_PANEL_MOVE_FORWARD_WORD);
+        key_map_add(key_map, "M-b",         .MINI_PANEL_MOVE_BACKWARD_WORD);
 
-        key_map_register(key_map, "C-d",         .MINI_PANEL_DELETE_FORWARD);
-        key_map_register(key_map, "<delete>",    .MINI_PANEL_DELETE_FORWARD);
-        key_map_register(key_map, "<backspace>", .MINI_PANEL_DELETE_BACKWARD);
+        key_map_add(key_map, "C-a",         .MINI_PANEL_MOVE_TO_START_OF_LINE);
+        key_map_add(key_map, "C-e",         .MINI_PANEL_MOVE_TO_END_OF_LINE);
 
-        key_map_register(key_map, "M-v",         .MINI_PANEL_SCROLL_UP);
-        key_map_register(key_map, "C-v",         .MINI_PANEL_SCROLL_DOWN);
+        key_map_add(key_map, "C-d",         .MINI_PANEL_DELETE_FORWARD);
+        key_map_add(key_map, "<delete>",    .MINI_PANEL_DELETE_FORWARD);
+        key_map_add(key_map, "<backspace>", .MINI_PANEL_DELETE_BACKWARD);
 
-        key_map_register(key_map, "<tab>",       .MINI_PANEL_AUTOCOMPLETE);
+        key_map_add(key_map, "M-v",         .MINI_PANEL_SCROLL_UP);
+        key_map_add(key_map, "C-v",         .MINI_PANEL_SCROLL_DOWN);
 
-        key_map_register(key_map, "<enter>",     .MINI_PANEL_CONFIRM);
-        key_map_register(key_map, "C-m",         .MINI_PANEL_CONFIRM);
+        key_map_add(key_map, "<tab>",       .MINI_PANEL_AUTOCOMPLETE);
 
-        key_map_register(key_map, "C-g",         .MINI_PANEL_CANCEL);
+        key_map_add(key_map, "<enter>",     .MINI_PANEL_CONFIRM);
+        key_map_add(key_map, "C-m",         .MINI_PANEL_CONFIRM);
+
+        key_map_add(key_map, "C-g",         .MINI_PANEL_CANCEL);
 
         log("Mini Panel keymap:\n%", key_map_sprint(key_map,, temp));
 
@@ -1087,7 +1089,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     // TODO(jt): @Speed OpenGL is doing some kind of synchronization here. Depending on whether
     // update_texture_r8unorm does early return (because the update region is empty), either it or
-    // draw_rects blocks for about 10ms, but at least one of them does.
+    // draw_rects blocks for about 10ms, but at least one of them does. We should probably just
+    // switch to our own rendering backend (raw Vulkan/Metal or SGPU) and tune it for latency.
     renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, update_region);
     renderer.draw_rects(render_rects);
 

@@ -446,24 +446,22 @@ Key_Map :: struct {
     buffered_input: Shortcut;
 }
 
-// You don't have to call init. It only pre-sizes the arrays. If you plan to set the allocator, do
-// it before calling init.
-key_map_init :: (key_map: *Key_Map, size: s64) {
+key_map_reserve :: (key_map: *Key_Map, size: s64) {
     InitAllocators(key_map);
     array_reserve(*key_map.registered_shortcuts, size);
     array_reserve(*key_map.registered_actions, size);
 }
 
-key_map_register :: (key_map: *Key_Map, shortcut_string: string, action: Action) {
+key_map_add :: (key_map: *Key_Map, shortcut_string: string, action: Action) {
     success, shortcut := shortcut_parse(shortcut_string);
     if success {
-        key_map_register(key_map, shortcut, action);
+        key_map_add(key_map, shortcut, action);
     } else {
         log_error("Failed to parse and register shortcut % -> %", shortcut_string, action);
     }
 }
 
-key_map_register :: (key_map: *Key_Map, shortcut: Shortcut, action: Action) {
+key_map_add :: (key_map: *Key_Map, shortcut: Shortcut, action: Action) {
     InitAllocators(key_map);
 
     // TODO(jt): We should validate against:
