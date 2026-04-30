@@ -86,7 +86,7 @@ f32 :: float32;
 f64 :: float64;
 
 #import "Basic";
-#import "Arena";
+#import "Arena"(SANITY);
 #import "Bucket_Array";
 #import "Hash_Table";
 #import "Profiler";
