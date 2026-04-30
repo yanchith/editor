@@ -20,16 +20,16 @@ arena_allocator :: (arena: *Arena) -> Allocator {
     return { arena_allocator_proc, arena };
 }
 
-// TODO(jt): Should we be caring about alignment? Our old Rust arena certainly does care, but maybe
-// there is no underlying/hardware reason to care and it was all just LLVM crap?
+// TODO(jt): @Cleanup allocator_proc doesn't care about alignment (as of 0.2.0.029), but once it
+// does, we are ready for it. For now, arena_push defaults alignment to 16, if it is not specified.
 arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64, old_memory: *void, allocator_data: *void) -> *void {
     if #complete mode == {
         case .FREE; {
-            // NOTE(jt): As of 0.2.026, Basic.free sets requested_size and old_size to zero. That is
+            // As of beta 0.2.026, Basic.free sets requested_size and old_size to zero. That is
             // completely valid, because general purpose allocators in C land don't get to know
             // old_size and have to deal. However, if we did know old-size, we could could actually
-            // reclaim memory here with arena_maybe_modify_last_push. Datastructures like dynamic array or
-            // hash table could fill in the size, if they wanted to.
+            // reclaim memory here with arena_maybe_modify_last_push. Datastructures like dynamic
+            // array or hash table could fill in the size, if they wanted to.
             return null;
         }
 
