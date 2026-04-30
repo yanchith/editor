@@ -8,7 +8,7 @@
 // - User-given first block.
 //
 
-#module_parameters()(SANITY := true); // TODO(jt): Eventually default this to false, once we are confident.
+#module_parameters(SANITY := false);
 
 ARENA_DEFAULT_RESERVE_SIZE:        s64 : 256 << 20;
 ARENA_DEFAULT_COMMIT_SIZE:         s64 :  64 << 10;
