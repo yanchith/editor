@@ -135,6 +135,7 @@ USUAL_DELTA_TIME : f64 : 1.0 / 60.0;
 CURSOR_COLOR          : Vector4 : { 0.50, 0.80, 0.60, 1.00 };
 CURSOR_COLOR_ACTIVE   : Vector4 : { 1.00, 0.60, 0.40, 1.00 };
 SELECTION_COLOR       : Vector4 : { 0.70, 0.80, 0.70, 0.38 };
+HIGHLIGHT_COLOR       : Vector4 : { 1.00, 0.00, 0.00, 0.50 };
 LINE_COLOR            : Vector4 : { 0.00, 0.00, 0.00, 0.00 };
 MINI_PANEL_LINE_COLOR : Vector4 : { 0.70, 0.70, 0.90, 0.18 };
 MODELINE_COLOR        : Vector4 : { 0.80, 0.80, 0.80, 1.00 };
@@ -247,7 +248,17 @@ Panel :: struct {
 
     selecting: bool;
 
+    arena: *Arena;
+
+    highlights: [..] Highlight;
+
     document: *Document; // Possibly null!
+
+    Highlight :: struct {
+        cursor_x0: s64;
+        cursor_x1: s64;
+        cursor_y:  s64;
+    }
 }
 
 // TODO(jt): @Cleanup Can we split this into its own file?
@@ -399,6 +410,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.panels.allocator    = arena_allocator(editor.perm_arena);
 
     panel := array_add(*editor.panels);
+
+    // :PanelInit
+    panel.arena = make_arena(platform, .SMALL);
+    panel.highlights.allocator = arena_allocator(panel.arena);
+
     set_panel_document_to_newly_created_scratch(editor, panel, platform);
 
     //
@@ -801,6 +817,29 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         viewport_y0 := panel.scroll.y;
         viewport_y1 := panel.scroll.y + panel_h;
 
+        viewport_line0 := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.line_bytes.count - 1);
+        viewport_line1 := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_bytes.count - 1);
+
+        //
+        // Draw Highlights
+        //
+        for panel.highlights {
+            if it.cursor_y < viewport_line0  continue; // TODO(jt): @Speed Binary search for the start instead?
+            if it.cursor_y > viewport_line1  break;
+
+            // TODO(jt): @Speed Compute gap buffer indices incrementally as we go through the loop.
+            line_view := text_buffer_make_view_for_line(document.buffer, it.cursor_y,, temp);
+
+            x0 := font_compute_position_on_line(editor.font, line_view, it.cursor_x0, binary = document.buffer.binary_mode);
+            x1 := font_compute_position_on_line(editor.font, line_view, it.cursor_x1, binary = document.buffer.binary_mode);
+            y0 := cast(f64, it.cursor_y) * cell_h;
+            y1 := y0 + cell_h;
+
+            highlight_rect: DRect = { x0, y0, x1, y1 };
+
+            draw_rect(*render_rects, drect_to_rect(highlight_rect - panel.scroll), HIGHLIGHT_COLOR);
+        }
+
         //
         // Layout and draw selection
         //
@@ -826,12 +865,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             } else {
                 ProfileZone(":DrawSelectionMultiLine");
 
-                // This does very simple vertical culling by doing layout and draw only on visible
-                // lines. If the lines are long, we do a lot of layout and draw.
-                //
                 // TODO(jt): @Speed Horizontal culling?
-                viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.line_bytes.count - 1);
-                viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_bytes.count - 1);
 
                 // Because we start the layout just before the current viewport, the rendering scroll Y offset
                 // is just the fractional part of the cell.
@@ -839,10 +873,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 // Because we expect scroll_offset to be small, we keep it in f32.
                 scroll_offset: Vector2;
                 scroll_offset.x = cast(f32, panel.scroll.x);
-                scroll_offset.y = cast(f32, viewport_y0 - cell_h * cast(f64, viewport_line_index_start));
+                scroll_offset.y = cast(f32, viewport_y0 - cell_h * cast(f64, viewport_line0));
 
                 // First line, if in viewport
-                if cursor_start.y >= viewport_line_index_start && cursor_start.y <= viewport_line_index_end {
+                if cursor_start.y >= viewport_line0 && cursor_start.y <= viewport_line1 {
                     line_start, line_end := text_buffer_get_cursors_for_line(document.buffer, cursor_start.y);
 
                     view_before_cursor := text_buffer_make_view_between_cursors(document.buffer, line_start, cursor_start,, temp);
@@ -860,7 +894,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 // Center lines, if in viewport
                 for (cursor_start.y + 1)..(cursor_end.y - 1) {
                     // TODO(jt): @Speed Clamp center lines range instead.
-                    if it < viewport_line_index_start || it > viewport_line_index_end {
+                    if it < viewport_line0 || it > viewport_line1 {
                         continue;
                     }
 
@@ -876,7 +910,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
 
                 // Last line, if in viewport
-                if cursor_end.y >= viewport_line_index_start && cursor_end.y <= viewport_line_index_end {
+                if cursor_end.y >= viewport_line0 && cursor_end.y <= viewport_line1 {
                     line_start := text_buffer_get_start_cursor_for_line(document.buffer, cursor_end.y);
 
                     view_before_cursor := text_buffer_make_view_between_cursors(document.buffer, line_start, cursor_end,, temp);
@@ -959,15 +993,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         {
             ProfileZone(":DrawDocumentText");
 
-            // This does very simple vertical culling by doing layout and draw only on visible
-            // lines. If the lines are long, we do a lot of layout and draw.
-            //
             // TODO(jt): @Speed Horizontal culling?
-            viewport_line_index_start := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.line_bytes.count - 1);
-            viewport_line_index_end   := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_bytes.count - 1);
 
-            viewport_start := text_buffer_get_start_cursor_for_line(document.buffer, viewport_line_index_start);
-            viewport_end   := text_buffer_get_end_cursor_for_line(document.buffer, viewport_line_index_end);
+            viewport_start := text_buffer_get_start_cursor_for_line(document.buffer, viewport_line0);
+            viewport_end   := text_buffer_get_end_cursor_for_line(document.buffer, viewport_line1);
             viewport_view  := text_buffer_make_view_between_cursors(document.buffer, viewport_start, viewport_end,, temp);
 
             // Because we start the layout just before the current viewport, the rendering scroll Y offset
@@ -978,7 +1007,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // matter), so we go f64 to be future proof.
             offset: DVector2;
             offset.x = -panel.scroll.x;
-            offset.y = -viewport_y0 + cell_h * cast(f64, viewport_line_index_start);
+            offset.y = -viewport_y0 + cell_h * cast(f64, viewport_line0);
 
             // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
             // to the left of the screen, but we don't have to emit render rects for it.
@@ -1176,7 +1205,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .MINI_PANEL_AUTOCOMPLETE;           buffer_changed |= mini_panel_autocomplete_proc(editor, platform, input);
 
         case .MINI_PANEL_CONFIRM;                buffer_changed |= mini_panel_confirm_proc(editor, platform, input);
-        case .MINI_PANEL_CANCEL;                 close_mini_panel(*editor.mini_panel);
+        case .MINI_PANEL_CANCEL;                 mini_panel_cancel_proc(editor, platform, input);
     }
 
     // TODO(jt): Do selecting in mini panel
@@ -1482,6 +1511,8 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                 if active_panel && active_panel.document {
                     document := active_panel.document;
 
+                    array_reset_keeping_memory(*active_panel.highlights);
+
                     old_cursor_y   := document.buffer.cursor0.y;
                     new_item_index := -1;
 
@@ -1527,6 +1558,12 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                             if !document.buffer.binary_mode {
                                 x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
                             }
+                            x1 := x0 + search_text_char_count;
+
+                            highlight := array_add(*active_panel.highlights);
+                            highlight.cursor_x0 = x0;
+                            highlight.cursor_x1 = x1;
+                            highlight.cursor_y  = it;
 
                             item_index := mini_panel.items.count;
                             item := array_add(*mini_panel.items);
@@ -1535,12 +1572,13 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                                 item.flags |= .BINARY;
                             }
                             item.highlight_x0 = line_number_prefix_length + x0;
-                            item.highlight_x1 = line_number_prefix_length + x0 + search_text_char_count;
+                            item.highlight_x1 = line_number_prefix_length + x1;
 
                             userdata := New(Search_Userdata,, arena_allocator(mini_panel.items_arena));
                             userdata.cursor = { x0, it };
 
                             item.userdata = userdata;
+
 
                             if new_item_index == -1 && it >= old_cursor_y {
                                 new_item_index = item_index;
@@ -1761,6 +1799,8 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
                 }
             }
 
+            array_reset_keeping_memory(*active_panel.highlights);
+
             close_mini_panel(mini_panel);
         }
 
@@ -1875,6 +1915,17 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
     }
 
     return false;
+}
+
+mini_panel_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
+    if editor.mini_panel.action == .SEARCH {
+        panel := get_active_panel(editor);
+        assert(panel != null);
+
+        array_reset_keeping_memory(*panel.highlights);
+    }
+
+    close_mini_panel(*editor.mini_panel);
 }
 
 find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, newly_created: bool {
