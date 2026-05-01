@@ -135,7 +135,7 @@ USUAL_DELTA_TIME : f64 : 1.0 / 60.0;
 CURSOR_COLOR          : Vector4 : { 0.50, 0.80, 0.60, 1.00 };
 CURSOR_COLOR_ACTIVE   : Vector4 : { 1.00, 0.60, 0.40, 1.00 };
 SELECTION_COLOR       : Vector4 : { 0.70, 0.80, 0.70, 0.38 };
-HIGHLIGHT_COLOR       : Vector4 : { 1.00, 0.00, 0.00, 0.50 };
+HIGHLIGHT_COLOR       : Vector4 : { 1.00, 0.00, 0.00, 0.20 };
 LINE_COLOR            : Vector4 : { 0.00, 0.00, 0.00, 0.00 };
 MINI_PANEL_LINE_COLOR : Vector4 : { 0.70, 0.70, 0.90, 0.18 };
 MODELINE_COLOR        : Vector4 : { 0.80, 0.80, 0.80, 1.00 };
@@ -825,7 +825,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Scroll animation
         //
         {
-            SCROLL_TIME : f64 : 0.15; // TODO(jt): Make this configurable. :Config
+            SCROLL_TIME : f64 : 0.20; // TODO(jt): Make this configurable. :Config
 
             // TODO(jt): @Hack We add 1/2 of usual delta time to offset the lag, but maybe there's a
             // better way to integrate the movement? I should study up on how to integrate this.
@@ -975,7 +975,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             FLASH_TIME : f64 : 0.25; // TODO(jt): Make flash time configurable. :Config
-            ANIM_TIME  : f64 : 0.00; // TODO(jt): Make anim time configurable. I didn't like the lag, so I turned it off :Config
+            ANIM_TIME  : f64 : 0.10; // TODO(jt): Make anim time configurable. I didn't like the lag, so I turned it off :Config
 
             // TODO(jt): Division by zero. (We work around it for scroll and cursor animation.)
             flash_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_flash_time_start)) / FLASH_TIME);
@@ -1120,7 +1120,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 x0 := font_compute_position_on_line(editor.font, item.text, item.highlight_x0, binary = cast(bool, item.flags & .BINARY));
                 x1 := font_compute_position_on_line(editor.font, item.text, item.highlight_x1, binary = cast(bool, item.flags & .BINARY));
 
-                draw_rect(*render_rects, cast(f32, x0), y0, cast(f32, x1), y1, SELECTION_COLOR);
+                draw_rect(*render_rects, cast(f32, x0), y0, cast(f32, x1), y1, HIGHLIGHT_COLOR);
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
