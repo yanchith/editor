@@ -211,7 +211,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
     cursor_x: s64 = 0;
     cursor_y: s64 = font.ascender;
 
-    ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
+    ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
     for :ITERATOR text {
         if it == #char "\n" {
             cursor_x = 0;
@@ -378,7 +378,7 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
     ProfileZone("font_compute_position_on_line");
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
 
-    ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
+    ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
     for :ITERATOR line_text {
         if it_index >= character_index {
             break;
@@ -417,7 +417,7 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
     character_index: s64 = 0;
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
 
-    ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
+    ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
     for :ITERATOR line_text {
         scaled_advance: f64 = cast(f64, advance) * R64;
         if scaled_advance >= x {
@@ -498,18 +498,5 @@ copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s3
             source_p := source + y * source_pitch + x;
             dest_p.* = source_p.*;
         }
-    }
-}
-
-// TODO(jt): @Cleanup I can't see a way to reference the builtin string iteration, so this wrapper exists.
-bytes_iter :: (s: *string, body: Code, flags: For_Flags) #expand {
-    `it: u8;
-    `it_index: s64;
-
-    for s_it, s_it_index: s.* {
-        it = s_it;
-        it_index = s_it_index;
-
-        #insert body;
     }
 }
