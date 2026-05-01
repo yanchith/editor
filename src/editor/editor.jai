@@ -174,6 +174,7 @@ Editor :: struct {
     active_panel_index: s64;
 
     mini_panel: Mini_Panel;
+    modal_interaction: Modal_Interaction;
 
     messages: [..] string;
     last_message_seen: bool;
@@ -265,15 +266,15 @@ Panel :: struct {
 Mini_Panel :: struct {
     open: bool;
 
-    key_map: Key_Map;
-    buffer: Text_Buffer;
-
     // For now, this is an enum of things we might want to do, but this is not extensible. Once we
     // want to do a plugin architecture, we should replace the current procs that switch on the
     // action and call out to plugin procs there.
     //
     // :MiniPanelAPI
     action: Action;
+
+    key_map: Key_Map; // Not reset, because all mini panel things basically interact the same.
+    buffer: Text_Buffer;
 
     items_arena: *Arena;
     items: [..] Item;
@@ -305,6 +306,19 @@ Mini_Panel :: struct {
 
             BINARY :: 0x01;
         }
+    }
+}
+
+Modal_Interaction :: struct {
+    open: bool;
+
+    action: Action;
+
+    key_map: Key_Map; // Unlike mini panel, this key_map gets reset (keeping memory) and re-initialized each time we open.
+    buffer: Text_Buffer;
+
+    Action :: enum {
+        SEARCH_AND_REPLACE :: 0;
     }
 }
 
@@ -347,6 +361,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<right>", .MOVE_RIGHT);
 
         key_map_add(key_map, "C-s",     .SEARCH);
+        // TODO(jt): @Cleanup In Emacs, SEARCH_AND_REPLACE is C-M-%, but our platform layer sucks, so we just rebound it to something else.
+        key_map_add(key_map, "C-r",     .SEARCH_AND_REPLACE);
+
         key_map_add(key_map, "C-x C-f", .OPEN_FILE);
         key_map_add(key_map, "C-x C-s", .SAVE_FILE);
         key_map_add(key_map, "C-x b",   .SWITCH_TO_DOCUMENT);
@@ -466,6 +483,20 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
     }
 
+    //
+    // Init modal interaction
+    //
+    {
+        modal_interaction := *editor.modal_interaction;
+
+        key_map := *modal_interaction.key_map;
+        key_map.allocator = arena_allocator(editor.perm_arena);
+
+        key_map_reserve(key_map, 128);
+
+        text_buffer_init(*modal_interaction.buffer, make_arena(platform, .SMALL));
+    }
+
     editor.messages.allocator = arena_allocator(editor.perm_arena);
 
 
@@ -558,6 +589,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if !handled {
             if editor.mini_panel.open {
                 route_event_to_mini_panel(editor, it, platform, input);
+            } else if editor.modal_interaction.open {
+                route_event_to_modal_interaction(editor, it, platform, input);
             } else {
                 route_event_to_panel(editor, it, platform, input);
             }
@@ -1095,6 +1128,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             it_index += 1;
         }
+    } else if editor.modal_interaction.open {
+        modal_interaction_line_y := window_h - cell_h;
+        draw_rect(*render_rects, 0, modal_interaction_line_y, window_w, window_h, BACKGROUND_COLOR);
+
+        view := text_buffer_make_view_for_line(editor.modal_interaction.buffer, 0,, temp);
+        _font_layout_and_draw_text(*editor.font, view, *render_rects, *update_regions, { 0, modal_interaction_line_y }, is_new_frame = false, binary = false);
     } else {
         message_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
@@ -1247,6 +1286,18 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     }
 }
 
+route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
+    modal_interaction := *editor.modal_interaction;
+    active_panel := get_active_panel(editor);
+
+    buffer_changed := false;
+
+    key_map_buffered, key_map_action := key_map_input(*editor.modal_interaction.key_map, event, editor.input_state.modifiers);
+    if key_map_action == {
+        case .MODAL_INTERACTION_CANCEL;  close_modal_interaction(modal_interaction);
+    }
+}
+
 route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
     panel := get_active_panel(editor);
     if !panel {
@@ -1269,8 +1320,13 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .MOVE_RIGHT;  text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
 
         case .SEARCH; {
-            was_closed := open_mini_panel(*editor.mini_panel, .SEARCH);
+            open_mini_panel(*editor.mini_panel, .SEARCH);
             mini_panel_update_proc(editor, platform, input, true, true);
+        }
+
+        case .SEARCH_AND_REPLACE; {
+            open_modal_interaction(*editor.modal_interaction, .SEARCH_AND_REPLACE, "Search and destroy");
+            // This would be a place to put an update proc, if we ever need it.
         }
 
         case .OPEN_FILE; {
@@ -1926,6 +1982,33 @@ mini_panel_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
     }
 
     close_mini_panel(*editor.mini_panel);
+}
+
+open_modal_interaction :: (modal_interaction: *Modal_Interaction, action: Modal_Interaction.Action, initial_text := "") -> was_closed: bool {
+    key_map_reset_keeping_memory(*modal_interaction.key_map);
+
+    key_map_add(*modal_interaction.key_map, "C-g", .MODAL_INTERACTION_CANCEL);
+
+    text_buffer_reset(*modal_interaction.buffer);
+    text_buffer_insert(*modal_interaction.buffer, initial_text);
+
+    modal_interaction.action = action;
+
+    was_closed := !modal_interaction.open;
+    modal_interaction.open = true;
+
+    return was_closed;
+}
+
+close_modal_interaction :: (modal_interaction: *Modal_Interaction) -> was_open: bool {
+    // XXX: Reset all the things
+
+    text_buffer_reset(*modal_interaction.buffer);
+
+    was_open := modal_interaction.open;
+    modal_interaction.open = false;
+
+    return was_open;
 }
 
 find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, newly_created: bool {
