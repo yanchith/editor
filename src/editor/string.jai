@@ -127,6 +127,30 @@ byte_is_utf8_char_boundary :: inline (b: u8) -> bool {
     return b < 128 || b >= 192;
 }
 
+// This is just a wrapper around the regular string iterator, in case you need to refer to it by name.
+string_bytes_iter :: (s: *string, body: Code, flags: For_Flags) #expand {
+    #assert !(flags & .POINTER) "Iteration by pointer is not supported yet";
+
+    `it: u8;
+    `it_index: s64;
+
+    #if flags & .REVERSE {
+        for < s_it, s_it_index: s.* {
+            it = s_it;
+            it_index = s_it_index;
+
+            #insert body;
+        }
+    } else {
+        for s_it, s_it_index: s.* {
+            it = s_it;
+            it_index = s_it_index;
+
+            #insert body;
+        }
+    }
+}
+
 // The javascript stuff...
 
 left_pad :: (s: string, length: s64) -> string {
