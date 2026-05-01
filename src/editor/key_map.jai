@@ -28,6 +28,12 @@ Action :: enum u32 {
     MINI_PANEL_CANCEL;
 
     //
+    // Modal interaction stuff
+    //
+
+    MODAL_INTERACTION_CANCEL;
+
+    //
     // Mega panel stuff
     //
 
@@ -37,6 +43,7 @@ Action :: enum u32 {
     MOVE_RIGHT;
 
     SEARCH;
+    SEARCH_AND_REPLACE;
 
     OPEN_FILE;
     SAVE_FILE;
@@ -123,6 +130,14 @@ action_classify :: (action: Action) -> Action_Kind {
         case .MINI_PANEL_CANCEL;                 return .OTHER;
 
         //
+        // Modal interaction stuff
+        //
+        // TODO(jt): @Cleanup None of the modal interaction stuff makes sense to classify. Should we
+        // break this up into multiple enums somehow?
+
+        case .MODAL_INTERACTION_CANCEL;          return .OTHER;
+
+        //
         // Mega panel stuff
         //
 
@@ -132,6 +147,7 @@ action_classify :: (action: Action) -> Action_Kind {
         case .MOVE_RIGHT;                        return .MOVE;
 
         case .SEARCH;                            return .OTHER;
+        case .SEARCH_AND_REPLACE;                return .OTHER;
 
         case .OPEN_FILE;                         return .OTHER;
         case .SAVE_FILE;                         return .OTHER;
@@ -450,6 +466,13 @@ key_map_reserve :: (key_map: *Key_Map, size: s64) {
     InitAllocators(key_map);
     array_reserve(*key_map.registered_shortcuts, size);
     array_reserve(*key_map.registered_actions, size);
+}
+
+key_map_reset_keeping_memory :: (key_map: *Key_Map) {
+    array_reset_keeping_memory(*key_map.registered_shortcuts);
+    array_reset_keeping_memory(*key_map.registered_actions);
+
+    key_map_flush(key_map);
 }
 
 key_map_add :: (key_map: *Key_Map, shortcut_string: string, action: Action) {
