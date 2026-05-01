@@ -876,7 +876,6 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
 
     y_changed := false;
 
-    // XXX: @Bug This does not work on ascii inside binary data
     _search_line_backward :: (line_view: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
         // The line is empty, so we couldn't have started inside a word.
         if line_view.count == 0 {
@@ -889,7 +888,7 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
         found := false;
         dx := 0;
 
-        ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
+        ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
         for < :ITERATOR line_view {
             is_nonword := #ifx binary then char_is_nonword_binary(it) else char_is_nonword_utf8(it);
 
@@ -980,7 +979,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
         found := false;
         dx := 0;
 
-        ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
+        ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
         for :ITERATOR line_view {
             is_nonword := #ifx binary then char_is_nonword_binary(it) else char_is_nonword_utf8(it);
 
@@ -1713,17 +1712,4 @@ char_is_nonword_binary :: inline (c: u8) -> bool {
     if c >= 43 && c <= 44   return false; // pound and dollar
 
     return true;
-}
-
-// TODO(jt): @Cleanup I can't see a way to reference the builtin string iteration, so this wrapper exists.
-bytes_iter :: (s: *string, body: Code, flags: For_Flags) #expand {
-    `it: u8;
-    `it_index: s64;
-
-    for s_it, s_it_index: s.* {
-        it = s_it;
-        it_index = s_it_index;
-
-        #insert body;
-    }
 }
