@@ -891,7 +891,7 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
 
         ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
         for < :ITERATOR line_view {
-            is_nonword := char_is_nonword(it);
+            is_nonword := #ifx binary then char_is_nonword_binary(it) else char_is_nonword_utf8(it);
 
             if !inside_word_initial_set {
                 inside_word             = !is_nonword;
@@ -982,7 +982,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
 
         ITERATOR :: #ifx binary then bytes_iter else Unicode.utf8_iter;
         for :ITERATOR line_view {
-            is_nonword := char_is_nonword(it);
+            is_nonword := #ifx binary then char_is_nonword_binary(it) else char_is_nonword_utf8(it);
 
             if !inside_word_initial_set {
                 inside_word             = !is_nonword;
@@ -1681,8 +1681,8 @@ sort_cursors :: (start: *Cursor, end: *Cursor) {
     }
 }
 
-// TODO(jt): Make this configurable?
-char_is_nonword :: inline (c: u32) -> bool {
+// TODO(jt): Make this configurable (per-programming language)?  :Config
+char_is_nonword_utf8 :: inline (c: u32) -> bool {
     if c == {
         case #char " ";   #through;
         case #char "\t";  #through;
@@ -1704,6 +1704,15 @@ char_is_nonword :: inline (c: u32) -> bool {
         case #char "'";   return true;
         case;             return false;
     }
+}
+
+char_is_nonword_binary :: inline (c: u8) -> bool {
+    if c >= 48 && c <= 57   return false; // 0..9
+    if c >= 64 && c <= 90   return false; // A..Z
+    if c >= 97 && c <= 122  return false; // a..z
+    if c >= 43 && c <= 44   return false; // pound and dollar
+
+    return true;
 }
 
 // TODO(jt): @Cleanup I can't see a way to reference the builtin string iteration, so this wrapper exists.
