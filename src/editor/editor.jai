@@ -153,7 +153,7 @@ Editor :: struct {
 
     input_state: Input_State;
 
-    key_map: Key_Map;
+    key_map: Key_Map(Editor_Action);
 
     // Documents are referenced by panels (one document, many panels). When we close a panel or
     // switch a panel to a different document, the original document remains. When we close/unload a
@@ -273,7 +273,7 @@ Mini_Panel :: struct {
     // :MiniPanelAPI
     action: Action;
 
-    key_map: Key_Map; // Not reset, because all mini panel things basically interact the same.
+    key_map: Key_Map(Mini_Panel_Action); // Not reset, because all mini panel things basically interact the same.
     buffer: Text_Buffer;
 
     items_arena: *Arena;
@@ -314,8 +314,11 @@ Modal_Interaction :: struct {
 
     action: Action;
 
-    key_map: Key_Map; // Unlike mini panel, this key_map gets reset (keeping memory) and re-initialized each time we open.
-    buffer: Text_Buffer;
+    key_map: Key_Map(Modal_Interaction_Action); // In the permanent arena. Unlike mini panel, this key_map gets reset (keeping memory) and re-initialized each time we open.
+    buffer: Text_Buffer;                        // Has its own arena, because buffers are special snowflakes (for now).
+
+    userdata_arena: *Arena;
+    userdata: *void;
 
     Action :: enum {
         SEARCH_AND_REPLACE :: 0;
@@ -428,9 +431,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     panel := array_add(*editor.panels);
 
-    // :PanelInit
-    panel.arena = make_arena(platform, .SMALL);
-    panel.highlights.allocator = arena_allocator(panel.arena);
+    // :PanelInit (this will evantually be a procedure)
+    {
+        panel.arena = make_arena(platform, .SMALL);
+        panel.highlights.allocator = arena_allocator(panel.arena);
+    }
 
     set_panel_document_to_newly_created_scratch(editor, panel, platform);
 
@@ -445,34 +450,34 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_reserve(key_map, 128);
 
-        key_map_add(key_map, "C-p",         .MINI_PANEL_MOVE_UP);
-        key_map_add(key_map, "C-n",         .MINI_PANEL_MOVE_DOWN);
-        key_map_add(key_map, "C-b",         .MINI_PANEL_MOVE_LEFT);
-        key_map_add(key_map, "C-f",         .MINI_PANEL_MOVE_RIGHT);
-        key_map_add(key_map, "<up>",        .MINI_PANEL_MOVE_UP);
-        key_map_add(key_map, "<down>",      .MINI_PANEL_MOVE_DOWN);
-        key_map_add(key_map, "<left>",      .MINI_PANEL_MOVE_LEFT);
-        key_map_add(key_map, "<right>",     .MINI_PANEL_MOVE_RIGHT);
+        key_map_add(key_map, "C-p",         .MOVE_UP);
+        key_map_add(key_map, "C-n",         .MOVE_DOWN);
+        key_map_add(key_map, "C-b",         .MOVE_LEFT);
+        key_map_add(key_map, "C-f",         .MOVE_RIGHT);
+        key_map_add(key_map, "<up>",        .MOVE_UP);
+        key_map_add(key_map, "<down>",      .MOVE_DOWN);
+        key_map_add(key_map, "<left>",      .MOVE_LEFT);
+        key_map_add(key_map, "<right>",     .MOVE_RIGHT);
 
-        key_map_add(key_map, "M-f",         .MINI_PANEL_MOVE_FORWARD_WORD);
-        key_map_add(key_map, "M-b",         .MINI_PANEL_MOVE_BACKWARD_WORD);
+        key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
+        key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
 
-        key_map_add(key_map, "C-a",         .MINI_PANEL_MOVE_TO_START_OF_LINE);
-        key_map_add(key_map, "C-e",         .MINI_PANEL_MOVE_TO_END_OF_LINE);
+        key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
+        key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
 
-        key_map_add(key_map, "C-d",         .MINI_PANEL_DELETE_FORWARD);
-        key_map_add(key_map, "<delete>",    .MINI_PANEL_DELETE_FORWARD);
-        key_map_add(key_map, "<backspace>", .MINI_PANEL_DELETE_BACKWARD);
+        key_map_add(key_map, "C-d",         .DELETE_FORWARD);
+        key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
+        key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
 
-        key_map_add(key_map, "M-v",         .MINI_PANEL_SCROLL_UP);
-        key_map_add(key_map, "C-v",         .MINI_PANEL_SCROLL_DOWN);
+        key_map_add(key_map, "M-v",         .SCROLL_UP);
+        key_map_add(key_map, "C-v",         .SCROLL_DOWN);
 
-        key_map_add(key_map, "<tab>",       .MINI_PANEL_AUTOCOMPLETE);
+        key_map_add(key_map, "<tab>",       .AUTOCOMPLETE);
 
-        key_map_add(key_map, "<enter>",     .MINI_PANEL_CONFIRM);
-        key_map_add(key_map, "C-m",         .MINI_PANEL_CONFIRM);
+        key_map_add(key_map, "<enter>",     .CONFIRM);
+        key_map_add(key_map, "C-m",         .CONFIRM);
 
-        key_map_add(key_map, "C-g",         .MINI_PANEL_CANCEL);
+        key_map_add(key_map, "C-g",         .CANCEL);
 
         log("Mini Panel keymap:\n%", key_map_sprint(key_map,, temp));
 
@@ -491,10 +496,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map := *modal_interaction.key_map;
         key_map.allocator = arena_allocator(editor.perm_arena);
-
         key_map_reserve(key_map, 128);
 
         text_buffer_init(*modal_interaction.buffer, make_arena(platform, .SMALL));
+
+        modal_interaction.userdata_arena = make_arena(platform, .SMALL);
     }
 
     editor.messages.allocator = arena_allocator(editor.perm_arena);
@@ -1132,8 +1138,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         modal_interaction_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, modal_interaction_line_y, window_w, window_h, BACKGROUND_COLOR);
 
-        view := text_buffer_make_view_for_line(editor.modal_interaction.buffer, 0,, temp);
-        _font_layout_and_draw_text(*editor.font, view, *render_rects, *update_regions, { 0, modal_interaction_line_y }, is_new_frame = false, binary = false);
+        line_view := text_buffer_make_view_for_line(editor.modal_interaction.buffer, 0,, temp);
+
+        cursor_x := font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.buffer.cursor0.x);
+        draw_rect(*render_rects, rect_from_point_and_size(cast(f32, cursor_x), modal_interaction_line_y, cell_w, cell_h), CURSOR_COLOR);
+
+        _font_layout_and_draw_text(*editor.font, line_view, *render_rects, *update_regions, { 0, modal_interaction_line_y }, is_new_frame = false, binary = false);
     } else {
         message_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
@@ -1185,6 +1195,32 @@ get_active_panel :: (editor: *Editor) -> *Panel {
     return active_panel;
 }
 
+Mini_Panel_Action :: enum {
+    NONE;
+
+    MOVE_UP;
+    MOVE_DOWN;
+    MOVE_LEFT;
+    MOVE_RIGHT;
+
+    MOVE_FORWARD_WORD;
+    MOVE_BACKWARD_WORD;
+
+    MOVE_TO_START_OF_LINE;
+    MOVE_TO_END_OF_LINE;
+
+    DELETE_FORWARD;
+    DELETE_BACKWARD;
+
+    SCROLL_UP;
+    SCROLL_DOWN;
+
+    AUTOCOMPLETE;
+
+    CONFIRM;
+    CANCEL;
+}
+
 route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
     mini_panel := *editor.mini_panel;
     active_panel := get_active_panel(editor);
@@ -1196,19 +1232,19 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
 
     key_map_buffered, key_map_action := key_map_input(*editor.mini_panel.key_map, event, editor.input_state.modifiers);
     if key_map_action == {
-        case .MINI_PANEL_MOVE_UP;                mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
-        case .MINI_PANEL_MOVE_DOWN;              mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
-        case .MINI_PANEL_MOVE_LEFT;              text_buffer_move_cursor_x(*mini_panel.buffer, -1, false);
-        case .MINI_PANEL_MOVE_RIGHT;             text_buffer_move_cursor_x(*mini_panel.buffer,  1, false);
+        case .MOVE_UP;                mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
+        case .MOVE_DOWN;              mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
+        case .MOVE_LEFT;              text_buffer_move_cursor_x(*mini_panel.buffer, -1, false);
+        case .MOVE_RIGHT;             text_buffer_move_cursor_x(*mini_panel.buffer,  1, false);
 
-        case .MINI_PANEL_MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, false);
-        case .MINI_PANEL_MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, false);
+        case .MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, false);
+        case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, false);
 
-        case .MINI_PANEL_MOVE_TO_START_OF_LINE;  text_buffer_move_cursor_to_start_of_line(*mini_panel.buffer, false);
-        case .MINI_PANEL_MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, false);
+        case .MOVE_TO_START_OF_LINE;  text_buffer_move_cursor_to_start_of_line(*mini_panel.buffer, false);
+        case .MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, false);
 
-        case .MINI_PANEL_DELETE_FORWARD;         text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
-        case .MINI_PANEL_DELETE_BACKWARD; {
+        case .DELETE_FORWARD;         text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
+        case .DELETE_BACKWARD; {
             // :MiniPanelAPI (mini_panel_text_update_proc ???)
             //
             // Some users of the mini panel might want to do fancier things when text is inserted or
@@ -1238,16 +1274,17 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
             buffer_changed = true;
         }
 
-        case .MINI_PANEL_SCROLL_UP;              mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
-        case .MINI_PANEL_SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+        case .SCROLL_UP;              mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+        case .SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
 
-        case .MINI_PANEL_AUTOCOMPLETE;           buffer_changed |= mini_panel_autocomplete_proc(editor, platform, input);
+        case .AUTOCOMPLETE;           buffer_changed |= mini_panel_autocomplete_proc(editor, platform, input);
 
-        case .MINI_PANEL_CONFIRM;                buffer_changed |= mini_panel_confirm_proc(editor, platform, input);
-        case .MINI_PANEL_CANCEL;                 mini_panel_cancel_proc(editor, platform, input);
+        case .CONFIRM;                buffer_changed |= mini_panel_confirm_proc(editor, platform, input);
+        case .CANCEL;                 mini_panel_cancel_proc(editor, platform, input);
     }
 
     // TODO(jt): Do selecting in mini panel
+    // TODO(jt): Animated cursor in modal interaction
     // TODO(jt): Do animated horizontal scroll of buffer in mini panel.
     // TODO(jt): Do animated vertical scroll of item list in mini_panel.
     if !key_map_buffered && key_map_action == .NONE && event.flags & .PRESSED {
@@ -1286,15 +1323,217 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     }
 }
 
+Modal_Interaction_Action :: enum {
+    NONE;
+
+    MOVE_LEFT;
+    MOVE_RIGHT;
+
+    MOVE_FORWARD_WORD;
+    MOVE_BACKWARD_WORD;
+
+    MOVE_TO_START_OF_LINE;
+    MOVE_TO_END_OF_LINE;
+
+    DELETE_FORWARD;
+    DELETE_BACKWARD;
+
+    // AUTOCOMPLETE;
+
+    CONFIRM;
+    CANCEL;
+}
+
 route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
     modal_interaction := *editor.modal_interaction;
     active_panel := get_active_panel(editor);
 
+    if modal_interaction_handle_event_proc(editor, event, platform, input) {
+        return;
+    }
+
     buffer_changed := false;
 
-    key_map_buffered, key_map_action := key_map_input(*editor.modal_interaction.key_map, event, editor.input_state.modifiers);
+    key_map_buffered, key_map_action := key_map_input(*modal_interaction.key_map, event, editor.input_state.modifiers);
     if key_map_action == {
-        case .MODAL_INTERACTION_CANCEL;  close_modal_interaction(modal_interaction);
+        case .MOVE_LEFT;              text_buffer_move_cursor_x(*modal_interaction.buffer, -1, false);
+        case .MOVE_RIGHT;             text_buffer_move_cursor_x(*modal_interaction.buffer,  1, false);
+
+        case .MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*modal_interaction.buffer, false);
+        case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*modal_interaction.buffer, false);
+
+        case .MOVE_TO_START_OF_LINE;  text_buffer_move_cursor_to_start_of_line(*modal_interaction.buffer, false);
+        case .MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*modal_interaction.buffer, false);
+
+        case .DELETE_FORWARD;         text_buffer_delete_forward(*modal_interaction.buffer); buffer_changed = true;
+        case .DELETE_BACKWARD;        text_buffer_delete_backward(*modal_interaction.buffer); buffer_changed = true;
+
+        case .CONFIRM;                modal_interaction_advance_proc(editor, platform, input);
+        case .CANCEL;                 close_modal_interaction(modal_interaction);;
+    }
+
+    // TODO(jt): Do selecting in modal interaction
+    // TODO(jt): Animated cursor in modal interaction
+    if !key_map_buffered && key_map_action == .NONE && event.flags & .PRESSED {
+        if event.type == {
+            case .CODEPOINT; {
+                codepoint := event.codepoint;
+
+                if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
+                    if codepoint == {
+                        case; {
+                            // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
+                            // this back to codepoints for its linedata tracking. Add
+                            // text_buffer_insert_utf32?
+                            buf: [4] u8;
+                            s: string;
+                            s.data = buf.data;
+                            Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
+
+                            if !string_starts_with_newline(s, binary = false) {
+                                text_buffer_insert(*modal_interaction.buffer, s);
+                                buffer_changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if modal_interaction.open {
+        // TODO(jt): @Speed In case we'll be processing multiple events this frame, we want to delay
+        // calling this until they have all been processed. Otherwise we'll be doing expensive stuff
+        // multiple times per frame. Maybe we need to move this one level up and track the dirty
+        // flags on the modal interaction itself?
+        modal_interaction_update_proc(editor, platform, input, buffer_changed);
+    }
+}
+
+
+Editor_Action :: enum {
+    NONE;
+
+    MOVE_UP;
+    MOVE_DOWN;
+    MOVE_LEFT;
+    MOVE_RIGHT;
+
+    SEARCH;
+    SEARCH_AND_REPLACE;
+
+    OPEN_FILE;
+    SAVE_FILE;
+
+    SWITCH_TO_DOCUMENT;
+    CLOSE_DOCUMENT;
+
+    SWAP_LINE_UP;
+    SWAP_LINE_DOWN;
+
+    MOVE_TO_START_OF_LINE;
+    MOVE_TO_END_OF_LINE;
+
+    MOVE_TO_START_OF_DOCUMENT;
+    MOVE_TO_END_OF_DOCUMENT;
+
+    MOVE_TO_PREVIOUS_BLANK_LINE;
+    MOVE_TO_NEXT_BLANK_LINE;
+
+    MOVE_FORWARD_WORD;
+    MOVE_BACKWARD_WORD;
+
+    RECENTER;
+    SCROLL_UP;
+    SCROLL_DOWN;
+
+    START_SELECTING;
+    STOP_SELECTING;
+
+    DELETE_LINE;
+    DELETE_FORWARD;
+    DELETE_BACKWARD;
+
+    DELETE_FORWARD_WORD;
+    DELETE_BACKWARD_WORD;
+
+    INSERT_LINE_BEFORE;
+    INSERT_LINE_AFTER;
+
+    INSERT_TAB;
+
+    UNDO_EDIT;
+    REDO_EDIT;
+
+    COPY;
+    CUT;
+    PASTE;
+}
+
+Editor_Action_Kind :: enum {
+    OTHER;
+    MOVE;
+    EDIT;
+}
+
+editor_action_classify :: (action: Editor_Action) -> Editor_Action_Kind {
+    if #complete action == {
+        case .NONE;                              return .OTHER;
+
+        case .MOVE_UP;                           return .MOVE;
+        case .MOVE_DOWN;                         return .MOVE;
+        case .MOVE_LEFT;                         return .MOVE;
+        case .MOVE_RIGHT;                        return .MOVE;
+
+        case .SEARCH;                            return .OTHER;
+        case .SEARCH_AND_REPLACE;                return .OTHER;
+
+        case .OPEN_FILE;                         return .OTHER;
+        case .SAVE_FILE;                         return .OTHER;
+
+        case .SWITCH_TO_DOCUMENT;                return .OTHER;
+        case .CLOSE_DOCUMENT;                    return .OTHER;
+
+        case .SWAP_LINE_UP;                      return .EDIT;
+        case .SWAP_LINE_DOWN;                    return .EDIT;
+
+        case .MOVE_TO_START_OF_LINE;             return .MOVE;
+        case .MOVE_TO_END_OF_LINE;               return .MOVE;
+
+        case .MOVE_TO_START_OF_DOCUMENT;         return .MOVE;
+        case .MOVE_TO_END_OF_DOCUMENT;           return .MOVE;
+
+        case .MOVE_TO_PREVIOUS_BLANK_LINE;       return .MOVE;
+        case .MOVE_TO_NEXT_BLANK_LINE;           return .MOVE;
+
+        case .MOVE_FORWARD_WORD;                 return .MOVE;
+        case .MOVE_BACKWARD_WORD;                return .MOVE;
+
+        case .RECENTER;                          return .MOVE;
+        case .SCROLL_UP;                         return .MOVE;
+        case .SCROLL_DOWN;                       return .MOVE;
+
+        case .START_SELECTING;                   return .OTHER;
+        case .STOP_SELECTING;                    return .OTHER;
+
+        case .DELETE_LINE;                       return .EDIT;
+        case .DELETE_FORWARD;                    return .EDIT;
+        case .DELETE_BACKWARD;                   return .EDIT;
+
+        case .DELETE_FORWARD_WORD;               return .EDIT;
+        case .DELETE_BACKWARD_WORD;              return .EDIT;
+
+        case .INSERT_LINE_BEFORE;                return .EDIT;
+        case .INSERT_LINE_AFTER;                 return .EDIT;
+
+        case .INSERT_TAB;                        return .EDIT;
+
+        case .UNDO_EDIT;                         return .EDIT;
+        case .REDO_EDIT;                         return .EDIT;
+
+        case .COPY;                              return .OTHER;
+        case .CUT;                               return .EDIT;
+        case .PASTE;                             return .EDIT;
     }
 }
 
@@ -1326,7 +1565,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
         case .SEARCH_AND_REPLACE; {
             open_modal_interaction(*editor.modal_interaction, .SEARCH_AND_REPLACE, "Search and destroy");
-            // This would be a place to put an update proc, if we ever need it.
+            modal_interaction_init_proc(editor, platform, input);
         }
 
         case .OPEN_FILE; {
@@ -1476,7 +1715,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         }
     }
 
-    action_kind := action_classify(key_map_action);
+    action_kind := editor_action_classify(key_map_action);
     if action_kind >= .MOVE || inserted {
         // The cursor position interpolation gets setup in a centralized place instead of here, because the
         // cursor can be moved from other places than this one (e.g. mouse, SEARCH mini
@@ -1491,34 +1730,29 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 }
 
-open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action, initial_text := "") -> was_closed: bool {
-    key_map_flush(*mini_panel.key_map);
+// TODO(jt): @Cleanup We always call mini_panel_update_proc right after we open the mini
+// panel. Should we just be calling that from here? Analogously for Modal_Interaction.
+open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action, initial_text := "") {
+    assert(!mini_panel.open);
 
-    text_buffer_reset(*mini_panel.buffer);
     text_buffer_insert(*mini_panel.buffer, initial_text);
+
+    mini_panel.action = action;
+
+    mini_panel.open = true;
+}
+
+close_mini_panel :: (mini_panel: *Mini_Panel) {
+    assert(mini_panel.open);
+
+    key_map_flush(*mini_panel.key_map);
+    text_buffer_reset(*mini_panel.buffer);
 
     array_reset(*mini_panel.items);
     arena_reset(mini_panel.items_arena);
     mini_panel.item_index = 0;
 
-    mini_panel.action = action;
-
-    was_closed := !mini_panel.open;
-    mini_panel.open = true;
-
-    return was_closed;
-}
-
-close_mini_panel :: (mini_panel: *Mini_Panel) -> was_open: bool {
-    text_buffer_reset(*mini_panel.buffer);
-
-    array_reset(*mini_panel.items);
-    arena_reset(mini_panel.items_arena);
-
-    was_open := mini_panel.open;
     mini_panel.open = false;
-
-    return was_open;
 }
 
 // :MiniPanelAPI
@@ -1984,31 +2218,171 @@ mini_panel_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
     close_mini_panel(*editor.mini_panel);
 }
 
-open_modal_interaction :: (modal_interaction: *Modal_Interaction, action: Modal_Interaction.Action, initial_text := "") -> was_closed: bool {
-    key_map_reset_keeping_memory(*modal_interaction.key_map);
+// TODO(jt): @Cleanup We always call modal_interaction_init_proc right after we open. Should we just
+// be calling that from here? Analogously for mini panel.
+open_modal_interaction :: (modal_interaction: *Modal_Interaction, action: Modal_Interaction.Action, initial_text := "") {
+    assert(!modal_interaction.open);
 
-    key_map_add(*modal_interaction.key_map, "C-g", .MODAL_INTERACTION_CANCEL);
+    key_map := *modal_interaction.key_map;
 
-    text_buffer_reset(*modal_interaction.buffer);
+    // TODO(jt): Consider splitting this into two keymaps, one for basic modal navigation stuff, and
+    // the other for action specific things (like confirming a replace). We would initialize the
+    // shared keymap in init, and the other one... somewhere.
+
+    key_map_add(key_map, "C-b",         .MOVE_LEFT);
+    key_map_add(key_map, "C-f",         .MOVE_RIGHT);
+    key_map_add(key_map, "<left>",      .MOVE_LEFT);
+    key_map_add(key_map, "<right>",     .MOVE_RIGHT);
+
+    key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
+    key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
+
+    key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
+    key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
+
+    key_map_add(key_map, "C-d",         .DELETE_FORWARD);
+    key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
+    key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
+
+    key_map_add(key_map, "<enter>",     .CONFIRM);
+    key_map_add(key_map, "C-m",         .CONFIRM);
+    key_map_add(key_map, "C-g",         .CANCEL);
+
     text_buffer_insert(*modal_interaction.buffer, initial_text);
 
     modal_interaction.action = action;
 
-    was_closed := !modal_interaction.open;
     modal_interaction.open = true;
-
-    return was_closed;
 }
 
-close_modal_interaction :: (modal_interaction: *Modal_Interaction) -> was_open: bool {
-    // XXX: Reset all the things
+close_modal_interaction :: (modal_interaction: *Modal_Interaction) {
+    assert(modal_interaction.open);
 
+    key_map_reset_keeping_memory(*modal_interaction.key_map);
     text_buffer_reset(*modal_interaction.buffer);
 
-    was_open := modal_interaction.open;
-    modal_interaction.open = false;
+    arena_reset(modal_interaction.userdata_arena);
+    modal_interaction.userdata = null;
 
-    return was_open;
+    modal_interaction.open = false;
+}
+
+Search_And_Replace_Userdata :: struct {
+    // Everything in here is valid when zero-initialized, but the key map will want its allocator set!
+
+    state: State;
+
+    input_to_search: string;
+    input_to_replace: string;
+
+    matches: [..] Match;
+    match_index: s64;
+
+    replacing_key_map: Key_Map(Action);
+
+    State :: enum {
+        INPUT_TO_SEARCH   :: 0;
+        INPUT_TO_REPLACE  :: 1;
+        REPLACING         :: 2;
+    }
+
+    Match :: struct {
+        cursor0: Cursor;
+        cursor1: Cursor;
+    }
+
+    Action :: enum {
+        NONE;
+
+        YES;
+        NO;
+        CANCEL;
+    }
+}
+
+// TODO(jt): @Cleanup For API symmetry with mini panel, consider folding modal_interaction_init_proc
+// into modal_interaction_update_proc.
+modal_interaction_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
+    modal_interaction := *editor.modal_interaction;
+    arena := modal_interaction.userdata_arena;
+    assert(modal_interaction.open);
+
+    if #complete modal_interaction.action == {
+        case .SEARCH_AND_REPLACE; {
+            userdata := New(Search_And_Replace_Userdata,, arena_allocator(arena));
+            userdata.replacing_key_map.allocator = arena_allocator(arena);
+            key_map_reserve(*userdata.replacing_key_map, 8);
+
+            key_map_add(*userdata.replacing_key_map, "y",   .YES);
+            key_map_add(*userdata.replacing_key_map, "n",   .NO);
+            key_map_add(*userdata.replacing_key_map, "q",   .CANCEL);
+            key_map_add(*userdata.replacing_key_map, "C-g", .CANCEL);
+
+            modal_interaction.userdata = userdata;
+        }
+    }
+}
+
+modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) -> handled: bool {
+    modal_interaction := *editor.modal_interaction;
+    assert(modal_interaction.open);
+
+    if #complete modal_interaction.action == {
+        case .SEARCH_AND_REPLACE; {
+            userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
+
+            if #complete userdata.state == {
+                case .INPUT_TO_SEARCH;   return false;
+                case .INPUT_TO_REPLACE;  return false;
+                case .REPLACING; {
+                    key_map_buffered, key_map_action := key_map_input(*userdata.replacing_key_map, event, editor.input_state.modifiers);
+                    if key_map_action == {
+                        case .YES;   // XXX
+                        case .NO;    // XXX
+                        case .CANCEL;  close_modal_interaction(modal_interaction);
+                    }
+
+                    return true;
+                }
+            }
+        }
+    }
+}
+
+modal_interaction_update_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool) {
+    // Nothing here for now. Maybe someone will want to react to the buffer changing or something.
+}
+
+modal_interaction_advance_proc :: (editor: *Editor, platform: Platform, input: Input) {
+    modal_interaction := *editor.modal_interaction;
+    arena := modal_interaction.userdata_arena;
+    assert(modal_interaction.open);
+
+    if #complete modal_interaction.action == {
+        case .SEARCH_AND_REPLACE; {
+            userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
+
+            if #complete userdata.state == {
+                case .INPUT_TO_SEARCH; {
+                    input := text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
+                    text_buffer_reset(*modal_interaction.buffer);
+
+                    userdata.input_to_search = input;
+                    userdata.state = .INPUT_TO_REPLACE;
+                }
+                case .INPUT_TO_REPLACE; {
+                    input := text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
+                    text_buffer_reset(*modal_interaction.buffer);
+
+                    userdata.input_to_replace = input;
+                    userdata.state = .REPLACING;
+
+                    // XXX: find and fill matches!
+                }
+                case .REPLACING; assert(false);
+            }
+        }
+    }
 }
 
 find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, newly_created: bool {
@@ -2286,8 +2660,8 @@ draw_rect :: (render_rects: *[..] Render_Rect, rect: Rect, color: Vector4 = { 1,
 }
 
 Arena_Size :: enum s64 {
-    SMALL  :: 64 << 10;
-    LARGE  :: 16 << 30;
+    SMALL  ::   2 << 20;
+    LARGE  ::  16 << 30;
 }
 
 make_arena :: (platform: Platform, size: Arena_Size) -> *Arena {
