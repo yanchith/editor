@@ -2553,6 +2553,8 @@ recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, 
     }
 }
 
+// XXX: @Bug Scrolling up/down while having animated cursor hides the cursor.
+
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     document := panel.document;
     if !document {
