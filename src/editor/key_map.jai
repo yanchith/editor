@@ -1,203 +1,3 @@
-Action :: enum u32 {
-    NONE;
-
-    //
-    // Mini panel stuff
-    //
-
-    MINI_PANEL_MOVE_UP;
-    MINI_PANEL_MOVE_DOWN;
-    MINI_PANEL_MOVE_LEFT;
-    MINI_PANEL_MOVE_RIGHT;
-
-    MINI_PANEL_MOVE_FORWARD_WORD;
-    MINI_PANEL_MOVE_BACKWARD_WORD;
-
-    MINI_PANEL_MOVE_TO_START_OF_LINE;
-    MINI_PANEL_MOVE_TO_END_OF_LINE;
-
-    MINI_PANEL_DELETE_FORWARD;
-    MINI_PANEL_DELETE_BACKWARD;
-
-    MINI_PANEL_SCROLL_UP;
-    MINI_PANEL_SCROLL_DOWN;
-
-    MINI_PANEL_AUTOCOMPLETE;
-
-    MINI_PANEL_CONFIRM;
-    MINI_PANEL_CANCEL;
-
-    //
-    // Modal interaction stuff
-    //
-
-    MODAL_INTERACTION_CANCEL;
-
-    //
-    // Mega panel stuff
-    //
-
-    MOVE_UP;
-    MOVE_DOWN;
-    MOVE_LEFT;
-    MOVE_RIGHT;
-
-    SEARCH;
-    SEARCH_AND_REPLACE;
-
-    OPEN_FILE;
-    SAVE_FILE;
-
-    SWITCH_TO_DOCUMENT;
-    CLOSE_DOCUMENT;
-
-    SWAP_LINE_UP;
-    SWAP_LINE_DOWN;
-
-    MOVE_TO_START_OF_LINE;
-    MOVE_TO_END_OF_LINE;
-
-    MOVE_TO_START_OF_DOCUMENT;
-    MOVE_TO_END_OF_DOCUMENT;
-
-    MOVE_TO_PREVIOUS_BLANK_LINE;
-    MOVE_TO_NEXT_BLANK_LINE;
-
-    MOVE_FORWARD_WORD;
-    MOVE_BACKWARD_WORD;
-
-    RECENTER;
-    SCROLL_UP;
-    SCROLL_DOWN;
-
-    START_SELECTING;
-    STOP_SELECTING;
-
-    DELETE_LINE;
-    DELETE_FORWARD;
-    DELETE_BACKWARD;
-
-    DELETE_FORWARD_WORD;
-    DELETE_BACKWARD_WORD;
-
-    INSERT_LINE_BEFORE;
-    INSERT_LINE_AFTER;
-
-    INSERT_TAB;
-
-    UNDO_EDIT;
-    REDO_EDIT;
-
-    COPY;
-    CUT;
-    PASTE;
-}
-
-Action_Kind :: enum {
-    OTHER :: 0;
-    MOVE  :: 1;
-    EDIT  :: 2;
-}
-
-action_classify :: (action: Action) -> Action_Kind {
-    if #complete action == {
-        case .NONE;                              return .OTHER;
-
-        //
-        // Mini panel stuff
-        //
-
-        case .MINI_PANEL_MOVE_UP;                return .MOVE;
-        case .MINI_PANEL_MOVE_DOWN;              return .MOVE;
-        case .MINI_PANEL_MOVE_LEFT;              return .MOVE;
-        case .MINI_PANEL_MOVE_RIGHT;             return .MOVE;
-
-        case .MINI_PANEL_MOVE_FORWARD_WORD;      return .MOVE;
-        case .MINI_PANEL_MOVE_BACKWARD_WORD;     return .MOVE;
-
-        case .MINI_PANEL_MOVE_TO_START_OF_LINE;  return .MOVE;
-        case .MINI_PANEL_MOVE_TO_END_OF_LINE;    return .MOVE;
-
-        case .MINI_PANEL_DELETE_FORWARD;         return .EDIT;
-        case .MINI_PANEL_DELETE_BACKWARD;        return .EDIT;
-
-        case .MINI_PANEL_SCROLL_UP;              return .MOVE;
-        case .MINI_PANEL_SCROLL_DOWN;            return .MOVE;
-
-        case .MINI_PANEL_AUTOCOMPLETE;           return .EDIT;
-
-        case .MINI_PANEL_CONFIRM;                return .OTHER;
-        case .MINI_PANEL_CANCEL;                 return .OTHER;
-
-        //
-        // Modal interaction stuff
-        //
-        // TODO(jt): @Cleanup None of the modal interaction stuff makes sense to classify. Should we
-        // break this up into multiple enums somehow?
-
-        case .MODAL_INTERACTION_CANCEL;          return .OTHER;
-
-        //
-        // Mega panel stuff
-        //
-
-        case .MOVE_UP;                           return .MOVE;
-        case .MOVE_DOWN;                         return .MOVE;
-        case .MOVE_LEFT;                         return .MOVE;
-        case .MOVE_RIGHT;                        return .MOVE;
-
-        case .SEARCH;                            return .OTHER;
-        case .SEARCH_AND_REPLACE;                return .OTHER;
-
-        case .OPEN_FILE;                         return .OTHER;
-        case .SAVE_FILE;                         return .OTHER;
-
-        case .SWITCH_TO_DOCUMENT;                return .OTHER;
-        case .CLOSE_DOCUMENT;                    return .OTHER;
-
-        case .SWAP_LINE_UP;                      return .EDIT;
-        case .SWAP_LINE_DOWN;                    return .EDIT;
-
-        case .MOVE_TO_START_OF_LINE;             return .MOVE;
-        case .MOVE_TO_END_OF_LINE;               return .MOVE;
-
-        case .MOVE_TO_START_OF_DOCUMENT;         return .MOVE;
-        case .MOVE_TO_END_OF_DOCUMENT;           return .MOVE;
-
-        case .MOVE_TO_PREVIOUS_BLANK_LINE;       return .MOVE;
-        case .MOVE_TO_NEXT_BLANK_LINE;           return .MOVE;
-
-        case .MOVE_FORWARD_WORD;                 return .MOVE;
-        case .MOVE_BACKWARD_WORD;                return .MOVE;
-
-        case .RECENTER;                          return .MOVE;
-        case .SCROLL_UP;                         return .MOVE;
-        case .SCROLL_DOWN;                       return .MOVE;
-
-        case .START_SELECTING;                   return .OTHER;
-        case .STOP_SELECTING;                    return .OTHER;
-
-        case .DELETE_LINE;                       return .EDIT;
-        case .DELETE_FORWARD;                    return .EDIT;
-        case .DELETE_BACKWARD;                   return .EDIT;
-
-        case .DELETE_FORWARD_WORD;               return .EDIT;
-        case .DELETE_BACKWARD_WORD;              return .EDIT;
-
-        case .INSERT_LINE_BEFORE;                return .EDIT;
-        case .INSERT_LINE_AFTER;                 return .EDIT;
-
-        case .INSERT_TAB;                        return .EDIT;
-
-        case .UNDO_EDIT;                         return .EDIT;
-        case .REDO_EDIT;                         return .EDIT;
-
-        case .COPY;                              return .OTHER;
-        case .CUT;                               return .EDIT;
-        case .PASTE;                             return .EDIT;
-    }
-}
-
 Shortcut_Key :: struct {
     modifier_flags: Modifier_Flags;
     type: Input_Event.Type;
@@ -453,11 +253,16 @@ shortcut_sprint :: (shortcut: Shortcut) -> string {
     return s;
 }
 
-Key_Map :: struct {
+// Note that key_map_input needs to return something even if it doesn't match an action. It will
+// return the default value of the Action_Type when nothing is matched. You can detect that by
+// making sure the default value is not something you'd otherwise want to see.
+//
+// TODO(jt): Make key_map_input also return a bool that says if something is returned.
+Key_Map :: struct ($Action_Type: Type) { // XXX: Is the dollar optional and automatically inferred?
     allocator: Allocator; // Will spread to all key map datastructures.
 
     registered_shortcuts: [..] Shortcut;
-    registered_actions:   [..] Action;
+    registered_actions:   [..] Action_Type;
 
     buffered_input: Shortcut;
 }
@@ -475,7 +280,7 @@ key_map_reset_keeping_memory :: (key_map: *Key_Map) {
     key_map_flush(key_map);
 }
 
-key_map_add :: (key_map: *Key_Map, shortcut_string: string, action: Action) {
+key_map_add :: (key_map: *Key_Map, shortcut_string: string, action: key_map.Action_Type) {
     success, shortcut := shortcut_parse(shortcut_string);
     if success {
         key_map_add(key_map, shortcut, action);
@@ -484,7 +289,7 @@ key_map_add :: (key_map: *Key_Map, shortcut_string: string, action: Action) {
     }
 }
 
-key_map_add :: (key_map: *Key_Map, shortcut: Shortcut, action: Action) {
+key_map_add :: (key_map: *Key_Map, shortcut: Shortcut, action: key_map.Action_Type) {
     InitAllocators(key_map);
 
     // TODO(jt): We should validate against:
@@ -525,7 +330,7 @@ key_map_flush :: (key_map: *Key_Map) {
     key_map.buffered_input = {};
 }
 
-key_map_input :: (key_map: *Key_Map, event: Input_Event, modifier_flags: Modifier_Flags) -> buffered: bool, action: Action {
+key_map_input :: (key_map: *Key_Map, event: Input_Event, modifier_flags: Modifier_Flags) -> buffered: bool, action: key_map.Action_Type {
     // Do nothing, if we haven't got shortcuts to compare against.
     if !key_map.registered_shortcuts.count {
         return false, .NONE;
