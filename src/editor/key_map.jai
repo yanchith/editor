@@ -254,15 +254,13 @@ shortcut_sprint :: (shortcut: Shortcut) -> string {
 }
 
 // Note that key_map_input needs to return something even if it doesn't match an action. It will
-// return the default value of the Action_Type when nothing is matched. You can detect that by
-// making sure the default value is not something you'd otherwise want to see.
-//
-// TODO(jt): Make key_map_input also return a bool that says if something is returned.
-Key_Map :: struct ($Action_Type: Type) { // XXX: Is the dollar optional and automatically inferred?
+// return the default value of T when nothing is matched. You can detect that by making sure the
+// default value is not something you'd otherwise want to see, e.g. a .NONE value of an enum.
+Key_Map :: struct (T: Type) {
     allocator: Allocator; // Will spread to all key map datastructures.
 
     registered_shortcuts: [..] Shortcut;
-    registered_actions:   [..] Action_Type;
+    registered_actions:   [..] T;
 
     buffered_input: Shortcut;
 }
@@ -280,7 +278,7 @@ key_map_reset_keeping_memory :: (key_map: *Key_Map) {
     key_map_flush(key_map);
 }
 
-key_map_add :: (key_map: *Key_Map, shortcut_string: string, action: key_map.Action_Type) {
+key_map_add :: (key_map: *Key_Map($T), shortcut_string: string, action: T) {
     success, shortcut := shortcut_parse(shortcut_string);
     if success {
         key_map_add(key_map, shortcut, action);
@@ -289,7 +287,7 @@ key_map_add :: (key_map: *Key_Map, shortcut_string: string, action: key_map.Acti
     }
 }
 
-key_map_add :: (key_map: *Key_Map, shortcut: Shortcut, action: key_map.Action_Type) {
+key_map_add :: (key_map: *Key_Map($T), shortcut: Shortcut, action: T) {
     InitAllocators(key_map);
 
     // TODO(jt): We should validate against:
@@ -330,14 +328,14 @@ key_map_flush :: (key_map: *Key_Map) {
     key_map.buffered_input = {};
 }
 
-key_map_input :: (key_map: *Key_Map, event: Input_Event, modifier_flags: Modifier_Flags) -> buffered: bool, action: key_map.Action_Type {
+key_map_input :: (key_map: *Key_Map($T), event: Input_Event, modifier_flags: Modifier_Flags) -> buffered: bool, action: T {
     // Do nothing, if we haven't got shortcuts to compare against.
     if !key_map.registered_shortcuts.count {
-        return false, .NONE;
+        return false, default_of(T);
     }
 
     if is_modifier_key_event(event) {
-        return true, .NONE;
+        return true, default_of(T);
     }
 
     if event.flags & .PRESSED {
@@ -370,14 +368,14 @@ key_map_input :: (key_map: *Key_Map, event: Input_Event, modifier_flags: Modifie
         }
 
         if has_candidates {
-            return true, .NONE;
+            return true, default_of(T);
         } else {
             key_map.buffered_input = {};
-            return false, .NONE;
+            return false, default_of(T);
         }
     }
 
-    return false, .NONE;
+    return false, default_of(T);
 }
 
 #scope_file
@@ -404,4 +402,10 @@ is_modifier_key_event :: (event: Input_Event) -> bool {
     }
 
     return false;
+}
+
+// TODO(jt): @Cleanup default_of may become a JAI builtin and we can remove ours.
+default_of :: ($T: Type) -> T #expand {
+    value: T;
+    return value;
 }
