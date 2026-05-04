@@ -1230,8 +1230,8 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     buffer_changed := false;
     old_item_index := mini_panel.item_index;
 
-    key_map_buffered, key_map_action := key_map_input(*editor.mini_panel.key_map, event, editor.input_state.modifiers);
-    if key_map_action == {
+    buffered, action := key_map_input(*editor.mini_panel.key_map, event, editor.input_state.modifiers);
+    if action == {
         case .MOVE_UP;                mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
         case .MOVE_DOWN;              mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
         case .MOVE_LEFT;              text_buffer_move_cursor_x(*mini_panel.buffer, -1, false);
@@ -1287,7 +1287,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     // TODO(jt): Animated cursor in modal interaction
     // TODO(jt): Do animated horizontal scroll of buffer in mini panel.
     // TODO(jt): Do animated vertical scroll of item list in mini_panel.
-    if !key_map_buffered && key_map_action == .NONE && event.flags & .PRESSED {
+    if !buffered && action == .NONE && event.flags & .PRESSED {
         if event.type == {
             case .CODEPOINT; {
                 codepoint := event.codepoint;
@@ -1354,8 +1354,8 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
     buffer_changed := false;
 
-    key_map_buffered, key_map_action := key_map_input(*modal_interaction.key_map, event, editor.input_state.modifiers);
-    if key_map_action == {
+    buffered, action := key_map_input(*modal_interaction.key_map, event, editor.input_state.modifiers);
+    if action == {
         case .MOVE_LEFT;              text_buffer_move_cursor_x(*modal_interaction.buffer, -1, false);
         case .MOVE_RIGHT;             text_buffer_move_cursor_x(*modal_interaction.buffer,  1, false);
 
@@ -1374,7 +1374,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
     // TODO(jt): Do selecting in modal interaction
     // TODO(jt): Animated cursor in modal interaction
-    if !key_map_buffered && key_map_action == .NONE && event.flags & .PRESSED {
+    if !buffered && action == .NONE && event.flags & .PRESSED {
         if event.type == {
             case .CODEPOINT; {
                 codepoint := event.codepoint;
@@ -1550,9 +1550,9 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
     shift_selecting := editor.input_state.modifiers & .SHIFT;
 
-    key_map_buffered, key_map_action := key_map_input(*editor.key_map, event, editor.input_state.modifiers);
+    buffered, action := key_map_input(*editor.key_map, event, editor.input_state.modifiers);
 
-    if key_map_action == {
+    if action == {
         case .MOVE_UP;     text_buffer_move_cursor_y(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
         case .MOVE_DOWN;   text_buffer_move_cursor_y(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
         case .MOVE_LEFT;   text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
@@ -1692,7 +1692,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 
     inserted := false;
-    if !key_map_buffered && key_map_action == .NONE && event.flags & .PRESSED {
+    if !buffered && action == .NONE && event.flags & .PRESSED {
         if event.type == {
             case .CODEPOINT; {
                 panel.selecting = false;
@@ -1715,7 +1715,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         }
     }
 
-    action_kind := editor_action_classify(key_map_action);
+    action_kind := editor_action_classify(action);
     if action_kind >= .MOVE || inserted {
         // The cursor position interpolation gets setup in a centralized place instead of here, because the
         // cursor can be moved from other places than this one (e.g. mouse, SEARCH mini
@@ -2335,8 +2335,8 @@ modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, pla
                 case .INPUT_TO_SEARCH;   return false;
                 case .INPUT_TO_REPLACE;  return false;
                 case .REPLACING; {
-                    key_map_buffered, key_map_action := key_map_input(*userdata.replacing_key_map, event, editor.input_state.modifiers);
-                    if key_map_action == {
+                    buffered, action := key_map_input(*userdata.replacing_key_map, event, editor.input_state.modifiers);
+                    if action == {
                         case .YES;   // XXX
                         case .NO;    // XXX
                         case .CANCEL;  close_modal_interaction(modal_interaction);
