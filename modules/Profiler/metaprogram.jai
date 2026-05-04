@@ -23,7 +23,7 @@ get_plugin :: () -> *Metaprogram_Plugin {
 
 profiler_final_code_inserted := false;
 profiler_import: *Message_Import;
-profiler_colleted_zone_labels: [..] string;
+profiler_collected_zone_labels: [..] string;
 
 // You can call message directly from your metaprogram and pass null for p.
 message :: (p: *Metaprogram_Plugin, message: *Message) {
@@ -39,7 +39,7 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
                     // This is inserted after all user-level code has been seen, we assigned all
                     // zone labels and counted all the zones. There is also :InsertEarlyCode.
 
-                    zone_count := profiler_colleted_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
+                    zone_count := profiler_collected_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
                     log("[Profiler] Inserting final code for % zones into Profiler module", zone_count);
 
                     if profiler_import {
@@ -49,7 +49,7 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
                         print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
                         print(*sb, "__init_zone_labels :: () {\n");
                         for 0..zone_count - 2 {
-                            print(*sb, "    __profiler.zone_labels[%] = \"%\";\n", it + 1, profiler_colleted_zone_labels[it]);
+                            print(*sb, "    __profiler.zone_labels[%] = \"%\";\n", it + 1, profiler_collected_zone_labels[it]);
                         }
                         print(*sb, "}\n");
 
@@ -239,8 +239,8 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
             continue;
         }
 
-        zone_index := profiler_colleted_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
-        array_add(*profiler_colleted_zone_labels, argument_literal._string);
+        zone_index := profiler_collected_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
+        array_add(*profiler_collected_zone_labels, argument_literal._string);
 
         log("[Profiler] Instrumenting zone %", argument_literal._string);
         s := tprint("__ProfileZone(%);", zone_index);
