@@ -5,25 +5,25 @@ Check    :: #import "Check";
 Profiler :: #import "Profiler"()(IMPORT_MODE = .METAPROGRAM);
 
 build :: () {
-    do_optimized_build := false;
-    do_profiling_build := false;
-    do_sanity_build    := true;
-    do_check           := true;
+    do_optimize := false;
+    do_profile  := false;
+    do_sanity   := true;
+    do_check    := true;
 
     for get_toplevel_command_line() {
-        if it == "-o"                do_optimized_build = true;
-        if it == "-optimized"        do_optimized_build = true;
-        if it == "-od"               do_optimized_build = true;
-        if it == "-optimized_debug"  do_optimized_build = true;
-        if it == "-llvm"             do_optimized_build = false;
-        if it == "-x64"              do_optimized_build = false;
+        if it == "-o"                do_optimize = true;
+        if it == "-optimized"        do_optimize = true;
+        if it == "-od"               do_optimize = true;
+        if it == "-optimized_debug"  do_optimize = true;
+        if it == "-llvm"             do_optimize = false;
+        if it == "-x64"              do_optimize = false;
     }
 
     for get_build_options().compile_time_command_line {
-        if it == "-profile"     do_profiling_build = true;
-        if it == "-no-profile"  do_profiling_build = false;
-        if it == "-sanity"      do_sanity_build = true;
-        if it == "-no-sanity"   do_sanity_build = false;
+        if it == "-profile"     do_profile = true;
+        if it == "-no-profile"  do_profile = false;
+        if it == "-sanity"      do_sanity = true;
+        if it == "-no-sanity"   do_sanity = false;
         if it == "-check"       do_check = true;
         if it == "-no-check"    do_check = false;
     }
@@ -37,7 +37,7 @@ build :: () {
     options.output_path            = "build";
     options.intermediate_path      = "build/.build";
 
-    if !do_optimized_build {
+    if !do_optimize {
         // The compiler doesn't enable this yet by default for debug builds. Let's try it out!
         //
         // UPDATE: There's code in jai modules (and sometimes in our own code) that can trigger
@@ -48,13 +48,13 @@ build :: () {
 
     set_build_options(options, w);
 
-    require_message_loop := do_profiling_build || do_check;
+    require_message_loop := do_profile || do_check;
 
     if require_message_loop {
         compiler_begin_intercept(w);
     }
 
-    if do_sanity_build {
+    if do_sanity {
         add_build_string("__SANITY :: true;\n", w);
     }
 
@@ -67,8 +67,8 @@ build :: () {
             // The plugins we currently support (Profiler and Check) do not need any initialization,
             // and their message routines do not use the *Metaprogram_Plugin argument.
 
-            if do_profiling_build  Profiler.message(null, message);
-            if do_check            Check.do_error_checking(null, message);
+            if do_profile  Profiler.message(null, message);
+            if do_check    Check.do_error_checking(null, message);
 
             if message.kind == .COMPLETE {
                 break;
