@@ -286,7 +286,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
             entry.glyph_index = cast(s32, glyph_index);
 
             {
-                ProfileZone("FT_Load_GLyph(FT_LOAD_RENDER)");
+                ProfileZone("FT_Load_Glyph(FT_LOAD_RENDER)");
                 error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER);
 
                 if error {
