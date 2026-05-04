@@ -97,10 +97,8 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
 
             for tc: message_typechecked.procedure_bodies {
                 // TODO(jt): We currently instrument each instantiation of the polymorphic/autobaked
-                // procedure. That is probably okay, but maybe we should enhance the label so we can
-                // distinguish between them? Or should we instrument just the original procedure and
-                // not the instatiations? Maybe we need a per-zone config for this (if both are even
-                // possible to do)?
+                // procedure. This is sort of okay, but even if we wanted to instrument the original
+                // procedure, we can't, because the compiler does not send a message with its body.
 
                 body := tc.expression;
 
@@ -204,8 +202,8 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
         //
         // Because I had the need to put profiling zones into for loops with for_expansions, I
         // ripped out the more robust checking code, and we are now instrumenting everything called
-        // ProfileZone with exactly one string parameter, whether it is resolved or not. Maybe we'll
-        // want to add a strict version that can be toggled with a flag or something.
+        // ProfileZone with exactly one string parameter, whether it is resolved or not. Probably
+        // worth documenting this.
         if call_ident.name != "ProfileZone" {
             array_add(new_statements, statement);
             continue;
