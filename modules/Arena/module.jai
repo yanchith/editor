@@ -1,27 +1,30 @@
+//
 // This arena aims to be simple and minimal. It only does virtual memory reserve, and then
 // commits/decommits on the go. You tweak the minimal amount of retained memory to prevent releasing
 // all memory back to the OS only to allocate it again.
 //
-// The following may be added eventually, if they are actually needed:
-//
-// - Block chaining and releasing blocks. We'd only need this if we can't use virtual memory or decommit doesn't work for some reason.
-// - User-given first block.
+// If we ever need a block-chaining arena (for some platforms?), we'll do it as a different module
+// with very similar API.
 //
 
-#module_parameters(SANITY := false);
+#module_parameters(
+    ENABLE_ASSERTS           := true,
+    ENABLE_SANITY_ASSERTS    := false, // Implies ENABLE_ASSERTS
+    DEFAULT_ALIGNMENT        := 16,
+    DEFAULT_OVERWRITE_MEMORY := false
+);
 
-ARENA_DEFAULT_RESERVE_SIZE:        s64 : 256 << 20;
-ARENA_DEFAULT_COMMIT_SIZE:         s64 :  64 << 10;
-ARENA_DEFAULT_KEEP_COMMITTED_SIZE: s64 :  64 << 10;
-
-ARENA_DEFAULT_OVERWRITE_MEMORY :: SANITY;
+ARENA_DEFAULT_RESERVE_SIZE: s64 : 256 << 20;
+ARENA_DEFAULT_COMMIT_SIZE:  s64 :  64 << 10;
+ARENA_DEFAULT_RETAIN_SIZE:  s64 :  64 << 10;
 
 arena_allocator :: (arena: *Arena) -> Allocator {
     return { arena_allocator_proc, arena };
 }
 
 // TODO(jt): @Cleanup allocator_proc doesn't care about alignment (as of 0.2.0.029), but once it
-// does, we are ready for it. For now, arena_push defaults alignment to 16, if it is not specified.
+// does, we are ready for it. For now, arena_push defaults alignment to DEFAULT_ALIGNMENT, if it is
+// not specified.
 arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64, old_memory: *void, allocator_data: *void) -> *void {
     if #complete mode == {
         case .FREE; {
@@ -71,13 +74,13 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
 
         case .THREAD_START; #through;
         case .THREAD_STOP; {
-            assert(false, "Multithreaded access is not supported by arena_allocator_proc.\n");
+            assert(false, "Multithreaded access is not supported by arena_allocator_proc.");
             return null;
         }
 
         case .CREATE_HEAP; #through;
         case .DESTROY_HEAP; {
-            assert(false, "Create/Destroy heap are not supported by arena_allocator_proc\n");
+            assert(false, "Create/Destroy heap are not supported by arena_allocator_proc.");
             return null;
         }
 
@@ -114,9 +117,9 @@ Arena_Procs :: struct {
 Arena :: struct {
     // Things given by the caller before arena_init as arguments to arena_allocate. At least procs must be set, because they don't have a default. Don't change them after init.
     procs: Arena_Procs;
-    reserve_size        := ARENA_DEFAULT_RESERVE_SIZE;        // How much memory we reserve, aligned to page size. Can't get more.
-    commit_size         := ARENA_DEFAULT_COMMIT_SIZE;         // The minimal size that is (de)committed, aligned to page size. Should be less than reserve size.
-    keep_committed_size := ARENA_DEFAULT_KEEP_COMMITTED_SIZE; // The minimal size that is not decommitted once it has been committed, aligned to page size. Should be less than reserve size.
+    reserve_size := ARENA_DEFAULT_RESERVE_SIZE;        // How much memory we reserve, aligned to page size. Can't get more.
+    commit_size  := ARENA_DEFAULT_COMMIT_SIZE;         // The minimal size that is (de)committed, aligned to page size. Should be less than reserve size.
+    retain_size  := ARENA_DEFAULT_RETAIN_SIZE; // The minimal size that is not decommitted once it has been committed, aligned to page size. Should be less than reserve size.
 
     // Internal stuff. Don't write to these yourself.
 
@@ -134,14 +137,14 @@ Arena :: struct {
 // storing it on the stack above the code that uses it, but you don't have to use it this way.
 //
 // This routine tweaks the arena's low water mark so that it never overwrites its own data.
-arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZE, commit_size := ARENA_DEFAULT_COMMIT_SIZE, keep_committed_size := ARENA_DEFAULT_KEEP_COMMITTED_SIZE) -> *Arena {
+arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZE, commit_size := ARENA_DEFAULT_COMMIT_SIZE, retain_size := ARENA_DEFAULT_RETAIN_SIZE) -> *Arena {
     arena: Arena;
     arena.procs = procs;
 
     // Aligning happens in arena_init.
-    arena.reserve_size        = reserve_size;
-    arena.commit_size         = commit_size;
-    arena.keep_committed_size = max(size_of(Arena), keep_committed_size);
+    arena.reserve_size = reserve_size;
+    arena.commit_size  = commit_size;
+    arena.retain_size  = max(size_of(Arena), retain_size);
 
     arena_init(*arena);
 
@@ -157,34 +160,23 @@ arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZ
 arena_init :: (arena: *Arena) {
     assert(arena.procs.page_size > 0 && is_power_of_two(arena.procs.page_size));
 
-    given_reserve        := arena.reserve_size;
-    given_commit         := arena.commit_size;
-    given_keep_committed := arena.keep_committed_size;
+    given_reserve := arena.reserve_size;
+    given_commit  := arena.commit_size;
+    given_retain  := arena.retain_size;
 
-    arena.reserve_size        = align(max(arena.reserve_size, 1), arena.procs.page_size);
-    arena.commit_size         = align(max(arena.commit_size, 1), arena.procs.page_size);
-    arena.keep_committed_size = align(max(arena.keep_committed_size, 1), arena.procs.page_size);
+    arena.reserve_size = align(max(arena.reserve_size, 1), arena.procs.page_size);
+    arena.commit_size  = align(max(arena.commit_size, 1), arena.procs.page_size);
+    arena.retain_size  = align(max(arena.retain_size, 1), arena.procs.page_size);
 
-    // Clamp commit and keep committed size so the caller can control all sizes with just reserve
-    // size in simple scenarios. Note that this won't help when the actual allocation pushes the
-    // commit size above our reserved range.
-    arena.commit_size         = min(arena.commit_size, arena.reserve_size);
-    arena.keep_committed_size = min(arena.keep_committed_size, arena.reserve_size);
-
-    if given_reserve != arena.reserve_size || given_commit != arena.commit_size || given_keep_committed != arena.keep_committed_size {
-        log_error(
-            "Arena sizes modified: RESERVE % -> %; COMMIT % -> %; KEEP_COMMITTED % -> %;",
-            given_reserve, arena.reserve_size,
-            given_commit, arena.commit_size,
-            given_keep_committed, arena.keep_committed_size,
-        );
-    }
+    // Clamp commit and retain size so the caller can control all sizes with just reserve size in
+    // simple scenarios. Note that this won't help when the actual allocation pushes the commit size
+    // above our reserved range.
+    arena.commit_size = min(arena.commit_size, arena.reserve_size);
+    arena.retain_size = min(arena.retain_size, arena.reserve_size);
 
     start := arena.procs.mem_reserve(arena.reserve_size);
+    assert(cast(bool, start), "Arena failed to reserve bytes");
     assert(is_aligned(start, arena.procs.page_size));
-    if !start {
-        log_error("Arena failed to reserve % bytes", arena.reserve_size);
-    }
 
     arena.memory_start = start;
     arena.memory_end   = arena.memory_start + arena.reserve_size;
@@ -217,15 +209,11 @@ arena_release :: (arena: *Arena) {
     arena.procs.mem_release(memory_start, memory_end - memory_start);
 }
 
-arena_get_mark :: (arena: Arena) -> Arena_Mark {
-    return { arena.allocated };
-}
-
 arena_is_this_yours :: (arena: Arena, pointer: *void) -> bool {
     return pointer >= arena.memory_start && pointer < arena.memory_start + arena.allocated;
 }
 
-arena_push :: (arena: *Arena, _size: s64, alignment: s64 = 16) -> *void {
+arena_push :: (arena: *Arena, _size: s64, alignment: s64 = DEFAULT_ALIGNMENT) -> *void {
     assert(_size > 0, "Can not push zero size");
     assert(alignment > 0 && is_power_of_two(alignment));
 
@@ -241,8 +229,7 @@ arena_push :: (arena: *Arena, _size: s64, alignment: s64 = 16) -> *void {
     arena.allocated += size;
 
     if arena.memory_start + arena.allocated > arena.memory_end {
-        // Nothing we can do here. We return null so that the user notices the error sooner.
-        log_error("Arena ran out of reserved space allocating % bytes", size);
+        assert(false, "Arena ran out of reserved space trying to allocate");
         return null;
     }
 
@@ -253,14 +240,13 @@ arena_push :: (arena: *Arena, _size: s64, alignment: s64 = 16) -> *void {
         // We can get here, if we passed the reserve check above, but rounding up to commit size
         // would take us above the reserved space. We detect this to give a better error message.
         if commit_base + commit_size > arena.memory_end {
-            log_error("Arena ran out of reserved space committing % bytes", commit_size);
+            assert(false, "Arena ran out of reserved space trying to commit");
             return null;
         }
 
         result := arena.procs.mem_commit(commit_base, commit_size);
         if !result {
-            // Nothing we can do here. We return null so that the user notices the error sooner.
-            log_error("Arena failed to commit % bytes", commit_size);
+            assert(false, "Arena failed to commit");
             return null;
         }
 
@@ -270,8 +256,8 @@ arena_push :: (arena: *Arena, _size: s64, alignment: s64 = 16) -> *void {
     return pointer;
 }
 
-arena_push :: (arena: *Arena, $T: Type, ensure_alignment := 1) -> *T {
-    pointer := arena_push(arena, size_of(T), max(align_of(T), ensure_alignment));
+arena_push :: (arena: *Arena, $T: Type, min_alignment := 1) -> *T {
+    pointer := arena_push(arena, size_of(T), max(align_of(T), min_alignment));
     if pointer == null {
         return null;
     }
@@ -294,10 +280,10 @@ arena_push :: (arena: *Arena, $T: Type, ensure_alignment := 1) -> *T {
 // allocations. For now we decided not to do it. This means callers need to make sure stuff is not
 // empty themselves.
 
-arena_push_array :: (arena: *Arena, $T: Type, count: s64, ensure_alignment := 1) -> [] T {
+arena_push_array :: (arena: *Arena, $T: Type, count: s64, min_alignment := 1) -> [] T {
     assert(count > 0, "Can not push empty arrays");
 
-    pointer := arena_push(arena, size_of(T) * count, max(align_of(T), ensure_alignment));
+    pointer := arena_push(arena, size_of(T) * count, max(align_of(T), min_alignment));
     if pointer == null {
         result: [] T;
         return result;
@@ -319,10 +305,10 @@ arena_push_array :: (arena: *Arena, $T: Type, count: s64, ensure_alignment := 1)
     return result;
 }
 
-arena_push_array :: (arena: *Arena, a: [] $T, ensure_alignment := 1) -> [] T {
+arena_push_array :: (arena: *Arena, a: [] $T, min_alignment := 1) -> [] T {
     assert(a.count > 0, "Can not push empty arrays");
 
-    pointer := arena_push(arena, size_of(T) * a.count, max(align_of(T), ensure_alignment));
+    pointer := arena_push(arena, size_of(T) * a.count, max(align_of(T), min_alignment));
     if pointer == null {
         result: [] T;
         return result;
@@ -337,10 +323,10 @@ arena_push_array :: (arena: *Arena, a: [] $T, ensure_alignment := 1) -> [] T {
     return result;
 }
 
-arena_push_string :: (arena: *Arena, s: string, ensure_alignment := 1) -> string {
+arena_push_string :: (arena: *Arena, s: string, min_alignment := 1) -> string {
     assert(s.count > 0, "Can not push empty strings");
 
-    pointer := arena_push(arena, s.count, ensure_alignment);
+    pointer := arena_push(arena, s.count, min_alignment);
     if pointer == null {
         result: string;
         return result;
@@ -359,7 +345,7 @@ arena_push_string :: (arena: *Arena, s: string, ensure_alignment := 1) -> string
 // allocation. (And even then it sometimes won't because of alignment of subsequent allocations, but
 // it is guaranteed to succeed if you just made the last allocation right now). Speaking of
 // alignment, you can't change it here.
-arena_maybe_modify_last_push :: (arena: *Arena, pointer: *void, old_size: s64, new_size: s64, overwrite_memory := ARENA_DEFAULT_OVERWRITE_MEMORY) -> success: bool {
+arena_maybe_modify_last_push :: (arena: *Arena, pointer: *void, old_size: s64, new_size: s64, overwrite_memory := DEFAULT_OVERWRITE_MEMORY) -> success: bool {
     if !arena.memory_start {
         arena_init(arena);
     }
@@ -381,7 +367,11 @@ arena_maybe_modify_last_push :: (arena: *Arena, pointer: *void, old_size: s64, n
     }
 }
 
-arena_pop_to_mark :: (arena: *Arena, _mark: Arena_Mark, overwrite_memory := ARENA_DEFAULT_OVERWRITE_MEMORY) {
+arena_get_mark :: (arena: Arena) -> Arena_Mark {
+    return { arena.allocated };
+}
+
+arena_pop_to_mark :: (arena: *Arena, _mark: Arena_Mark, overwrite_memory := DEFAULT_OVERWRITE_MEMORY) {
     if !arena.memory_start {
         arena_init(arena);
     }
@@ -401,10 +391,10 @@ arena_pop_to_mark :: (arena: *Arena, _mark: Arena_Mark, overwrite_memory := AREN
 
     arena.allocated = mark.allocated;
 
-    if arena.committed > arena.keep_committed_size {
+    if arena.committed > arena.retain_size {
         decommit_size := arena.committed - align(arena.allocated, arena.procs.page_size);
-        if arena.committed - decommit_size < arena.keep_committed_size {
-            decommit_size = arena.committed - arena.keep_committed_size;
+        if arena.committed - decommit_size < arena.retain_size {
+            decommit_size = arena.committed - arena.retain_size;
         }
 
         if decommit_size {
@@ -419,24 +409,16 @@ arena_pop_to_mark :: (arena: *Arena, _mark: Arena_Mark, overwrite_memory := AREN
     }
 }
 
-arena_reset :: inline (arena: *Arena, overwrite_memory := ARENA_DEFAULT_OVERWRITE_MEMORY) {
+arena_reset :: inline (arena: *Arena, overwrite_memory := DEFAULT_OVERWRITE_MEMORY) {
     arena_pop_to_mark(arena, { 0 }, overwrite_memory);
 }
 
-ArenaAutoPop :: (arena: *Arena) #expand {
+ArenaPopScope :: (arena: *Arena) #expand {
     __mark := arena_get_mark(arena);
-    `defer arena_pop_to_mark(arena, __mark);
+    `defer arena_pop_to(arena, __mark);
 }
 
 #scope_file
-
-// TODO(jt): @Cleanup We could copy over the few things we use from basic and ditch the import.
-Basic  :: #import "Basic";
-
-assert    :: Basic.assert;
-min       :: Basic.min;
-max       :: Basic.max;
-log_error :: Basic.log_error;
 
 CAPS_VERSION_STRING :: "modules/Arena";
 
@@ -473,10 +455,41 @@ is_power_of_two :: inline (value: s64) -> bool {
     return value & (value - 1) == 0;
 }
 
-#if SANITY {
-    sanity_assert :: (arg: bool, message := "", args: .. Any, loc := #caller_location) #no_debug #expand {
-        assert(arg, message, args, loc);
+min :: inline (a: s64, b: s64) -> s64 {
+    return ifx a < b then a else b;
+}
+
+max :: inline (a: s64, b: s64) -> s64 {
+    return ifx a > b then a else b;
+}
+
+#if ENABLE_SANITY_ASSERTS {
+    // Same as assert, this has no args, so that we don't depend on Basic.tprint.
+    sanity_assert :: (arg: bool, message := "", loc := #caller_location) #no_debug #expand {
+        if !arg && assert_helper(message, loc) then debug_break();
     }
 } else {
-    sanity_assert :: (#discard arg: bool, #discard message := "", #discard args: .. Any, #discard loc := #caller_location) #expand {}
+    sanity_assert :: (#discard arg: bool, #discard message := "", #discard loc := #caller_location) #expand {}
+}
+
+#if ENABLE_ASSERTS || ENABLE_SANITY_ASSERTS {
+    // Taken from modules/Basic, but we do not support format args, as that would mean we depend on Basic.tprint.
+    assert :: (arg: bool, message := "", loc := #caller_location) #no_debug #expand {
+        if !arg && assert_helper(message, loc) then debug_break();
+    }
+
+    assert_helper :: (message := "", loc := #caller_location) -> bool {
+        // Avoid infinite loops.
+        if context.handling_assertion_failure {
+            return false;
+        }
+
+        context.handling_assertion_failure = true;
+        should_break := context.assertion_failed(loc, message);
+        context.handling_assertion_failure = false;
+
+        return should_break;
+    }
+} else {
+    assert :: (#discard arg: bool, #discard message := "", #discard loc := #caller_location) #expand {}
 }
