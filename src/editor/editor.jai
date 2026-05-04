@@ -86,7 +86,7 @@ f32 :: float32;
 f64 :: float64;
 
 #import "Basic";
-#import "Arena"(SANITY);
+#import "Arena"(ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY);
 #import "Bucket_Array";
 #import "Hash_Table";
 #import "Profiler";
