@@ -195,7 +195,7 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
     }
 }
 
-_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame: bool, $binary := false) {
+_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame: bool, $binary: bool) {
     ProfileZone("font_layout_and_draw_text");
 
     if is_new_frame {
@@ -374,7 +374,7 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
 // TODO(jt): @Speed For files with long lines (such as minified javascript), this very very
 // slow. We'll probably need to avoid calling it (or do early out, if position exceeds some given
 // value), or have make 100x faster.
-_font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, $binary := false) -> f64 {
+_font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, $binary: bool) -> f64 {
     ProfileZone("font_compute_position_on_line");
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
 
@@ -412,7 +412,7 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, 
     }
 }
 
-_font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, $binary := false) -> s64 {
+_font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, $binary: bool) -> s64 {
     ProfileZone("font_compute_character_index_on_line");
     character_index: s64 = 0;
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
