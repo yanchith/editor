@@ -100,9 +100,7 @@ main :: () {
             // the executable. If we can't find them, we are most likely not running from console.
             System :: #import "System";
 
-            see_data := true;
-            see_data &&= File_Utilities.is_directory("data/fonts");
-
+            see_data := File_Utilities.is_directory("data/fonts");
             if !see_data {
                 exe_file := System.get_path_of_running_executable();
                 exe_dir  := String.path_strip_filename(exe_file);
