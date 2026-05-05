@@ -1207,9 +1207,24 @@ text_buffer_switch_to_binary_mode :: (buffer: *Text_Buffer) {
 }
 
 // TODO(jt): @Speed For 1GB files of regular prose, this takes too long, especially if called tens
-// or hundreds of times per frame. Can we do something about it? Maintain a list of chunks that have
-// a stable mapping to lines that we could use to skip over most lines? The mapping would have to
-// survive adding and deleting lines - we don't want to update everything below the edit.
+// or hundreds of times per frame. Can we do something about it?
+//
+// UPDATE:
+//
+// :IncrementalGapBufferIndices
+//
+// Many times we call this on a subsequent run of lines (usually not directly, but through making a
+// view). We could have a batch version that internally computes incrementally to avoid having to
+// start from the beginning every time:
+//
+//   text_buffer_get_gap_buffer_index_for_lines(buffer,line_index0,line_index1) -> [] s64
+//
+// In addition to that, we probably we might want an explicitly incremental version:
+//
+//   text_buffer_get_gap_buffer_index_for_line_incremental(buffer,line_index,previous_line_and_index) -> next_line: s64, next_index: s64
+//
+// (Note that we already do this manually in places, so it might be good to make a set of APIs to
+// make this easier.)
 text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s64) -> s64 {
     ProfileZone("text_buffer_get_gap_buffer_index_for_line");
 
