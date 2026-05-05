@@ -141,8 +141,6 @@ MINI_PANEL_LINE_COLOR : Vector4 : { 0.70, 0.70, 0.90, 0.18 };
 MODELINE_COLOR        : Vector4 : { 0.80, 0.80, 0.80, 1.00 };
 BACKGROUND_COLOR      : Vector4 : { 1.00, 1.00, 1.00, 1.00 };
 
-SLOW_FRAME_THRESHOLD_MILLIS : f64 : 10;
-
 MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable! :Config
 
 Editor :: struct {
@@ -326,7 +324,7 @@ Modal_Interaction :: struct {
 }
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
-    ProfileZone("init");
+    ProfileZone("Editor.init");
 
     editor.perm_arena = make_arena(platform, .LARGE);
 
@@ -515,7 +513,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
-    ProfileZone("update_and_render");
+    ProfileZone("Editor.update_and_render");
 
     dt: f64;
     if input.frame_triggered_by_animation {
