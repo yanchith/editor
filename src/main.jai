@@ -54,7 +54,7 @@ IRect :: Editor.IRect;
 // The slow frame is more than 16.66, because it includes waiting for V-sync. Maybe we can do
 // something smart to exclude that once we switch away from OpenGL.
 SLOW_FRAME_THRESHOLD_MILLIS :: 18;
-SLOW_INIT_THRESHOLD_MILLIS  :: 100;
+SLOW_INIT_THRESHOLD_MILLIS  :: 200;
 
 // TODO(jt): These globals are fine for now, but maybe we want to pass userdata through the renderer API?
 renderer_textures: Table(Editor.Texture_ID, Simp.Texture);
@@ -72,6 +72,7 @@ main :: () {
     time_of_program_start := current_time_monotonic();
 
     profiler_init();
+    profiler_start_frame("init");
 
     context_logger_data: Context_Logger_Data = { time_of_program_start };
 
@@ -365,15 +366,13 @@ main :: () {
         // input.events is zeroed.
 
         editor: Editor.Editor;
+        Editor.init(*editor, platform, renderer, input);
         {
-            profiler_start_frame("init");
-            Editor.init(*editor, platform, renderer, input);
             time_scale := profiler_end_frame();
             print_profile_for_slow_frames(SLOW_INIT_THRESHOLD_MILLIS, time_scale);
         }
 
         should_run  := true;
-
         while should_run {
             profiler_start_frame("frame");
 
