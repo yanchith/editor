@@ -692,6 +692,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     wants_next_frame = true;
                 }
 
+                panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
                 if mouse.y < SCROLL_APRON {
                     boost := (SCROLL_APRON - mouse.y) * SCROLL_BOOST;
 
@@ -699,8 +700,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     active_panel.scroll_target.y = max(active_panel.scroll_target.y, 0);
 
                     wants_next_frame = true;
-                } else if mouse.y > window_h - SCROLL_APRON {
-                    boost := (mouse.y - (window_h - SCROLL_APRON)) * SCROLL_BOOST;
+                } else if mouse.y > panel_h - SCROLL_APRON {
+                    boost := (mouse.y - (panel_h - SCROLL_APRON)) * SCROLL_BOOST;
 
                     active_panel.scroll_target.y += SCROLL_SPEED * boost * dt;
                     active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
@@ -833,9 +834,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         {
             SCROLL_TIME : f64 : 0.20; // TODO(jt): Make this configurable. :Config
 
-            // TODO(jt): @Hack We add 1/2 of usual delta time to offset the lag, but maybe there's a
-            // better way to integrate the movement? I should study up on how to integrate this.
-            t := cast(f32, (to_float64_seconds(input.time) + 0.5 * USUAL_DELTA_TIME - to_float64_seconds(panel.scroll_time_start)) / SCROLL_TIME);
+            t := cast(f32, (to_float64_seconds(input.time) + USUAL_DELTA_TIME - to_float64_seconds(panel.scroll_time_start)) / SCROLL_TIME);
             t = clamp(t, 0.0, 1.0);
             t = smoothstep(0.0, 1.0, t);
 
@@ -977,11 +976,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // scrolling, etc, we detect cursor changes every frame here (instead of in all the
             // places where the cursor can change).
             if panel.document.old_cursor != panel.document.buffer.cursor0 {
+                // TODO(jt): I find the animated cursor distracting when typing or navigating with
+                // keyboard, but cute when navigating with mouse. Let's make it possible to
+                // have both.
                 setup_cursor_anim_interpolation(panel.document, input.time, panel.document.old_cursor_position, new_cursor_position);
             }
 
             FLASH_TIME : f64 : 0.25; // TODO(jt): Make flash time configurable. :Config
-            ANIM_TIME  : f64 : 0.10; // TODO(jt): Make anim time configurable. I didn't like the lag, so I turned it off :Config
+            ANIM_TIME  : f64 : 0.07; // TODO(jt): Make anim time configurable. I didn't like the lag, so I turned it off :Config
 
             // TODO(jt): Division by zero. (We work around it for scroll and cursor animation.)
             flash_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_flash_time_start)) / FLASH_TIME);
@@ -992,11 +994,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // behind it as it moves, because currently, when it moves very fast, you can spot the
             // individual positions it occupies.
 
-            // TODO(jt): @Hack We add 1/2 of usual delta time to offset the lag, but maybe there's a
-            // better way to integrate the movement? I should study up on how Casey did this in
-            // Handmade Hero. In any case, this is barely noticeable, and the cursor still feels a
-            // little bit laggy even if I do this.
-            anim_t := cast(f32, (to_float64_seconds(input.time) + 0.5 * USUAL_DELTA_TIME - to_float64_seconds(document.cursor_anim_time_start)) / ANIM_TIME);
+            anim_t := cast(f32, (to_float64_seconds(input.time) + USUAL_DELTA_TIME - to_float64_seconds(document.cursor_anim_time_start)) / ANIM_TIME);
             anim_t = clamp(anim_t, 0.0, 1.0);
             anim_t = smoothstep(0.0, 1.0, anim_t);
 

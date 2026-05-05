@@ -1698,26 +1698,27 @@ sort_cursors :: (start: *Cursor, end: *Cursor) {
 // TODO(jt): Make this configurable (per-programming language)?  :Config
 char_is_nonword_utf8 :: inline (c: u32) -> bool {
     if c == {
-        case #char " ";   #through;
-        case #char "\t";  #through;
-        case #char "_";   #through;
-        case #char "-";   #through;
-        case #char ".";   #through;
-        case #char ",";   #through;
-        case #char ";";   #through;
-        case #char ":";   #through;
-        case #char "(";   #through;
-        case #char ")";   #through;
-        case #char "<";   #through;
-        case #char ">";   #through;
-        case #char "{";   #through;
-        case #char "}";   #through;
-        case #char "[";   #through;
-        case #char "]";   #through;
-        case #char "\"";  #through;
+        case #char " ";   return true;
+        case #char "\t";  return true;
+        case #char "_";   return true;
+        case #char "-";   return true;
+        case #char ".";   return true;
+        case #char ",";   return true;
+        case #char ";";   return true;
+        case #char ":";   return true;
+        case #char "(";   return true;
+        case #char ")";   return true;
+        case #char "<";   return true;
+        case #char ">";   return true;
+        case #char "{";   return true;
+        case #char "}";   return true;
+        case #char "[";   return true;
+        case #char "]";   return true;
+        case #char "\"";  return true;
         case #char "'";   return true;
-        case;             return false;
     }
+
+    return false;
 }
 
 char_is_nonword_binary :: inline (c: u8) -> bool {

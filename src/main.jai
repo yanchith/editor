@@ -51,8 +51,10 @@ IRect :: Editor.IRect;
 // TODO(jt): @Cleanup We borrow this file from editor. But maybe this file shouldn't exist at all.
 #load "editor/string.jai";
 
-SLOW_FRAME_THRESHOLD_MILLIS :: 10;
-SLOW_INIT_THRESHOLD_MILLIS :: 100;
+// The slow frame is more than 16.66, because it includes waiting for V-sync. Maybe we can do
+// something smart to exclude that once we switch away from OpenGL.
+SLOW_FRAME_THRESHOLD_MILLIS :: 18;
+SLOW_INIT_THRESHOLD_MILLIS  :: 100;
 
 // TODO(jt): These globals are fine for now, but maybe we want to pass userdata through the renderer API?
 renderer_textures: Table(Editor.Texture_ID, Simp.Texture);
@@ -124,27 +126,22 @@ main :: () {
 
             platform.page_size = info.dwPageSize;
             platform.mem_reserve = (size: s64) -> *void {
-                ProfileZone("platform.mem_reserve");
                 return VirtualAlloc(null, cast(u64, size), MEM_RESERVE, PAGE_READWRITE);
             };
             platform.mem_release = (pointer: *void, size: s64) {
-                ProfileZone("platform.mem_release");
                 VirtualFree(pointer, 0, MEM_RELEASE);
             }
             platform.mem_commit = (pointer: *void, size: s64) -> bool {
-                ProfileZone("platform.mem_commit");
                 result := VirtualAlloc(pointer, cast(u64, size), MEM_COMMIT, PAGE_READWRITE);
                 return result != null;
             }
             platform.mem_decommit = (pointer: *void, size: s64) {
-                ProfileZone("platform.mem_decommit");
                 VirtualFree(pointer, cast(u64, size), MEM_DECOMMIT);
             };
         } else #if OS_IS_UNIX {
             // :VirtualMemoryProcs
             platform.page_size = sysconf(_SC_PAGE_SIZE);
             platform.mem_reserve = (size: s64) -> *void {
-                ProfileZone("platform.mem_reserve");
                 result := mmap(null, cast(u64, size), PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
                 if result == MAP_FAILED {
                     result = null;
@@ -153,24 +150,19 @@ main :: () {
                 return result;
             }
             platform.mem_release = (pointer: *void, size: s64) {
-                ProfileZone("platform.mem_release");
                 munmap(pointer, cast(u64, size));
             }
             platform.mem_commit = (pointer: *void, size: s64) -> bool {
-                ProfileZone("platform.mem_commit");
                 result := mprotect(pointer, cast(u64, size), PROT_READ | PROT_WRITE);
                 return result == 0;
             }
             platform.mem_decommit = (pointer: *void, size: s64) {
-                ProfileZone("platform.mem_decommit");
                 madvise(pointer, cast(u64, size), MADV_DONTNEED);
                 mprotect(pointer, cast(u64, size), PROT_NONE);
             }
         }
 
         platform.get_absolute_path = (path: string) -> success: bool, string {
-            ProfileZone("platform.get_absolute_path");
-
             // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
             // respecting context.allocator eventually, so we pass in temp there as well.
             success, _absolute_path := get_absolute_path_hack(path,, temp); // The temp here is future-proofing.
@@ -190,18 +182,13 @@ main :: () {
         }
 
         platform.file_exists = (path: string) -> bool {
-            ProfileZone("platform.file_exists");
             return File_Utilities.file_exists(path);
         }
         platform.file_is_directory = (path: string) -> bool {
-            ProfileZone("platform.file_is_directory");
-
             is_directory, success := File_Utilities.is_directory(path);
             return success && is_directory;
         }
         platform.read_file = (path: string) -> success: bool, [] u8 {
-            ProfileZone("platform.read_file");
-
             // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
             // respecting context.allocator eventually, so we pass in temp there as well.
             success, absolute_path := get_absolute_path_hack(path,, temp);
@@ -214,8 +201,6 @@ main :: () {
             return success, cast([] u8, data);
         }
         platform.write_file = (path: string, data: [] u8) -> success: bool {
-            ProfileZone("platform.write_file");
-
             // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
             // respecting context.allocator eventually, so we pass in temp there as well.
             success, absolute_path := get_absolute_path_hack(path,, temp);
@@ -232,8 +217,6 @@ main :: () {
         // TODO(jt): platform.delete_directory
 
         platform.list_files = (path: string) -> [] Editor.File_Info /* Allocated with context.allocator */ {
-            ProfileZone("platform.list_files");
-
             file_infos: [..] Editor.File_Info; // context.allocator
 
             visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] Editor.File_Info) {
@@ -253,11 +236,9 @@ main :: () {
         }
 
         platform.clipboard_get_text = () -> string {
-            ProfileZone("platform.clipboard_get_text");
             return Clipboard.os_clipboard_get_text();
         }
         platform.clipboard_set_text = (text: string) {
-            ProfileZone("platform.clipboard_set_text");
             Clipboard.os_clipboard_set_text(text);
         }
 
@@ -266,12 +247,9 @@ main :: () {
 
         renderer: Editor.Renderer;
         renderer.create_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, width: s32, height: s32) {
-            ProfileZone("renderer.create_texture_r8unorm");
-
             bitmap: Simp.Bitmap;
             Simp.bitmap_alloc(*bitmap, width, height, .R8,, temp);
             bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
-
 
             assert(bitmap.data.count == data.count);
             memcpy(bitmap.data.data, data.data, data.count);
