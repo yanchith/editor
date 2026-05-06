@@ -583,7 +583,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Global events handled at the editor level.
         //
         if it.flags & .PRESSED {
-            editor.last_message_seen = true;
+            if !(it.flags & .REPEAT) {
+                editor.last_message_seen = true;
+            }
 
             if it.type == {
                 case .KEY; {
