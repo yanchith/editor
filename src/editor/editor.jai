@@ -1924,9 +1924,6 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
 
                             if new_item_index == -1 && it >= old_cursor_y {
                                 new_item_index = item_index;
-
-                                // Only set this if we actually found something.
-                                active_panel.highlight_index = new_item_index;
                             }
                         }
 
@@ -1939,6 +1936,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
 
                     if new_item_index != -1 {
                         mini_panel.item_index = new_item_index;
+                        active_panel.highlight_index = new_item_index;
                         selected_item_changed = true;
                     }
                 }
@@ -2028,7 +2026,8 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
             }
         }
 
-        mini_panel.item_index = min(mini_panel.items.count - 1, 0);
+        min_item_index := ifx mini_panel_can_select_text_line_proc(editor, platform, input) then -1 else 0;
+        mini_panel.item_index = clamp(mini_panel.item_index, min_item_index, mini_panel.items.count - 1);
     }
 
     if selected_item_changed {
