@@ -1402,7 +1402,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         case .DELETE_BACKWARD;        text_buffer_delete_backward(*modal_interaction.buffer); buffer_changed = true;
 
         case .CONFIRM;                modal_interaction_advance_proc(editor, platform, input);
-        case .CANCEL;                 close_modal_interaction(modal_interaction);;
+        case .CANCEL;                 close_modal_interaction(editor, platform, input);
     }
 
     // TODO(jt): Do selecting in modal interaction
@@ -1586,21 +1586,13 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     buffered, action := key_map_input(*editor.key_map, event, editor.input_state.modifiers);
 
     if action == {
-        case .MOVE_UP;     text_buffer_move_cursor_y(*document.buffer, -1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
-        case .MOVE_DOWN;   text_buffer_move_cursor_y(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
-        case .MOVE_LEFT;   text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
-        case .MOVE_RIGHT;  text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
+        case .MOVE_UP;             text_buffer_move_cursor_y(*document.buffer, -1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
+        case .MOVE_DOWN;           text_buffer_move_cursor_y(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
+        case .MOVE_LEFT;           text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
+        case .MOVE_RIGHT;          text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
 
-        case .SEARCH; {
-            open_mini_panel(*editor.mini_panel, .SEARCH);
-            mini_panel_init_proc(editor, platform, input);
-            mini_panel_update_proc(editor, platform, input, true, true);
-        }
-
-        case .SEARCH_AND_REPLACE; {
-            open_modal_interaction(*editor.modal_interaction, .SEARCH_AND_REPLACE, "Search and destroy");
-            modal_interaction_init_proc(editor, platform, input);
-        }
+        case .SEARCH;              open_mini_panel(editor, platform, input, .SEARCH);
+        case .SEARCH_AND_REPLACE;  open_modal_interaction(editor, platform, input, .SEARCH_AND_REPLACE, "Search and destroy");
 
         case .OPEN_FILE; {
             path := "./";
@@ -1610,9 +1602,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 path = String.path_strip_filename(panel.document.backing_file_path);
             }
 
-            open_mini_panel(*editor.mini_panel, .OPEN_FILE, path);
-            mini_panel_init_proc(editor, platform, input);
-            mini_panel_update_proc(editor, platform, input, true, true);
+            open_mini_panel(editor, platform, input, .OPEN_FILE, path);
         }
         case .SAVE_FILE; {
             if document.backing_file_path.count {
@@ -1629,16 +1619,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 }
             }
         }
-        case .SWITCH_TO_DOCUMENT; {
-            open_mini_panel(*editor.mini_panel, .SWITCH_TO_DOCUMENT);
-            mini_panel_init_proc(editor, platform, input);
-            mini_panel_update_proc(editor, platform, input, true, true);
-        }
-        case .CLOSE_DOCUMENT; {
-            open_mini_panel(*editor.mini_panel, .CLOSE_DOCUMENT);
-            mini_panel_init_proc(editor, platform, input);
-            mini_panel_update_proc(editor, platform, input, true, true);
-        }
+        case .SWITCH_TO_DOCUMENT;  open_mini_panel(editor, platform, input, .SWITCH_TO_DOCUMENT);
+        case .CLOSE_DOCUMENT;      open_mini_panel(editor, platform, input, .CLOSE_DOCUMENT);
 
         case .SWAP_LINE_UP; // TODO(jt)
         case .SWAP_LINE_DOWN; // TODO(jt)
@@ -1772,9 +1754,9 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 }
 
-// TODO(jt): @Cleanup We always call mini_panel_init_proc and mini_panel_update_proc right after we
-// open the mini panel. Should we just be calling that from here? Analogously for Modal_Interaction.
-open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action, initial_text := "") {
+open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, action: Mini_Panel.Action, initial_text := "") {
+    mini_panel := *editor.mini_panel;
+
     assert(!mini_panel.open);
 
     text_buffer_insert(*mini_panel.buffer, initial_text);
@@ -1782,9 +1764,13 @@ open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action, initial_
     mini_panel.action = action;
 
     mini_panel.open = true;
+
+    mini_panel_init_proc(editor, platform, input);
+    mini_panel_update_proc(editor, platform, input, true, true);
 }
 
-close_mini_panel :: (mini_panel: *Mini_Panel) {
+close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
+    mini_panel := *editor.mini_panel;
     assert(mini_panel.open);
 
     key_map_flush(*mini_panel.key_map);
@@ -2162,7 +2148,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
             array_reset_keeping_memory(*active_panel.highlights);
             active_panel.highlight_index = -1;
 
-            close_mini_panel(mini_panel);
+            close_mini_panel(editor, platform, input);
         }
 
         case .OPEN_FILE; {
@@ -2239,7 +2225,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
                     log_error("Failed to get absolute path for %", file_path);
                 }
 
-                close_mini_panel(mini_panel);
+                close_mini_panel(editor, platform, input);
             }
         }
 
@@ -2259,7 +2245,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
                 }
             }
 
-            close_mini_panel(mini_panel);
+            close_mini_panel(editor, platform, input);
         }
 
         case .CLOSE_DOCUMENT; {
@@ -2271,7 +2257,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
                 close_document(editor, document);
             }
 
-            close_mini_panel(mini_panel);
+            close_mini_panel(editor, platform, input);
         }
     }
 
@@ -2294,12 +2280,12 @@ mini_panel_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
         panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
     }
 
-    close_mini_panel(*editor.mini_panel);
+    close_mini_panel(editor, platform, input);
 }
 
-// TODO(jt): @Cleanup We always call modal_interaction_init_proc right after we open. Should we just
-// be calling that from here? Analogously for mini panel.
-open_modal_interaction :: (modal_interaction: *Modal_Interaction, action: Modal_Interaction.Action, initial_text := "") {
+open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, action: Modal_Interaction.Action, initial_text := "") {
+    modal_interaction := *editor.modal_interaction;
+
     assert(!modal_interaction.open);
 
     key_map := *modal_interaction.key_map;
@@ -2332,9 +2318,12 @@ open_modal_interaction :: (modal_interaction: *Modal_Interaction, action: Modal_
     modal_interaction.action = action;
 
     modal_interaction.open = true;
+
+    modal_interaction_init_proc(editor, platform, input);
 }
 
-close_modal_interaction :: (modal_interaction: *Modal_Interaction) {
+close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
+    modal_interaction := *editor.modal_interaction;
     assert(modal_interaction.open);
 
     key_map_reset_keeping_memory(*modal_interaction.key_map);
@@ -2379,8 +2368,6 @@ Search_And_Replace_Userdata :: struct {
     }
 }
 
-// TODO(jt): @Cleanup For API symmetry with mini panel, consider folding modal_interaction_init_proc
-// into modal_interaction_update_proc.
 modal_interaction_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
     modal_interaction := *editor.modal_interaction;
     arena := modal_interaction.userdata_arena;
@@ -2418,7 +2405,7 @@ modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, pla
                     if action == {
                         case .YES;   // XXX
                         case .NO;    // XXX
-                        case .CANCEL;  close_modal_interaction(modal_interaction);
+                        case .CANCEL;  close_modal_interaction(editor, platform, input);
                     }
 
                     return true;
