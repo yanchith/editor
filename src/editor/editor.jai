@@ -125,26 +125,26 @@ operator==     :: Math.operator==;
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
 // if the texture wasn't uploaded (we don't upload TEXTURE_ID_NONE). We could also reserve a few
 // pixels in the font atlas for color shading, but maybe we don't want to do that?
-TEXTURE_ID_NONE        : Texture_ID : 0;
-TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
+TEXTURE_ID_NONE:        Texture_ID : 0;
+TEXTURE_ID_GLYPH_ATLAS: Texture_ID : 1;
 
 // TODO(jt): Get the monitor refresh rate from platform instead!
-USUAL_DELTA_TIME : f64 : 1.0 / 60.0;
+USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 
 // TODO(jt): Make the colors themeable. :Config
-CURSOR_COLOR           : Vector4 : { 0.50, 0.80, 0.60, 1.00 };
-ACTIVE_CURSOR_COLOR    : Vector4 : { 1.00, 0.60, 0.40, 1.00 };
-SELECTION_COLOR        : Vector4 : { 0.70, 0.80, 0.70, 0.38 };
-HIGHLIGHT_COLOR        : Vector4 : #run -> Vector4 {
+CURSOR_COLOR:          Vector4 : { 0.50, 0.80, 0.60, 1.00 };
+ACTIVE_CURSOR_COLOR:   Vector4 : { 1.00, 0.60, 0.40, 1.00 };
+SELECTION_COLOR:       Vector4 : { 0.70, 0.80, 0.70, 0.38 };
+HIGHLIGHT_COLOR:       Vector4 : #run -> Vector4 {
     c := CURSOR_COLOR;
     c.w = 0.40;
     return c;
 };
-ACTIVE_HIGHLIGHT_COLOR : Vector4 : { 1.00, 0.00, 0.00, 0.20 };
-LINE_COLOR             : Vector4 : { 0.00, 0.00, 0.00, 0.00 };
-MINI_PANEL_LINE_COLOR  : Vector4 : { 0.70, 0.70, 0.90, 0.18 };
-MODELINE_COLOR         : Vector4 : { 0.80, 0.80, 0.80, 1.00 };
-BACKGROUND_COLOR       : Vector4 : { 1.00, 1.00, 1.00, 1.00 };
+ACTIVE_HIGHLIGHT_COLOR: Vector4 : { 1.00, 0.00, 0.00, 0.20 };
+LINE_COLOR:             Vector4 : { 0.00, 0.00, 0.00, 0.00 };
+MINI_PANEL_LINE_COLOR:  Vector4 : { 0.70, 0.70, 0.90, 0.18 };
+MODELINE_COLOR:         Vector4 : { 0.80, 0.80, 0.80, 1.00 };
+BACKGROUND_COLOR:       Vector4 : { 1.00, 1.00, 1.00, 1.00 };
 
 MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable! :Config
 
@@ -685,9 +685,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // Mouse selection scrolling
             //
             if editor.input_state.keys[Key.MB_LEFT] & .LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW {
-                SCROLL_APRON : f32 :  20.0;
-                SCROLL_SPEED : f64 :  10.0;
-                SCROLL_BOOST : f64 :   5.0;
+                SCROLL_APRON: f32 :  20.0;
+                SCROLL_SPEED: f64 :  10.0;
+                SCROLL_BOOST: f64 :   5.0;
 
                 if mouse.x < SCROLL_APRON {
                     boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
@@ -2552,7 +2552,7 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
 
     // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
     // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
-    HELLO_SIZE : s64 : 64 << 10;
+    HELLO_SIZE: s64 : 64 << 10;
 
     hello_arena := make_arena(platform, .LARGE);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
