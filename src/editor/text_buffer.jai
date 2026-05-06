@@ -782,7 +782,7 @@ text_buffer_move_cursor_to :: (buffer: *Text_Buffer, _x: s64, _y: s64, selecting
 
     assert_valid(buffer);
 
-    y := clamp(_y, 0, buffer.line_chars.count);
+    y := clamp(_y, 0, buffer.line_count - 1);
     x := clamp(_x, 0, buffer.line_chars[y]);
 
     buffer.cursor0 = { x, y };
