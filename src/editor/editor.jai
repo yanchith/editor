@@ -1592,10 +1592,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .MOVE_RIGHT;  text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
 
         case .SEARCH; {
-            userdata := arena_push(editor.mini_panel.userdata_arena, Search_Userdata);
-            userdata.original_cursor0 = document.buffer.cursor0;
-
-            open_mini_panel(*editor.mini_panel, .SEARCH, "", userdata);
+            open_mini_panel(*editor.mini_panel, .SEARCH);
+            mini_panel_init_proc(editor, platform, input);
             mini_panel_update_proc(editor, platform, input, true, true);
         }
 
@@ -1613,6 +1611,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             }
 
             open_mini_panel(*editor.mini_panel, .OPEN_FILE, path);
+            mini_panel_init_proc(editor, platform, input);
             mini_panel_update_proc(editor, platform, input, true, true);
         }
         case .SAVE_FILE; {
@@ -1631,11 +1630,13 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             }
         }
         case .SWITCH_TO_DOCUMENT; {
-            open_mini_panel(*editor.mini_panel, .SWITCH_TO_DOCUMENT, "");
+            open_mini_panel(*editor.mini_panel, .SWITCH_TO_DOCUMENT);
+            mini_panel_init_proc(editor, platform, input);
             mini_panel_update_proc(editor, platform, input, true, true);
         }
         case .CLOSE_DOCUMENT; {
-            open_mini_panel(*editor.mini_panel, .CLOSE_DOCUMENT, "");
+            open_mini_panel(*editor.mini_panel, .CLOSE_DOCUMENT);
+            mini_panel_init_proc(editor, platform, input);
             mini_panel_update_proc(editor, platform, input, true, true);
         }
 
@@ -1771,17 +1772,14 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 }
 
-// TODO(jt): @Cleanup We always call mini_panel_update_proc right after we open the mini
-// panel. Should we just be calling that from here? Analogously for Modal_Interaction.
-open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action, initial_text: string, userdata: *void = null) {
+// TODO(jt): @Cleanup We always call mini_panel_init_proc and mini_panel_update_proc right after we
+// open the mini panel. Should we just be calling that from here? Analogously for Modal_Interaction.
+open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action, initial_text := "") {
     assert(!mini_panel.open);
 
     text_buffer_insert(*mini_panel.buffer, initial_text);
 
     mini_panel.action = action;
-
-    // :MiniPanelAPI (mini_panel_init_proc should probably be called here to make the userdata)
-    mini_panel.userdata = userdata;
 
     mini_panel.open = true;
 }
@@ -1827,6 +1825,23 @@ mini_panel_can_select_text_line_proc :: (editor: Editor, platform: Platform, inp
     }
 
     return false;
+}
+
+mini_panel_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
+    mini_panel := *editor.mini_panel;
+    active_panel := get_active_panel(editor);
+
+    sanity_assert(mini_panel.open);
+    if !mini_panel.open {
+        return;
+    }
+
+    if mini_panel.action == .SEARCH {
+        userdata := arena_push(editor.mini_panel.userdata_arena, Search_Userdata);
+        userdata.original_cursor0 = active_panel.document.buffer.cursor0;
+
+        mini_panel.userdata = userdata;
+    }
 }
 
 // buffer_changed can imply selected_line_changed.
