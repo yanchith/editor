@@ -132,14 +132,19 @@ TEXTURE_ID_GLYPH_ATLAS : Texture_ID : 1;
 USUAL_DELTA_TIME : f64 : 1.0 / 60.0;
 
 // TODO(jt): Make the colors themeable. :Config
-CURSOR_COLOR          : Vector4 : { 0.50, 0.80, 0.60, 1.00 };
-CURSOR_COLOR_ACTIVE   : Vector4 : { 1.00, 0.60, 0.40, 1.00 };
-SELECTION_COLOR       : Vector4 : { 0.70, 0.80, 0.70, 0.38 };
-HIGHLIGHT_COLOR       : Vector4 : { 1.00, 0.00, 0.00, 0.20 };
-LINE_COLOR            : Vector4 : { 0.00, 0.00, 0.00, 0.00 };
-MINI_PANEL_LINE_COLOR : Vector4 : { 0.70, 0.70, 0.90, 0.18 };
-MODELINE_COLOR        : Vector4 : { 0.80, 0.80, 0.80, 1.00 };
-BACKGROUND_COLOR      : Vector4 : { 1.00, 1.00, 1.00, 1.00 };
+CURSOR_COLOR           : Vector4 : { 0.50, 0.80, 0.60, 1.00 };
+ACTIVE_CURSOR_COLOR    : Vector4 : { 1.00, 0.60, 0.40, 1.00 };
+SELECTION_COLOR        : Vector4 : { 0.70, 0.80, 0.70, 0.38 };
+HIGHLIGHT_COLOR        : Vector4 : #run -> Vector4 {
+    c := CURSOR_COLOR;
+    c.w = 0.20;
+    return c;
+};
+ACTIVE_HIGHLIGHT_COLOR : Vector4 : { 1.00, 0.00, 0.00, 0.20 };
+LINE_COLOR             : Vector4 : { 0.00, 0.00, 0.00, 0.00 };
+MINI_PANEL_LINE_COLOR  : Vector4 : { 0.70, 0.70, 0.90, 0.18 };
+MODELINE_COLOR         : Vector4 : { 0.80, 0.80, 0.80, 1.00 };
+BACKGROUND_COLOR       : Vector4 : { 1.00, 1.00, 1.00, 1.00 };
 
 MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable! :Config
 
@@ -251,6 +256,7 @@ Panel :: struct {
 
     highlights_arena: *Arena;
     highlights: [..] Highlight;
+    highlight_index: s64 = -1;
 
     document: *Document; // Possibly null!
 
@@ -289,7 +295,10 @@ Mini_Panel :: struct {
 
     items_arena: *Arena;
     items: [..] Item;
-    item_index: s64;          // [0, items.count) to select a item, -1 to select the mini panel's buffer (if allowed by the action).
+    item_index: s64; // [0, items.count) to select a item, -1 to select the mini panel's buffer (if allowed by the action).
+
+    userdata_arena: *Arena;
+    userdata: *void; // Set this by passing it to open_mini_panel. You can allocate it with userdata_arena.
 
     Action :: enum {
         SEARCH             :: 0;
@@ -304,10 +313,8 @@ Mini_Panel :: struct {
         highlight_x0: s64;
         highlight_x1: s64;
 
-        // The proc that fills these in can put things in here for the render proc or confirm proc.
-        // If this is allocated, it should be put in the items_arena. However, it does not
-        // necessarily need to be an allocation - you can use the 64-bits of the pointer itself to
-        // store stuff.
+        // The proc that fills these in can put things in here for the other procs. You can use the
+        // items_arena.
         //
         // :MiniPanelAPI
         userdata: *void;
@@ -447,6 +454,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     {
         panel.highlights_arena = make_arena(platform, .SMALL);
         panel.highlights.allocator = arena_allocator(panel.highlights_arena);
+        panel.highlight_index = -1;
     }
 
     set_panel_document_to_newly_created_scratch(editor, panel, platform);
@@ -498,6 +506,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         mini_panel.items_arena = make_arena(platform, .LARGE);
         mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
+
+        mini_panel.userdata_arena = make_arena(platform, .SMALL);
     }
 
     //
@@ -893,7 +903,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             highlight_rect: DRect = { x0, y0, x1, y1 };
 
-            draw_rect(*render_rects, drect_to_rect(highlight_rect - panel.scroll), HIGHLIGHT_COLOR);
+            if it_index == panel.highlight_index {
+                draw_rect(*render_rects, drect_to_rect(highlight_rect - panel.scroll), ACTIVE_HIGHLIGHT_COLOR);
+            } else {
+                draw_rect(*render_rects, drect_to_rect(highlight_rect - panel.scroll), HIGHLIGHT_COLOR);
+            }
         }
 
         //
@@ -1578,7 +1592,10 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .MOVE_RIGHT;  text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
 
         case .SEARCH; {
-            open_mini_panel(*editor.mini_panel, .SEARCH);
+            userdata := arena_push(editor.mini_panel.userdata_arena, Search_Userdata);
+            userdata.original_cursor0 = document.buffer.cursor0;
+
+            open_mini_panel(*editor.mini_panel, .SEARCH, "", userdata);
             mini_panel_update_proc(editor, platform, input, true, true);
         }
 
@@ -1614,11 +1631,11 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             }
         }
         case .SWITCH_TO_DOCUMENT; {
-            open_mini_panel(*editor.mini_panel, .SWITCH_TO_DOCUMENT);
+            open_mini_panel(*editor.mini_panel, .SWITCH_TO_DOCUMENT, "");
             mini_panel_update_proc(editor, platform, input, true, true);
         }
         case .CLOSE_DOCUMENT; {
-            open_mini_panel(*editor.mini_panel, .CLOSE_DOCUMENT);
+            open_mini_panel(*editor.mini_panel, .CLOSE_DOCUMENT, "");
             mini_panel_update_proc(editor, platform, input, true, true);
         }
 
@@ -1750,18 +1767,21 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 
     if action_kind >= .EDIT || inserted {
-        setup_cursor_flash_interpolation(document, input.time, CURSOR_COLOR_ACTIVE, CURSOR_COLOR);
+        setup_cursor_flash_interpolation(document, input.time, ACTIVE_CURSOR_COLOR, CURSOR_COLOR);
     }
 }
 
 // TODO(jt): @Cleanup We always call mini_panel_update_proc right after we open the mini
 // panel. Should we just be calling that from here? Analogously for Modal_Interaction.
-open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action, initial_text := "") {
+open_mini_panel :: (mini_panel: *Mini_Panel, action: Mini_Panel.Action, initial_text: string, userdata: *void = null) {
     assert(!mini_panel.open);
 
     text_buffer_insert(*mini_panel.buffer, initial_text);
 
     mini_panel.action = action;
+
+    // :MiniPanelAPI (mini_panel_init_proc should probably be called here to make the userdata)
+    mini_panel.userdata = userdata;
 
     mini_panel.open = true;
 }
@@ -1776,6 +1796,9 @@ close_mini_panel :: (mini_panel: *Mini_Panel) {
     arena_reset(mini_panel.items_arena);
     mini_panel.item_index = 0;
 
+    arena_reset(mini_panel.userdata_arena);
+    mini_panel.userdata = null;
+
     mini_panel.open = false;
 }
 
@@ -1786,10 +1809,14 @@ close_mini_panel :: (mini_panel: *Mini_Panel) {
 // them get more parameters than they actually need.
 
 Search_Userdata :: struct {
+    original_cursor0: Cursor;
+}
+
+Search_Item_Userdata :: struct {
     cursor: Cursor;
 }
 
-Open_File_Userdata :: struct {
+Open_File_Item_Userdata :: struct {
     full_file_path: string;
     file_is_directory: bool;
 }
@@ -1826,6 +1853,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                     document := active_panel.document;
 
                     array_reset_keeping_memory(*active_panel.highlights);
+                    active_panel.highlight_index = -1;
 
                     old_cursor_y   := document.buffer.cursor0.y;
                     new_item_index := -1;
@@ -1888,14 +1916,16 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                             item.highlight_x0 = line_number_prefix_length + x0;
                             item.highlight_x1 = line_number_prefix_length + x1;
 
-                            userdata := New(Search_Userdata,, arena_allocator(mini_panel.items_arena));
+                            userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
                             userdata.cursor = { x0, it };
 
                             item.userdata = userdata;
 
-
                             if new_item_index == -1 && it >= old_cursor_y {
                                 new_item_index = item_index;
+
+                                // Only set this if we actually found something.
+                                active_panel.highlight_index = new_item_index;
                             }
                         }
 
@@ -1948,7 +1978,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                         if it.name.count {
                             full_file_path := arena_push_string(mini_panel.items_arena, it.name);
 
-                            userdata := New(Open_File_Userdata,, arena_allocator(mini_panel.items_arena));
+                            userdata := arena_push(mini_panel.items_arena, Open_File_Item_Userdata);
                             userdata.full_file_path = full_file_path;
                             userdata.file_is_directory = it.is_directory;
 
@@ -2002,6 +2032,8 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
 
     if selected_item_changed {
         if mini_panel.action == .SEARCH {
+            active_panel.highlight_index = mini_panel.item_index;
+
             // TODO(jt): @Cleanup This is the copypaste of the confirm action, except it does not close the mini panel.
 
             // Changing the mini panel buffer OR the selected item can put the index to -1 (in case
@@ -2010,7 +2042,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
             if mini_panel.item_index >= 0 {
                 item := *mini_panel.items[mini_panel.item_index];
 
-                userdata: *Search_Userdata = item.userdata;
+                userdata: *Search_Item_Userdata = item.userdata;
                 x := userdata.cursor.x;
                 y := userdata.cursor.y;
 
@@ -2037,9 +2069,8 @@ mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Inp
 
     if mini_panel.action == {
         case .OPEN_FILE; {
-            userdata: *Open_File_Userdata;
             if mini_panel.items.count && mini_panel.item_index >= 0 {
-                userdata: *Open_File_Userdata = mini_panel.items[mini_panel.item_index].userdata;
+                userdata: *Open_File_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
                 if userdata && userdata.full_file_path.count {
                     completion_text := String.path_filename(mini_panel.items[mini_panel.item_index].text);
                     buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
@@ -2102,7 +2133,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
                 assert(mini_panel.item_index >= 0);
                 item := *mini_panel.items[mini_panel.item_index];
 
-                userdata := cast(*Search_Userdata, item.userdata);
+                userdata := cast(*Search_Item_Userdata, item.userdata);
                 x := userdata.cursor.x;
                 y := userdata.cursor.y;
 
@@ -2114,6 +2145,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
             }
 
             array_reset_keeping_memory(*active_panel.highlights);
+            active_panel.highlight_index = -1;
 
             close_mini_panel(mini_panel);
         }
@@ -2127,7 +2159,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
                 file_exists = platform.file_exists(file_path);
                 file_is_directory = platform.file_is_directory(file_path);
             } else if mini_panel.items.count {
-                userdata: *Open_File_Userdata = mini_panel.items[mini_panel.item_index].userdata;
+                userdata: *Open_File_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
                 if userdata {
                     file_path = userdata.full_file_path;
                     file_exists = true; // Unless deleted since we last looked.
@@ -2237,6 +2269,14 @@ mini_panel_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
         assert(panel != null);
 
         array_reset_keeping_memory(*panel.highlights);
+        panel.highlight_index = -1;
+
+        userdata: *Search_Userdata = editor.mini_panel.userdata;
+        x := userdata.original_cursor0.x;
+        y := userdata.original_cursor0.y;
+
+        text_buffer_move_cursor_to(*panel.document.buffer, x, y, panel.selecting);
+        panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
     }
 
     close_mini_panel(*editor.mini_panel);
@@ -2333,7 +2373,7 @@ modal_interaction_init_proc :: (editor: *Editor, platform: Platform, input: Inpu
 
     if #complete modal_interaction.action == {
         case .SEARCH_AND_REPLACE; {
-            userdata := New(Search_And_Replace_Userdata,, arena_allocator(arena));
+            userdata := arena_push(arena, Search_And_Replace_Userdata);
             userdata.replacing_key_map.allocator = arena_allocator(arena);
             key_map_reserve(*userdata.replacing_key_map, 8);
 
