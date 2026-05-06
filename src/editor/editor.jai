@@ -213,6 +213,7 @@ Document :: struct {
     old_cursor: Cursor;
     old_cursor_position: DVector2;
 
+    cursor_anim_flags: Cursor_Anim_Flags;
     cursor_anim_source: DVector2;
     cursor_anim_target: DVector2;
     cursor_anim_time_start: Apollo_Time;
@@ -222,6 +223,13 @@ Document :: struct {
     cursor_flash_target: Vector4;
     cursor_flash_time_start: Apollo_Time;
     cursor_flash: Vector4;
+
+    Cursor_Anim_Flags :: enum_flags {
+        NONE :: 0;
+
+        TRIGGERED_BY_MOUSE    :: 0x01;
+        TRIGGERED_BY_KEYBOARD :: 0x02;
+    }
 }
 
 Panel :: struct {
@@ -236,22 +244,27 @@ Panel :: struct {
 
     scroll: DVector2;
 
-    // These clampers get set during event processing and unset after update. We could store them
-    // somewhere else, but we need them for every panel we have touched, so they might as well be here.
-    //
-    // TODO(jt): Turn these into flags!
-    clamp_scroll_to_cursor: bool;
-    clamp_scroll_to_start_of_line: bool;
-    clamp_scroll_to_end_of_line: bool;
-    clamp_cursor_to_scroll: bool;
+    // These get set during event processing and unset after update.
+    flags: Flags;
 
     selecting: bool;
 
-    arena: *Arena;
-
+    highlights_arena: *Arena;
     highlights: [..] Highlight;
 
     document: *Document; // Possibly null!
+
+    Flags :: enum_flags {
+        NONE :: 0;
+
+        CLAMP_CURSOR_TO_SCROLL        :: 0x01;
+        CLAMP_SCROLL_TO_CURSOR        :: 0x02;
+        CLAMP_SCROLL_TO_START_OF_LINE :: 0x04; // Implies CLAMP_SCROLL_TO_CURSOR;
+        CLAMP_SCROLL_TO_END_OF_LINE   :: 0x08; // Implies CLAMP_SCROLL_TO_CURSOR;
+
+        RECEIVED_KEYBOARD_INTERACTION :: 0x10;
+        RECEIVED_MOUSE_INTERACTION    :: 0x20;
+    }
 
     Highlight :: struct {
         cursor_x0: s64;
@@ -431,8 +444,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     // :PanelInit (this will evantually be a procedure)
     {
-        panel.arena = make_arena(platform, .SMALL);
-        panel.highlights.allocator = arena_allocator(panel.arena);
+        panel.highlights_arena = make_arena(platform, .SMALL);
+        panel.highlights.allocator = arena_allocator(panel.highlights_arena);
     }
 
     set_panel_document_to_newly_created_scratch(editor, panel, platform);
@@ -542,7 +555,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
 
         if it.document.cursor_anim_time_start == Apollo_Time.{ 0, 0 } {
-            setup_cursor_anim_interpolation(it.document, input.time, it.document.old_cursor_position, it.document.old_cursor_position);
+            setup_cursor_anim_interpolation(it.document, input.time, it.document.old_cursor_position, it.document.old_cursor_position, .NONE);
         }
     }
 
@@ -615,7 +628,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             font_reset_for_pixel_height(*editor.font, physical_pixel_height);
 
             for * editor.panels {
-                it.clamp_scroll_to_cursor = true;
+                it.flags |= .CLAMP_SCROLL_TO_CURSOR;
             }
         }
     }
@@ -644,7 +657,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
             active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
 
-            active_panel.clamp_cursor_to_scroll = true;
+            active_panel.flags |= .CLAMP_CURSOR_TO_SCROLL;
+            active_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
         }
 
         //
@@ -727,6 +741,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             text_buffer_move_cursor_to(*active_panel.document.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
+
+            active_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
         }
     }
 
@@ -757,14 +773,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Move cursor to buffer
         //
-        if panel.clamp_cursor_to_scroll {
+        if panel.flags & .CLAMP_CURSOR_TO_SCROLL {
             ProfileZone(":ClampCursor");
 
             // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
             cursor_rect   := drect_from_point_and_size(document_cursor0_position.x, document_cursor0_position.y, cell_w, cell_h);
 
-            SCROLL_PADDING :: 3; // TODO(jt): Make this configurable. :Config
+            SCROLL_PADDING :: 7; // TODO(jt): Make this configurable. :Config
 
             cursor_position_dirty := false;
             if viewport_rect.y0 > cursor_rect.y1 {
@@ -789,20 +805,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Scroll buffer to cursor
         //
-        if panel.clamp_scroll_to_cursor || panel.clamp_scroll_to_start_of_line || panel.clamp_scroll_to_end_of_line {
+        if panel.flags & .CLAMP_SCROLL_TO_CURSOR || panel.flags & .CLAMP_SCROLL_TO_START_OF_LINE || panel.flags & .CLAMP_SCROLL_TO_END_OF_LINE {
             ProfileZone(":ClampScroll");
 
-            SCROLL_PADDING_CELLS_X :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
-            SCROLL_PADDING_CELLS_Y :: 0; // TODO(jt): Make this configurable. I don't like having this, so I turned it off. :Config
+            SCROLL_PADDING_CELLS_X :: 3; // TODO(jt): Make this configurable. :Config
+            SCROLL_PADDING_CELLS_Y :: 3; // TODO(jt): Make this configurable. :Config
             scroll_padding_x := min(panel_w * 0.25, cell_w * SCROLL_PADDING_CELLS_X);
             scroll_padding_y := min(panel_h * 0.25, cell_h * SCROLL_PADDING_CELLS_Y);
 
             // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
             scroll_to_rect: DRect;
-            if panel.clamp_scroll_to_start_of_line {
+            if panel.flags & .CLAMP_SCROLL_TO_START_OF_LINE {
                 scroll_to_rect = drect_from_point_and_size(0, document_cursor0_position.y, cell_w, cell_h);
-            } else if panel.clamp_scroll_to_end_of_line {
+            } else if panel.flags & .CLAMP_SCROLL_TO_END_OF_LINE {
                 scroll_to_rect = drect_from_point_and_size(document_cursor0_line_end_x, document_cursor0_position.y, cell_w, cell_h);
             } else {
                 scroll_to_rect = drect_from_point_and_size(document_cursor0_position.x, document_cursor0_position.y, cell_w, cell_h);
@@ -833,7 +849,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Scroll animation
         //
         {
-            SCROLL_TIME : f64 : 0.20; // TODO(jt): Make this configurable. :Config
+            SCROLL_TIME: f64 : 0.15; // TODO(jt): Make this configurable. :Config
 
             t := cast(f32, (to_float64_seconds(input.time) + USUAL_DELTA_TIME - to_float64_seconds(panel.scroll_time_start)) / SCROLL_TIME);
             t = clamp(t, 0.0, 1.0);
@@ -977,14 +993,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // scrolling, etc, we detect cursor changes every frame here (instead of in all the
             // places where the cursor can change).
             if panel.document.old_cursor != panel.document.buffer.cursor0 {
-                // TODO(jt): I find the animated cursor distracting when typing or navigating with
-                // keyboard, but cute when navigating with mouse. Let's make it possible to
-                // have both.
-                setup_cursor_anim_interpolation(panel.document, input.time, panel.document.old_cursor_position, new_cursor_position);
+                flags: Document.Cursor_Anim_Flags;
+                if panel.flags & .RECEIVED_MOUSE_INTERACTION     flags |= .TRIGGERED_BY_MOUSE;
+                if panel.flags & .RECEIVED_KEYBOARD_INTERACTION  flags |= .TRIGGERED_BY_KEYBOARD;
+
+                setup_cursor_anim_interpolation(panel.document, input.time, panel.document.old_cursor_position, new_cursor_position, flags);
             }
 
-            FLASH_TIME : f64 : 0.25; // TODO(jt): Make flash time configurable. :Config
-            ANIM_TIME  : f64 : 0.07; // TODO(jt): Make anim time configurable. I didn't like the lag, so I turned it off :Config
+            FLASH_TIME:         f64 : 0.20; // TODO(jt): Make flash time configurable. :Config
+            ANIM_TIME_MOUSE:    f64 : 0.10; // TODO(jt): Make mouse anim time configurable. :Config
+            ANIM_TIME_KEYBOARD: f64 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
+
+            anim_time: f64 = 0.0;
+            if document.cursor_anim_flags & .TRIGGERED_BY_MOUSE     anim_time = max(anim_time, ANIM_TIME_MOUSE);
+            if document.cursor_anim_flags & .TRIGGERED_BY_KEYBOARD  anim_time = max(anim_time, ANIM_TIME_KEYBOARD);
 
             // TODO(jt): Division by zero. (We work around it for scroll and cursor animation.)
             flash_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_flash_time_start)) / FLASH_TIME);
@@ -995,7 +1017,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // behind it as it moves, because currently, when it moves very fast, you can spot the
             // individual positions it occupies.
 
-            anim_t := cast(f32, (to_float64_seconds(input.time) + USUAL_DELTA_TIME - to_float64_seconds(document.cursor_anim_time_start)) / ANIM_TIME);
+            anim_t := cast(f32, (to_float64_seconds(input.time) + USUAL_DELTA_TIME - to_float64_seconds(document.cursor_anim_time_start)) / anim_time);
             anim_t = clamp(anim_t, 0.0, 1.0);
             anim_t = smoothstep(0.0, 1.0, anim_t);
 
@@ -1007,7 +1029,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             document.cursor_anim = lerp(document.cursor_anim_source, document.cursor_anim_target, anim_t);
 
             cursor_rect: DRect;
-            if ANIM_TIME == 0 {
+            if anim_time == 0 {
                 // Straight to the new position to avoid one frame of lag (and results of division by zero).
                 cursor_rect = drect_from_point_and_size(new_cursor_position.x, new_cursor_position.y, cell_w, cell_h) - panel.scroll;
             } else {
@@ -1052,10 +1074,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, is_new_frame = true, binary = document.buffer.binary_mode);
         }
 
-        panel.clamp_scroll_to_cursor        = false;
-        panel.clamp_scroll_to_start_of_line = false;
-        panel.clamp_scroll_to_end_of_line   = false;
-        panel.clamp_cursor_to_scroll        = false;
+        panel.flags = 0;
     }
 
     {
@@ -1552,10 +1571,10 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     buffered, action := key_map_input(*editor.key_map, event, editor.input_state.modifiers);
 
     if action == {
-        case .MOVE_UP;     text_buffer_move_cursor_y(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
-        case .MOVE_DOWN;   text_buffer_move_cursor_y(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
-        case .MOVE_LEFT;   text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
-        case .MOVE_RIGHT;  text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.clamp_scroll_to_cursor = true; if shift_selecting then panel.selecting = false;
+        case .MOVE_UP;     text_buffer_move_cursor_y(*document.buffer, -1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
+        case .MOVE_DOWN;   text_buffer_move_cursor_y(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
+        case .MOVE_LEFT;   text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
+        case .MOVE_RIGHT;  text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
 
         case .SEARCH; {
             open_mini_panel(*editor.mini_panel, .SEARCH);
@@ -1605,22 +1624,26 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .SWAP_LINE_UP; // TODO(jt)
         case .SWAP_LINE_DOWN; // TODO(jt)
 
-        case .MOVE_TO_START_OF_LINE;        text_buffer_move_cursor_to_start_of_line(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
-        case .MOVE_TO_END_OF_LINE;          text_buffer_move_cursor_to_end_of_line(*document.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
+        case .MOVE_TO_START_OF_LINE;        text_buffer_move_cursor_to_start_of_line(*document.buffer, panel.selecting); panel.flags = .CLAMP_SCROLL_TO_CURSOR;
+        case .MOVE_TO_END_OF_LINE;          text_buffer_move_cursor_to_end_of_line(*document.buffer, panel.selecting);   panel.flags = .CLAMP_SCROLL_TO_CURSOR;
 
-        case .MOVE_TO_START_OF_DOCUMENT;    text_buffer_move_cursor_to_start(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
-        case .MOVE_TO_END_OF_DOCUMENT;      text_buffer_move_cursor_to_end(*document.buffer, panel.selecting);   panel.clamp_scroll_to_cursor = true;
+        case .MOVE_TO_START_OF_DOCUMENT;    text_buffer_move_cursor_to_start(*document.buffer, panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        case .MOVE_TO_END_OF_DOCUMENT;      text_buffer_move_cursor_to_end(*document.buffer, panel.selecting);   panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
-        case .MOVE_TO_PREVIOUS_BLANK_LINE;  text_buffer_move_cursor_to_previous_blank_line(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
-        case .MOVE_TO_NEXT_BLANK_LINE;      text_buffer_move_cursor_to_next_blank_line(*document.buffer, panel.selecting); panel.clamp_scroll_to_cursor = true;
+        case .MOVE_TO_PREVIOUS_BLANK_LINE;  text_buffer_move_cursor_to_previous_blank_line(*document.buffer, panel.selecting); panel.flags = .CLAMP_SCROLL_TO_CURSOR;
+        case .MOVE_TO_NEXT_BLANK_LINE;      text_buffer_move_cursor_to_next_blank_line(*document.buffer, panel.selecting);     panel.flags = .CLAMP_SCROLL_TO_CURSOR;
 
         case .MOVE_FORWARD_WORD; {
-            panel.clamp_scroll_to_start_of_line |= text_buffer_move_cursor_to_next_word_boundary(*document.buffer, panel.selecting);
-            panel.clamp_scroll_to_cursor = true;
+            if text_buffer_move_cursor_to_next_word_boundary(*document.buffer, panel.selecting) {
+                panel.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
+            }
+            panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }
         case .MOVE_BACKWARD_WORD; {
-            panel.clamp_scroll_to_end_of_line |= text_buffer_move_cursor_to_previous_word_boundary(*document.buffer, panel.selecting);
-            panel.clamp_scroll_to_cursor = true;
+            if text_buffer_move_cursor_to_previous_word_boundary(*document.buffer, panel.selecting) {
+                panel.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
+            }
+            panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }
 
         case .RECENTER;                     recenter_active_panel(editor, input);
@@ -1637,8 +1660,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 platform.clipboard_set_text(text);
             }
         }
-        case .DELETE_FORWARD;               panel.selecting = false; text_buffer_delete_forward(*document.buffer);  panel.clamp_scroll_to_cursor = true;
-        case .DELETE_BACKWARD;              panel.selecting = false; text_buffer_delete_backward(*document.buffer); panel.clamp_scroll_to_cursor = true;
+        case .DELETE_FORWARD;               panel.selecting = false; text_buffer_delete_forward(*document.buffer);  panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        case .DELETE_BACKWARD;              panel.selecting = false; text_buffer_delete_backward(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
         case .DELETE_FORWARD_WORD;          // TODO(jt): text_buffer_delete_until_next_word_boundary.
         case .DELETE_BACKWARD_WORD;         // TODO(jt): text_buffer_delete_until_previous_word_boundary.
@@ -1647,7 +1670,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             // TODO(jt): Preserve CRLF in CRLF-only documents.
             panel.selecting = false;
             text_buffer_insert(*document.buffer, "\n", undo_barrier = true);
-            panel.clamp_scroll_to_cursor = true;
+            panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }
         case .INSERT_LINE_AFTER; {
             // TODO(jt): Preserve CRLF in CRLF-only documents.
@@ -1659,10 +1682,10 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
         // TODO(jt): Make indentation configurable.
         // TODO(jt): Preserve tab-ness in tab-only documents.
-        case .INSERT_TAB;                   text_buffer_insert(*document.buffer, "    ");  panel.clamp_scroll_to_cursor = true;
+        case .INSERT_TAB;                   text_buffer_insert(*document.buffer, "    "); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
-        case .UNDO_EDIT;                    text_buffer_undo_edit(*document.buffer); panel.clamp_scroll_to_cursor = true;
-        case .REDO_EDIT;                    text_buffer_redo_edit(*document.buffer); panel.clamp_scroll_to_cursor = true;
+        case .UNDO_EDIT;                    text_buffer_undo_edit(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        case .REDO_EDIT;                    text_buffer_redo_edit(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
         case .COPY; {
             panel.selecting = false;
@@ -1685,7 +1708,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             text := platform.clipboard_get_text(,, temp);
             if text {
                 text_buffer_insert(*document.buffer, text, undo_barrier = true);
-                panel.clamp_scroll_to_cursor = true;
+                panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
             }
         }
     }
@@ -1707,7 +1730,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
 
                 text_buffer_insert(*document.buffer, s);
-                panel.clamp_scroll_to_cursor = true;
+                panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
                 inserted = true;
             }
@@ -1722,10 +1745,11 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         //
         // :CentralizedCursorInterpolationSetup
         document.time_of_last_interaction = input.time;
+        panel.flags |= .RECEIVED_KEYBOARD_INTERACTION;
     }
+
     if action_kind >= .EDIT || inserted {
         setup_cursor_flash_interpolation(document, input.time, CURSOR_COLOR_ACTIVE, CURSOR_COLOR);
-        document.time_of_last_interaction = input.time;
     }
 }
 
@@ -2463,10 +2487,6 @@ set_panel_document :: (editor: Editor, panel: *Panel, document: *Document) {
     panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes for e.g. to_float64_seconds.
     panel.scroll = { 0, 0 };
 
-    panel.clamp_scroll_to_cursor = false;
-    panel.clamp_scroll_to_start_of_line = false;
-    panel.clamp_scroll_to_end_of_line = false;
-
     panel.selecting = false;
     panel.document = document;
 
@@ -2483,9 +2503,7 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
     panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes for e.g. to_float64_seconds.
     panel.scroll = { 0, 0 };
 
-    panel.clamp_scroll_to_cursor = true; // Because we are inserting pontentially large text.
-    panel.clamp_scroll_to_start_of_line = false;
-    panel.clamp_scroll_to_end_of_line = false;
+    panel.flags |= .CLAMP_SCROLL_TO_CURSOR; // Because we are inserting potentially large text.
 
     panel.selecting = false;
     panel.document = document;
@@ -2568,7 +2586,7 @@ scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     target.y -= delta;
     setup_scroll_interpolation(panel, input.time, panel.scroll, target);
 
-    panel.clamp_cursor_to_scroll = true;
+    panel.flags |= .CLAMP_CURSOR_TO_SCROLL;
 }
 
 scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
@@ -2588,7 +2606,7 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     target.y += delta;
     setup_scroll_interpolation(panel, input.time, panel.scroll, target);
 
-    panel.clamp_cursor_to_scroll = true;
+    panel.flags |= .CLAMP_CURSOR_TO_SCROLL;
 }
 
 get_cursor_position :: (document: Document, font: Font) -> cursor_position: DVector2, cursor_line_end_x: f64 {
@@ -2635,7 +2653,8 @@ setup_instant_scroll_interpolation :: (panel: *Panel, target: DVector2) {
     panel.scroll = panel.scroll_source;
 }
 
-setup_cursor_anim_interpolation :: (document: *Document, time: Apollo_Time, source: DVector2, target: DVector2) {
+setup_cursor_anim_interpolation :: (document: *Document, time: Apollo_Time, source: DVector2, target: DVector2, flags: Document.Cursor_Anim_Flags) {
+    document.cursor_anim_flags = flags;
     document.cursor_anim_source = source;
     document.cursor_anim_target = target;
     document.cursor_anim_time_start = time;
