@@ -209,7 +209,7 @@ Document :: struct {
     // Visuals
     //
 
-    // Preserved at the start of each frame to find out if we have kick off cursor animation.
+    // Preserved at the start of each frame to find out if we want to kick off cursor animation.
     old_cursor: Cursor;
     old_cursor_position: DVector2;
 
@@ -644,7 +644,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
             active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
 
-            // TODO(jt): Consider clamping cursor to viewport?
+            active_panel.clamp_cursor_to_scroll = true;
         }
 
         //
@@ -752,15 +752,38 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Compute cursor position.
         //
-        buffer_cursor0_position: DVector2;
-        buffer_cursor0_line_end_x: f64;
-        {
-            c0_line_start, c0_line_end := text_buffer_get_cursors_for_line(document.buffer, document.buffer.cursor0.y);
-            c0_line_view := text_buffer_make_view_between_cursors(document.buffer, c0_line_start, c0_line_end,, temp);
+        document_cursor0_position, document_cursor0_line_end_x := get_cursor_position(document, editor.font);
 
-            buffer_cursor0_position.x = font_compute_position_on_line(editor.font, c0_line_view, document.buffer.cursor0.x, binary = document.buffer.binary_mode);
-            buffer_cursor0_position.y = cast(f64, document.buffer.cursor0.y) * cell_h;
-            buffer_cursor0_line_end_x = font_compute_position_on_line(editor.font, c0_line_view, c0_line_end.x, binary = document.buffer.binary_mode);
+        //
+        // Move cursor to buffer
+        //
+        if panel.clamp_cursor_to_scroll {
+            ProfileZone(":ClampCursor");
+
+            // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
+            viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
+            cursor_rect   := drect_from_point_and_size(document_cursor0_position.x, document_cursor0_position.y, cell_w, cell_h);
+
+            SCROLL_PADDING :: 3; // TODO(jt): Make this configurable. :Config
+
+            cursor_position_dirty := false;
+            if viewport_rect.y0 > cursor_rect.y1 {
+                // Move cursor down
+                delta := cast(s64, ceil((viewport_rect.y0 - cursor_rect.y1) / cell_h)) + SCROLL_PADDING;
+                text_buffer_move_cursor_y(*document.buffer, delta, panel.selecting);
+
+                cursor_position_dirty = true;
+            } else if viewport_rect.y1 < cursor_rect.y0 {
+                // Move cursor up
+                delta := cast(s64, ceil((cursor_rect.y0 - viewport_rect.y1) / cell_h)) + SCROLL_PADDING;
+                text_buffer_move_cursor_y(*document.buffer, -delta, panel.selecting);
+
+                cursor_position_dirty = true;
+            }
+
+            if cursor_position_dirty {
+                document_cursor0_position, document_cursor0_line_end_x = get_cursor_position(document, editor.font);
+            }
         }
 
         //
@@ -778,11 +801,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
             scroll_to_rect: DRect;
             if panel.clamp_scroll_to_start_of_line {
-                scroll_to_rect = drect_from_point_and_size(0, buffer_cursor0_position.y, cell_w, cell_h);
+                scroll_to_rect = drect_from_point_and_size(0, document_cursor0_position.y, cell_w, cell_h);
             } else if panel.clamp_scroll_to_end_of_line {
-                scroll_to_rect = drect_from_point_and_size(buffer_cursor0_line_end_x, buffer_cursor0_position.y, cell_w, cell_h);
+                scroll_to_rect = drect_from_point_and_size(document_cursor0_line_end_x, document_cursor0_position.y, cell_w, cell_h);
             } else {
-                scroll_to_rect = drect_from_point_and_size(buffer_cursor0_position.x, buffer_cursor0_position.y, cell_w, cell_h);
+                scroll_to_rect = drect_from_point_and_size(document_cursor0_position.x, document_cursor0_position.y, cell_w, cell_h);
             }
 
             if scroll_to_rect.x1 > viewport_rect.x1 {
@@ -803,26 +826,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 target := panel.scroll_target;
                 target.y = scroll_to_rect.y0 - scroll_padding_y;
                 setup_scroll_interpolation(panel, input.time, panel.scroll, target);
-            }
-        }
-
-        if panel.clamp_cursor_to_scroll {
-            ProfileZone(":ClampCursor");
-
-            // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
-            viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
-            cursor_rect   := drect_from_point_and_size(buffer_cursor0_position.x, buffer_cursor0_position.y, cell_w, cell_h);
-
-            SCROLL_PADDING :: 3; // TODO(jt): Make this configurable. :Config
-
-            if viewport_rect.y0 > cursor_rect.y1 {
-                // Move cursor down
-                delta := cast(s64, ceil((viewport_rect.y0 - cursor_rect.y1) / cell_h)) + SCROLL_PADDING;
-                text_buffer_move_cursor_y(*document.buffer, delta, panel.selecting);
-            } else if viewport_rect.y1 < cursor_rect.y0 {
-                // Move cursor up
-                delta := cast(s64, ceil((cursor_rect.y0 - viewport_rect.y1) / cell_h)) + SCROLL_PADDING;
-                text_buffer_move_cursor_y(*document.buffer, -delta, panel.selecting);
             }
         }
 
@@ -966,7 +969,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Draw cursor
         //
         {
-            new_cursor_position := buffer_cursor0_position;
+            new_cursor_position := document_cursor0_position;
 
             // :CentralizedCursorInterpolationSetup
             //
@@ -2549,8 +2552,6 @@ recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, 
     }
 }
 
-// XXX: @Bug Scrolling up/down while having animated cursor hides the cursor.
-
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     document := panel.document;
     if !document {
@@ -2590,7 +2591,7 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     panel.clamp_cursor_to_scroll = true;
 }
 
-get_cursor_position :: (document: Document, font: Font) -> DVector2 {
+get_cursor_position :: (document: Document, font: Font) -> cursor_position: DVector2, cursor_line_end_x: f64 {
     x := document.buffer.cursor0.x;
     y := document.buffer.cursor0.y;
 
@@ -2600,7 +2601,10 @@ get_cursor_position :: (document: Document, font: Font) -> DVector2 {
     position.x = font_compute_position_on_line(font, line_view, x, binary = document.buffer.binary_mode);
     position.y = cast(f64, y) * font.line_height_in_pixels;
 
-    return position;
+    line_end   := text_buffer_get_end_cursor_for_line(document.buffer, y);
+    line_end_x := font_compute_position_on_line(font, line_view, line_end.x);
+
+    return position, line_end_x;
 }
 
 setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time, source: DVector2, target: DVector2) {
