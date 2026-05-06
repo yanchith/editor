@@ -422,11 +422,9 @@ main :: () {
                             }
                         }
 
-                        // TODO(jt): Send down repeats.
                         flags: Editor.Input_Event.Flags;
-                        if it.key_pressed {
-                            flags |= .PRESSED;
-                        }
+                        if it.key_pressed flags |= .PRESSED;
+                        if it.repeat      flags |= .REPEAT;
 
                         // The Input module's key_codes mirror ASCII in that range. However, for
                         // control characters outside of the ASCII range we use our own enum.
