@@ -424,7 +424,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<enter>", .INSERT_LINE_BEFORE);
         key_map_add(key_map, "C-o",     .INSERT_LINE_AFTER);
 
-        key_map_add(key_map, "<tab>",   .INSERT_TAB);
+        key_map_add(key_map, "<tab>",   .INDENT);
+        key_map_add(key_map, "C-i",     .INDENT);
 
         key_map_add(key_map, "C-/",     .UNDO_EDIT);
         key_map_add(key_map, "M-/",     .REDO_EDIT);
@@ -1478,7 +1479,7 @@ Editor_Action :: enum {
     INSERT_LINE_BEFORE;
     INSERT_LINE_AFTER;
 
-    INSERT_TAB;
+    INDENT;
 
     UNDO_EDIT;
     REDO_EDIT;
@@ -1544,7 +1545,7 @@ editor_action_classify :: (action: Editor_Action) -> Editor_Action_Kind {
         case .INSERT_LINE_BEFORE;                return .EDIT;
         case .INSERT_LINE_AFTER;                 return .EDIT;
 
-        case .INSERT_TAB;                        return .EDIT;
+        case .INDENT;                            return .EDIT;
 
         case .UNDO_EDIT;                         return .EDIT;
         case .REDO_EDIT;                         return .EDIT;
@@ -1682,7 +1683,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
         // TODO(jt): Make indentation configurable.
         // TODO(jt): Preserve tab-ness in tab-only documents.
-        case .INSERT_TAB;                   text_buffer_insert(*document.buffer, "    "); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        case .INDENT;                       text_buffer_insert(*document.buffer, "    "); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
         case .UNDO_EDIT;                    text_buffer_undo_edit(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         case .REDO_EDIT;                    text_buffer_redo_edit(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
