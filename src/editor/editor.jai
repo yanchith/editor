@@ -137,7 +137,7 @@ ACTIVE_CURSOR_COLOR    : Vector4 : { 1.00, 0.60, 0.40, 1.00 };
 SELECTION_COLOR        : Vector4 : { 0.70, 0.80, 0.70, 0.38 };
 HIGHLIGHT_COLOR        : Vector4 : #run -> Vector4 {
     c := CURSOR_COLOR;
-    c.w = 0.20;
+    c.w = 0.40;
     return c;
 };
 ACTIVE_HIGHLIGHT_COLOR : Vector4 : { 1.00, 0.00, 0.00, 0.20 };
