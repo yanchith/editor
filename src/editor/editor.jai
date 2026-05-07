@@ -38,7 +38,7 @@ TODO(jt): @Stream things:
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [ ] M-x
 - [ ] M-g g (go to line)
-- [ ] C-M-p, C-M-n (move line up/down)
+- [ ] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
 - [ ] C-u C-<space> and cursor undo.
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Flash cursor with typing (needs tuning)
