@@ -482,11 +482,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<left>",      .MOVE_LEFT);
         key_map_add(key_map, "<right>",     .MOVE_RIGHT);
 
-        key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
-        key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
-
         key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
         key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
+
+        key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
+        key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
 
         key_map_add(key_map, "C-d",         .DELETE_FORWARD);
         key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
@@ -1241,11 +1241,11 @@ Mini_Panel_Action :: enum {
     MOVE_LEFT;
     MOVE_RIGHT;
 
-    MOVE_FORWARD_WORD;
-    MOVE_BACKWARD_WORD;
-
     MOVE_TO_START_OF_LINE;
     MOVE_TO_END_OF_LINE;
+
+    MOVE_FORWARD_WORD;
+    MOVE_BACKWARD_WORD;
 
     DELETE_FORWARD;
     DELETE_BACKWARD;
@@ -1275,11 +1275,11 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .MOVE_LEFT;              text_buffer_move_cursor_x(*mini_panel.buffer, -1, false);
         case .MOVE_RIGHT;             text_buffer_move_cursor_x(*mini_panel.buffer,  1, false);
 
-        case .MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, false);
-        case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, false);
-
         case .MOVE_TO_START_OF_LINE;  text_buffer_move_cursor_to_start_of_line(*mini_panel.buffer, false);
         case .MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, false);
+
+        case .MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, false);
+        case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, false);
 
         case .DELETE_FORWARD;         text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
         case .DELETE_BACKWARD; {
@@ -1367,11 +1367,11 @@ Modal_Interaction_Action :: enum {
     MOVE_LEFT;
     MOVE_RIGHT;
 
-    MOVE_FORWARD_WORD;
-    MOVE_BACKWARD_WORD;
-
     MOVE_TO_START_OF_LINE;
     MOVE_TO_END_OF_LINE;
+
+    MOVE_FORWARD_WORD;
+    MOVE_BACKWARD_WORD;
 
     DELETE_FORWARD;
     DELETE_BACKWARD;
@@ -1397,11 +1397,11 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         case .MOVE_LEFT;              text_buffer_move_cursor_x(*modal_interaction.buffer, -1, false);
         case .MOVE_RIGHT;             text_buffer_move_cursor_x(*modal_interaction.buffer,  1, false);
 
-        case .MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*modal_interaction.buffer, false);
-        case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*modal_interaction.buffer, false);
-
         case .MOVE_TO_START_OF_LINE;  text_buffer_move_cursor_to_start_of_line(*modal_interaction.buffer, false);
         case .MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*modal_interaction.buffer, false);
+
+        case .MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*modal_interaction.buffer, false);
+        case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*modal_interaction.buffer, false);
 
         case .DELETE_FORWARD;         text_buffer_delete_forward(*modal_interaction.buffer); buffer_changed = true;
         case .DELETE_BACKWARD;        text_buffer_delete_backward(*modal_interaction.buffer); buffer_changed = true;
@@ -2303,11 +2303,11 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, ac
     key_map_add(key_map, "<left>",      .MOVE_LEFT);
     key_map_add(key_map, "<right>",     .MOVE_RIGHT);
 
-    key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
-    key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
-
     key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
     key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
+
+    key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
+    key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
 
     key_map_add(key_map, "C-d",         .DELETE_FORWARD);
     key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
