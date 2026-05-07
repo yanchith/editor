@@ -293,6 +293,8 @@ Mini_Panel :: struct {
     // :MiniPanelAPI
     action: Action;
 
+    selecting: bool;
+
     key_map: Key_Map(Mini_Panel_Action); // Not reset, because all mini panel things basically interact the same.
     buffer: Text_Buffer;
 
@@ -495,11 +497,13 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "M-v",         .SCROLL_UP);
         key_map_add(key_map, "C-v",         .SCROLL_DOWN);
 
+        key_map_add(key_map, "C-<space>",   .START_SELECTING);
+        key_map_add(key_map, "C-g",         .STOP_SELECTING);
+
         key_map_add(key_map, "<tab>",       .AUTOCOMPLETE);
 
         key_map_add(key_map, "<enter>",     .CONFIRM);
         key_map_add(key_map, "C-m",         .CONFIRM);
-
         key_map_add(key_map, "C-g",         .CANCEL);
 
         log("Mini Panel keymap:\n%", key_map_sprint(key_map,, temp));
@@ -1253,6 +1257,9 @@ Mini_Panel_Action :: enum {
     SCROLL_UP;
     SCROLL_DOWN;
 
+    START_SELECTING;
+    STOP_SELECTING;
+
     AUTOCOMPLETE;
 
     CONFIRM;
@@ -1272,14 +1279,14 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     if action == {
         case .MOVE_UP;                mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
         case .MOVE_DOWN;              mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
-        case .MOVE_LEFT;              text_buffer_move_cursor_x(*mini_panel.buffer, -1, false);
-        case .MOVE_RIGHT;             text_buffer_move_cursor_x(*mini_panel.buffer,  1, false);
+        case .MOVE_LEFT;              text_buffer_move_cursor_x(*mini_panel.buffer, -1, mini_panel.selecting);
+        case .MOVE_RIGHT;             text_buffer_move_cursor_x(*mini_panel.buffer,  1, mini_panel.selecting);
 
-        case .MOVE_TO_START_OF_LINE;  text_buffer_move_cursor_to_start_of_line(*mini_panel.buffer, false);
-        case .MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, false);
+        case .MOVE_TO_START_OF_LINE;  text_buffer_move_cursor_to_start_of_line(*mini_panel.buffer, mini_panel.selecting);
+        case .MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, mini_panel.selecting);
 
-        case .MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, false);
-        case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, false);
+        case .MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, mini_panel.selecting);
+        case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, mini_panel.selecting);
 
         case .DELETE_FORWARD;         text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
         case .DELETE_BACKWARD; {
@@ -1315,13 +1322,15 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .SCROLL_UP;              mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
         case .SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
 
+        case .START_SELECTING;        mini_panel.selecting = true;  text_buffer_join_cursors(*mini_panel.buffer);
+        case .STOP_SELECTING;         mini_panel.selecting = false; text_buffer_join_cursors(*mini_panel.buffer);
+
         case .AUTOCOMPLETE;           buffer_changed |= mini_panel_autocomplete_proc(editor, platform, input);
 
         case .CONFIRM;                buffer_changed |= mini_panel_confirm_proc(editor, platform, input);
         case .CANCEL;                 mini_panel_cancel_proc(editor, platform, input);
     }
 
-    // TODO(jt): Do selecting in mini panel
     // TODO(jt): Animated cursor in modal interaction
     // TODO(jt): Do animated horizontal scroll of buffer in mini panel.
     // TODO(jt): Do animated vertical scroll of item list in mini_panel.
@@ -1351,6 +1360,9 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
             }
         }
     }
+
+    // XXX: HERE
+    log("XXX mp selecting %", mini_panel.selecting);
 
     if mini_panel.open {
         // TODO(jt): @Speed In case we'll be processing multiple events this frame, we want to delay
@@ -1777,6 +1789,8 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, action: M
 close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     mini_panel := *editor.mini_panel;
     assert(mini_panel.open);
+
+    mini_panel.selecting = false;
 
     key_map_flush(*mini_panel.key_map);
     text_buffer_reset(*mini_panel.buffer);
