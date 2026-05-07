@@ -30,6 +30,9 @@ TODO(jt): @Stream things:
 - [X] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
 - [X] OPEN_FILE starts in the directory of the currently open document
 - [X] OPEN_FILE, switch to buffer and close buffer get tab completions.
+- [ ] Selection in mini panel text buffer.
+- [ ] Selection in modal interaction text buffer.
+- [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
 - [ ] M-d, C-<backspace> (delete word forward/backward)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
