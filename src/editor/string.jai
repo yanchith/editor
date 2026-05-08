@@ -40,12 +40,19 @@ string_ends_with_newline :: (s: string, binary: bool) -> newline_byte_length: u3
     return 0;
 }
 
-// XXX: Cleanup or explain
-index_of_string_nocase :: (haystack: string, needle: string) -> found: bool, found_index: s64 {
-    ProfileZone("index_of_string_nocase");
-    found_index, found := String.index_of_string_nocase(haystack, needle);
+// TODO(jt): @Speed @Cleanup This temporarily exists, because we want to see it on profiles (and we
+// don't want to put a profiling block around every callsite). Also, the JAI version is deprecated
+// and slow, and will eventually be replaced with something faster, but maybe we will have to
+// optimize this before that happens.
+find_index_from_left_nocase :: (s: string, substring: string) -> s64 {
+    ProfileZone("find_index_from_left_nocase");
+    found_index, found := String.index_of_string_nocase(s, substring);
 
-    return found, found_index;
+    if !found {
+        return -1;
+    }
+
+    return found_index;
 }
 
 count_utf8_chars :: (bytes: [] u8) -> s64 {

@@ -20,10 +20,7 @@ TODO(jt): Early stuff to do:
 - [X] Modeline
 - [X] Keymap support
 - [ ] Find/replace and modal/interactive commands.
-- [ ] Open non-utf8 text buffers and binary files in read only mode. Detecting is going be pain. We
-      can do a few heuristics in the beginning (look for well known magic numbers), scan the first
-      4k for zeroes, etc, but if none of these trigger, we still need to attempt parsing the file as
-      UTF8 and bailing if that fails.
+- [ ] Open non-utf8 text buffers and binary files in read only mode.
 
 TODO(jt): @Stream things:
 
@@ -1899,17 +1896,10 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                         // Note that even though we pass in temp, making of the view will only
                         // allocate for one of the lines - the one that crosses the gap.
                         line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
-                        line_text := cast(string, line_bytes);
+                        line_text  := cast(string, line_bytes);
 
-                        // TODO(jt): We need a fuzzy searcher here! Additionally
-                        // String.index_of_string_nocase is kind of deprecated, we don't really want
-                        // to use it.
-                        //
-                        // TODO(jt): @Speed index_of_string_nocase is kind of slooooow.
-                        found_index: s64;
-                        found: bool;
-                        found, found_index = index_of_string_nocase(line_text, search_text);
-                        if found {
+                        found_index := find_index_from_left_nocase(line_text, search_text);
+                        if found_index != -1 {
                             s := "";
                             line_number_prefix_length := 0;
 
@@ -2434,6 +2424,7 @@ modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, pla
                                 document.buffer.cursor0 = { x0, y };
                                 document.buffer.cursor1 = { x1, y };
                                 // XXX: Handle multiple occurences on single line.
+                                // XXX: Fuse undo
                                 text_buffer_insert(*document.buffer, userdata.input_to_replace);
                             }
 
@@ -2486,108 +2477,92 @@ modal_interaction_advance_proc :: (editor: *Editor, platform: Platform, input: I
 
             if #complete userdata.state == {
                 case .INPUT_TO_SEARCH; {
-                    input := text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
+                    userdata.input_to_search = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
                     text_buffer_reset(*modal_interaction.buffer);
 
-                    userdata.input_to_search = input;
                     userdata.state = .INPUT_TO_REPLACE;
                 }
                 case .INPUT_TO_REPLACE; {
                     userdata.input_to_replace = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
                     text_buffer_reset(*modal_interaction.buffer);
 
-                    {
-                        document := active_panel.document;
+                    document := active_panel.document;
 
-                        array_reset_keeping_memory(*active_panel.highlights);
-                        active_panel.highlight_index = -1;
+                    array_reset_keeping_memory(*active_panel.highlights);
+                    active_panel.highlight_index = -1;
 
-                        old_cursor_y := document.buffer.cursor0.y;
-                        new_highlight_index := -1;
+                    old_cursor_y := document.buffer.cursor0.y;
+                    new_highlight_index := -1;
 
-                        search_text := userdata.input_to_search;
-                        search_text_char_count := ifx document.buffer.binary_mode then search_text.count else count_utf8_chars(search_text);
+                    search_text := userdata.input_to_search;
+                    search_text_char_count := ifx document.buffer.binary_mode then search_text.count else count_utf8_chars(search_text);
 
-                        gb_index := 0;
-                        for 0..document.buffer.line_bytes.count - 1 {
-                            gb_count := document.buffer.line_bytes[it];
+                    gb_index := 0;
+                    for 0..document.buffer.line_bytes.count - 1 {
+                        gb_count := document.buffer.line_bytes[it];
 
-                            // :IncrementalGapBufferIndices
-                            //
-                            // We go straight to the gap buffer and count its indices manually, so that
-                            // we avoid the quadratic behavior of calling get_gb_index_for_line each
-                            // time through the loop.
-                            //
-                            // Note that even though we pass in temp, making of the view will only
-                            // allocate for one of the lines - the one that crosses the gap.
-                            line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
-                            line_text  := cast(string, line_bytes);
+                        // :IncrementalGapBufferIndices
+                        //
+                        // We go straight to the gap buffer and count its indices manually, so that
+                        // we avoid the quadratic behavior of calling get_gb_index_for_line each
+                        // time through the loop.
+                        //
+                        // Note that even though we pass in temp, making of the view will only
+                        // allocate for one of the lines - the one that crosses the gap.
+                        line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
+                        line_text  := cast(string, line_bytes);
 
-                            // This is in bytes if we are in binary mode, otherwise in characters.
-                            processed_chars: s64 = 0;
+                        // This is number of bytes if we are in binary mode, otherwise number of characters.
+                        processed_chars: s64 = 0;
 
-                            // TODO(jt): We need a fuzzy searcher here! Additionally
-                            // String.index_of_string_nocase is kind of deprecated, we don't really want
-                            // to use it.
-                            //
-                            // TODO(jt): @Speed index_of_string_nocase is kind of slooooow.
-                            found_index: s64;
-                            found: bool;
-                            found, found_index = index_of_string_nocase(line_text, search_text);
-                            while found && line_text.count {
-                                x0 := processed_chars + found_index;
-                                if !document.buffer.binary_mode {
-                                    x0 = processed_chars + count_utf8_chars(String.slice(line_text, 0, found_index));
-                                }
-                                x1 := x0 + search_text_char_count;
-                                y  := it;
+                        found_index := find_index_from_left_nocase(line_text, search_text);
+                        while found_index != -1 && line_text.count {
+                            x0 := processed_chars + found_index;
+                            if !document.buffer.binary_mode {
+                                x0 = processed_chars + count_utf8_chars(String.slice(line_text, 0, found_index));
+                            }
+                            x1 := x0 + search_text_char_count;
+                            y  := it;
 
-                                highlight_index := active_panel.highlights.count;
+                            highlight_index := active_panel.highlights.count;
 
-                                highlight := array_add(*active_panel.highlights);
-                                highlight.cursor_x0 = x0;
-                                highlight.cursor_x1 = x1;
-                                highlight.cursor_y  = it;
-                                log("XXX processed_chars=%", processed_chars);
-                                log("XXX adding match x0=%, x1=%, y=%", x0, x1, y);
+                            highlight := array_add(*active_panel.highlights);
+                            highlight.cursor_x0 = x0;
+                            highlight.cursor_x1 = x1;
+                            highlight.cursor_y  = it;
 
-                                if new_highlight_index == -1 && it >= old_cursor_y {
-                                    new_highlight_index = highlight_index;
-                                }
-
-                                advance(*line_text, found_index + search_text.count);
-                                if document.buffer.binary_mode {
-                                    // XXX: Test this on binary files...
-                                    processed_chars += found_index + search_text.count;
-                                } else {
-                                    // TODO(jt): @Speed We already counted up to found_index above. Let's re-use that?
-                                    add_chars := count_utf8_chars(String.slice(line_text, 0, found_index + search_text.count));
-                                    add_bytes := found_index + search_text.count;
-
-                                    processed_chars += add_chars;
-                                    log("XXX adding processed_chars=% add_chars=% add_bytes=%", processed_chars, add_chars, add_bytes);
-                                }
-
-                                found, found_index = index_of_string_nocase(line_text, search_text);
+                            if new_highlight_index == -1 && it >= old_cursor_y {
+                                new_highlight_index = highlight_index;
                             }
 
-                            gb_index += gb_count;
+                            if document.buffer.binary_mode {
+                                // XXX: Test this on binary files...
+                                processed_chars += found_index + search_text.count;
+                            } else {
+                                // TODO(jt): @Speed We already counted up to found_index above. Let's re-use that?
+                                processed_chars += count_utf8_chars(String.slice(line_text, 0, found_index + search_text.count));
+                            }
+                            advance(*line_text, found_index + search_text.count);
+
+                            found_index = find_index_from_left_nocase(line_text, search_text);
                         }
 
-                        if new_highlight_index == -1 {
-                            new_highlight_index = active_panel.highlights.count - 1;
-                        }
+                        gb_index += gb_count;
+                    }
 
-                        if new_highlight_index != -1 {
-                            active_panel.highlight_index = new_highlight_index;
+                    if new_highlight_index == -1 {
+                        new_highlight_index = active_panel.highlights.count - 1;
+                    }
 
-                            highlight := active_panel.highlights[new_highlight_index];
-                            x := highlight.cursor_x0;
-                            y := highlight.cursor_y;
+                    if new_highlight_index != -1 {
+                        active_panel.highlight_index = new_highlight_index;
 
-                            text_buffer_move_cursor_to(*document.buffer, x, y, false);
-                            recenter_active_panel(editor, input, true);
-                        }
+                        highlight := active_panel.highlights[new_highlight_index];
+                        x := highlight.cursor_x0;
+                        y := highlight.cursor_y;
+
+                        text_buffer_move_cursor_to(*document.buffer, x, y, false);
+                        recenter_active_panel(editor, input, true);
                     }
 
                     if active_panel.highlights.count {
