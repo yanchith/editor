@@ -1133,7 +1133,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h, MINI_PANEL_LINE_COLOR);
         }
 
-        // :MiniPanelAPI (mini_panel_render_proc)
+        // :MiniPanelAPI (mini_panel_get_action_text_proc)
         action_text: string;
         if editor.mini_panel.action == {
             case .SEARCH;              action_text = tprint("% Search: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
@@ -1185,12 +1185,18 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         modal_interaction_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, modal_interaction_line_y, window_w, window_h, BACKGROUND_COLOR);
 
+        action_text := modal_interaction_get_action_text_proc(editor, platform, input);
+
         line_view := text_buffer_make_view_for_line(editor.modal_interaction.buffer, 0,, temp);
 
-        cursor_x := font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.buffer.cursor0.x);
+        line_x   := cast(f32, font_compute_position_on_line(editor.font, action_text, action_text.count));
+        cursor_x := line_x + font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.buffer.cursor0.x);
+
         draw_rect(*render_rects, rect_from_point_and_size(cast(f32, cursor_x), modal_interaction_line_y, cell_w, cell_h), CURSOR_COLOR);
 
-        _font_layout_and_draw_text(*editor.font, line_view, *render_rects, *update_regions, { 0, modal_interaction_line_y }, is_new_frame = false, binary = false);
+        main_line := tprint("%%", action_text, line_view);
+
+        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, modal_interaction_line_y }, is_new_frame = false, binary = false);
     } else {
         message_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
@@ -1458,16 +1464,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
             }
         }
     }
-
-    if modal_interaction.open {
-        // TODO(jt): @Speed In case we'll be processing multiple events this frame, we want to delay
-        // calling this until they have all been processed. Otherwise we'll be doing expensive stuff
-        // multiple times per frame. Maybe we need to move this one level up and track the dirty
-        // flags on the modal interaction itself?
-        modal_interaction_update_proc(editor, platform, input, buffer_changed);
-    }
 }
-
 
 Editor_Action :: enum {
     NONE;
@@ -1617,7 +1614,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .MOVE_RIGHT;          text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
 
         case .SEARCH;              open_mini_panel(editor, platform, input, .SEARCH);
-        case .SEARCH_AND_REPLACE;  open_modal_interaction(editor, platform, input, .SEARCH_AND_REPLACE, "Search and destroy");
+        case .SEARCH_AND_REPLACE;  open_modal_interaction(editor, platform, input, .SEARCH_AND_REPLACE);
 
         case .OPEN_FILE; {
             path := "./";
@@ -2392,6 +2389,22 @@ modal_interaction_init_proc :: (editor: *Editor, platform: Platform, input: Inpu
     }
 }
 
+modal_interaction_get_action_text_proc :: (editor: *Editor, platform: Platform, input: Input) -> string {
+    modal_interaction := *editor.modal_interaction;
+    assert(modal_interaction.open);
+
+    if modal_interaction.action == .SEARCH_AND_REPLACE {
+        userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
+        if #complete userdata.state == {
+            case .INPUT_TO_SEARCH;   return "Text to replace: ";
+            case .INPUT_TO_REPLACE;  return tprint("Replace % with: ", userdata.input_to_search);
+            case .REPLACING;         return tprint("Replacing % with % ", userdata.input_to_search, userdata.input_to_replace); // TODO(jt): Progress bar - X/Y.
+        }
+    }
+
+    return "";
+}
+
 modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) -> handled: bool {
     modal_interaction := *editor.modal_interaction;
     assert(modal_interaction.open);
@@ -2463,6 +2476,7 @@ modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, pla
                                 active_panel.highlight_index = -1;
 
                                 close_modal_interaction(editor, platform, input);
+                                editor_log(editor, "Done!"); // TODO(jt): Say how much stuff we replaced, etc...
                             } else {
                                 highlight := active_panel.highlights[active_panel.highlight_index];
                                 x := highlight.cursor_x0;
@@ -2485,10 +2499,6 @@ modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, pla
             }
         }
     }
-}
-
-modal_interaction_update_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool) {
-    // Nothing here for now. Maybe someone will want to react to the buffer changing or something.
 }
 
 modal_interaction_advance_proc :: (editor: *Editor, platform: Platform, input: Input) {
@@ -2577,10 +2587,6 @@ modal_interaction_advance_proc :: (editor: *Editor, platform: Platform, input: I
                         gb_index += gb_count;
                     }
 
-                    if new_highlight_index == -1 {
-                        new_highlight_index = active_panel.highlights.count - 1;
-                    }
-
                     if new_highlight_index != -1 {
                         active_panel.highlight_index = new_highlight_index;
 
@@ -2592,11 +2598,14 @@ modal_interaction_advance_proc :: (editor: *Editor, platform: Platform, input: I
                         recenter_active_panel(editor, input, true);
                     }
 
-                    if active_panel.highlights.count {
+                    if active_panel.highlights.count && new_highlight_index != -1 {
                         userdata.state = .REPLACING;
                     } else {
-                        editor_log(editor, "No matches found");
+                        array_reset_keeping_memory(*active_panel.highlights);
+                        active_panel.highlight_index = -1;
+
                         close_modal_interaction(editor, platform, input);
+                        editor_log(editor, "No matches found");
                     }
                 }
                 case .REPLACING; assert(false);
