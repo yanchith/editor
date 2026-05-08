@@ -1424,7 +1424,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         case .DELETE_BACKWARD;           text_buffer_delete_backward(*modal_interaction.buffer); buffer_changed = true;
 
         case .CONFIRM;                   modal_interaction_advance_proc(editor, platform, input);
-        case .CANCEL_OR_STOP_SELECTING;  close_modal_interaction(editor, platform, input);
+        case .CANCEL_OR_STOP_SELECTING;  modal_interaction_cancel_proc(editor, platform, input);
     }
 
     // TODO(jt): Do selecting in modal interaction
@@ -1890,6 +1890,8 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                     for 0..document.buffer.line_bytes.count - 1 {
                         gb_count := document.buffer.line_bytes[it];
 
+                        // :IncrementalGapBufferIndices
+                        //
                         // We go straight to the gap buffer and count its indices manually, so that
                         // we avoid the quadratic behavior of calling get_gb_index_for_line each
                         // time through the loop.
@@ -1906,10 +1908,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
                         // TODO(jt): @Speed index_of_string_nocase is kind of slooooow.
                         found_index: s64;
                         found: bool;
-                        {
-                            ProfileZone("String.index_of_string_nocase");
-                            found_index, found = String.index_of_string_nocase(line_text, search_text);
-                        }
+                        found, found_index = index_of_string_nocase(line_text, search_text);
                         if found {
                             s := "";
                             line_number_prefix_length := 0;
@@ -2072,12 +2071,8 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
 
                 document := active_panel.document;
 
-                old_cursor_y := document.buffer.cursor0.y;
                 text_buffer_move_cursor_to(*document.buffer, x, y, false);
-
-                if document.buffer.cursor0.y != old_cursor_y {
-                    recenter_active_panel(editor, input, true);
-                }
+                recenter_active_panel(editor, input, true);
             }
         }
     }
@@ -2366,20 +2361,12 @@ Search_And_Replace_Userdata :: struct {
     input_to_search: string;
     input_to_replace: string;
 
-    matches: [..] Match;
-    match_index: s64;
-
     replacing_key_map: Key_Map(Action);
 
     State :: enum {
         INPUT_TO_SEARCH   :: 0;
         INPUT_TO_REPLACE  :: 1;
         REPLACING         :: 2;
-    }
-
-    Match :: struct {
-        cursor0: Cursor;
-        cursor1: Cursor;
     }
 
     Action :: enum {
@@ -2416,6 +2403,9 @@ modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, pla
     modal_interaction := *editor.modal_interaction;
     assert(modal_interaction.open);
 
+    active_panel := get_active_panel(editor);
+    assert(active_panel != null);
+
     if #complete modal_interaction.action == {
         case .SEARCH_AND_REPLACE; {
             userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
@@ -2424,11 +2414,50 @@ modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, pla
                 case .INPUT_TO_SEARCH;   return false;
                 case .INPUT_TO_REPLACE;  return false;
                 case .REPLACING; {
+                    sanity_assert(active_panel.highlights.count > 0);
+
                     buffered, action := key_map_input(*userdata.replacing_key_map, event, editor.input_state.modifiers);
                     if action == {
-                        case .YES;   // XXX
-                        case .NO;    // XXX
-                        case .CANCEL;  close_modal_interaction(editor, platform, input);
+                        case .YES; #through;
+                        case .NO; {
+                            if action == .YES {
+                                highlight := active_panel.highlights[active_panel.highlight_index];
+                                x0 := highlight.cursor_x0;
+                                x1 := highlight.cursor_x1;
+                                y  := highlight.cursor_y;
+
+                                document := active_panel.document;
+
+                                // If we ever do anything that changes the buffer while the
+                                // search&replace is open, these cursors will not be valid anymore
+                                // and we need to somehow handle that.
+                                document.buffer.cursor0 = { x0, y };
+                                document.buffer.cursor1 = { x1, y };
+                                // XXX: Handle multiple occurences on single line.
+                                text_buffer_insert(*document.buffer, userdata.input_to_replace);
+                            }
+
+                            active_panel.highlight_index += 1;
+                            if active_panel.highlight_index >= active_panel.highlights.count {
+                                array_reset_keeping_memory(*active_panel.highlights);
+                                active_panel.highlight_index = -1;
+
+                                close_modal_interaction(editor, platform, input);
+                            } else {
+                                highlight := active_panel.highlights[active_panel.highlight_index];
+                                x := highlight.cursor_x0;
+                                y := highlight.cursor_y;
+
+                                text_buffer_move_cursor_to(*active_panel.document.buffer, x, y, false);
+                                recenter_active_panel(editor, input, true);
+                            }
+                        }
+                        case .CANCEL; {
+                            array_reset_keeping_memory(*active_panel.highlights);
+                            active_panel.highlight_index = -1;
+
+                            close_modal_interaction(editor, platform, input);
+                        }
                     }
 
                     return true;
@@ -2444,8 +2473,12 @@ modal_interaction_update_proc :: (editor: *Editor, platform: Platform, input: In
 
 modal_interaction_advance_proc :: (editor: *Editor, platform: Platform, input: Input) {
     modal_interaction := *editor.modal_interaction;
-    arena := modal_interaction.userdata_arena;
     assert(modal_interaction.open);
+
+    active_panel := get_active_panel(editor);
+    assert(active_panel != null);
+
+    arena := modal_interaction.userdata_arena;
 
     if #complete modal_interaction.action == {
         case .SEARCH_AND_REPLACE; {
@@ -2460,18 +2493,129 @@ modal_interaction_advance_proc :: (editor: *Editor, platform: Platform, input: I
                     userdata.state = .INPUT_TO_REPLACE;
                 }
                 case .INPUT_TO_REPLACE; {
-                    input := text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
+                    userdata.input_to_replace = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
                     text_buffer_reset(*modal_interaction.buffer);
 
-                    userdata.input_to_replace = input;
-                    userdata.state = .REPLACING;
+                    {
+                        document := active_panel.document;
 
-                    // XXX: find and fill matches!
+                        array_reset_keeping_memory(*active_panel.highlights);
+                        active_panel.highlight_index = -1;
+
+                        old_cursor_y := document.buffer.cursor0.y;
+                        new_highlight_index := -1;
+
+                        search_text := userdata.input_to_search;
+                        search_text_char_count := ifx document.buffer.binary_mode then search_text.count else count_utf8_chars(search_text);
+
+                        gb_index := 0;
+                        for 0..document.buffer.line_bytes.count - 1 {
+                            gb_count := document.buffer.line_bytes[it];
+
+                            // :IncrementalGapBufferIndices
+                            //
+                            // We go straight to the gap buffer and count its indices manually, so that
+                            // we avoid the quadratic behavior of calling get_gb_index_for_line each
+                            // time through the loop.
+                            //
+                            // Note that even though we pass in temp, making of the view will only
+                            // allocate for one of the lines - the one that crosses the gap.
+                            line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
+                            line_text  := cast(string, line_bytes);
+
+                            // This is in bytes if we are in binary mode, otherwise in characters.
+                            processed_chars: s64 = 0;
+
+                            // TODO(jt): We need a fuzzy searcher here! Additionally
+                            // String.index_of_string_nocase is kind of deprecated, we don't really want
+                            // to use it.
+                            //
+                            // TODO(jt): @Speed index_of_string_nocase is kind of slooooow.
+                            found_index: s64;
+                            found: bool;
+                            found, found_index = index_of_string_nocase(line_text, search_text);
+                            while found && line_text.count {
+                                x0 := processed_chars + found_index;
+                                if !document.buffer.binary_mode {
+                                    x0 = processed_chars + count_utf8_chars(String.slice(line_text, 0, found_index));
+                                }
+                                x1 := x0 + search_text_char_count;
+                                y  := it;
+
+                                highlight_index := active_panel.highlights.count;
+
+                                highlight := array_add(*active_panel.highlights);
+                                highlight.cursor_x0 = x0;
+                                highlight.cursor_x1 = x1;
+                                highlight.cursor_y  = it;
+                                log("XXX processed_chars=%", processed_chars);
+                                log("XXX adding match x0=%, x1=%, y=%", x0, x1, y);
+
+                                if new_highlight_index == -1 && it >= old_cursor_y {
+                                    new_highlight_index = highlight_index;
+                                }
+
+                                advance(*line_text, found_index + search_text.count);
+                                if document.buffer.binary_mode {
+                                    // XXX: Test this on binary files...
+                                    processed_chars += found_index + search_text.count;
+                                } else {
+                                    // TODO(jt): @Speed We already counted up to found_index above. Let's re-use that?
+                                    add_chars := count_utf8_chars(String.slice(line_text, 0, found_index + search_text.count));
+                                    add_bytes := found_index + search_text.count;
+
+                                    processed_chars += add_chars;
+                                    log("XXX adding processed_chars=% add_chars=% add_bytes=%", processed_chars, add_chars, add_bytes);
+                                }
+
+                                found, found_index = index_of_string_nocase(line_text, search_text);
+                            }
+
+                            gb_index += gb_count;
+                        }
+
+                        if new_highlight_index == -1 {
+                            new_highlight_index = active_panel.highlights.count - 1;
+                        }
+
+                        if new_highlight_index != -1 {
+                            active_panel.highlight_index = new_highlight_index;
+
+                            highlight := active_panel.highlights[new_highlight_index];
+                            x := highlight.cursor_x0;
+                            y := highlight.cursor_y;
+
+                            text_buffer_move_cursor_to(*document.buffer, x, y, false);
+                            recenter_active_panel(editor, input, true);
+                        }
+                    }
+
+                    if active_panel.highlights.count {
+                        userdata.state = .REPLACING;
+                    } else {
+                        editor_log(editor, "No matches found");
+                        close_modal_interaction(editor, platform, input);
+                    }
                 }
                 case .REPLACING; assert(false);
             }
         }
     }
+}
+
+modal_interaction_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
+    modal_interaction := *editor.modal_interaction;
+    assert(modal_interaction.open);
+
+    active_panel := get_active_panel(editor);
+    assert(active_panel != null);
+
+    if modal_interaction.action == .SEARCH_AND_REPLACE {
+        array_reset_keeping_memory(*active_panel.highlights);
+        active_panel.highlight_index = -1;
+    }
+
+    close_modal_interaction(editor, platform, input);
 }
 
 find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, newly_created: bool {
