@@ -66,10 +66,10 @@ Edit :: struct {
     cursor1_before: Cursor;
     cursor1_after:  Cursor;
 
-    type: Edit_Type;
-    flags: Edit_Flags;
+    type:  Type;
+    flags: Flags;
 
-    Edit_Type :: enum u32 {
+    Type :: enum u32 {
         // All of these operations restore cursors to the values defined by the edit. Editing
         // forward always collapses cursors (because that's what mutating text does), but undoing
         // edits restores cursors in case of DELETE_SELECTION. The cursor restoration is automatic
@@ -80,10 +80,14 @@ Edit :: struct {
         DELETE_BACKWARD  :: 3;
     }
 
-    Edit_Flags :: enum_flags u32 {
-        NONE    :: 0;
+    Flags :: enum_flags u32 {
+        NONE :: 0;
+
         THROUGH :: 0x01; // When undoing or redoing edits, process all directly subsequent edits with this flag.
         BARRIER :: 0x02; // Suppresses looking for THROUGH.
+
+        FUSED_WITH_PREVIOUS :: 0x04; // When undoing, also apply previous edit, regardless of current edit's BARRIER.
+        FUSED_WITH_NEXT     :: 0x08; // When redoing, also apply next edit, regardless of current edit's BARRIER.
     }
 }
 
@@ -141,26 +145,31 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
-text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false) {
-    /*inline*/ text_buffer_insert(buffer, cast(string, bytes), undo_barrier);
+text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false, undo_fuse_with_delete_selection := false) {
+    /*inline*/ text_buffer_insert(buffer, cast(string, bytes), undo_barrier, undo_fuse_with_delete_selection);
 }
 
 // TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
 // switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so it would
 // suply .REVERT, etc.
-text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false) {
+text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false, undo_fuse_with_delete_selection := false) {
     ProfileZone("text_buffer_insert");
 
     assert_valid(buffer);
 
+    if text.count == 0 {
+        return;
+    }
+
+    insert_caused_delete_selection := false;
+
     if buffer.cursor0 != buffer.cursor1 {
         text_buffer_delete_between_cursors(buffer);
         assert(buffer.cursor0 == buffer.cursor1);
-        // Fallthrough!
-    }
 
-    if text.count == 0 {
-        return;
+        insert_caused_delete_selection = true;
+
+        // Fallthrough!
     }
 
     gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, text_buffer_get_min_cursor(buffer));
@@ -184,6 +193,14 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
     } else if is_through_edit(text) {
         // TODO(jt): Also don't add through, if the edit timestamps were too far apart.
         edit.flags |= .THROUGH;
+    }
+
+    if insert_caused_delete_selection && undo_fuse_with_delete_selection {
+        edit.flags |= .FUSED_WITH_PREVIOUS;
+
+        previous_edit := *buffer.edits[buffer.edits.count - 2];
+        assert(previous_edit.type == .DELETE_SELECTION);
+        previous_edit.flags |= .FUSED_WITH_NEXT;
     }
 
     buffer.applied_edit_count = buffer.edits.count;
@@ -533,21 +550,23 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
 
         applied_count += 1;
 
-        stop_undoing := cast(bool, edit.flags & .BARRIER);
-        if !stop_undoing && it > 0 {
-            previous_edit := buffer.edits[it - 1];
+        if !(edit.flags & .FUSED_WITH_PREVIOUS) {
+            stop_undoing := cast(bool, edit.flags & .BARRIER);
+            if !stop_undoing && it > 0 {
+                previous_edit := buffer.edits[it - 1];
 
-            if !(previous_edit.flags & .THROUGH) {
-                stop_undoing = true;
+                if !(previous_edit.flags & .THROUGH) {
+                    stop_undoing = true;
+                }
+
+                if previous_edit.type != edit.type {
+                    stop_undoing = true;
+                }
             }
 
-            if previous_edit.type != edit.type {
-                stop_undoing = true;
+            if stop_undoing {
+                break;
             }
-        }
-
-        if stop_undoing {
-            break;
         }
     }
 
@@ -606,21 +625,23 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
 
         applied_count += 1;
 
-        stop_undoing := cast(bool, edit.flags & .BARRIER);
-        if !stop_undoing && it < buffer.edits.count - 1 {
-            next_edit := buffer.edits[it + 1];
+        if !(edit.flags & .FUSED_WITH_NEXT) {
+            stop_redoing := cast(bool, edit.flags & .BARRIER);
+            if !stop_redoing && it < buffer.edits.count - 1 {
+                next_edit := buffer.edits[it + 1];
 
-            if !(next_edit.flags & .THROUGH) {
-                stop_undoing = true;
+                if !(next_edit.flags & .THROUGH) {
+                    stop_redoing = true;
+                }
+
+                if next_edit.type != edit.type {
+                    stop_redoing = true;
+                }
             }
 
-            if next_edit.type != edit.type {
-                stop_undoing = true;
+            if stop_redoing {
+                break;
             }
-        }
-
-        if stop_undoing {
-            break;
         }
     }
 
