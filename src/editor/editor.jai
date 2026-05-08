@@ -34,7 +34,7 @@ TODO(jt): @Stream things:
 - [ ] Selection in modal interaction text buffer.
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
-- [ ] M-d, C-<backspace> (delete word forward/backward)
+- [ ] M-d, C-<backspace> (delete forward/backward word)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [ ] M-x
 - [ ] M-g g (go to line)
@@ -137,7 +137,7 @@ USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 // TODO(jt): Make the colors themeable. :Config
 CURSOR_COLOR:          Vector4 : { 0.50, 0.80, 0.60, 1.00 };
 ACTIVE_CURSOR_COLOR:   Vector4 : { 1.00, 0.60, 0.40, 1.00 };
-SELECTION_COLOR:       Vector4 : { 0.70, 0.80, 0.70, 0.38 };
+SELECTION_COLOR:       Vector4 : { 0.70, 0.80, 0.70, 0.35 };
 HIGHLIGHT_COLOR:       Vector4 : #run -> Vector4 {
     c := CURSOR_COLOR;
     c.w = 0.40;
@@ -145,7 +145,7 @@ HIGHLIGHT_COLOR:       Vector4 : #run -> Vector4 {
 };
 ACTIVE_HIGHLIGHT_COLOR: Vector4 : { 1.00, 0.00, 0.00, 0.20 };
 LINE_COLOR:             Vector4 : { 0.00, 0.00, 0.00, 0.00 };
-MINI_PANEL_LINE_COLOR:  Vector4 : { 0.70, 0.70, 0.90, 0.18 };
+MINI_PANEL_LINE_COLOR:  Vector4 : { 0.70, 0.70, 0.90, 0.12 };
 MODELINE_COLOR:         Vector4 : { 0.80, 0.80, 0.80, 1.00 };
 BACKGROUND_COLOR:       Vector4 : { 1.00, 1.00, 1.00, 1.00 };
 
@@ -498,13 +498,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-v",         .SCROLL_DOWN);
 
         key_map_add(key_map, "C-<space>",   .START_SELECTING);
-        key_map_add(key_map, "C-g",         .STOP_SELECTING);
 
         key_map_add(key_map, "<tab>",       .AUTOCOMPLETE);
 
         key_map_add(key_map, "<enter>",     .CONFIRM);
         key_map_add(key_map, "C-m",         .CONFIRM);
-        key_map_add(key_map, "C-g",         .CANCEL);
+        key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
 
         log("Mini Panel keymap:\n%", key_map_sprint(key_map,, temp));
 
@@ -1025,7 +1024,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             FLASH_TIME:         f64 : 0.20; // TODO(jt): Make flash time configurable. :Config
-            ANIM_TIME_MOUSE:    f64 : 0.10; // TODO(jt): Make mouse anim time configurable. :Config
+            ANIM_TIME_MOUSE:    f64 : 0.15; // TODO(jt): Make mouse anim time configurable. :Config
             ANIM_TIME_KEYBOARD: f64 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
 
             anim_time: f64 = 0.0;
@@ -1128,7 +1127,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.96, 0.96, 0.96, 1.0 });
 
         if editor.mini_panel.item_index == -1 {
-            draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h, SELECTION_COLOR);
+            draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h, MINI_PANEL_LINE_COLOR);
         }
 
         // :MiniPanelAPI (mini_panel_render_proc)
@@ -1141,10 +1140,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
 
         line_view := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
-        cursor_x := cast(f32, font_compute_position_on_line(editor.font, action_text, action_text.count));
-        cursor_x += cast(f32, font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor0.x));
 
-        draw_rect(*render_rects, cursor_x, background_y, cursor_x + cell_w, background_y + cell_h, CURSOR_COLOR);
+        line_x    := cast(f32, font_compute_position_on_line(editor.font, action_text, action_text.count));
+        cursor0_x := line_x + cast(f32, font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor0.x));
+        cursor1_x := line_x + cast(f32, font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor1.x));
+
+        draw_rect(*render_rects, cursor0_x, background_y, cursor1_x, background_y + cell_h, SELECTION_COLOR);
+        draw_rect(*render_rects, cursor0_x, background_y, cursor0_x + cell_w, background_y + cell_h, CURSOR_COLOR);
 
         main_line := tprint("%%", action_text, line_view);
 
@@ -1258,12 +1260,11 @@ Mini_Panel_Action :: enum {
     SCROLL_DOWN;
 
     START_SELECTING;
-    STOP_SELECTING;
 
     AUTOCOMPLETE;
 
     CONFIRM;
-    CANCEL;
+    CANCEL_OR_STOP_SELECTING;
 }
 
 route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
@@ -1323,12 +1324,19 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
 
         case .START_SELECTING;        mini_panel.selecting = true;  text_buffer_join_cursors(*mini_panel.buffer);
-        case .STOP_SELECTING;         mini_panel.selecting = false; text_buffer_join_cursors(*mini_panel.buffer);
 
         case .AUTOCOMPLETE;           buffer_changed |= mini_panel_autocomplete_proc(editor, platform, input);
 
         case .CONFIRM;                buffer_changed |= mini_panel_confirm_proc(editor, platform, input);
-        case .CANCEL;                 mini_panel_cancel_proc(editor, platform, input);
+
+        case .CANCEL_OR_STOP_SELECTING; {
+            if mini_panel.selecting {
+                text_buffer_join_cursors(*mini_panel.buffer);
+                mini_panel.selecting = false;
+            } else {
+                mini_panel_cancel_proc(editor, platform, input);
+            }
+        }
     }
 
     // TODO(jt): Animated cursor in modal interaction
@@ -1361,9 +1369,6 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         }
     }
 
-    // XXX: HERE
-    log("XXX mp selecting %", mini_panel.selecting);
-
     if mini_panel.open {
         // TODO(jt): @Speed In case we'll be processing multiple events this frame, we want to delay
         // calling this until they have all been processed. Otherwise we'll be doing expensive stuff
@@ -1391,7 +1396,7 @@ Modal_Interaction_Action :: enum {
     // AUTOCOMPLETE;
 
     CONFIRM;
-    CANCEL;
+    CANCEL_OR_STOP_SELECTING;
 }
 
 route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
@@ -1406,20 +1411,20 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
     buffered, action := key_map_input(*modal_interaction.key_map, event, editor.input_state.modifiers);
     if action == {
-        case .MOVE_LEFT;              text_buffer_move_cursor_x(*modal_interaction.buffer, -1, false);
-        case .MOVE_RIGHT;             text_buffer_move_cursor_x(*modal_interaction.buffer,  1, false);
+        case .MOVE_LEFT;                 text_buffer_move_cursor_x(*modal_interaction.buffer, -1, false);
+        case .MOVE_RIGHT;                text_buffer_move_cursor_x(*modal_interaction.buffer,  1, false);
 
-        case .MOVE_TO_START_OF_LINE;  text_buffer_move_cursor_to_start_of_line(*modal_interaction.buffer, false);
-        case .MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*modal_interaction.buffer, false);
+        case .MOVE_TO_START_OF_LINE;     text_buffer_move_cursor_to_start_of_line(*modal_interaction.buffer, false);
+        case .MOVE_TO_END_OF_LINE;       text_buffer_move_cursor_to_end_of_line(*modal_interaction.buffer, false);
 
-        case .MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*modal_interaction.buffer, false);
-        case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*modal_interaction.buffer, false);
+        case .MOVE_FORWARD_WORD;         text_buffer_move_cursor_to_next_word_boundary(*modal_interaction.buffer, false);
+        case .MOVE_BACKWARD_WORD;        text_buffer_move_cursor_to_previous_word_boundary(*modal_interaction.buffer, false);
 
-        case .DELETE_FORWARD;         text_buffer_delete_forward(*modal_interaction.buffer); buffer_changed = true;
-        case .DELETE_BACKWARD;        text_buffer_delete_backward(*modal_interaction.buffer); buffer_changed = true;
+        case .DELETE_FORWARD;            text_buffer_delete_forward(*modal_interaction.buffer); buffer_changed = true;
+        case .DELETE_BACKWARD;           text_buffer_delete_backward(*modal_interaction.buffer); buffer_changed = true;
 
-        case .CONFIRM;                modal_interaction_advance_proc(editor, platform, input);
-        case .CANCEL;                 close_modal_interaction(editor, platform, input);
+        case .CONFIRM;                   modal_interaction_advance_proc(editor, platform, input);
+        case .CANCEL_OR_STOP_SELECTING;  close_modal_interaction(editor, platform, input);
     }
 
     // TODO(jt): Do selecting in modal interaction
@@ -2329,7 +2334,7 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, ac
 
     key_map_add(key_map, "<enter>",     .CONFIRM);
     key_map_add(key_map, "C-m",         .CONFIRM);
-    key_map_add(key_map, "C-g",         .CANCEL);
+    key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
 
     text_buffer_insert(*modal_interaction.buffer, initial_text);
 
