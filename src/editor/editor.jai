@@ -2420,15 +2420,42 @@ modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, pla
 
                                 // If we ever do anything that changes the buffer while the
                                 // search&replace is open, these cursors will not be valid anymore
-                                // and we need to somehow handle that.
+                                // and we need to somehow handle that. At the moment I am writing
+                                // this, nothing like that exists in the editor.
                                 document.buffer.cursor0 = { x0, y };
                                 document.buffer.cursor1 = { x1, y };
-                                // XXX: Handle multiple occurences on single line.
                                 // XXX: Fuse undo
                                 text_buffer_insert(*document.buffer, userdata.input_to_replace);
+
+                                // Instead of advancing the index we contract the array.
+                                array_ordered_remove_by_index(*active_panel.highlights, active_panel.highlight_index);
+
+                                //
+                                // If there are additional highlights on the same line, we need to
+                                // adjust them based on the lengths of the text we removed and added:
+                                //
+                                remove_count := count_utf8_chars(userdata.input_to_search);
+                                insert_count := count_utf8_chars(userdata.input_to_replace);
+                                if remove_count != insert_count {
+                                    delta := insert_count - remove_count;
+
+                                    index := active_panel.highlight_index;
+                                    while index < active_panel.highlights.count {
+                                        highlight := *active_panel.highlights[index];
+                                        if highlight.cursor_y > y {
+                                            break;
+                                        }
+
+                                        highlight.cursor_x0 += delta;
+                                        highlight.cursor_x1 += delta;
+
+                                        index += 1;
+                                    }
+                                }
+                            } else if action == .NO {
+                                active_panel.highlight_index += 1;
                             }
 
-                            active_panel.highlight_index += 1;
                             if active_panel.highlight_index >= active_panel.highlights.count {
                                 array_reset_keeping_memory(*active_panel.highlights);
                                 active_panel.highlight_index = -1;
