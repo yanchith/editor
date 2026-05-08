@@ -1,5 +1,10 @@
 /*
 
+TODO(jt): @Bugs
+
+- [ ] In file_examples/pdb_small.bin select the first 3 lines, undo, redo -> crash.
+- [ ] In binary files, we still get SOURCE_ILLEGAL
+
 TODO(jt): Early stuff to do:
 
 - [X] Implement Arena, or use Flat_Pool.
