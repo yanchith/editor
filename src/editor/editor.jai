@@ -24,15 +24,15 @@ TODO(jt): Early stuff to do:
 - [X] Messages
 - [X] Modeline
 - [X] Keymap support
-- [ ] Find/replace and modal/interactive commands.
-- [ ] Open non-utf8 text buffers and binary files in read only mode.
+- [~] Find/replace and modal/interactive commands.
+- [~] Open non-utf8 text buffers and binary files.
 
 TODO(jt): @Stream things:
 
 - [X] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
 - [X] OPEN_FILE starts in the directory of the currently open document
 - [X] OPEN_FILE, switch to buffer and close buffer get tab completions.
-- [ ] Selection in mini panel text buffer.
+- [X] Selection in mini panel text buffer.
 - [ ] Selection in modal interaction text buffer.
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
@@ -46,6 +46,8 @@ TODO(jt): @Stream things:
 - [X] Flash cursor with typing (needs tuning)
 - [X] Trail behind cursor (needs tuning)
 - [ ] When switching-to/closing documents, sort by most recent first.
+- [ ] Read-only mode for documents.
+
 
 TODO(jt): Fancy stuff to do:
 
@@ -64,7 +66,7 @@ TODO(jt): Fancy stuff to do:
 - [ ] Lister panels (dired, etc)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
-- [ ] Very nice text rendering (Slug?)
+- [ ] Very nice text rendering (kb_text_shape + Slug)
 - [ ] Git integration (via plugin?)
 - [ ] 4coder style floating annotations? (e.g. name of the function or if statement expresion after closing brace)
 - [ ] Customization and plugins
@@ -195,7 +197,6 @@ Document :: struct {
 
     kind: Kind;
     time_of_last_interaction: Apollo_Time;
-    // TODO(jt): Read-only flag.
 
     buffer: Text_Buffer;
 
@@ -2303,10 +2304,6 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, ac
 
     key_map := *modal_interaction.key_map;
 
-    // TODO(jt): Consider splitting this into two keymaps, one for basic modal navigation stuff, and
-    // the other for action specific things (like confirming a replace). We would initialize the
-    // shared keymap in init, and the other one... somewhere.
-
     key_map_add(key_map, "C-b",         .MOVE_LEFT);
     key_map_add(key_map, "C-f",         .MOVE_RIGHT);
     key_map_add(key_map, "<left>",      .MOVE_LEFT);
@@ -2375,8 +2372,9 @@ Search_And_Replace_Userdata :: struct {
 
 modal_interaction_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
     modal_interaction := *editor.modal_interaction;
-    arena := modal_interaction.userdata_arena;
     assert(modal_interaction.open);
+
+    arena := modal_interaction.userdata_arena;
 
     if #complete modal_interaction.action == {
         case .SEARCH_AND_REPLACE; {
