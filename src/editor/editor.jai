@@ -2562,10 +2562,8 @@ modal_interaction_advance_proc :: (editor: *Editor, platform: Platform, input: I
                             }
 
                             if document.buffer.binary_mode {
-                                // XXX: Test this on binary files...
                                 processed_chars += found_index + search_text.count;
                             } else {
-                                // TODO(jt): @Speed We already counted up to found_index above. Let's re-use that?
                                 processed_chars += count_utf8_chars(String.slice(line_text, 0, found_index + search_text.count));
                             }
                             advance(*line_text, found_index + search_text.count);
