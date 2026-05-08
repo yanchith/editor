@@ -40,6 +40,14 @@ string_ends_with_newline :: (s: string, binary: bool) -> newline_byte_length: u3
     return 0;
 }
 
+// XXX: Cleanup or explain
+index_of_string_nocase :: (haystack: string, needle: string) -> found: bool, found_index: s64 {
+    ProfileZone("index_of_string_nocase");
+    found_index, found := String.index_of_string_nocase(haystack, needle);
+
+    return found, found_index;
+}
+
 count_utf8_chars :: (bytes: [] u8) -> s64 {
     return inline count_utf8_chars(cast(string, bytes));
 }
