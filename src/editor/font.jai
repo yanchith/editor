@@ -187,15 +187,15 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame := false, binary := false) {
+font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, color: Vector4, is_new_frame := false, binary := false) {
     if binary {
-        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, is_new_frame, true);
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, color, is_new_frame, true);
     } else {
-        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, is_new_frame, false);
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, color, is_new_frame, false);
     }
 }
 
-_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, is_new_frame: bool, $binary: bool) {
+_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, color: Vector4, is_new_frame: bool, $binary: bool) {
     ProfileZone("font_layout_and_draw_text");
 
     if is_new_frame {
@@ -358,6 +358,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
             cast(f32, glyph_bitmap_height) / font.glyph_atlas_height_in_pixels,
         );
         rr.texture_id = font.texture_id;
+        rr.color = color;
 
         cursor_x += glyph_advance;
     }

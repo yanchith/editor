@@ -127,6 +127,7 @@ operator==     :: Math.operator==;
 #load "font.jai";
 #load "gap_buffer.jai";
 #load "text_buffer.jai";
+#load "color.jai";
 #load "hello.jai";
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
@@ -139,19 +140,16 @@ TEXTURE_ID_GLYPH_ATLAS: Texture_ID : 1;
 USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 
 // TODO(jt): Make the colors themeable. :Config
-CURSOR_COLOR:          Vector4 : { 0.50, 0.80, 0.60, 1.00 };
-ACTIVE_CURSOR_COLOR:   Vector4 : { 1.00, 0.60, 0.40, 1.00 };
-SELECTION_COLOR:       Vector4 : { 0.70, 0.80, 0.70, 0.35 };
-HIGHLIGHT_COLOR:       Vector4 : #run -> Vector4 {
-    c := CURSOR_COLOR;
-    c.w = 0.40;
-    return c;
-};
-ACTIVE_HIGHLIGHT_COLOR: Vector4 : { 1.00, 0.00, 0.00, 0.20 };
-LINE_COLOR:             Vector4 : { 0.00, 0.00, 0.00, 0.00 };
-MINI_PANEL_LINE_COLOR:  Vector4 : { 0.70, 0.70, 0.90, 0.12 };
-MODELINE_COLOR:         Vector4 : { 0.80, 0.80, 0.80, 1.00 };
-BACKGROUND_COLOR:       Vector4 : { 1.00, 1.00, 1.00, 1.00 };
+CURSOR_COLOR            :: #run srgb_to_linear(0x50ffa0ff);
+ACTIVE_CURSOR_COLOR     :: #run srgb_to_linear(0xffffffff);
+SELECTION_COLOR         :: #run -> Vector4 { c := CURSOR_COLOR; c.w = 0.10; return c; };
+HIGHLIGHT_COLOR         :: #run -> Vector4 { c := CURSOR_COLOR; c.w = 0.40; return c; };
+ACTIVE_HIGHLIGHT_COLOR  :: #run srgb_to_linear(0xff5050ff);
+LINE_COLOR              :: Vector4.{ 0, 0, 0, 0 };
+MINI_PANEL_LINE_COLOR   :: #run -> Vector4 { c := CURSOR_COLOR; c.w = 0.07; return c; };
+MODELINE_COLOR          :: #run srgb_to_linear(0x090909ff);
+TEXT_COLOR              :: #run srgb_to_linear(0xcdaa7dff);
+BACKGROUND_COLOR        :: #run srgb_to_linear(0x191919ff);
 
 MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable! :Config
 
@@ -898,6 +896,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         viewport_line1 := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_bytes.count - 1);
 
         //
+        // Clear background
+        //
+        draw_rect(*render_rects, 0, 0, window_w, window_h, BACKGROUND_COLOR);
+
+        //
         // Draw Highlights
         //
         for panel.highlights {
@@ -1097,7 +1100,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
             // to the left of the screen, but we don't have to emit render rects for it.
-            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, is_new_frame = true, binary = document.buffer.binary_mode);
+            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, TEXT_COLOR, is_new_frame = true, binary = document.buffer.binary_mode);
         }
 
         panel.flags = 0;
@@ -1120,14 +1123,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         percent_string := temp_right_pad(tprint("%\%", percent), 5);
 
         s := tprint("  % % (%,%)", temp_right_pad(document_name, 20), percent_string, cursor.y + 1, cursor.x);
-        _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, is_new_frame = false, binary = false);
+        _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, TEXT_COLOR, is_new_frame = false, binary = false);
     }
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
     if editor.mini_panel.open {
         background_h := (MINI_PANEL_LINES + 1) * cell_h;
         background_y := max(window_h - background_h, 0);
-        draw_rect(*render_rects, 0, background_y, window_w, window_h, { 0.96, 0.96, 0.96, 1.0 });
+        draw_rect(*render_rects, 0, background_y, window_w, window_h, BACKGROUND_COLOR);
 
         if editor.mini_panel.item_index == -1 {
             draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h, MINI_PANEL_LINE_COLOR);
@@ -1153,7 +1156,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         main_line := tprint("%%", action_text, line_view);
 
-        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, is_new_frame = false, binary = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, TEXT_COLOR, is_new_frame = false, binary = false);
 
         index0 := max(editor.mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
         index1 := min(index0 + MINI_PANEL_LINES, editor.mini_panel.items.count - 1);
@@ -1177,7 +1180,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, is_new_frame = false, binary = cast(bool, item.flags & .BINARY));
+            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, TEXT_COLOR, is_new_frame = false, binary = cast(bool, item.flags & .BINARY));
 
             it_index += 1;
         }
@@ -1196,14 +1199,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         main_line := tprint("%%", action_text, line_view);
 
-        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, modal_interaction_line_y }, is_new_frame = false, binary = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, modal_interaction_line_y }, TEXT_COLOR, is_new_frame = false, binary = false);
     } else {
         message_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
 
         if editor.messages.count && !editor.last_message_seen {
             message := editor.messages[editor.messages.count - 1];
-            _font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, is_new_frame = false, binary = false);
+            _font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, TEXT_COLOR, is_new_frame = false, binary = false);
         }
     }
 
