@@ -10,7 +10,22 @@ srgb_to_linear :: inline (srgb: u32) -> Vector4 {
     r := cast(*f32, *D3DX_SRGBTable[r_index]).*;
     g := cast(*f32, *D3DX_SRGBTable[g_index]).*;
     b := cast(*f32, *D3DX_SRGBTable[b_index]).*;
+
     a := cast(f32, cast,trunc(u8, srgb)) * R255;
+
+    return { r, g, b, a };
+}
+
+// TODO(jt): @Cleanup This is temporary, until our rendering is srgb aware, but until then, we just
+// do stuff in srgb space.
+__srgb :: inline (packed: u32) -> Vector4 {
+    R255: f32 : 1.0 / 255;
+
+    r := cast(f32, cast,trunc(u8, packed >> 24)) * R255;
+    g := cast(f32, cast,trunc(u8, packed >> 16)) * R255;
+    b := cast(f32, cast,trunc(u8, packed >>  8)) * R255;
+
+    a := cast(f32, cast,trunc(u8, packed)) * R255;
 
     return { r, g, b, a };
 }
