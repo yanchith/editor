@@ -1,6 +1,6 @@
 // Converts SRGB color packed in a uint to linear-space, zero-to-one RGB. Unlike the RGB channels
 // which have the gamma curve applied, alpha is just divided by 255.
-srgb_to_linear :: inline (srgb: u32) -> Vector4 {
+srgb_to_rgba :: (srgb: u32) -> Vector4 {
     R255: f32 : 1.0 / 255;
 
     r_index := cast,trunc(u8, srgb >> 24);
@@ -16,9 +16,198 @@ srgb_to_linear :: inline (srgb: u32) -> Vector4 {
     return { r, g, b, a };
 }
 
+// XXX: Debug saturation/brightness functions... they don't seem to work.
+
+saturate :: (rgba: Vector4, multiplier: f32) -> Vector4 {
+    hsv := rgb_to_hsv({ rgba.x, rgba.y, rgba.z });
+    hsv.y = clamp(hsv.y * multiplier, 0, 1);
+
+    rgb := hsv_to_rgb(hsv);
+
+    return { rgb.x, rgb.y, rgb.z, rgba.w };
+}
+
+saturate :: (rgb: Vector3, multiplier: f32) -> Vector4 {
+    hsv := rgb_to_hsv(rgb);
+    hsv.y = clamp(hsv.y * multiplier, 0, 1);
+
+    return hsv_to_rgb(hsv);
+}
+
+brighten :: (rgba: Vector4, multiplier: f32) -> Vector4 {
+    hsv := rgb_to_hsv({ rgba.x, rgba.y, rgba.z });
+    hsv.z = clamp(hsv.z * multiplier, 0, 1);
+
+    rgb := hsv_to_rgb(hsv);
+
+    return { rgb.x, rgb.y, rgb.z, rgba.w };
+}
+
+brighten :: (rgb: Vector3, multiplier: f32) -> Vector4 {
+    hsv := rgb_to_hsv(rgb);
+    hsv.z = clamp(hsv.z * multiplier, 0, 1);
+
+    return hsv_to_rgb(hsv);
+}
+
+/*
+XXX: Remove
+
+public static void ColorToHSV(Color color, out double hue, out double saturation, out double value)
+{
+    int max = Math.Max(color.R, Math.Max(color.G, color.B));
+    int min = Math.Min(color.R, Math.Min(color.G, color.B));
+
+    hue = color.GetHue();
+    saturation = (max == 0) ? 0 : 1d - (1d * min / max);
+    value = max / 255d;
+}
+
+public float GetHue()
+{
+    if (R == G && G == B)
+    {
+        return 0f;
+    }
+
+    float num = (float)(int)R / 255f;
+    float num2 = (float)(int)G / 255f;
+    float num3 = (float)(int)B / 255f;
+    float num4 = 0f;
+    float num5 = num;
+    float num6 = num;
+    if (num2 > num5)
+    {
+        num5 = num2;
+    }
+
+    if (num3 > num5)
+    {
+        num5 = num3;
+    }
+
+    if (num2 < num6)
+    {
+        num6 = num2;
+    }
+
+    if (num3 < num6)
+    {
+        num6 = num3;
+    }
+
+    float num7 = num5 - num6;
+    if (num == num5)
+    {
+        num4 = (num2 - num3) / num7;
+    }
+    else if (num2 == num5)
+    {
+        num4 = 2f + (num3 - num) / num7;
+    }
+    else if (num3 == num5)
+    {
+        num4 = 4f + (num - num2) / num7;
+    }
+
+    num4 *= 60f;
+    if (num4 < 0f)
+    {
+        num4 += 360f;
+    }
+
+    return num4;
+}
+
+*/
+
+rgb_to_hsv :: (rgb: Vector3) -> Vector3 {
+    r := rgb.x;
+    g := rgb.y;
+    b := rgb.z;
+
+    _max := max(r, g, b);
+    _min := min(r, g, b);
+
+    hue := 0.0;
+    // Hue is (a simplified take) from C# Color::GetHue.
+    // It is 0..360, which we maybe want to change to be 0..1.
+    if _min != _max {
+        d := _max - _min;
+        if r == _max {
+            hue = (g - r) / d;
+        } else if g == _max {
+            hue = 2 + (b - r) / d;
+        } else if b == _max {
+            hue = 4 + (r - g) / d;
+        }
+
+        hue *= 60.0;
+        if hue < 0.0 {
+            hue += 360.0;
+        }
+    }
+
+    saturation := ifx _max == 0.0 then 1.0 else 1.0 - (1.0 * _min / _max);
+
+    return { hue, saturation, _max };
+}
+
+/*
+XXX: Remove
+
+public static Color ColorFromHSV(double hue, double saturation, double value)
+{
+    int hi = Convert.ToInt32(Math.Floor(hue / 60)) % 6;
+    double f = hue / 60 - Math.Floor(hue / 60);
+
+    value = value * 255;
+    int v = Convert.ToInt32(value);
+    int p = Convert.ToInt32(value * (1 - saturation));
+    int q = Convert.ToInt32(value * (1 - f * saturation));
+    int t = Convert.ToInt32(value * (1 - (1 - f) * saturation));
+
+    if (hi == 0)
+        return Color.FromArgb(255, v, t, p);
+    else if (hi == 1)
+        return Color.FromArgb(255, q, v, p);
+    else if (hi == 2)
+        return Color.FromArgb(255, p, v, t);
+    else if (hi == 3)
+        return Color.FromArgb(255, p, q, v);
+    else if (hi == 4)
+        return Color.FromArgb(255, t, p, v);
+    else
+        return Color.FromArgb(255, v, p, q);
+}
+*/
+
+hsv_to_rgb :: (hsv: Vector3) -> Vector3 {
+    R60 :: 1.0 / 60.0;
+
+    hue        := hsv.x;
+    saturation := hsv.y;
+    value      := hsv.z;
+
+    hi := cast(s32, round(hue * R60)) % 6;
+    f  := hue * R60 - floor(hue * R60);
+
+    v := value;
+    p := value * (1 - saturation);
+    q := value * (1 - f * saturation);
+    t := value * (1 - (1 - f) * saturation);
+
+    if      hi == 0  return { v, t, p };
+    else if hi == 1  return { q, v, p };
+    else if hi == 2  return { p, v, t };
+    else if hi == 3  return { p, q, v };
+    else if hi == 4  return { t, p, v };
+    else             return { v, p, q };
+}
+
 // TODO(jt): @Cleanup This is temporary, until our rendering is srgb aware, but until then, we just
 // do stuff in srgb space.
-__srgb :: inline (packed: u32) -> Vector4 {
+__srgb :: (packed: u32) -> Vector4 {
     R255: f32 : 1.0 / 255;
 
     r := cast(f32, cast,trunc(u8, packed >> 24)) * R255;

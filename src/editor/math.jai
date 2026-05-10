@@ -400,6 +400,11 @@ irect_union_or_zero :: (rs: [] IRect) -> IRect {
 // Other useful stuff
 //
 
+round :: (x: f32) -> f32 {
+    result := floor(x + 0.5);
+    return result;
+}
+
 smoothstep :: (edge0: f32, edge1: f32, x: f32) -> f32 {
     t := clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);

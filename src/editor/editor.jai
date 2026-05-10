@@ -103,6 +103,7 @@ Math    :: #import "Math";
 Unicode :: #import "Unicode";
 
 Vector2        :: Math.Vector2;
+Vector3        :: Math.Vector3;
 Vector4        :: Math.Vector4;
 floor          :: Math.floor;
 ceil           :: Math.ceil;
@@ -142,11 +143,11 @@ USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 // TODO(jt): Make the colors themeable. :Config
 CURSOR_COLOR            :: #run __srgb(0x50ffa0ff);
 ACTIVE_CURSOR_COLOR     :: #run __srgb(0xffffffff);
-SELECTION_COLOR         :: #run -> Vector4 { c := CURSOR_COLOR; c.w = 0.10; return c; };
-HIGHLIGHT_COLOR         :: #run -> Vector4 { c := CURSOR_COLOR; c.w = 0.40; return c; };
+SELECTION_COLOR         :: #run -> Vector4 { c := brighten(CURSOR_COLOR, 1.50); c.w = 0.10; return c; };
+HIGHLIGHT_COLOR         :: #run -> Vector4 { c := brighten(CURSOR_COLOR, 1.25); c.w = 0.40; return c; };
 ACTIVE_HIGHLIGHT_COLOR  :: #run __srgb(0xff5050ff);
 LINE_COLOR              :: Vector4.{ 0, 0, 0, 0 };
-MINI_PANEL_LINE_COLOR   :: #run -> Vector4 { c := CURSOR_COLOR; c.w = 0.07; return c; };
+MINI_PANEL_LINE_COLOR   :: #run -> Vector4 { c := brighten(CURSOR_COLOR, 1.50); c.w = 0.07; return c; };
 MODELINE_COLOR          :: #run __srgb(0x090909ff);
 TEXT_COLOR              :: #run __srgb(0xcdaa7dff);
 BACKGROUND_COLOR        :: #run __srgb(0x191919ff);
