@@ -1,6 +1,6 @@
-// Converts SRGB color packed in a uint to linear-space, zero-to-one RGB. Unlike the RGB channels
-// which have the gamma curve applied, alpha is just divided by 255.
-srgb_to_rgba :: (srgb: u32) -> Vector4 {
+// Decodes SRGB color packed in an uint to linear-space, zero-to-one RGBA. The decoding only happens
+// for the RGB channels, while alpha is remapped to zero-to-one range.
+decode_srgb :: (srgb: u32) -> Vector4 {
     R255: f32 : 1.0 / 255;
 
     r_index := cast,trunc(u8, srgb >> 24);
@@ -16,9 +16,23 @@ srgb_to_rgba :: (srgb: u32) -> Vector4 {
     return { r, g, b, a };
 }
 
+// Like decode_srgb, but doesn't decode. It exists to support sRGB-space rendering pipelines
+// (like Simp). Maybe we can remove this eventually?
+unpack_srgb :: (packed: u32) -> Vector4 {
+    R255: f32 : 1.0 / 255;
+
+    r := cast(f32, cast,trunc(u8, packed >> 24)) * R255;
+    g := cast(f32, cast,trunc(u8, packed >> 16)) * R255;
+    b := cast(f32, cast,trunc(u8, packed >>  8)) * R255;
+
+    a := cast(f32, cast,trunc(u8, packed)) * R255;
+
+    return { r, g, b, a };
+}
+
 // XXX: Debug saturation/brightness functions... they don't seem to work.
 
-saturate :: (rgba: Vector4, multiplier: f32) -> Vector4 {
+adjust_saturation :: (rgba: Vector4, multiplier: f32) -> Vector4 {
     hsv := rgb_to_hsv({ rgba.x, rgba.y, rgba.z });
     hsv.y = clamp(hsv.y * multiplier, 0, 1);
 
@@ -27,14 +41,14 @@ saturate :: (rgba: Vector4, multiplier: f32) -> Vector4 {
     return { rgb.x, rgb.y, rgb.z, rgba.w };
 }
 
-saturate :: (rgb: Vector3, multiplier: f32) -> Vector4 {
+adjust_saturation :: (rgb: Vector3, multiplier: f32) -> Vector4 {
     hsv := rgb_to_hsv(rgb);
     hsv.y = clamp(hsv.y * multiplier, 0, 1);
 
     return hsv_to_rgb(hsv);
 }
 
-brighten :: (rgba: Vector4, multiplier: f32) -> Vector4 {
+adjust_value :: (rgba: Vector4, multiplier: f32) -> Vector4 {
     hsv := rgb_to_hsv({ rgba.x, rgba.y, rgba.z });
     hsv.z = clamp(hsv.z * multiplier, 0, 1);
 
@@ -43,7 +57,7 @@ brighten :: (rgba: Vector4, multiplier: f32) -> Vector4 {
     return { rgb.x, rgb.y, rgb.z, rgba.w };
 }
 
-brighten :: (rgb: Vector3, multiplier: f32) -> Vector4 {
+adjust_value :: (rgb: Vector3, multiplier: f32) -> Vector4 {
     hsv := rgb_to_hsv(rgb);
     hsv.z = clamp(hsv.z * multiplier, 0, 1);
 
@@ -203,20 +217,6 @@ hsv_to_rgb :: (hsv: Vector3) -> Vector3 {
     else if hi == 3  return { p, q, v };
     else if hi == 4  return { t, p, v };
     else             return { v, p, q };
-}
-
-// TODO(jt): @Cleanup This is temporary, until our rendering is srgb aware, but until then, we just
-// do stuff in srgb space.
-__srgb :: (packed: u32) -> Vector4 {
-    R255: f32 : 1.0 / 255;
-
-    r := cast(f32, cast,trunc(u8, packed >> 24)) * R255;
-    g := cast(f32, cast,trunc(u8, packed >> 16)) * R255;
-    b := cast(f32, cast,trunc(u8, packed >>  8)) * R255;
-
-    a := cast(f32, cast,trunc(u8, packed)) * R255;
-
-    return { r, g, b, a };
 }
 
 // TODO(jt): HSV lighten, darken, saturate, desaturate
