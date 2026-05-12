@@ -584,6 +584,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
+    font_new_frame(*editor.font);
+
     // Currently, there must always be at least one panel. We can relax this in the future.
     active_panel: *Panel = get_active_panel(editor);
     assert(active_panel != null);
@@ -1108,7 +1110,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
             // to the left of the screen, but we don't have to emit render rects for it.
-            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, TEXT_COLOR, is_new_frame = true, binary = document.buffer.binary_mode);
+            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, TEXT_COLOR, binary = document.buffer.binary_mode);
         }
 
         panel.flags = 0;
@@ -1131,7 +1133,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         percent_string := temp_right_pad(tprint("%\%", percent), 5);
 
         s := tprint("  % % (%,%)", temp_right_pad(document_name, 20), percent_string, cursor.y + 1, cursor.x);
-        _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, TEXT_COLOR, is_new_frame = false, binary = false);
+        _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, TEXT_COLOR, binary = false);
     }
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
@@ -1164,7 +1166,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         main_line := tprint("%%", action_text, line_view);
 
-        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, TEXT_COLOR, is_new_frame = false, binary = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, TEXT_COLOR, binary = false);
 
         index0 := max(editor.mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
         index1 := min(index0 + MINI_PANEL_LINES, editor.mini_panel.items.count - 1);
@@ -1188,7 +1190,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, TEXT_COLOR, is_new_frame = false, binary = cast(bool, item.flags & .BINARY));
+            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, TEXT_COLOR, binary = cast(bool, item.flags & .BINARY));
 
             it_index += 1;
         }
@@ -1207,14 +1209,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         main_line := tprint("%%", action_text, line_view);
 
-        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, modal_interaction_line_y }, TEXT_COLOR, is_new_frame = false, binary = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, modal_interaction_line_y }, TEXT_COLOR, binary = false);
     } else {
         message_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
 
         if editor.messages.count && !editor.last_message_seen {
             message := editor.messages[editor.messages.count - 1];
-            _font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, TEXT_COLOR, is_new_frame = false, binary = false);
+            _font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, TEXT_COLOR, binary = false);
         }
     }
 
