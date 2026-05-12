@@ -48,9 +48,6 @@ Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY);
 
 IRect :: Editor.IRect;
 
-// TODO(jt): @Cleanup We borrow this file from editor. But maybe this file shouldn't exist at all.
-#load "editor/string.jai";
-
 // The slow frame is more than 16.66, because it includes waiting for V-sync. Maybe we can do
 // something smart to exclude that once we switch away from OpenGL.
 SLOW_FRAME_THRESHOLD_MILLIS :: 18;
@@ -659,4 +656,32 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
     }
 
     write_strings(time_prefix, log_level_prefix, source_prefix, message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
+}
+
+// These are copypaste from src/string.jai, but it isn't worth it #load-ing all of that code just for these two.
+
+temp_left_pad :: (s: string, length: s64) -> string {
+    builder: String_Builder;
+    builder.allocator = temp;
+
+    for s.count..length - 1 {
+        append(*builder, " ");
+    }
+
+    append(*builder, s);
+
+    return builder_to_string(*builder,, temp);
+}
+
+temp_right_pad :: (s: string, length: s64) -> string {
+    builder: String_Builder;
+    builder.allocator = temp;
+
+    append(*builder, s);
+
+    for s.count..length - 1 {
+        append(*builder, " ");
+    }
+
+    return builder_to_string(*builder,, temp);
 }
