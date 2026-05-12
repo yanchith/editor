@@ -334,11 +334,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     } else {
         codepoint_advance: s64 = 1;
         if !buffer.binary_mode {
-            codepoint_advance = clamp(1 + Unicode.trailingBytesForUTF8[bytes[0]], 1, 4);
-            #if SANITY {
-                _, codepoint_advance_check := find_next_utf8_char_boundary(bytes, 0);
-                assert(codepoint_advance == codepoint_advance_check);
-            }
+            _, codepoint_advance = find_next_utf8_char_boundary(bytes, 0);
         }
 
         if codepoint_advance {
@@ -439,10 +435,6 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
         codepoint_advance: s64 = 1;
         if !buffer.binary_mode {
             _, codepoint_advance = find_previous_utf8_char_boundary(bytes, bytes.count);
-            #if SANITY {
-                codepoint_advance_check := clamp(1 + Unicode.trailingBytesForUTF8[bytes[bytes.count - codepoint_advance]], 1, 4);
-                assert(codepoint_advance == codepoint_advance_check);
-            }
         }
 
         if codepoint_advance {
@@ -1390,10 +1382,7 @@ assert_valid :: (buffer: Text_Buffer) {
 
                     advance(*view, newline_advance);
                 } else {
-                    codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[view[0]], 1, 4);
-
-                    _, codepoint_advance_check := find_next_utf8_char_boundary(view, 0);
-                    assert(codepoint_advance == codepoint_advance_check);
+                    _, codepoint_advance := find_next_utf8_char_boundary(view, 0);
 
                     line_chars[line_chars.count - 1] += 1;
                     line_bytes[line_bytes.count - 1] += codepoint_advance;
@@ -1547,7 +1536,7 @@ update_index_for_insert :: (buffer: *Text_Buffer, _text: string) {
                     return;
                 }
 
-                _, codepoint_advance_check := find_next_utf8_char_boundary(text, 0);
+                _, codepoint_advance_check := find_next_utf8_char_boundary(text, 0, sanity = false);
                 if codepoint_advance != codepoint_advance_check {
                     text_buffer_switch_to_binary_mode(buffer);
                     return;
@@ -1598,11 +1587,7 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, _text: string, deletin
         } else {
             codepoint_advance: s64 = 1;
             if !buffer.binary_mode {
-                codepoint_advance = clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
-                #if SANITY {
-                    _, codepoint_advance_check := find_next_utf8_char_boundary(text, 0);
-                    assert(codepoint_advance == codepoint_advance_check);
-                }
+                _, codepoint_advance = find_next_utf8_char_boundary(text, 0);
             }
 
             buffer.line_chars[buffer.cursor0.y] -= 1;
@@ -1649,10 +1634,6 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, _text: string) {
             codepoint_advance: s64 = 1;
             if !buffer.binary_mode {
                 _, codepoint_advance = find_previous_utf8_char_boundary(text, text.count);
-                #if SANITY {
-                    codepoint_advance_check := clamp(1 + Unicode.trailingBytesForUTF8[text[text.count - codepoint_advance]], 1, 4);
-                    assert(codepoint_advance == codepoint_advance_check);
-                }
             }
 
             if codepoint_advance {
