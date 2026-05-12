@@ -8,9 +8,10 @@
 //
 // Double vectors
 //
-// We use double vectors as a hack to have more precision for 100MB+ text buffers for stuff that is
-// not mapped into the screen's coordinate system. We should maybe eventually switch to something
-// even more robust, like s64 + f32 offset, or perhaps 58:6 fixed point.
+// We use double vectors to have enough precision for 100MB+ text buffers for stuff that is not
+// mapped into the screen's coordinate system. We could eventually switch to something even more
+// robust, like s64 + f32 offset, or 58:6 fixed point, but doubles are more than enough for
+// many-gigabyte file sizes.
 //
 // :FloatPrecision
 //
