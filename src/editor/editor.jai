@@ -249,11 +249,11 @@ Document :: struct {
 }
 
 Panel :: struct {
+    // :FloatPrecision
+    //
     // Scroll vectors are f64, because buffers can be large and we actually ran into precision
     // issues with f32 vectors. Doubles suffice for now (verified up to 4GB of prose), but maybe we
     // should do our own numeric type eventually (either 58:6 fixed point or maybe s64 + f32 offset)?
-    //
-    // :FloatPrecision
     scroll_source: DVector2;
     scroll_target: DVector2;
     scroll_time_start: Apollo_Time;
@@ -663,9 +663,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
+    // :FloatPrecision
+    //
     // cell_w and cell_h are 32-bit and that's perfectly reasonable for them, but some text
     // documents are big. Beware multiplying cell_W and cell_h with integers (such as line count),
-    // as that autocasts the integers to f32, but we want to manually cast them to f64. See :FloatPrecision
+    // as that autocasts the integers to f32, but we want to manually cast them to f64.
+    //
     //
     // TODO(jt): cell_w is incorrect in variable-spaced fonts. It should be the width of the current
     // character (of width of a space, if we are pointing past line content).
