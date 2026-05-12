@@ -187,25 +187,28 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, color: Vector4, is_new_frame := false, binary := false) {
+// Tell the glyph cache it can safely evict stuff from last frame. If you forget to call this, the
+// logged error will still most likely be a false positive, depending on the font height and the
+// size of the atlas texture.
+font_new_frame :: (font: *Font) {
+    #no_aoc {
+        font.glyph_cache_stamp += 1;
+    }
+
+    font.glyph_cache_hits = 0;
+    font.glyph_cache_misses = 0;
+}
+
+font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, color: Vector4, binary: bool) {
     if binary {
-        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, color, is_new_frame, true);
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, color, true);
     } else {
-        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, color, is_new_frame, false);
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, color, false);
     }
 }
 
-_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, color: Vector4, is_new_frame: bool, $binary: bool) {
+_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, color: Vector4, $binary: bool) {
     ProfileZone("font_layout_and_draw_text");
-
-    if is_new_frame {
-        #no_aoc {
-            font.glyph_cache_stamp += 1;
-        }
-
-        font.glyph_cache_hits = 0;
-        font.glyph_cache_misses = 0;
-    }
 
     // Cursors are in 26:6 pixels (64-bit, because on Unix, FT_Pos is 64-bit even if they only use 32 bits).
     cursor_x: s64 = 0;
@@ -262,7 +265,6 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
             // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
             glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
             glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
-
 
             move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
             sanity_assert(font.glyph_entries_tail == entry_index);
@@ -364,7 +366,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
     }
 }
 
-font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, binary := false) -> f64 {
+font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, binary: bool) -> f64 {
     if binary {
         return _font_compute_position_on_line(font, line_text, character_index, true);
     } else {
@@ -405,7 +407,7 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
     return scaled_advance;
 }
 
-font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, binary := false) -> s64 {
+font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, binary: bool) -> s64 {
     if binary {
         return _font_compute_character_index_on_line(font, line_text, x, true);
     } else {
