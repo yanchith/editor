@@ -107,6 +107,7 @@ Vector3        :: Math.Vector3;
 Vector4        :: Math.Vector4;
 floor          :: Math.floor;
 ceil           :: Math.ceil;
+fmod_cycling   :: Math.fmod_cycling;
 sqrt           :: Math.sqrt;
 lerp           :: Math.lerp;
 length         :: Math.length;
@@ -143,11 +144,11 @@ USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 // TODO(jt): Make the colors themeable. :Config
 CURSOR_COLOR            :: #run unpack_srgb(0x50ffa0ff);
 ACTIVE_CURSOR_COLOR     :: #run unpack_srgb(0xffffffff);
-SELECTION_COLOR         :: #run -> Vector4 { c := adjust_value(CURSOR_COLOR, 1.50); c.w = 0.10; return c; };
-HIGHLIGHT_COLOR         :: #run -> Vector4 { c := adjust_value(CURSOR_COLOR, 1.25); c.w = 0.40; return c; };
-ACTIVE_HIGHLIGHT_COLOR  :: #run unpack_srgb(0xff5050ff);
+SELECTION_COLOR         :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
+HIGHLIGHT_COLOR         :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.4; return c; };
+ACTIVE_HIGHLIGHT_COLOR  :: #run unpack_srgb(0xd05050ff);
 LINE_COLOR              :: Vector4.{ 0, 0, 0, 0 };
-MINI_PANEL_LINE_COLOR   :: #run -> Vector4 { c := adjust_value(CURSOR_COLOR, 1.50); c.w = 0.07; return c; };
+MINI_PANEL_LINE_COLOR   :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
 MODELINE_COLOR          :: #run unpack_srgb(0x090909ff);
 TEXT_COLOR              :: #run unpack_srgb(0xcdaa7dff);
 BACKGROUND_COLOR        :: #run unpack_srgb(0x191919ff);
@@ -1240,12 +1241,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 {
                     r := rect_from_point_and_size(0, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_value(color, 0.25));
+                    draw_rect(*render_rects, r, adjust_value(color, 1.0 / 1.50));
                 }
 
                 {
                     r := rect_from_point_and_size(100, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_value(color, 0.5));
+                    draw_rect(*render_rects, r, adjust_value(color, 1.0 / 1.25));
                 }
 
                 {
@@ -1255,38 +1256,37 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 {
                     r := rect_from_point_and_size(300, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_value(color, 2.0));
+                    draw_rect(*render_rects, r, adjust_value(color, 1.25));
                 }
 
                 {
                     r := rect_from_point_and_size(400, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_value(color, 4.0));
-                }
-
-
-                {
-                    r := rect_from_point_and_size(600, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_saturation(color, 0.25));
+                    draw_rect(*render_rects, r, adjust_value(color, 1.50));
                 }
 
                 {
                     r := rect_from_point_and_size(700, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_saturation(color, 0.5));
+                    draw_rect(*render_rects, r, adjust_saturation(color, 1.0 / 1.50));
                 }
 
                 {
                     r := rect_from_point_and_size(800, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, color);
+                    draw_rect(*render_rects, r, adjust_saturation(color, 1.0 / 1.25));
                 }
 
                 {
                     r := rect_from_point_and_size(900, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_saturation(color, 2.0));
+                    draw_rect(*render_rects, r, color);
                 }
 
                 {
                     r := rect_from_point_and_size(1000, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_saturation(color, 4.0));
+                    draw_rect(*render_rects, r, adjust_saturation(color, 1.25));
+                }
+
+                {
+                    r := rect_from_point_and_size(1100, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, adjust_saturation(color, 1.50));
                 }
             }
         }
@@ -2965,8 +2965,22 @@ setup_cursor_flash_interpolation :: (document: *Document, time: Apollo_Time, sou
     document.cursor_flash = source;
 }
 
+draw_rect :: (render_rects: *[..] Render_Rect, x0: f32, y0: f32, x1: f32, y1: f32, _color: Vector3 = { 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
+    color: Vector4;
+    color.xyz = _color;
+    color.w   = 1.0;
+    inline draw_rect(render_rects, { x0, y0, x1, y1 }, color, texture);
+}
+
 draw_rect :: (render_rects: *[..] Render_Rect, x0: f32, y0: f32, x1: f32, y1: f32, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
     inline draw_rect(render_rects, { x0, y0, x1, y1 }, color, texture);
+}
+
+draw_rect :: (render_rects: *[..] Render_Rect, rect: Rect, _color: Vector3 = { 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
+    color: Vector4;
+    color.xyz = _color;
+    color.w   = 1.0;
+    inline draw_rect(render_rects, rect, color, texture);
 }
 
 draw_rect :: (render_rects: *[..] Render_Rect, rect: Rect, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
