@@ -30,7 +30,23 @@ unpack_srgb :: (packed: u32) -> Vector4 {
     return { r, g, b, a };
 }
 
-// XXX: Debug saturation/brightness functions... they don't seem to work.
+adjust_saturation_and_value :: (rgba: Vector4, saturation_multiplier: f32, value_multiplier: f32) -> Vector4 {
+    hsv := rgb_to_hsv({ rgba.x, rgba.y, rgba.z });
+    hsv.y = clamp(hsv.y * saturation_multiplier, 0, 1);
+    hsv.z = clamp(hsv.z * value_multiplier, 0, 1);
+
+    rgb := hsv_to_rgb(hsv);
+
+    return { rgb.x, rgb.y, rgb.z, rgba.w };
+}
+
+adjust_saturation_and_value :: (rgba: Vector3, saturation_multiplier: f32, value_multiplier: f32) -> Vector3 {
+    hsv := rgb_to_hsv({ rgba.x, rgba.y, rgba.z });
+    hsv.y = clamp(hsv.y * saturation_multiplier, 0, 1);
+    hsv.z = clamp(hsv.z * value_multiplier, 0, 1);
+
+    return hsv_to_rgb(hsv);
+}
 
 adjust_saturation :: (rgba: Vector4, multiplier: f32) -> Vector4 {
     hsv := rgb_to_hsv({ rgba.x, rgba.y, rgba.z });
@@ -64,147 +80,51 @@ adjust_value :: (rgb: Vector3, multiplier: f32) -> Vector4 {
     return hsv_to_rgb(hsv);
 }
 
-/*
-XXX: Remove
-
-public static void ColorToHSV(Color color, out double hue, out double saturation, out double value)
-{
-    int max = Math.Max(color.R, Math.Max(color.G, color.B));
-    int min = Math.Min(color.R, Math.Min(color.G, color.B));
-
-    hue = color.GetHue();
-    saturation = (max == 0) ? 0 : 1d - (1d * min / max);
-    value = max / 255d;
-}
-
-public float GetHue()
-{
-    if (R == G && G == B)
-    {
-        return 0f;
-    }
-
-    float num = (float)(int)R / 255f;
-    float num2 = (float)(int)G / 255f;
-    float num3 = (float)(int)B / 255f;
-    float num4 = 0f;
-    float num5 = num;
-    float num6 = num;
-    if (num2 > num5)
-    {
-        num5 = num2;
-    }
-
-    if (num3 > num5)
-    {
-        num5 = num3;
-    }
-
-    if (num2 < num6)
-    {
-        num6 = num2;
-    }
-
-    if (num3 < num6)
-    {
-        num6 = num3;
-    }
-
-    float num7 = num5 - num6;
-    if (num == num5)
-    {
-        num4 = (num2 - num3) / num7;
-    }
-    else if (num2 == num5)
-    {
-        num4 = 2f + (num3 - num) / num7;
-    }
-    else if (num3 == num5)
-    {
-        num4 = 4f + (num - num2) / num7;
-    }
-
-    num4 *= 60f;
-    if (num4 < 0f)
-    {
-        num4 += 360f;
-    }
-
-    return num4;
-}
-
-*/
-
+// Takes RGB color (where each channel is [0, 1]) and produces HSV color (where hue, saturation and
+// value are [0, 1]). Hue is in circle parameter space instead of degrees.
 rgb_to_hsv :: (rgb: Vector3) -> Vector3 {
-    r := rgb.x;
-    g := rgb.y;
-    b := rgb.z;
+    R6: f32 : 1.0 / 6.0;
 
-    _max := max(r, g, b);
-    _min := min(r, g, b);
+    // TODO(jt): log_error out of bounds in sanity builds?
+    r := clamp(rgb.x, 0, 1);
+    g := clamp(rgb.y, 0, 1);
+    b := clamp(rgb.z, 0, 1);
 
-    hue := 0.0;
-    // Hue is (a simplified take) from C# Color::GetHue.
-    // It is 0..360, which we maybe want to change to be 0..1.
-    if _min != _max {
-        d := _max - _min;
-        if r == _max {
-            hue = (g - r) / d;
-        } else if g == _max {
-            hue = 2 + (b - r) / d;
-        } else if b == _max {
-            hue = 4 + (r - g) / d;
+    min_channel := min(r, g, b);
+    max_channel := max(r, g, b);
+
+    hue        := 0.0;
+    saturation := 0.0;
+    if min_channel != max_channel {
+        distance := max_channel - min_channel;
+
+        if r == max_channel {
+            hue = 0 + (g - b) / distance;
+        } else if g == max_channel {
+            hue = 2 + (b - r) / distance;
+        } else if b == max_channel {
+            hue = 4 + (r - g) / distance;
         }
 
-        hue *= 60.0;
-        if hue < 0.0 {
-            hue += 360.0;
-        }
+        hue *= R6;                     // Remap from [0, 6] to [0, 1]
+        hue = fmod_cycling(hue, 1.0);  // Wrap
+
+        saturation = distance / max_channel; // max_channel is not zero, as we clamp all channels and compare min/max.
     }
 
-    saturation := ifx _max == 0.0 then 1.0 else 1.0 - (1.0 * _min / _max);
-
-    return { hue, saturation, _max };
+    return { hue, saturation, max_channel };
 }
 
-/*
-XXX: Remove
-
-public static Color ColorFromHSV(double hue, double saturation, double value)
-{
-    int hi = Convert.ToInt32(Math.Floor(hue / 60)) % 6;
-    double f = hue / 60 - Math.Floor(hue / 60);
-
-    value = value * 255;
-    int v = Convert.ToInt32(value);
-    int p = Convert.ToInt32(value * (1 - saturation));
-    int q = Convert.ToInt32(value * (1 - f * saturation));
-    int t = Convert.ToInt32(value * (1 - (1 - f) * saturation));
-
-    if (hi == 0)
-        return Color.FromArgb(255, v, t, p);
-    else if (hi == 1)
-        return Color.FromArgb(255, q, v, p);
-    else if (hi == 2)
-        return Color.FromArgb(255, p, v, t);
-    else if (hi == 3)
-        return Color.FromArgb(255, p, q, v);
-    else if (hi == 4)
-        return Color.FromArgb(255, t, p, v);
-    else
-        return Color.FromArgb(255, v, p, q);
-}
-*/
-
+// Takes HSV color (where hue, saturation and value are all [0, 1]) and produces an RGB color (where
+// each channel is [0, 1]). Hue is in circle parameter space instead of degrees.
 hsv_to_rgb :: (hsv: Vector3) -> Vector3 {
-    R60 :: 1.0 / 60.0;
+    // TODO(jt): log_error out of bounds in sanity builds?
+    hue        := clamp(hsv.x, 0, 1);
+    saturation := clamp(hsv.y, 0, 1);
+    value      := clamp(hsv.z, 0, 1);
 
-    hue        := hsv.x;
-    saturation := hsv.y;
-    value      := hsv.z;
-
-    hi := cast(s32, round(hue * R60)) % 6;
-    f  := hue * R60 - floor(hue * R60);
+    hi := cast(s32, round(hue * 6)) % 6;
+    f  := hue * 6 - floor(hue * 6);
 
     v := value;
     p := value * (1 - saturation);
@@ -218,8 +138,6 @@ hsv_to_rgb :: (hsv: Vector3) -> Vector3 {
     else if hi == 4  return { t, p, v };
     else             return { v, p, q };
 }
-
-// TODO(jt): HSV lighten, darken, saturate, desaturate
 
 #scope_file
 
