@@ -2,8 +2,7 @@
 
 TODO(jt): @Bugs
 
-- [ ] In file_examples/pdb_small.bin select the first 3 lines, undo, redo -> crash.
-- [ ] In binary files, we still get SOURCE_ILLEGAL
+- In file_examples/pdb_small.bin select the first 3 lines, undo, redo -> crash.
 
 TODO(jt): Early stuff to do:
 
@@ -1156,9 +1155,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         line_view := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
 
-        line_x    := cast(f32, font_compute_position_on_line(editor.font, action_text, action_text.count));
-        cursor0_x := line_x + cast(f32, font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor0.x));
-        cursor1_x := line_x + cast(f32, font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor1.x));
+        line_x    := cast(f32, _font_compute_position_on_line(editor.font, action_text, action_text.count, binary = false));
+        cursor0_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor0.x, binary = false));
+        cursor1_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor1.x, binary = false));
 
         draw_rect(*render_rects, cursor0_x, background_y, cursor1_x, background_y + cell_h, SELECTION_COLOR);
         draw_rect(*render_rects, cursor0_x, background_y, cursor0_x + cell_w, background_y + cell_h, CURSOR_COLOR);
@@ -1201,8 +1200,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         line_view := text_buffer_make_view_for_line(editor.modal_interaction.buffer, 0,, temp);
 
-        line_x   := cast(f32, font_compute_position_on_line(editor.font, action_text, action_text.count));
-        cursor_x := line_x + font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.buffer.cursor0.x);
+        line_x   := cast(f32, _font_compute_position_on_line(editor.font, action_text, action_text.count, binary = false));
+        cursor_x := line_x + _font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.buffer.cursor0.x, binary = false);
 
         draw_rect(*render_rects, rect_from_point_and_size(cast(f32, cursor_x), modal_interaction_line_y, cell_w, cell_h), CURSOR_COLOR);
 
@@ -2917,7 +2916,7 @@ get_cursor_position :: (document: Document, font: Font) -> cursor_position: DVec
     position.y = cast(f64, y) * font.line_height_in_pixels;
 
     line_end   := text_buffer_get_end_cursor_for_line(document.buffer, y);
-    line_end_x := font_compute_position_on_line(font, line_view, line_end.x);
+    line_end_x := font_compute_position_on_line(font, line_view, line_end.x, binary = document.buffer.binary_mode);
 
     return position, line_end_x;
 }
