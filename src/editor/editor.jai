@@ -188,7 +188,13 @@ Editor :: struct {
     messages: [..] string;
     last_message_seen: bool;
 
-    dev_show_atlas_texture: bool;
+    dev_view: Dev_View;
+
+    Dev_View :: enum u8 {
+        NONE;
+        ATLAS_TEXTURE;
+        PALETTE;
+    };
 }
 
 Document :: struct {
@@ -598,7 +604,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.key == {
-                        case .F1;  editor.dev_show_atlas_texture = !editor.dev_show_atlas_texture; handled = true;
+                        case .F1;  toggle_dev_view(*editor.dev_view, .ATLAS_TEXTURE); handled = true;
+                        case .F2;  toggle_dev_view(*editor.dev_view, .PALETTE); handled = true;
                     }
                 }
 
@@ -1211,13 +1218,78 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    if editor.dev_show_atlas_texture {
-        array_reset_keeping_memory(*render_rects);
+    if editor.dev_view == {
+        case .NONE; // Nothing
+        case .ATLAS_TEXTURE; {
+            array_reset_keeping_memory(*render_rects);
 
-        w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
-        h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
-        draw_rect(*render_rects, 0, 0, w, h, { 0.89, 0.89, 0.95, 1 });
-        draw_rect(*render_rects, 0, 0, w, h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
+            w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
+            h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
+            draw_rect(*render_rects, 0, 0, w, h, { 0.89, 0.89, 0.95, 1 });
+            draw_rect(*render_rects, 0, 0, w, h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
+        }
+        case .PALETTE; {
+            array_reset_keeping_memory(*render_rects);
+
+            for 0..255 {
+                WIDTH  :: 100.0;
+                HEIGHT :: 4.0;
+
+                y := HEIGHT * it;
+                color: Vector4 = { cast(f32, it) / 255.0, 0.0, 0.0, 1.0 };
+
+                {
+                    r := rect_from_point_and_size(0, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, adjust_value(color, 0.25));
+                }
+
+                {
+                    r := rect_from_point_and_size(100, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, adjust_value(color, 0.5));
+                }
+
+                {
+                    r := rect_from_point_and_size(200, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, color);
+                }
+
+                {
+                    r := rect_from_point_and_size(300, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, adjust_value(color, 2.0));
+                }
+
+                {
+                    r := rect_from_point_and_size(400, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, adjust_value(color, 4.0));
+                }
+
+
+                {
+                    r := rect_from_point_and_size(600, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, adjust_saturation(color, 0.25));
+                }
+
+                {
+                    r := rect_from_point_and_size(700, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, adjust_saturation(color, 0.5));
+                }
+
+                {
+                    r := rect_from_point_and_size(800, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, color);
+                }
+
+                {
+                    r := rect_from_point_and_size(900, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, adjust_saturation(color, 2.0));
+                }
+
+                {
+                    r := rect_from_point_and_size(1000, y, WIDTH, HEIGHT);
+                    draw_rect(*render_rects, r, adjust_saturation(color, 4.0));
+                }
+            }
+        }
     }
 
     update_region := irect_union_or_zero(update_regions);
@@ -2923,4 +2995,12 @@ make_arena :: (platform: Platform, size: Arena_Size) -> *Arena {
     arena := arena_allocate(procs, reserve_size = reserve_size);
 
     return arena;
+}
+
+toggle_dev_view :: (dev_view: *Editor.Dev_View, value: Editor.Dev_View) {
+    if dev_view.* == value {
+        dev_view.* = .NONE;
+    } else {
+        dev_view.* = value;
+    }
 }
