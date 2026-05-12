@@ -85,7 +85,7 @@ find_next_utf8_char_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, 
     return found_index, scanned_count;
 }
 
-find_next_utf8_char_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: u32 {
+find_next_utf8_char_boundary :: (text: string, index: s64, $sanity: bool = true) -> found_index: s64, scanned_count: u32 {
     assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
     if index == text.count {
         return text.count, 0;
@@ -102,6 +102,13 @@ find_next_utf8_char_boundary :: (text: string, index: s64) -> found_index: s64, 
 
     scanned_count := next_index - index;
     assert(scanned_count <= 4); // If we need to run this on malformed utf8, we should not assert.
+
+    // TODO(jt): The $sanity parameter is here to suppress sanity-checks for when we are detecting
+    // binary files. We should probably do a better detection that's completely separate.
+    #if sanity {
+        // TODO(jt): @Speed Should we be table-driving as default and using the other method for sanity-checking?
+        sanity_assert(next_index == 1 + Unicode.trailingBytesForUTF8[text[index]]);
+    }
 
     return next_index, cast(u32, scanned_count);
 }
@@ -127,6 +134,9 @@ find_previous_utf8_char_boundary :: (text: string, index: s64) -> found_index: s
 
     scanned_count := index - prev_index;
     assert(scanned_count <= 4); // If we need to run this on malformed utf8, we should not assert.
+
+    // TODO(jt): @Speed Should we be table-driving as default and using the other method for sanity-checking?
+    sanity_assert(index == 1 + Unicode.trailingBytesForUTF8[text[prev_index]]);
 
     return prev_index, cast(u32, scanned_count);
 }
