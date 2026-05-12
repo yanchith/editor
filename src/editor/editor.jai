@@ -639,7 +639,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         delta: s32;
         if input.mouse_wheel_delta > 0 then delta = 1;
         if input.mouse_wheel_delta < 0 then delta = -1;
-        editor.font_size = max(editor.font_size + delta, 4);
+        editor.font_size = max(editor.font_size + delta, 1);
     }
 
     {

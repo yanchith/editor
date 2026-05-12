@@ -111,10 +111,7 @@ main :: () {
             }
         }
 
-        time_of_last_frame_start := time_of_program_start;
-
-        window := Window.create_window(1600, 900, "editor");
-
+        window := Window.create_window(1600, 1200, "editor");
         Simp.set_render_target(window, .LEFT_HANDED);
 
         platform: Editor.Platform;
@@ -164,7 +161,7 @@ main :: () {
         platform.get_absolute_path = (path: string) -> success: bool, string {
             // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
             // respecting context.allocator eventually, so we pass in temp there as well.
-            success, _absolute_path := get_absolute_path_hack(path,, temp); // The temp here is future-proofing.
+            success, _absolute_path := get_absolute_path(path,, temp); // The temp here is future-proofing.
 
             if !success {
                 return false, "";
@@ -190,7 +187,7 @@ main :: () {
         platform.read_file = (path: string) -> success: bool, [] u8 {
             // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
             // respecting context.allocator eventually, so we pass in temp there as well.
-            success, absolute_path := get_absolute_path_hack(path,, temp);
+            success, absolute_path := get_absolute_path(path,, temp);
             if !success {
                 return false, .[];
             }
@@ -202,7 +199,7 @@ main :: () {
         platform.write_file = (path: string, data: [] u8) -> success: bool {
             // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
             // respecting context.allocator eventually, so we pass in temp there as well.
-            success, absolute_path := get_absolute_path_hack(path,, temp);
+            success, absolute_path := get_absolute_path(path,, temp);
             if !success {
                 return false;
             }
@@ -300,9 +297,9 @@ main :: () {
                 if texture {
                     if renderer_current_shader != .TEXT {
                         renderer_current_shader = .TEXT;
-                        // NOTE(jt): This is where we'd normally call
-                        // Simp.set_shader_for_images(texture), but we instead pass in our modified
-                        // shader, so we have to do a little bit more work.
+                        // This is where we'd normally call Simp.set_shader_for_images(texture), but
+                        // we instead pass in our modified shader, so we have to do a little bit
+                        // more work.
                         Simp.immediate_flush();
 
                         target_shader := *renderer_text_shader;
@@ -334,27 +331,13 @@ main :: () {
             }
         }
 
-        // In logical pixels
-        window_width: s32;
-        window_height: s32;
-
-        window_width, window_height = Simp.get_render_dimensions(window);
+        window_width, window_height := Simp.get_render_dimensions(window);
 
         input: Editor.Input;
         // input.time and input.dtime are zeroed.
         // input.frame_triggered_by_animation is zeroed.
         input.window_size = { window_width, window_height };
-        #if OS == .WINDOWS {
-            input.window_scale_factor = cast(f32, GetDpiForWindow(window)) / 96.0;
-        } else #if OS == .MACOS {
-            // NOTE(jt): backingScaleFactor is only saying, if we are on a Retina display (by
-            // returning 2.0), but it doesn't tell us what scaling the user has picked. Still,
-            // we can use it to approximate how large we want things to be. Maybe there is a
-            // better solution, but winit also does backingScaleFactor.
-            input.window_scale_factor = cast(f32, window.backingScaleFactor(window));
-        } else {
-            input.window_scale_factor = 1.0;
-        }
+        input.window_scale_factor = get_window_scale_factor(window);
 
         mouse_x, mouse_y, success := Window.get_mouse_pointer_position();
         if success {
@@ -369,6 +352,8 @@ main :: () {
             time_scale := profiler_end_frame();
             print_profile_for_slow_frames(SLOW_INIT_THRESHOLD_MILLIS, time_scale);
         }
+
+        time_of_last_frame_start := time_of_program_start;
 
         should_run  := true;
         while should_run {
@@ -395,17 +380,7 @@ main :: () {
                 }
             }
 
-            #if OS == .WINDOWS {
-                input.window_scale_factor = cast(f32, GetDpiForWindow(window)) / 96.0;
-            } else #if OS == .MACOS {
-                // NOTE(jt): backingScaleFactor is only saying, if we are on a Retina display (by
-                // returning 2.0), but it doesn't tell us what scaling the user has picked. Still,
-                // we can use it to approximate how large we want things to be. Maybe there is a
-                // better solution, but winit also does backingScaleFactor.
-                input.window_scale_factor = cast(f32, window.backingScaleFactor(window));
-            } else {
-                input.window_scale_factor = 1.0;
-            }
+            input.window_scale_factor = get_window_scale_factor(window);
 
             for Input.events_this_frame {
                 if it.type == {
@@ -534,32 +509,46 @@ main :: () {
             reset_temporary_storage();
 
             if should_run && !wants_next_frame {
-                #if OS == .WINDOWS {
-                    // :WaitForEvents
-                    //
-                    // On Windows (TM), we wait for new events with WaitMessage.
-                    WaitMessage();
-                } else #if OS == .MACOS {
-                    // :WaitForEvents
-                    //
-                    // On macOS, we wait for events by checking the queue with nextEventMatchingMask
-                    // (with NO as the last parameter so that we don't dequeue).
-                    NSApplication.nextEventMatchingMask(NSApp, NSEventMaskAny, NSDate.distantFuture(), NSDefaultRunLoopMode, NO);
-                }
+                wait_for_events();
             }
         }
     }
 }
 
-// realpath on unix doesn't work for non-existing files, so we go one step further and
-// try it on the directory, appending the file name back.
-//
-// TODO(jt): Eventually we'll need to do this for arbitrarily deep nonexistent suffixes, because
-// we'll want to create files in nonexistent directories.
-get_absolute_path_hack :: (path: string) -> success: bool, absolute_path: string {
+wait_for_events :: () {
+    #if OS == .WINDOWS {
+        // On Windows (TM), we wait for new events with WaitMessage.
+        WaitMessage();
+    } else #if OS == .MACOS {
+        // On macOS, we wait for events by checking the queue with nextEventMatchingMask
+        // (with NO as the last parameter so that we don't dequeue).
+        NSApplication.nextEventMatchingMask(NSApp, NSEventMaskAny, NSDate.distantFuture(), NSDefaultRunLoopMode, NO);
+    }
+}
+
+get_window_scale_factor :: (window: Window.Window_Type) -> f32 {
+    #if OS == .WINDOWS {
+        return cast(f32, GetDpiForWindow(window)) / 96.0;
+    } else #if OS == .MACOS {
+        // backingScaleFactor is only tells us, if we are on a Retina display (by returning 2.0),
+        // but it doesn't tell us what scaling the user has picked. Still, we can use it to
+        // approximate how large we want things to be. Maybe there is a better solution, but winit
+        // also does backingScaleFactor.
+        return cast(f32, window.backingScaleFactor(window));
+    }
+
+    return 1.0;
+}
+
+get_absolute_path :: (path: string) -> success: bool, absolute_path: string {
     absolute_path, success := File.get_absolute_path(path);
 
     #if OS_IS_UNIX {
+        // realpath on unix doesn't work for non-existing files, so we go one step further and
+        // try it on the directory, appending the file name back.
+        //
+        // TODO(jt): Eventually we'll need to do this for arbitrarily deep nonexistent suffixes, because
+        // we'll want to create files in nonexistent directories.
         if !success {
             dir_path, _, _, filename := String.path_decomp(path);
             dir_absolute_path:, success = File.get_absolute_path(dir_path);
