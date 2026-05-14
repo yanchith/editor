@@ -135,8 +135,9 @@ find_previous_utf8_char_boundary :: (text: string, index: s64) -> found_index: s
     scanned_count := index - prev_index;
     assert(scanned_count <= 4); // If we need to run this on malformed utf8, we should not assert.
 
+    // XXX: I caused a bug HERE!
     // TODO(jt): @Speed Should we be table-driving as default and using the other method for sanity-checking?
-    sanity_assert(index == 1 + Unicode.trailingBytesForUTF8[text[prev_index]]);
+    sanity_assert(index == 1 + Unicode.trailingBytesForUTF8[text[prev_index]], "index (%) == 1+table[prev_index] %", index, 1 + Unicode.trailingBytesForUTF8[text[prev_index]]);
 
     return prev_index, cast(u32, scanned_count);
 }
