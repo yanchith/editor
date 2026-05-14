@@ -1182,12 +1182,11 @@ text_buffer_switch_to_binary_mode :: (buffer: *Text_Buffer) {
 
     add_line(buffer);
 
-    // TODO(jt): Because we currently can't preserve cursors when switching to binary mode, we
-    // should probably ask for confirmation or something before we let people insert binary into
-    // text documents. Hmmm.
-
-    // TODO(jt): The edit cursors may become invalid after we switch to binary_mode. We currently
-    // destroy the undo history, but perhaps, we could recompute the edit cursor positions. :BinaryMode
+    // TODO(jt): The edit cursors become invalid after we switch to binary_mode. We currently
+    // destroy the undo history to avoid that, but we could recompute the edit cursor positions
+    // instead. We can preserve cursors by converting them to gap buffer indices and back.
+    //
+    // :BinaryMode
     array_reset_keeping_memory(*buffer.edits);
     if (buffer.edit_text_arena != buffer.arena) {
         arena_pop_to_mark(buffer.edit_text_arena, buffer.edit_text_arena_mark);
@@ -1207,9 +1206,11 @@ text_buffer_switch_to_binary_mode :: (buffer: *Text_Buffer) {
         }
     }
 
-    // XXX: I think we can preserve cursors by converting them to gap buffer indices and back?
+    // TODO(jt): Preserve cursor when pasting binary data from clipboard, although apparently it
+    // isn't that easy to get binary data from the clipboard. We can preserve cursors by converting
+    // them to gap buffer indices and back.
     //
-    // TODO(jt): When pasting binary data from clipboard, we want to preserve the cursor. :BinaryMode
+    // :BinaryMode
     buffer.cursor0 = { 0, 0 };
     buffer.cursor1 = { 0, 0 };
 
