@@ -1,6 +1,3 @@
-// TODO(jt): We use Unicode.trailingBytesForUTF8 throughout this file. Let's replace this with our
-// own table that we don't have to clamp afteerwards.
-
 Text_Buffer :: struct {
     // TODO(jt): @Cleanup Key_Map, inspired by Bucket_Array gives you a way to easily set the
     // allocator in one place, so you can declare on stack and set the allocator, like you are used
@@ -1293,17 +1290,17 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
     for 0..cursor.x - 1 {
         first_byte := buffer.gb[index];
 
-        continuation_bytes: s64 = 0;
+        codepoint_bytes: s64 = 1;
         if !buffer.binary_mode {
             // :CarriageReturn
             //
             // Even if in ascii \r\n is two characters, we treat them as one character when moving
             // cursors around, and we can't really have a byte index that goes in between these two,
             // if they are next to each other.
-            continuation_bytes = ifx first_byte == #char "\r" then 1 else Unicode.trailingBytesForUTF8[first_byte];
+            codepoint_bytes = ifx first_byte == #char "\r" then 2 else UTF8_LENGTH_FOR_STARTING_BYTE[first_byte];
         }
 
-        index += 1 + continuation_bytes;
+        index += codepoint_bytes;
     }
 
     return index;
@@ -1503,7 +1500,7 @@ update_index_for_insert :: (buffer: *Text_Buffer, _text: string) {
                 continue;
             }
 
-            codepoint_advance := clamp(1 + Unicode.trailingBytesForUTF8[text[0]], 1, 4);
+            codepoint_advance := UTF8_LENGTH_FOR_STARTING_BYTE[text[0]];
 
             {
                 // TODO(jt): Do Proper RFC-compliant utf8 validation. We also need to make it fast.
@@ -1680,8 +1677,7 @@ remove_line :: (buffer: *Text_Buffer, index: s64) {
 
 is_through_edit :: (text: string) -> bool {
     if text != " " && text != "\n" && text != "\r\n" {
-        trailing_bytes := Unicode.trailingBytesForUTF8[text[0]];
-        if text.count == 1 + trailing_bytes {
+        if text.count && text.count == UTF8_LENGTH_FOR_STARTING_BYTE[text[0]] {
             return true;
         }
     }
