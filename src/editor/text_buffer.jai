@@ -1464,8 +1464,8 @@ update_index_for_insert :: (buffer: *Text_Buffer, _text: string) {
 
                 insert_line(buffer, buffer.cursor0.y + 1, count_after_cursor, count_after_cursor);
 
+                buffer.cursor0.y += 1;
                 buffer.cursor0.x = 0;
-                buffer.cursor1.y += 1;
 
                 bytes_on_line_before_cursor = 0;
 
