@@ -1,8 +1,8 @@
 /*
 
-TODO(jt): @Bugs
+TODO(jt): Known serious bugs:
 
-- In file_examples/pdb_small.bin select the first 3 lines, undo, redo -> crash.
+(none currently)
 
 TODO(jt): Early stuff to do:
 
@@ -24,7 +24,7 @@ TODO(jt): Early stuff to do:
 - [X] Modeline
 - [X] Keymap support
 - [~] Find/replace and modal/interactive commands.
-- [~] Open non-utf8 text buffers and binary files.
+- [X] Open non-utf8 text buffers and binary files.
 
 TODO(jt): @Stream things:
 
