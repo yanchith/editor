@@ -80,11 +80,13 @@ count_utf8_chars :: (text: string) -> s64 {
 // TODO(jt): @Speed If we trust the input, we can do a much faster version of
 // find_next/previous_utf8_char_boundary.
 
+// Has to be called on valid utf8, otherwise it will assert.
 find_next_utf8_char_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
     found_index, scanned_count := inline find_next_utf8_char_boundary(cast(string, bytes), index);
     return found_index, scanned_count;
 }
 
+// Has to be called on valid utf8, otherwise it will assert.
 find_next_utf8_char_boundary :: (text: string, index: s64, $sanity: bool = true) -> found_index: s64, scanned_count: u32 {
     assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
     if index == text.count {
@@ -107,17 +109,19 @@ find_next_utf8_char_boundary :: (text: string, index: s64, $sanity: bool = true)
     // binary files. We should probably do a better detection that's completely separate.
     #if sanity {
         // TODO(jt): @Speed Should we be table-driving as default and using the other method for sanity-checking?
-        sanity_assert(next_index == 1 + Unicode.trailingBytesForUTF8[text[index]]);
+        sanity_assert(next_index == index + 1 + Unicode.trailingBytesForUTF8[text[index]]);
     }
 
     return next_index, cast(u32, scanned_count);
 }
 
+// Has to be called on valid utf8, otherwise it will assert.
 find_previous_utf8_char_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
     found_index, scanned_count := inline find_previous_utf8_char_boundary(cast(string, bytes), index);
     return found_index, scanned_count;
 }
 
+// Has to be called on valid utf8, otherwise it will assert.
 find_previous_utf8_char_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: u32 {
     assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
     if index == 0 {
@@ -135,9 +139,8 @@ find_previous_utf8_char_boundary :: (text: string, index: s64) -> found_index: s
     scanned_count := index - prev_index;
     assert(scanned_count <= 4); // If we need to run this on malformed utf8, we should not assert.
 
-    // XXX: I caused a bug HERE!
     // TODO(jt): @Speed Should we be table-driving as default and using the other method for sanity-checking?
-    sanity_assert(index == 1 + Unicode.trailingBytesForUTF8[text[prev_index]], "index (%) == 1+table[prev_index] %", index, 1 + Unicode.trailingBytesForUTF8[text[prev_index]]);
+    sanity_assert(index == prev_index + 1 + Unicode.trailingBytesForUTF8[text[prev_index]]);
 
     return prev_index, cast(u32, scanned_count);
 }
