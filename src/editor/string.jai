@@ -1,5 +1,18 @@
 // Common string utilities. Something like modules/Simple_String or modules/String, but specific to what we need.
 
+// TODO(jt): There are no 5-byte or 6-byte utf8 codepoints. Find out what this table should really
+// look like and/or explain. (The table is a modified version of modules/Unicode.trailingBytesForUTF8)
+UTF8_LENGTH_FOR_STARTING_BYTE :: u8.[
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+    2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+    3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, 4,4,4,4,4,4,4,4,5,5,5,5,6,6,6,6,
+];
+
 string_starts_with_newline :: (bytes: [] u8, binary: bool) -> newline_byte_length: u32 {
     return inline string_starts_with_newline(cast(string, bytes), binary);
 }
@@ -77,17 +90,14 @@ count_utf8_chars :: (text: string) -> s64 {
     return count;
 }
 
-// TODO(jt): @Speed If we trust the input, we can do a much faster version of
-// find_next/previous_utf8_char_boundary.
-
 // Has to be called on valid utf8, otherwise it will assert.
-find_next_utf8_char_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
-    found_index, scanned_count := inline find_next_utf8_char_boundary(cast(string, bytes), index);
-    return found_index, scanned_count;
+find_next_utf8_char_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, byte_count: u32 {
+    found_index, byte_count := inline find_next_utf8_char_boundary(cast(string, bytes), index);
+    return found_index, byte_count;
 }
 
 // Has to be called on valid utf8, otherwise it will assert.
-find_next_utf8_char_boundary :: (text: string, index: s64, $sanity: bool = true) -> found_index: s64, scanned_count: u32 {
+find_next_utf8_char_boundary :: (text: string, index: s64, $sanity: bool = true) -> found_index: s64, byte_count: u32 {
     assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
     if index == text.count {
         return text.count, 0;
@@ -95,34 +105,34 @@ find_next_utf8_char_boundary :: (text: string, index: s64, $sanity: bool = true)
 
     assert(byte_is_utf8_char_boundary(text[index]));
 
-    // When scanning forward, we could also trust the unicode and advance based on what we read? Not
-    // sure if that's going to be faster, since it introduces a data dependency.
-    next_index := index + 1;
-    while next_index < text.count && !byte_is_utf8_char_boundary(text[next_index]) {
-        next_index += 1;
-    }
+    byte_count := UTF8_LENGTH_FOR_STARTING_BYTE[text[index]];
+    next_index := index + byte_count;
 
-    scanned_count := next_index - index;
-    assert(scanned_count <= 4); // If we need to run this on malformed utf8, we should not assert.
+    assert(byte_count <= 4);
+    assert(next_index <= text.count); // This procedure can return up to text.count.
 
     // TODO(jt): The $sanity parameter is here to suppress sanity-checks for when we are detecting
     // binary files. We should probably do a better detection that's completely separate.
-    #if sanity {
-        // TODO(jt): @Speed Should we be table-driving as default and using the other method for sanity-checking?
-        sanity_assert(next_index == index + 1 + Unicode.trailingBytesForUTF8[text[index]]);
+    #if SANITY && sanity {
+        next_index_check := index + 1;
+        while next_index_check < text.count && !byte_is_utf8_char_boundary(text[next_index_check]) {
+            next_index_check += 1;
+        }
+
+        sanity_assert(next_index == next_index_check);
     }
 
-    return next_index, cast(u32, scanned_count);
+    return next_index, byte_count;
 }
 
 // Has to be called on valid utf8, otherwise it will assert.
-find_previous_utf8_char_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, scanned_count: u32 {
-    found_index, scanned_count := inline find_previous_utf8_char_boundary(cast(string, bytes), index);
-    return found_index, scanned_count;
+find_previous_utf8_char_boundary :: (bytes: [] u8, index: s64) -> found_index: s64, byte_count: u32 {
+    found_index, byte_count := inline find_previous_utf8_char_boundary(cast(string, bytes), index);
+    return found_index, byte_count;
 }
 
 // Has to be called on valid utf8, otherwise it will assert.
-find_previous_utf8_char_boundary :: (text: string, index: s64) -> found_index: s64, scanned_count: u32 {
+find_previous_utf8_char_boundary :: (text: string, index: s64) -> found_index: s64, byte_count: u32 {
     assert(index >= 0 && index <= text.count); // <=, because our cursor can be pointing past the buffer.
     if index == 0 {
         return 0, 0;
@@ -131,18 +141,21 @@ find_previous_utf8_char_boundary :: (text: string, index: s64) -> found_index: s
     // index == count is also a valid starting point.
     assert(index == text.count || byte_is_utf8_char_boundary(text[index]));
 
+    // TODO(jt): @Speed There should be a SIMD-ish, Hacker's Delight style way of finding the
+    // previous character index instead of this loop.
     prev_index := index - 1;
     while prev_index > 0 && !byte_is_utf8_char_boundary(text[prev_index]) {
         prev_index -= 1;
     }
 
-    scanned_count := index - prev_index;
-    assert(scanned_count <= 4); // If we need to run this on malformed utf8, we should not assert.
+    byte_count := index - prev_index;
 
-    // TODO(jt): @Speed Should we be table-driving as default and using the other method for sanity-checking?
-    sanity_assert(index == prev_index + 1 + Unicode.trailingBytesForUTF8[text[prev_index]]);
+    assert(byte_count <= 4);
+    assert(prev_index >= 0);
 
-    return prev_index, cast(u32, scanned_count);
+    sanity_assert(index == prev_index + UTF8_LENGTH_FOR_STARTING_BYTE[text[prev_index]]);
+
+    return prev_index, cast(u32, byte_count);
 }
 
 byte_is_utf8_char_boundary :: inline (b: u8) -> bool {
