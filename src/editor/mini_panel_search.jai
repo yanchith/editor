@@ -48,7 +48,6 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         array_reset(*mini_panel.items);
         arena_reset(mini_panel.items_arena);
 
-
         if active_panel && active_panel.document {
             document := active_panel.document;
 
