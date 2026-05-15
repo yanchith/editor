@@ -444,8 +444,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<enter>", .INSERT_LINE_BEFORE);
         key_map_add(key_map, "C-o",     .INSERT_LINE_AFTER);
 
-        key_map_add(key_map, "<tab>",   .INDENT);
-        key_map_add(key_map, "C-i",     .INDENT);
+        key_map_add(key_map, "<tab>",   .INDENT_OR_AUTOCOMPLETE);
+        key_map_add(key_map, "C-i",     .INDENT_OR_AUTOCOMPLETE);
 
         key_map_add(key_map, "C-/",     .UNDO_EDIT);
         key_map_add(key_map, "M-/",     .REDO_EDIT);
@@ -1482,7 +1482,7 @@ Modal_Interaction_Action :: enum {
     DELETE_FORWARD;
     DELETE_BACKWARD;
 
-    // AUTOCOMPLETE;
+    INDENT_OR_AUTOCOMPLETE;
 
     CONFIRM;
     CANCEL_OR_STOP_SELECTING;
@@ -1511,6 +1511,8 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
         case .DELETE_FORWARD;            text_buffer_delete_forward(*modal_interaction.buffer); buffer_changed = true;
         case .DELETE_BACKWARD;           text_buffer_delete_backward(*modal_interaction.buffer); buffer_changed = true;
+
+        case .INDENT_OR_AUTOCOMPLETE;    // No-op, we just want to prevent inserting a tab for now.
 
         case .CONFIRM;                   modal_interaction_advance_proc(editor, platform, input);
         case .CANCEL_OR_STOP_SELECTING;  modal_interaction_cancel_proc(editor, platform, input);
@@ -1595,7 +1597,7 @@ Editor_Action :: enum {
     INSERT_LINE_BEFORE;
     INSERT_LINE_AFTER;
 
-    INDENT;
+    INDENT_OR_AUTOCOMPLETE;
 
     UNDO_EDIT;
     REDO_EDIT;
@@ -1661,7 +1663,7 @@ editor_action_classify :: (action: Editor_Action) -> Editor_Action_Kind {
         case .INSERT_LINE_BEFORE;                return .EDIT;
         case .INSERT_LINE_AFTER;                 return .EDIT;
 
-        case .INDENT;                            return .EDIT;
+        case .INDENT_OR_AUTOCOMPLETE;            return .EDIT;
 
         case .UNDO_EDIT;                         return .EDIT;
         case .REDO_EDIT;                         return .EDIT;
@@ -1785,7 +1787,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
         // TODO(jt): Make indentation configurable.
         // TODO(jt): Preserve tab-ness in tab-only documents.
-        case .INDENT;                       text_buffer_insert(*document.buffer, "    "); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        case .INDENT_OR_AUTOCOMPLETE;       text_buffer_insert(*document.buffer, "    "); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
         case .UNDO_EDIT;                    text_buffer_undo_edit(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         case .REDO_EDIT;                    text_buffer_redo_edit(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
@@ -2395,6 +2397,9 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, ac
     key_map_add(key_map, "C-d",         .DELETE_FORWARD);
     key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
     key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
+
+    key_map_add(key_map, "<tab>",       .INDENT_OR_AUTOCOMPLETE);
+    key_map_add(key_map, "C-i",         .INDENT_OR_AUTOCOMPLETE);
 
     key_map_add(key_map, "<enter>",     .CONFIRM);
     key_map_add(key_map, "C-m",         .CONFIRM);
