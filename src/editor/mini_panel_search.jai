@@ -1,9 +1,9 @@
 mini_panel_search_can_select_text_line: Mini_Panel_Can_Select_Text_Line_Proc = can_select_text_line;
-mini_panel_search_init_proc:            Mini_Panel_Init_Proc                 = init;
-mini_panel_search_update_proc:          Mini_Panel_Update_Proc               = update;
-mini_panel_search_autocomplete_proc:    Mini_Panel_Autocomplete_Proc         = autocomplete;
-mini_panel_search_confirm_proc:         Mini_Panel_Confirm_Proc              = confirm;
-mini_panel_search_cancel_proc:          Mini_Panel_Cancel_Proc               = cancel;
+mini_panel_search_init:                 Mini_Panel_Init_Proc                 = init;
+mini_panel_search_update:               Mini_Panel_Update_Proc               = update;
+mini_panel_search_autocomplete:         Mini_Panel_Autocomplete_Proc         = autocomplete;
+mini_panel_search_confirm:              Mini_Panel_Confirm_Proc              = confirm;
+mini_panel_search_cancel:               Mini_Panel_Cancel_Proc               = cancel;
 
 #scope_file
 
@@ -132,8 +132,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             }
         }
 
-        min_item_index := ifx mini_panel_can_select_text_line_proc(editor, platform, input) then -1 else 0;
-        mini_panel.item_index = clamp(mini_panel.item_index, min_item_index, mini_panel.items.count - 1);
+        mini_panel.item_index = clamp(mini_panel.item_index, 0, mini_panel.items.count - 1);
     }
 
     if selected_item_changed {
