@@ -5,6 +5,10 @@ ATLAS_HEIGHT_IN_PIXELS :: 1024;
 
 R64 : f32 : 1.0 / 64.0;
 
+// TODO(jt): All procedures in this file should eventually handle tabs (basically by pretending it
+// is N spaces). Currently, the editor just inserts spaces everywhere, so it is kind of fine, but we
+// won't be able to do that forever.
+
 Font :: struct {
     //
     // "Inputs"
