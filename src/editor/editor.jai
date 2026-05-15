@@ -129,6 +129,8 @@ operator==     :: Math.operator==;
 #load "gap_buffer.jai";
 #load "text_buffer.jai";
 #load "color.jai";
+#load "mini_panel_search.jai";
+
 #load "hello.jai";
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
@@ -339,6 +341,13 @@ Mini_Panel :: struct {
         }
     }
 }
+
+Mini_Panel_Can_Select_Text_Line_Proc :: #type (editor: *Editor, platform: Platform, input: Input) -> bool;
+Mini_Panel_Init_Proc                 :: #type (editor: *Editor, platform: Platform, input: Input);
+Mini_Panel_Update_Proc               :: #type (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool);
+Mini_Panel_Autocomplete_Proc         :: #type (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool;
+Mini_Panel_Confirm_Proc              :: #type (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool;
+Mini_Panel_Cancel_Proc               :: #type (editor: *Editor, platform: Platform, input: Input);
 
 Modal_Interaction :: struct {
     open: bool;
@@ -1873,6 +1882,8 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, action: M
     mini_panel_update_proc(editor, platform, input, true, true);
 }
 
+// TODO(jt): Instead of relying that this is globally visible, give procs a pointer to this
+// procedure, so they can call it.
 close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     mini_panel := *editor.mini_panel;
     assert(mini_panel.open);
@@ -1897,14 +1908,6 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 // These mini_panel_* procs currently switch on the action enum of the mini panel and do hardcoded
 // stuff, but are later expected to be the entry points for mini panel plugins. This is why some of
 // them get more parameters than they actually need.
-
-Search_Userdata :: struct {
-    original_cursor0: Cursor;
-}
-
-Search_Item_Userdata :: struct {
-    cursor: Cursor;
-}
 
 Open_File_Item_Userdata :: struct {
     full_file_path: string;
@@ -1938,8 +1941,6 @@ mini_panel_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
 
 // buffer_changed can imply selected_line_changed.
 mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
-    ProfileZone("mini_panel_update");
-
     mini_panel := *editor.mini_panel;
     active_panel := get_active_panel(editor);
 
