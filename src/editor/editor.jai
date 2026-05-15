@@ -130,7 +130,7 @@ operator==     :: Math.operator==;
 #load "text_buffer.jai";
 #load "color.jai";
 #load "mini_panel_search.jai";
-
+#load "mini_panel_open_file.jai";
 #load "hello.jai";
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
@@ -1907,24 +1907,18 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 
 #scope_file
 
+// XXX
+//
 // :MiniPanelAPI
 //
 // These mini_panel_* procs currently switch on the action enum of the mini panel and do hardcoded
 // stuff, but are later expected to be the entry points for mini panel plugins. This is why some of
 // them get more parameters than they actually need.
 
-Open_File_Item_Userdata :: struct {
-    full_file_path: string;
-    file_is_directory: bool;
-}
-
 mini_panel_can_select_text_line_proc :: (editor: *Editor, platform: Platform, input: Input) -> bool {
-    if editor.mini_panel.action == .SEARCH {
-        return mini_panel_search_can_select_text_line(editor, platform, input);
-    }
-
-    if editor.mini_panel.action == .OPEN_FILE {
-        return true;
+    if editor.mini_panel.action == {
+        case .SEARCH;     return mini_panel_search_can_select_text_line(editor, platform, input);
+        case .OPEN_FILE;  return mini_panel_open_file_can_select_text_line(editor, platform, input);
     }
 
     return false;
@@ -1939,9 +1933,9 @@ mini_panel_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
 
 // buffer_changed can imply selected_line_changed.
 mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
-    if editor.mini_panel.action == .SEARCH {
-        mini_panel_search_update(editor, platform, input, buffer_changed, selected_item_changed);
-        return;
+    if editor.mini_panel.action == {
+        case .SEARCH;     mini_panel_search_update(editor, platform, input, buffer_changed, selected_item_changed); return;
+        case .OPEN_FILE;  mini_panel_open_file_update(editor, platform, input, buffer_changed, selected_item_changed); return;
     }
 
     mini_panel := *editor.mini_panel;
@@ -1957,54 +1951,8 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
         arena_reset(mini_panel.items_arena);
 
         if mini_panel.action == {
-            case .SEARCH;  assert(false);
-
-            case .OPEN_FILE; {
-                ProfileZone(":MiniPanelOpenFileUpdate");
-
-                path_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-                path_text_char_count := mini_panel.buffer.line_chars[0];
-
-                path_prefix, _, _, filename := String.path_decomp(path_text);
-                path_prefix = String.trim_right(path_prefix, "/");
-
-                filename_char_count := count_utf8_chars(filename);
-
-                // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
-                file_list := platform.list_files(path_prefix,, temp);
-                for file_list {
-                    listed_file_path := it.name;
-                    listed_filename := String.path_filename(it.name);
-
-                    found_index, found := String.index_of_string_nocase(listed_filename, filename);
-                    if found {
-                        s := "";
-                        if it.name.count {
-                            s = arena_push_string(mini_panel.items_arena, listed_filename);
-                        }
-
-                        x0 := count_utf8_chars(String.slice(listed_filename, 0, found_index));
-
-                        item := array_add(*mini_panel.items);
-                        item.text = s;
-                        item.highlight_x0 = x0;
-                        item.highlight_x1 = x0 + filename_char_count;
-                        item.userdata = null;
-
-                        if it.name.count {
-                            full_file_path := arena_push_string(mini_panel.items_arena, it.name);
-
-                            userdata := arena_push(mini_panel.items_arena, Open_File_Item_Userdata);
-                            userdata.full_file_path = full_file_path;
-                            userdata.file_is_directory = it.is_directory;
-
-                            item.userdata = userdata;
-                        }
-                    }
-                }
-
-                mini_panel.item_index = min(mini_panel.item_index, mini_panel.items.count - 1);
-            }
+            case .SEARCH;     assert(false);
+            case .OPEN_FILE;  assert(false);
 
             case .SWITCH_TO_DOCUMENT; #through;
             case .CLOSE_DOCUMENT; {
@@ -2049,8 +1997,9 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
 }
 
 mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
-    if editor.mini_panel.action == .SEARCH {
-        return mini_panel_search_autocomplete(editor, platform, input);
+    if editor.mini_panel.action == {
+        case .SEARCH;     return mini_panel_search_autocomplete(editor, platform, input);
+        case .OPEN_FILE;  return mini_panel_open_file_autocomplete(editor, platform, input);
     }
 
     mini_panel := *editor.mini_panel;
@@ -2061,29 +2010,8 @@ mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Inp
     }
 
     if mini_panel.action == {
-        case .OPEN_FILE; {
-            if mini_panel.items.count && mini_panel.item_index >= 0 {
-                userdata: *Open_File_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
-                if userdata && userdata.full_file_path.count {
-                    completion_text := String.path_filename(mini_panel.items[mini_panel.item_index].text);
-                    buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
-                    buffer_path, _, _, buffer_filename := String.path_decomp(buffer_text);
-
-                    completion_filename := String.path_filename(completion_text);
-
-                    recomposed_path := tprint("%%", buffer_path, completion_filename);
-
-                    text_buffer_reset(*mini_panel.buffer);
-                    text_buffer_insert(*mini_panel.buffer, recomposed_path);
-
-                    if platform.file_is_directory(recomposed_path) {
-                        text_buffer_insert(*mini_panel.buffer, "/");
-                    }
-
-                    return true;
-                }
-            }
-        }
+        case .SEARCH;     assert(false);
+        case .OPEN_FILE;  assert(false);
 
         case .SWITCH_TO_DOCUMENT; #through;
         case .CLOSE_DOCUMENT; {
@@ -2109,8 +2037,9 @@ mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Inp
 }
 
 mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
-    if editor.mini_panel.action == .SEARCH {
-        return mini_panel_search_confirm(editor, platform, input);
+    if editor.mini_panel.action == {
+        case .SEARCH;     return mini_panel_search_confirm(editor, platform, input);
+        case .OPEN_FILE;  return mini_panel_open_file_confirm(editor, platform, input);
     }
 
     mini_panel := *editor.mini_panel;
@@ -2122,85 +2051,8 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
     }
 
     if mini_panel.action == {
-        case .SEARCH;  assert(false);
-
-        case .OPEN_FILE; {
-            file_path: string;
-            file_exists: bool;
-            file_is_directory: bool;
-            if mini_panel.item_index == -1 {
-                file_path = text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
-                file_exists = platform.file_exists(file_path);
-                file_is_directory = platform.file_is_directory(file_path);
-            } else if mini_panel.items.count {
-                userdata: *Open_File_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
-                if userdata {
-                    file_path = userdata.full_file_path;
-                    file_exists = true; // Unless deleted since we last looked.
-                    file_is_directory = userdata.file_is_directory;
-                }
-            }
-
-            if file_is_directory {
-                // TODO(jt): If we ever have directory listers, rip this out and open the directory in the lister.
-                // TODO(jt): @Cleanup This is copypaste from mini_panel_autocomplete_proc
-                completion_text := String.path_filename(mini_panel.items[mini_panel.item_index].text);
-                buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
-                buffer_path, _, _, buffer_filename := String.path_decomp(buffer_text);
-
-                completion_filename := String.path_filename(completion_text);
-
-                recomposed_path := tprint("%%", buffer_path, completion_filename);
-
-                text_buffer_reset(*mini_panel.buffer);
-                text_buffer_insert(*mini_panel.buffer, recomposed_path);
-
-                if platform.file_is_directory(recomposed_path) {
-                    text_buffer_insert(*mini_panel.buffer, "/");
-                }
-
-                return true;
-            } else {
-                success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
-                if success {
-                    String.path_overwrite_separators(file_absolute_path, "/");
-
-                    document, document_newly_created := find_or_add_document(editor, platform, .FILE, file_absolute_path);
-                    document.backing_file_exists = file_exists;
-
-                    if document_newly_created {
-                        if file_exists {
-                            editor_log(editor, "Opening file: %", file_absolute_path);
-
-                            // TODO(jt): Detect/Watch file changes on disk!
-                            success, file_contents := platform.read_file(file_absolute_path,, temp);
-                            if success {
-                                text_buffer_insert(*document.buffer, file_contents);
-                                text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
-
-                                if active_panel {
-                                    set_panel_document(editor, active_panel, document);
-                                    recenter_active_panel(editor, input, true);
-                                }
-                            }
-                        } else {
-                            editor_log(editor, "Opening new file with path: %", file_absolute_path);
-                            if active_panel {
-                                set_panel_document(editor, active_panel, document);
-                            }
-                        }
-                    } else {
-                        if active_panel {
-                            set_panel_document(editor, active_panel, document);
-                        }
-                    }
-                } else {
-                    log_error("Failed to get absolute path for %", file_path);
-                }
-
-                close_mini_panel(editor, platform, input);
-            }
-        }
+        case .SEARCH;     assert(false);
+        case .OPEN_FILE;  assert(false);
 
         case .SWITCH_TO_DOCUMENT; {
             if mini_panel.items.count {
@@ -2238,9 +2090,9 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
 }
 
 mini_panel_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
-    if editor.mini_panel.action == .SEARCH {
-        mini_panel_search_cancel(editor, platform, input);
-        return;
+    if editor.mini_panel.action ==  {
+        case .SEARCH;     mini_panel_search_cancel(editor, platform, input); return;
+        case .OPEN_FILE;  mini_panel_open_file_cancel(editor, platform, input); return;
     }
 
     close_mini_panel(editor, platform, input);
@@ -2584,6 +2436,8 @@ modal_interaction_cancel_proc :: (editor: *Editor, platform: Platform, input: In
     close_modal_interaction(editor, platform, input);
 }
 
+#scope_module
+
 find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, newly_created: bool {
     for * editor.documents {
         if it.kind != kind                            continue;
@@ -2618,6 +2472,8 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     return document_pointer, true;
 }
+
+#scope_file
 
 close_document :: (editor: *Editor, document: *Document) {
     editor_log(editor, "Closing document % %", document.kind, document.backing_file_path);
@@ -2657,6 +2513,8 @@ close_document :: (editor: *Editor, document: *Document) {
     bucket_array_remove(*editor.documents, locator);
 }
 
+#scope_module
+
 set_panel_document :: (editor: Editor, panel: *Panel, document: *Document) {
     panel.scroll_source = { 0, 0 };
     panel.scroll_target = { 0, 0 };
@@ -2668,6 +2526,8 @@ set_panel_document :: (editor: Editor, panel: *Panel, document: *Document) {
 
     document.time_of_last_interaction = editor.input_state.time;
 }
+
+#scope_file
 
 set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, platform: Platform) {
     ProfileZone("set_panel_document_to_scratch");
