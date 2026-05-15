@@ -1317,8 +1317,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     return wants_quit, wants_next_frame;
 }
 
-#scope_file
-
 editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #caller_location) {
     s := sprint(format_string, ..args,, arena_allocator(editor.perm_arena));
     array_add(*editor.messages, s);
@@ -1336,6 +1334,8 @@ get_active_panel :: (editor: *Editor) -> *Panel {
 
     return active_panel;
 }
+
+#scope_file
 
 Mini_Panel_Action :: enum {
     NONE;
@@ -1882,6 +1882,8 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, action: M
     mini_panel_update_proc(editor, platform, input, true, true);
 }
 
+#scope_module // XXX @Cleanup
+
 // TODO(jt): Instead of relying that this is globally visible, give procs a pointer to this
 // procedure, so they can call it.
 close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
@@ -1903,6 +1905,8 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     mini_panel.open = false;
 }
 
+#scope_file
+
 // :MiniPanelAPI
 //
 // These mini_panel_* procs currently switch on the action enum of the mini panel and do hardcoded
@@ -1914,7 +1918,11 @@ Open_File_Item_Userdata :: struct {
     file_is_directory: bool;
 }
 
-mini_panel_can_select_text_line_proc :: (editor: Editor, platform: Platform, input: Input) -> bool {
+mini_panel_can_select_text_line_proc :: (editor: *Editor, platform: Platform, input: Input) -> bool {
+    if editor.mini_panel.action == .SEARCH {
+        return mini_panel_search_can_select_text_line(editor, platform, input);
+    }
+
     if editor.mini_panel.action == .OPEN_FILE {
         return true;
     }
@@ -1923,24 +1931,19 @@ mini_panel_can_select_text_line_proc :: (editor: Editor, platform: Platform, inp
 }
 
 mini_panel_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
-    mini_panel := *editor.mini_panel;
-    active_panel := get_active_panel(editor);
-
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    if editor.mini_panel.action == .SEARCH {
+        mini_panel_search_init(editor, platform, input);
         return;
-    }
-
-    if mini_panel.action == .SEARCH {
-        userdata := arena_push(editor.mini_panel.userdata_arena, Search_Userdata);
-        userdata.original_cursor0 = active_panel.document.buffer.cursor0;
-
-        mini_panel.userdata = userdata;
     }
 }
 
 // buffer_changed can imply selected_line_changed.
 mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
+    if editor.mini_panel.action == .SEARCH {
+        mini_panel_search_update(editor, platform, input, buffer_changed, selected_item_changed);
+        return;
+    }
+
     mini_panel := *editor.mini_panel;
     active_panel := get_active_panel(editor);
 
@@ -1954,92 +1957,7 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
         arena_reset(mini_panel.items_arena);
 
         if mini_panel.action == {
-            case .SEARCH; {
-                ProfileZone(":MiniPanelSearchUpdate");
-
-                if active_panel && active_panel.document {
-                    document := active_panel.document;
-
-                    array_reset_keeping_memory(*active_panel.highlights);
-                    active_panel.highlight_index = -1;
-
-                    old_cursor_y   := document.buffer.cursor0.y;
-                    new_item_index := -1;
-
-                    search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-                    search_text_char_count := mini_panel.buffer.line_chars[0];
-
-                    gb_index := 0;
-                    for 0..document.buffer.line_bytes.count - 1 {
-                        gb_count := document.buffer.line_bytes[it];
-
-                        // :IncrementalGapBufferIndices
-                        //
-                        // We go straight to the gap buffer and count its indices manually, so that
-                        // we avoid the quadratic behavior of calling get_gb_index_for_line each
-                        // time through the loop.
-                        //
-                        // Note that even though we pass in temp, making of the view will only
-                        // allocate for one of the lines - the one that crosses the gap.
-                        line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
-                        line_text  := cast(string, line_bytes);
-
-                        found_index := find_index_from_left_nocase(line_text, search_text);
-                        if found_index != -1 {
-                            s := "";
-                            line_number_prefix_length := 0;
-
-                            if line_text.count {
-                                line_number_prefix := temp_right_pad(tprint("[%]", it + 1), 10);
-
-                                s = sprint("%%", line_number_prefix, line_text,, arena_allocator(mini_panel.items_arena));
-                                line_number_prefix_length = line_number_prefix.count;
-                            }
-
-                            x0 := found_index;
-                            if !document.buffer.binary_mode {
-                                x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
-                            }
-                            x1 := x0 + search_text_char_count;
-
-                            highlight := array_add(*active_panel.highlights);
-                            highlight.cursor_x0 = x0;
-                            highlight.cursor_x1 = x1;
-                            highlight.cursor_y  = it;
-
-                            item_index := mini_panel.items.count;
-                            item := array_add(*mini_panel.items);
-                            item.text = s;
-                            if document.buffer.binary_mode {
-                                item.flags |= .BINARY;
-                            }
-                            item.highlight_x0 = line_number_prefix_length + x0;
-                            item.highlight_x1 = line_number_prefix_length + x1;
-
-                            userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
-                            userdata.cursor = { x0, it };
-
-                            item.userdata = userdata;
-
-                            if new_item_index == -1 && it >= old_cursor_y {
-                                new_item_index = item_index;
-                            }
-                        }
-
-                        gb_index += gb_count;
-                    }
-
-                    if new_item_index == -1 {
-                        new_item_index = mini_panel.items.count - 1;
-                    }
-
-                    if new_item_index != -1 {
-                        mini_panel.item_index = new_item_index;
-                        active_panel.highlight_index = new_item_index;
-                        selected_item_changed = true;
-                    }
-                }
-            }
+            case .SEARCH;  assert(false);
 
             case .OPEN_FILE; {
                 ProfileZone(":MiniPanelOpenFileUpdate");
@@ -2128,33 +2046,13 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
         min_item_index := ifx mini_panel_can_select_text_line_proc(editor, platform, input) then -1 else 0;
         mini_panel.item_index = clamp(mini_panel.item_index, min_item_index, mini_panel.items.count - 1);
     }
-
-    if selected_item_changed {
-        if mini_panel.action == .SEARCH {
-            active_panel.highlight_index = mini_panel.item_index;
-
-            // TODO(jt): @Cleanup This is the copypaste of the confirm action, except it does not close the mini panel.
-
-            // Changing the mini panel buffer OR the selected item can put the index to -1 (in case
-            // of search, -1 can only be achieved by changing the buffer), so in general we don't
-            // want to assert the index points to the array.
-            if mini_panel.item_index >= 0 {
-                item := *mini_panel.items[mini_panel.item_index];
-
-                userdata: *Search_Item_Userdata = item.userdata;
-                x := userdata.cursor.x;
-                y := userdata.cursor.y;
-
-                document := active_panel.document;
-
-                text_buffer_move_cursor_to(*document.buffer, x, y, false);
-                recenter_active_panel(editor, input, true);
-            }
-        }
-    }
 }
 
 mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
+    if editor.mini_panel.action == .SEARCH {
+        return mini_panel_search_autocomplete(editor, platform, input);
+    }
+
     mini_panel := *editor.mini_panel;
 
     sanity_assert(mini_panel.open);
@@ -2211,6 +2109,10 @@ mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Inp
 }
 
 mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
+    if editor.mini_panel.action == .SEARCH {
+        return mini_panel_search_confirm(editor, platform, input);
+    }
+
     mini_panel := *editor.mini_panel;
     active_panel := get_active_panel(editor);
 
@@ -2220,30 +2122,7 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
     }
 
     if mini_panel.action == {
-        case .SEARCH; {
-            // TODO(jt): Because we route events before we do the search,
-            // the confirm action here can see the unupdated items. We could
-            // force the update here.
-            if mini_panel.items.count {
-                assert(mini_panel.item_index >= 0);
-                item := *mini_panel.items[mini_panel.item_index];
-
-                userdata := cast(*Search_Item_Userdata, item.userdata);
-                x := userdata.cursor.x;
-                y := userdata.cursor.y;
-
-                sanity_assert(cast(bool, active_panel));
-                if active_panel && active_panel.document {
-                    text_buffer_move_cursor_to(*active_panel.document.buffer, x, y, false);
-                    recenter_active_panel(editor, input, true);
-                }
-            }
-
-            array_reset_keeping_memory(*active_panel.highlights);
-            active_panel.highlight_index = -1;
-
-            close_mini_panel(editor, platform, input);
-        }
+        case .SEARCH;  assert(false);
 
         case .OPEN_FILE; {
             file_path: string;
@@ -2360,18 +2239,8 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
 
 mini_panel_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
     if editor.mini_panel.action == .SEARCH {
-        panel := get_active_panel(editor);
-        assert(panel != null);
-
-        array_reset_keeping_memory(*panel.highlights);
-        panel.highlight_index = -1;
-
-        userdata: *Search_Userdata = editor.mini_panel.userdata;
-        x := userdata.original_cursor0.x;
-        y := userdata.original_cursor0.y;
-
-        text_buffer_move_cursor_to(*panel.document.buffer, x, y, panel.selecting);
-        panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        mini_panel_search_cancel(editor, platform, input);
+        return;
     }
 
     close_mini_panel(editor, platform, input);
@@ -2833,6 +2702,8 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
     arena_release(hello_arena);
 }
 
+#scope_module
+
 // TODO(jt): The user experience of this kind of sucks. The first C-l should always recenter. But
 // then we need to remember if it is the first press.
 recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, skip_interpolation := false) {
@@ -2915,6 +2786,8 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
 
     panel.flags |= .CLAMP_CURSOR_TO_SCROLL;
 }
+
+#scope_file
 
 get_cursor_position :: (document: Document, font: Font) -> cursor_position: DVector2, cursor_line_end_x: f64 {
     x := document.buffer.cursor0.x;
