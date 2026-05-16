@@ -377,7 +377,17 @@ main :: () {
                 }
             }
 
-            input.window_scale_factor = get_window_scale_factor(window);
+            scale_factor := get_window_scale_factor(window);
+            // TODO(jt): @Cleanup The way the Windows Input module handles the .QUIT event (WM_QUIT)
+            // causes the window to be destroyed before we are done with our last frame, and thus
+            // the scale_factor becomes 0. This confuses the font system inside the editor. (And, in
+            // general, the platform layer should give good information to the app, so the app
+            // doesn't need to hack around stuff like this.)
+            #if OS == .WINDOWS {
+                if scale_factor != 0.0 {
+                    input.window_scale_factor = scale_factor;
+                }
+            }
 
             for Input.events_this_frame {
                 if it.type == {
