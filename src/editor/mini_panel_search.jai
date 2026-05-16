@@ -2,6 +2,7 @@ mini_panel_search_get_action_text:      Mini_Panel_Get_Action_Text_Proc      = g
 mini_panel_search_can_select_text_line: Mini_Panel_Can_Select_Text_Line_Proc = can_select_text_line;
 mini_panel_search_init:                 Mini_Panel_Init_Proc                 = init;
 mini_panel_search_update:               Mini_Panel_Update_Proc               = update;
+mini_panel_search_delete_backward:      Mini_Panel_Delete_Backward_Proc      = delete_backward;
 mini_panel_search_autocomplete:         Mini_Panel_Autocomplete_Proc         = autocomplete;
 mini_panel_search_confirm:              Mini_Panel_Confirm_Proc              = confirm;
 mini_panel_search_cancel:               Mini_Panel_Cancel_Proc               = cancel;
@@ -158,6 +159,23 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             recenter_active_panel(editor, input, true);
         }
     }
+}
+
+delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
+    mini_panel := *editor.mini_panel;
+
+    sanity_assert(mini_panel.open);
+    if !mini_panel.open {
+        return false;
+    }
+
+    gb := mini_panel.buffer.gb;
+    if gb.count {
+        text_buffer_delete_backward(*mini_panel.buffer);
+        return true;
+    }
+
+    return false;
 }
 
 autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {

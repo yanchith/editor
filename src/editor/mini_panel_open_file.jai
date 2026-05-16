@@ -2,6 +2,7 @@ mini_panel_open_file_get_action_text:      Mini_Panel_Get_Action_Text_Proc      
 mini_panel_open_file_can_select_text_line: Mini_Panel_Can_Select_Text_Line_Proc = can_select_text_line;
 mini_panel_open_file_init:                 Mini_Panel_Init_Proc                 = init;
 mini_panel_open_file_update:               Mini_Panel_Update_Proc               = update;
+mini_panel_open_file_delete_backward:      Mini_Panel_Delete_Backward_Proc      = delete_backward;
 mini_panel_open_file_autocomplete:         Mini_Panel_Autocomplete_Proc         = autocomplete;
 mini_panel_open_file_confirm:              Mini_Panel_Confirm_Proc              = confirm;
 mini_panel_open_file_cancel:               Mini_Panel_Cancel_Proc               = cancel;
@@ -81,6 +82,35 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
         mini_panel.item_index = clamp(mini_panel.item_index, -1, mini_panel.items.count - 1);
     }
+}
+
+delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
+    mini_panel := *editor.mini_panel;
+
+    sanity_assert(mini_panel.open);
+    if !mini_panel.open {
+        return false;
+    }
+
+    gb := mini_panel.buffer.gb;
+    if gb.count {
+        last_byte := gb[gb.count - 1];
+        if last_byte == "/" {
+            buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
+            buffer_text.count -= 1; // The trailing '/', so that path_strip_filename can treat the last segment as a filename.
+
+            dir_path := String.path_strip_filename(buffer_text);
+
+            text_buffer_reset(*mini_panel.buffer);
+            text_buffer_insert(*mini_panel.buffer, dir_path);
+        } else {
+            text_buffer_delete_backward(*mini_panel.buffer);
+        }
+
+        return true;
+    }
+
+    return false;
 }
 
 autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
