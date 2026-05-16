@@ -1,3 +1,4 @@
+mini_panel_search_get_action_text:      Mini_Panel_Get_Action_Text_Proc      = get_action_text;
 mini_panel_search_can_select_text_line: Mini_Panel_Can_Select_Text_Line_Proc = can_select_text_line;
 mini_panel_search_init:                 Mini_Panel_Init_Proc                 = init;
 mini_panel_search_update:               Mini_Panel_Update_Proc               = update;
@@ -13,6 +14,10 @@ Search_Userdata :: struct {
 
 Search_Item_Userdata :: struct {
     cursor: Cursor;
+}
+
+get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
+    return tprint("% Search: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
 }
 
 can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> bool {
