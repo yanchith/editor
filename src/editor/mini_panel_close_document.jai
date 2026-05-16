@@ -1,15 +1,15 @@
-mini_panel_switch_to_document_get_action_text:      Mini_Panel_Get_Action_Text_Proc      = get_action_text;
-mini_panel_switch_to_document_can_select_text_line: Mini_Panel_Can_Select_Text_Line_Proc = can_select_text_line;
-mini_panel_switch_to_document_init:                 Mini_Panel_Init_Proc                 = init;
-mini_panel_switch_to_document_update:               Mini_Panel_Update_Proc               = update;
-mini_panel_switch_to_document_autocomplete:         Mini_Panel_Autocomplete_Proc         = autocomplete;
-mini_panel_switch_to_document_confirm:              Mini_Panel_Confirm_Proc              = confirm;
-mini_panel_switch_to_document_cancel:               Mini_Panel_Cancel_Proc               = cancel;
+mini_panel_close_document_get_action_text:      Mini_Panel_Get_Action_Text_Proc      = get_action_text;
+mini_panel_close_document_can_select_text_line: Mini_Panel_Can_Select_Text_Line_Proc = can_select_text_line;
+mini_panel_close_document_init:                 Mini_Panel_Init_Proc                 = init;
+mini_panel_close_document_update:               Mini_Panel_Update_Proc               = update;
+mini_panel_close_document_autocomplete:         Mini_Panel_Autocomplete_Proc         = autocomplete;
+mini_panel_close_document_confirm:              Mini_Panel_Confirm_Proc              = confirm;
+mini_panel_close_document_cancel:               Mini_Panel_Cancel_Proc               = cancel;
 
 #scope_file
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
-    return tprint("% Switch to document: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
+    return tprint("% Close document: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
 }
 
 can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> bool {
@@ -35,6 +35,10 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         search_text_char_count := mini_panel.buffer.line_chars[0];
 
         for * editor.documents {
+            if mini_panel.action == .CLOSE_DOCUMENT && it.kind == .SCRATCH {
+                continue;
+            }
+
             document_name: string;
             if it.kind == {
                 case .SCRATCH;  document_name = "*scratch*";
@@ -103,14 +107,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         item := *mini_panel.items[mini_panel.item_index];
 
         document := cast(*Document, item.userdata);
-
-        if active_panel {
-            set_panel_document(editor, active_panel, document);
-
-            // TODO(jt): Emacs actually remembers the previous scroll of the panel in
-            // document. Do we want to do the same?
-            recenter_active_panel(editor, input, force_center = true, skip_interpolation = true);
-        }
+        close_document(editor, document);
     }
 
     close_mini_panel(editor, platform, input);
