@@ -131,6 +131,7 @@ operator==     :: Math.operator==;
 #load "color.jai";
 #load "mini_panel_search.jai";
 #load "mini_panel_open_file.jai";
+#load "mini_panel_switch_to_document.jai";
 #load "hello.jai";
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
@@ -1917,25 +1918,28 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 
 mini_panel_can_select_text_line_proc :: (editor: *Editor, platform: Platform, input: Input) -> bool {
     if editor.mini_panel.action == {
-        case .SEARCH;     return mini_panel_search_can_select_text_line(editor, platform, input);
-        case .OPEN_FILE;  return mini_panel_open_file_can_select_text_line(editor, platform, input);
+        case .SEARCH;              return mini_panel_search_can_select_text_line(editor, platform, input);
+        case .OPEN_FILE;           return mini_panel_open_file_can_select_text_line(editor, platform, input);
+        case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_can_select_text_line(editor, platform, input);
     }
 
     return false;
 }
 
 mini_panel_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
-    if editor.mini_panel.action == .SEARCH {
-        mini_panel_search_init(editor, platform, input);
-        return;
+    if editor.mini_panel.action == {
+        case .SEARCH;              mini_panel_search_init(editor, platform, input);
+        case .OPEN_FILE;           mini_panel_open_file_init(editor, platform, input);
+        case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_init(editor, platform, input);
     }
 }
 
 // buffer_changed can imply selected_line_changed.
 mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
     if editor.mini_panel.action == {
-        case .SEARCH;     mini_panel_search_update(editor, platform, input, buffer_changed, selected_item_changed); return;
-        case .OPEN_FILE;  mini_panel_open_file_update(editor, platform, input, buffer_changed, selected_item_changed); return;
+        case .SEARCH;              mini_panel_search_update(editor, platform, input, buffer_changed, selected_item_changed); return;
+        case .OPEN_FILE;           mini_panel_open_file_update(editor, platform, input, buffer_changed, selected_item_changed); return;
+        case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_update(editor, platform, input, buffer_changed, selected_item_changed); return;
     }
 
     mini_panel := *editor.mini_panel;
@@ -1951,13 +1955,11 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
         arena_reset(mini_panel.items_arena);
 
         if mini_panel.action == {
-            case .SEARCH;     assert(false);
-            case .OPEN_FILE;  assert(false);
+            case .SEARCH;              assert(false);
+            case .OPEN_FILE;           assert(false);
+            case .SWITCH_TO_DOCUMENT;  assert(false);
 
-            case .SWITCH_TO_DOCUMENT; #through;
             case .CLOSE_DOCUMENT; {
-                ProfileZone(":MiniPanelSwitchToDocumentOrCloseDocumentUpdate");
-
                 search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
                 search_text_char_count := mini_panel.buffer.line_chars[0];
 
@@ -1998,8 +2000,9 @@ mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, bu
 
 mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
     if editor.mini_panel.action == {
-        case .SEARCH;     return mini_panel_search_autocomplete(editor, platform, input);
-        case .OPEN_FILE;  return mini_panel_open_file_autocomplete(editor, platform, input);
+        case .SEARCH;              return mini_panel_search_autocomplete(editor, platform, input);
+        case .OPEN_FILE;           return mini_panel_open_file_autocomplete(editor, platform, input);
+        case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_autocomplete(editor, platform, input);
     }
 
     mini_panel := *editor.mini_panel;
@@ -2010,10 +2013,10 @@ mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Inp
     }
 
     if mini_panel.action == {
-        case .SEARCH;     assert(false);
-        case .OPEN_FILE;  assert(false);
+        case .SEARCH;              assert(false);
+        case .OPEN_FILE;           assert(false);
+        case .SWITCH_TO_DOCUMENT;  assert(false);
 
-        case .SWITCH_TO_DOCUMENT; #through;
         case .CLOSE_DOCUMENT; {
             if mini_panel.items.count == 1 {
                 // TODO(jt): The reset also nukes the edit history of the mini panel buffer... maybe
@@ -2038,8 +2041,9 @@ mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Inp
 
 mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
     if editor.mini_panel.action == {
-        case .SEARCH;     return mini_panel_search_confirm(editor, platform, input);
-        case .OPEN_FILE;  return mini_panel_open_file_confirm(editor, platform, input);
+        case .SEARCH;              return mini_panel_search_confirm(editor, platform, input);
+        case .OPEN_FILE;           return mini_panel_open_file_confirm(editor, platform, input);
+        case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_confirm(editor, platform, input);
     }
 
     mini_panel := *editor.mini_panel;
@@ -2051,27 +2055,9 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
     }
 
     if mini_panel.action == {
-        case .SEARCH;     assert(false);
-        case .OPEN_FILE;  assert(false);
-
-        case .SWITCH_TO_DOCUMENT; {
-            if mini_panel.items.count {
-                assert(mini_panel.item_index >= 0);
-                item := *mini_panel.items[mini_panel.item_index];
-
-                document := cast(*Document, item.userdata);
-
-                if active_panel {
-                    set_panel_document(editor, active_panel, document);
-
-                    // TODO(jt): Emacs actually remembers the previous scroll of the panel in
-                    // document. Do we want to do the same?
-                    recenter_active_panel(editor, input, force_center = true, skip_interpolation = true);
-                }
-            }
-
-            close_mini_panel(editor, platform, input);
-        }
+        case .SEARCH;              assert(false);
+        case .OPEN_FILE;           assert(false);
+        case .SWITCH_TO_DOCUMENT;  assert(false);
 
         case .CLOSE_DOCUMENT; {
             if mini_panel.items.count {
@@ -2091,8 +2077,9 @@ mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -
 
 mini_panel_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
     if editor.mini_panel.action ==  {
-        case .SEARCH;     mini_panel_search_cancel(editor, platform, input); return;
-        case .OPEN_FILE;  mini_panel_open_file_cancel(editor, platform, input); return;
+        case .SEARCH;              mini_panel_search_cancel(editor, platform, input); return;
+        case .OPEN_FILE;           mini_panel_open_file_cancel(editor, platform, input); return;
+        case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_cancel(editor, platform, input); return;
     }
 
     close_mini_panel(editor, platform, input);
