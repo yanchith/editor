@@ -350,6 +350,7 @@ Mini_Panel_Get_Action_Text_Proc      :: #type (editor: *Editor, platform: Platfo
 Mini_Panel_Can_Select_Text_Line_Proc :: #type (editor: *Editor, platform: Platform, input: Input) -> bool;
 Mini_Panel_Init_Proc                 :: #type (editor: *Editor, platform: Platform, input: Input);
 Mini_Panel_Update_Proc               :: #type (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool);
+Mini_Panel_Delete_Backward_Proc      :: #type (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool;
 Mini_Panel_Autocomplete_Proc         :: #type (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool;
 Mini_Panel_Confirm_Proc              :: #type (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool;
 Mini_Panel_Cancel_Proc               :: #type (editor: *Editor, platform: Platform, input: Input);
@@ -1386,35 +1387,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, mini_panel.selecting);
 
         case .DELETE_FORWARD;         text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
-        case .DELETE_BACKWARD; {
-            // :MiniPanelAPI (mini_panel_text_update_proc ???)
-            //
-            // Some users of the mini panel might want to do fancier things when text is inserted or
-            // deleted. For now, this is just deleting path segments for .OPEN_FILE, so we hardcode
-            // that here, but eventually we want to pull this out into a proc that can be supplied
-            // by a plugin.
-
-            if mini_panel.action == .OPEN_FILE {
-                gb := mini_panel.buffer.gb;
-
-                last_byte := ifx gb.count then gb[gb.count - 1] else 0;
-                if last_byte == "/" {
-                    buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
-                    buffer_text.count -= 1; // The trailing '/', so that path_strip_filename can treat the last segment as a filename.
-
-                    dir_path := String.path_strip_filename(buffer_text);
-
-                    text_buffer_reset(*mini_panel.buffer);
-                    text_buffer_insert(*mini_panel.buffer, dir_path);
-                } else {
-                    text_buffer_delete_backward(*mini_panel.buffer);
-                }
-            } else {
-                text_buffer_delete_backward(*mini_panel.buffer);
-            }
-
-            buffer_changed = true;
-        }
+        case .DELETE_BACKWARD;        buffer_changed |= mini_panel_delete_backward_proc(editor, platform, input);
 
         case .SCROLL_UP;              mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
         case .SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
@@ -1955,6 +1928,15 @@ mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Inp
         case .OPEN_FILE;           return mini_panel_open_file_autocomplete(editor, platform, input);
         case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_autocomplete(editor, platform, input);
         case .CLOSE_DOCUMENT;      return mini_panel_close_document_autocomplete(editor, platform, input);
+    }
+}
+
+mini_panel_delete_backward_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
+    if #complete editor.mini_panel.action == {
+        case .SEARCH;              return mini_panel_search_delete_backward(editor, platform, input);
+        case .OPEN_FILE;           return mini_panel_open_file_delete_backward(editor, platform, input);
+        case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_delete_backward(editor, platform, input);
+        case .CLOSE_DOCUMENT;      return mini_panel_close_document_delete_backward(editor, platform, input);
     }
 }
 
