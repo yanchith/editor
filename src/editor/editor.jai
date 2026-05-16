@@ -1853,7 +1853,7 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, action: M
     mini_panel_update_proc(editor, platform, input, true, true);
 }
 
-#scope_module // XXX @Cleanup
+#scope_module
 
 // TODO(jt): Instead of relying that this is globally visible, give procs a pointer to this
 // procedure, so they can call it.
@@ -1878,13 +1878,17 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 
 #scope_file
 
-// XXX: Explain the new API.
-//
 // :MiniPanelAPI
 //
 // These mini_panel_* procs currently switch on the action enum of the mini panel and do hardcoded
 // stuff, but are later expected to be the entry points for mini panel plugins. This is why some of
 // them get more parameters than they actually need.
+//
+// UPDATE: All of the hardcoded functionality has been moved to other files, so that the API
+// crystalizes some more (e.g. we see what we need to be able to call from this file in the plugins).
+//
+// XXX: Next we replace the action enum with a struct containing the procs. Once we do that, we
+// should be in a good spot to be able to do real mini panel plugins eventually.
 
 mini_panel_get_action_text_proc :: (editor: *Editor, platform: Platform, input: Input) -> string {
     if #complete editor.mini_panel.action == {
@@ -2503,8 +2507,6 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     panel.flags |= .CLAMP_CURSOR_TO_SCROLL;
 }
 
-#scope_file
-
 get_cursor_position :: (document: Document, font: Font) -> cursor_position: DVector2, cursor_line_end_x: f64 {
     x := document.buffer.cursor0.x;
     y := document.buffer.cursor0.y;
@@ -2563,6 +2565,8 @@ setup_cursor_flash_interpolation :: (document: *Document, time: Apollo_Time, sou
     document.cursor_flash_time_start = time;
     document.cursor_flash = source;
 }
+
+#scope_file
 
 draw_rect :: (render_rects: *[..] Render_Rect, x0: f32, y0: f32, x1: f32, y1: f32, _color: Vector3 = { 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
     color: Vector4;
