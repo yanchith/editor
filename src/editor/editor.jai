@@ -132,6 +132,7 @@ operator==     :: Math.operator==;
 #load "mini_panel_search.jai";
 #load "mini_panel_open_file.jai";
 #load "mini_panel_switch_to_document.jai";
+#load "mini_panel_close_document.jai";
 #load "hello.jai";
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
@@ -343,6 +344,9 @@ Mini_Panel :: struct {
     }
 }
 
+// TODO(jt): @Cleanup action_text has to be allocated somewhere, for now the proc just temp
+// allocates, but maybe we want to formalize this later?
+Mini_Panel_Get_Action_Text_Proc      :: #type (editor: *Editor, platform: Platform, input: Input) -> /* Possibly short lifetime */ string;
 Mini_Panel_Can_Select_Text_Line_Proc :: #type (editor: *Editor, platform: Platform, input: Input) -> bool;
 Mini_Panel_Init_Proc                 :: #type (editor: *Editor, platform: Platform, input: Input);
 Mini_Panel_Update_Proc               :: #type (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool);
@@ -1159,14 +1163,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h, MINI_PANEL_LINE_COLOR);
         }
 
-        // :MiniPanelAPI (mini_panel_get_action_text_proc)
-        action_text: string;
-        if editor.mini_panel.action == {
-            case .SEARCH;              action_text = tprint("% Search: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
-            case .OPEN_FILE;           action_text = tprint("% Open file: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
-            case .SWITCH_TO_DOCUMENT;  action_text = tprint("% Switch to document: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
-            case .CLOSE_DOCUMENT;      action_text = tprint("% Close document: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
-        }
+        action_text := mini_panel_get_action_text_proc(editor, platform, input);
 
         line_view := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
 
@@ -1908,7 +1905,7 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 
 #scope_file
 
-// XXX
+// XXX: Explain the new API.
 //
 // :MiniPanelAPI
 //
@@ -1916,173 +1913,67 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 // stuff, but are later expected to be the entry points for mini panel plugins. This is why some of
 // them get more parameters than they actually need.
 
+mini_panel_get_action_text_proc :: (editor: *Editor, platform: Platform, input: Input) -> string {
+    if #complete editor.mini_panel.action == {
+        case .SEARCH;              return mini_panel_search_get_action_text(editor, platform, input);
+        case .OPEN_FILE;           return mini_panel_open_file_get_action_text(editor, platform, input);
+        case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_get_action_text(editor, platform, input);
+        case .CLOSE_DOCUMENT;      return mini_panel_close_document_get_action_text(editor, platform, input);
+    }
+}
+
 mini_panel_can_select_text_line_proc :: (editor: *Editor, platform: Platform, input: Input) -> bool {
-    if editor.mini_panel.action == {
+    if #complete editor.mini_panel.action == {
         case .SEARCH;              return mini_panel_search_can_select_text_line(editor, platform, input);
         case .OPEN_FILE;           return mini_panel_open_file_can_select_text_line(editor, platform, input);
         case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_can_select_text_line(editor, platform, input);
+        case .CLOSE_DOCUMENT;      return mini_panel_close_document_can_select_text_line(editor, platform, input);
     }
-
-    return false;
 }
 
 mini_panel_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
-    if editor.mini_panel.action == {
+    if #complete editor.mini_panel.action == {
         case .SEARCH;              mini_panel_search_init(editor, platform, input);
         case .OPEN_FILE;           mini_panel_open_file_init(editor, platform, input);
         case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_init(editor, platform, input);
+        case .CLOSE_DOCUMENT;      mini_panel_switch_to_document_init(editor, platform, input);
     }
 }
 
-// buffer_changed can imply selected_line_changed.
 mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
-    if editor.mini_panel.action == {
-        case .SEARCH;              mini_panel_search_update(editor, platform, input, buffer_changed, selected_item_changed); return;
-        case .OPEN_FILE;           mini_panel_open_file_update(editor, platform, input, buffer_changed, selected_item_changed); return;
-        case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_update(editor, platform, input, buffer_changed, selected_item_changed); return;
-    }
-
-    mini_panel := *editor.mini_panel;
-    active_panel := get_active_panel(editor);
-
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
-        return;
-    }
-
-    if buffer_changed {
-        array_reset(*mini_panel.items);
-        arena_reset(mini_panel.items_arena);
-
-        if mini_panel.action == {
-            case .SEARCH;              assert(false);
-            case .OPEN_FILE;           assert(false);
-            case .SWITCH_TO_DOCUMENT;  assert(false);
-
-            case .CLOSE_DOCUMENT; {
-                search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-                search_text_char_count := mini_panel.buffer.line_chars[0];
-
-                for * editor.documents {
-                    if mini_panel.action == .CLOSE_DOCUMENT && it.kind == .SCRATCH {
-                        continue;
-                    }
-
-                    document_name: string;
-                    if it.kind == {
-                        case .SCRATCH;  document_name = "*scratch*";
-                        case .FILE;     document_name = it.backing_file_path; // TODO(jt): Strip path prefix common for all items.
-                    }
-
-                    found_index, found := String.index_of_string_nocase(document_name, search_text);
-                    if found {
-                        s := "";
-                        if document_name.count {
-                            s = arena_push_string(mini_panel.items_arena, document_name);
-                        }
-
-                        x0 := count_utf8_chars(String.slice(document_name, 0, found_index));
-
-                        item := array_add(*mini_panel.items);
-                        item.text = s;
-                        item.highlight_x0 = x0;
-                        item.highlight_x1 = x0 + search_text_char_count;
-                        item.userdata = it;
-                    }
-                }
-            }
-        }
-
-        min_item_index := ifx mini_panel_can_select_text_line_proc(editor, platform, input) then -1 else 0;
-        mini_panel.item_index = clamp(mini_panel.item_index, min_item_index, mini_panel.items.count - 1);
+    if #complete editor.mini_panel.action == {
+        case .SEARCH;              mini_panel_search_update(editor, platform, input, buffer_changed, selected_item_changed);
+        case .OPEN_FILE;           mini_panel_open_file_update(editor, platform, input, buffer_changed, selected_item_changed);
+        case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_update(editor, platform, input, buffer_changed, selected_item_changed);
+        case .CLOSE_DOCUMENT;      mini_panel_close_document_update(editor, platform, input, buffer_changed, selected_item_changed);
     }
 }
 
 mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
-    if editor.mini_panel.action == {
+    if #complete editor.mini_panel.action == {
         case .SEARCH;              return mini_panel_search_autocomplete(editor, platform, input);
         case .OPEN_FILE;           return mini_panel_open_file_autocomplete(editor, platform, input);
         case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_autocomplete(editor, platform, input);
+        case .CLOSE_DOCUMENT;      return mini_panel_close_document_autocomplete(editor, platform, input);
     }
-
-    mini_panel := *editor.mini_panel;
-
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
-        return false;
-    }
-
-    if mini_panel.action == {
-        case .SEARCH;              assert(false);
-        case .OPEN_FILE;           assert(false);
-        case .SWITCH_TO_DOCUMENT;  assert(false);
-
-        case .CLOSE_DOCUMENT; {
-            if mini_panel.items.count == 1 {
-                // TODO(jt): The reset also nukes the edit history of the mini panel buffer... maybe
-                // we don't want that?
-                text_buffer_reset(*mini_panel.buffer);
-                text_buffer_insert(*mini_panel.buffer, mini_panel.items[0].text);
-
-                return true;
-            } else if mini_panel.items.count > 1 {
-                // TODO(jt): The reset also nukes the edit history of the mini panel buffer... maybe
-                // we don't want that?
-                text_buffer_reset(*mini_panel.buffer);
-                text_buffer_insert(*mini_panel.buffer, mini_panel.items[mini_panel.item_index].text);
-
-                return true;
-            }
-        }
-    }
-
-    return false;
 }
 
 mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
-    if editor.mini_panel.action == {
+    if #complete editor.mini_panel.action == {
         case .SEARCH;              return mini_panel_search_confirm(editor, platform, input);
         case .OPEN_FILE;           return mini_panel_open_file_confirm(editor, platform, input);
         case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_confirm(editor, platform, input);
+        case .CLOSE_DOCUMENT;      return mini_panel_close_document_confirm(editor, platform, input);
     }
-
-    mini_panel := *editor.mini_panel;
-    active_panel := get_active_panel(editor);
-
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
-        return false;
-    }
-
-    if mini_panel.action == {
-        case .SEARCH;              assert(false);
-        case .OPEN_FILE;           assert(false);
-        case .SWITCH_TO_DOCUMENT;  assert(false);
-
-        case .CLOSE_DOCUMENT; {
-            if mini_panel.items.count {
-                assert(mini_panel.item_index >= 0);
-                item := *mini_panel.items[mini_panel.item_index];
-
-                document := cast(*Document, item.userdata);
-                close_document(editor, document);
-            }
-
-            close_mini_panel(editor, platform, input);
-        }
-    }
-
-    return false;
 }
 
 mini_panel_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
-    if editor.mini_panel.action ==  {
-        case .SEARCH;              mini_panel_search_cancel(editor, platform, input); return;
-        case .OPEN_FILE;           mini_panel_open_file_cancel(editor, platform, input); return;
-        case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_cancel(editor, platform, input); return;
+    if #complete editor.mini_panel.action ==  {
+        case .SEARCH;              mini_panel_search_cancel(editor, platform, input);
+        case .OPEN_FILE;           mini_panel_open_file_cancel(editor, platform, input);
+        case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_cancel(editor, platform, input);
+        case .CLOSE_DOCUMENT;      mini_panel_close_document_cancel(editor, platform, input);
     }
-
-    close_mini_panel(editor, platform, input);
 }
 
 open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, action: Modal_Interaction.Action, initial_text := "") {
@@ -2446,7 +2337,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     document.arena = document_arena;
     if backing_file_path.count {
-        document.backing_file_path = copy_string(backing_file_path,, arena_allocator(document_arena));
+        document.backing_file_path = arena_push_string(document_arena, backing_file_path);
     }
 
     document.cursor_flash_source = CURSOR_COLOR;
@@ -2459,8 +2350,6 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     return document_pointer, true;
 }
-
-#scope_file
 
 close_document :: (editor: *Editor, document: *Document) {
     editor_log(editor, "Closing document % %", document.kind, document.backing_file_path);
@@ -2499,8 +2388,6 @@ close_document :: (editor: *Editor, document: *Document) {
     // Remove document itself.
     bucket_array_remove(*editor.documents, locator);
 }
-
-#scope_module
 
 set_panel_document :: (editor: Editor, panel: *Panel, document: *Document) {
     panel.scroll_source = { 0, 0 };
