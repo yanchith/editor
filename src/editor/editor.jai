@@ -133,6 +133,7 @@ operator==     :: Math.operator==;
 #load "mini_panel_open_file.jai";
 #load "mini_panel_switch_to_document.jai";
 #load "mini_panel_close_document.jai";
+#load "modal_interaction_search_and_replace.jai";
 #load "hello.jai";
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
@@ -297,7 +298,6 @@ Panel :: struct {
 // TODO(jt): @Cleanup Can we split this into its own file?
 Mini_Panel :: struct {
     open: bool;
-
     procs: Mini_Panel_Procs;
 
     selecting: bool;
@@ -311,13 +311,6 @@ Mini_Panel :: struct {
 
     userdata_arena: *Arena;
     userdata: *void; // Set this by passing it to open_mini_panel. You can allocate it with userdata_arena.
-
-    Action :: enum {
-        SEARCH             :: 0;
-        OPEN_FILE          :: 1;
-        SWITCH_TO_DOCUMENT :: 2;
-        CLOSE_DOCUMENT     :: 3;
-    }
 
     Item :: struct {
         text: string;
@@ -361,19 +354,28 @@ Mini_Panel_Cancel_Proc               :: #type (editor: *Editor, platform: Platfo
 
 Modal_Interaction :: struct {
     open: bool;
-
-    action: Action;
+    procs: Modal_Interaction_Procs;
 
     key_map: Key_Map(Modal_Interaction_Action); // In the permanent arena. Unlike mini panel, this key_map gets reset (keeping memory) and re-initialized each time we open.
     buffer: Text_Buffer;                        // Has its own arena, because buffers are special snowflakes (for now).
 
     userdata_arena: *Arena;
     userdata: *void;
-
-    Action :: enum {
-        SEARCH_AND_REPLACE :: 0;
-    }
 }
+
+Modal_Interaction_Procs :: struct {
+    get_action_text: Modal_Interaction_Get_Action_Text_Proc;
+    init:            Modal_Interaction_Init_Proc;
+    handle_event:    Modal_Interaction_Handle_Event_Proc;
+    advance:         Modal_Interaction_Advance_Proc;
+    cancel:          Modal_Interaction_Cancel_Proc;
+}
+
+Modal_Interaction_Get_Action_Text_Proc :: #type (editor: *Editor, platform: Platform, input: Input) -> /* Possibly short lifetime */ string;
+Modal_Interaction_Init_Proc            :: #type (editor: *Editor, platform: Platform, input: Input);
+Modal_Interaction_Handle_Event_Proc    :: #type (editor: *Editor, event: Input_Event, platform: Platform, input: Input) -> handled: bool;
+Modal_Interaction_Advance_Proc         :: #type (editor: *Editor, platform: Platform, input: Input);
+Modal_Interaction_Cancel_Proc          :: #type (editor: *Editor, platform: Platform, input: Input);
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
     ProfileZone("Editor.init");
@@ -1212,12 +1214,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             it_index += 1;
         }
     } else if editor.modal_interaction.open {
+        modal_interaction := *editor.modal_interaction;
+
         modal_interaction_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, modal_interaction_line_y, window_w, window_h, BACKGROUND_COLOR);
 
-        action_text := modal_interaction_get_action_text_proc(editor, platform, input);
+        action_text := modal_interaction.procs.get_action_text(editor, platform, input);
 
-        line_view := text_buffer_make_view_for_line(editor.modal_interaction.buffer, 0,, temp);
+        line_view := text_buffer_make_view_for_line(modal_interaction.buffer, 0,, temp);
 
         line_x   := cast(f32, _font_compute_position_on_line(editor.font, action_text, action_text.count, binary = false));
         cursor_x := line_x + _font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.buffer.cursor0.x, binary = false);
@@ -1478,7 +1482,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
     modal_interaction := *editor.modal_interaction;
     active_panel := get_active_panel(editor);
 
-    if modal_interaction_handle_event_proc(editor, event, platform, input) {
+    if modal_interaction.procs.handle_event(editor, event, platform, input) {
         return;
     }
 
@@ -1500,8 +1504,8 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
         case .INDENT_OR_AUTOCOMPLETE;    // No-op, we just want to prevent inserting a tab for now.
 
-        case .CONFIRM;                   modal_interaction_advance_proc(editor, platform, input);
-        case .CANCEL_OR_STOP_SELECTING;  modal_interaction_cancel_proc(editor, platform, input);
+        case .CONFIRM;                   modal_interaction.procs.advance(editor, platform, input);
+        case .CANCEL_OR_STOP_SELECTING;  modal_interaction.procs.cancel(editor, platform, input);
     }
 
     // TODO(jt): Do selecting in modal interaction
@@ -1682,7 +1686,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .MOVE_RIGHT;          text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
 
         case .SEARCH;              open_mini_panel(editor, platform, input, mini_panel_search_procs);
-        case .SEARCH_AND_REPLACE;  open_modal_interaction(editor, platform, input, .SEARCH_AND_REPLACE);
+        case .SEARCH_AND_REPLACE;  open_modal_interaction(editor, platform, input, modal_interaction_search_and_replace_procs);
 
         case .OPEN_FILE; {
             path := "./";
@@ -1852,7 +1856,6 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
     text_buffer_insert(*mini_panel.buffer, initial_text);
 
     mini_panel.procs = procs;
-
     mini_panel.open = true;
 
     procs.init(editor, platform, input);
@@ -1884,7 +1887,7 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 
 #scope_file
 
-open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, action: Modal_Interaction.Action, initial_text := "") {
+open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, procs: Modal_Interaction_Procs, initial_text := "") {
     modal_interaction := *editor.modal_interaction;
 
     assert(!modal_interaction.open);
@@ -1915,12 +1918,13 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, ac
 
     text_buffer_insert(*modal_interaction.buffer, initial_text);
 
-    modal_interaction.action = action;
-
+    modal_interaction.procs = procs;
     modal_interaction.open = true;
 
-    modal_interaction_init_proc(editor, platform, input);
+    procs.init(editor, platform, input);
 }
+
+#scope_module
 
 close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
     modal_interaction := *editor.modal_interaction;
@@ -1934,295 +1938,6 @@ close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
 
     modal_interaction.open = false;
 }
-
-Search_And_Replace_Userdata :: struct {
-    // Everything in here is valid when zero-initialized, but the key map will want its allocator set!
-
-    state: State;
-
-    input_to_search: string;
-    input_to_replace: string;
-
-    replacing_key_map: Key_Map(Action);
-
-    State :: enum {
-        INPUT_TO_SEARCH   :: 0;
-        INPUT_TO_REPLACE  :: 1;
-        REPLACING         :: 2;
-    }
-
-    Action :: enum {
-        NONE;
-
-        YES;
-        NO;
-        CANCEL;
-    }
-}
-
-modal_interaction_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
-    modal_interaction := *editor.modal_interaction;
-    assert(modal_interaction.open);
-
-    arena := modal_interaction.userdata_arena;
-
-    if #complete modal_interaction.action == {
-        case .SEARCH_AND_REPLACE; {
-            userdata := arena_push(arena, Search_And_Replace_Userdata);
-            userdata.replacing_key_map.allocator = arena_allocator(arena);
-            key_map_reserve(*userdata.replacing_key_map, 8);
-
-            key_map_add(*userdata.replacing_key_map, "y",   .YES);
-            key_map_add(*userdata.replacing_key_map, "n",   .NO);
-            key_map_add(*userdata.replacing_key_map, "q",   .CANCEL);
-            key_map_add(*userdata.replacing_key_map, "C-g", .CANCEL);
-
-            modal_interaction.userdata = userdata;
-        }
-    }
-}
-
-modal_interaction_get_action_text_proc :: (editor: *Editor, platform: Platform, input: Input) -> string {
-    modal_interaction := *editor.modal_interaction;
-    assert(modal_interaction.open);
-
-    if modal_interaction.action == .SEARCH_AND_REPLACE {
-        userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
-        if #complete userdata.state == {
-            case .INPUT_TO_SEARCH;   return "Text to replace: ";
-            case .INPUT_TO_REPLACE;  return tprint("Replace % with: ", userdata.input_to_search);
-            case .REPLACING;         return tprint("Replacing % with % ", userdata.input_to_search, userdata.input_to_replace); // TODO(jt): Progress bar - X/Y.
-        }
-    }
-
-    return "";
-}
-
-modal_interaction_handle_event_proc :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) -> handled: bool {
-    modal_interaction := *editor.modal_interaction;
-    assert(modal_interaction.open);
-
-    active_panel := get_active_panel(editor);
-    assert(active_panel != null);
-
-    if #complete modal_interaction.action == {
-        case .SEARCH_AND_REPLACE; {
-            userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
-
-            if #complete userdata.state == {
-                case .INPUT_TO_SEARCH;   return false;
-                case .INPUT_TO_REPLACE;  return false;
-                case .REPLACING; {
-                    sanity_assert(active_panel.highlights.count > 0);
-
-                    buffered, action := key_map_input(*userdata.replacing_key_map, event, editor.input_state.modifiers);
-                    if action == {
-                        case .YES; #through;
-                        case .NO; {
-                            if action == .YES {
-                                highlight := active_panel.highlights[active_panel.highlight_index];
-                                x0 := highlight.cursor_x0;
-                                x1 := highlight.cursor_x1;
-                                y  := highlight.cursor_y;
-
-                                document := active_panel.document;
-
-                                // If we ever do anything that changes the buffer while the
-                                // search&replace is open, these cursors will not be valid anymore
-                                // and we need to somehow handle that. At the moment I am writing
-                                // this, nothing like that exists in the editor.
-                                document.buffer.cursor0 = { x0, y };
-                                document.buffer.cursor1 = { x1, y };
-                                text_buffer_insert(*document.buffer, userdata.input_to_replace, undo_barrier = true, undo_fuse_with_delete_selection = true);
-
-                                // Instead of advancing the index we contract the array.
-                                array_ordered_remove_by_index(*active_panel.highlights, active_panel.highlight_index);
-
-                                //
-                                // If there are additional highlights on the same line, we need to
-                                // adjust them based on the lengths of the text we removed and added:
-                                //
-                                remove_count := count_utf8_chars(userdata.input_to_search);
-                                insert_count := count_utf8_chars(userdata.input_to_replace);
-                                if remove_count != insert_count {
-                                    delta := insert_count - remove_count;
-
-                                    index := active_panel.highlight_index;
-                                    while index < active_panel.highlights.count {
-                                        highlight := *active_panel.highlights[index];
-                                        if highlight.cursor_y > y {
-                                            break;
-                                        }
-
-                                        highlight.cursor_x0 += delta;
-                                        highlight.cursor_x1 += delta;
-
-                                        index += 1;
-                                    }
-                                }
-                            } else if action == .NO {
-                                active_panel.highlight_index += 1;
-                            }
-
-                            if active_panel.highlight_index >= active_panel.highlights.count {
-                                array_reset_keeping_memory(*active_panel.highlights);
-                                active_panel.highlight_index = -1;
-
-                                close_modal_interaction(editor, platform, input);
-                                editor_log(editor, "Done!"); // TODO(jt): Say how much stuff we replaced, etc...
-                            } else {
-                                highlight := active_panel.highlights[active_panel.highlight_index];
-                                x := highlight.cursor_x0;
-                                y := highlight.cursor_y;
-
-                                text_buffer_move_cursor_to(*active_panel.document.buffer, x, y, false);
-                                recenter_active_panel(editor, input, true);
-                            }
-                        }
-                        case .CANCEL; {
-                            array_reset_keeping_memory(*active_panel.highlights);
-                            active_panel.highlight_index = -1;
-
-                            close_modal_interaction(editor, platform, input);
-                        }
-                    }
-
-                    return true;
-                }
-            }
-        }
-    }
-}
-
-modal_interaction_advance_proc :: (editor: *Editor, platform: Platform, input: Input) {
-    modal_interaction := *editor.modal_interaction;
-    assert(modal_interaction.open);
-
-    active_panel := get_active_panel(editor);
-    assert(active_panel != null);
-
-    arena := modal_interaction.userdata_arena;
-
-    if #complete modal_interaction.action == {
-        case .SEARCH_AND_REPLACE; {
-            userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
-
-            if #complete userdata.state == {
-                case .INPUT_TO_SEARCH; {
-                    userdata.input_to_search = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
-                    text_buffer_reset(*modal_interaction.buffer);
-
-                    userdata.state = .INPUT_TO_REPLACE;
-                }
-                case .INPUT_TO_REPLACE; {
-                    userdata.input_to_replace = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
-                    text_buffer_reset(*modal_interaction.buffer);
-
-                    document := active_panel.document;
-
-                    array_reset_keeping_memory(*active_panel.highlights);
-                    active_panel.highlight_index = -1;
-
-                    old_cursor_y := document.buffer.cursor0.y;
-                    new_highlight_index := -1;
-
-                    search_text := userdata.input_to_search;
-                    search_text_char_count := ifx document.buffer.binary_mode then search_text.count else count_utf8_chars(search_text);
-
-                    gb_index := 0;
-                    for 0..document.buffer.line_bytes.count - 1 {
-                        gb_count := document.buffer.line_bytes[it];
-
-                        // :IncrementalGapBufferIndices
-                        //
-                        // We go straight to the gap buffer and count its indices manually, so that
-                        // we avoid the quadratic behavior of calling get_gb_index_for_line each
-                        // time through the loop.
-                        //
-                        // Note that even though we pass in temp, making of the view will only
-                        // allocate for one of the lines - the one that crosses the gap.
-                        line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
-                        line_text  := cast(string, line_bytes);
-
-                        // This is number of bytes if we are in binary mode, otherwise number of characters.
-                        processed_chars: s64 = 0;
-
-                        found_index := find_index_from_left_nocase(line_text, search_text);
-                        while found_index != -1 && line_text.count {
-                            x0 := processed_chars + found_index;
-                            if !document.buffer.binary_mode {
-                                x0 = processed_chars + count_utf8_chars(String.slice(line_text, 0, found_index));
-                            }
-                            x1 := x0 + search_text_char_count;
-                            y  := it;
-
-                            highlight_index := active_panel.highlights.count;
-
-                            highlight := array_add(*active_panel.highlights);
-                            highlight.cursor_x0 = x0;
-                            highlight.cursor_x1 = x1;
-                            highlight.cursor_y  = it;
-
-                            if new_highlight_index == -1 && it >= old_cursor_y {
-                                new_highlight_index = highlight_index;
-                            }
-
-                            if document.buffer.binary_mode {
-                                processed_chars += found_index + search_text.count;
-                            } else {
-                                processed_chars += count_utf8_chars(String.slice(line_text, 0, found_index + search_text.count));
-                            }
-                            advance(*line_text, found_index + search_text.count);
-
-                            found_index = find_index_from_left_nocase(line_text, search_text);
-                        }
-
-                        gb_index += gb_count;
-                    }
-
-                    if new_highlight_index != -1 {
-                        active_panel.highlight_index = new_highlight_index;
-
-                        highlight := active_panel.highlights[new_highlight_index];
-                        x := highlight.cursor_x0;
-                        y := highlight.cursor_y;
-
-                        text_buffer_move_cursor_to(*document.buffer, x, y, false);
-                        recenter_active_panel(editor, input, true);
-                    }
-
-                    if active_panel.highlights.count && new_highlight_index != -1 {
-                        userdata.state = .REPLACING;
-                    } else {
-                        array_reset_keeping_memory(*active_panel.highlights);
-                        active_panel.highlight_index = -1;
-
-                        close_modal_interaction(editor, platform, input);
-                        editor_log(editor, "No matches found");
-                    }
-                }
-                case .REPLACING; assert(false);
-            }
-        }
-    }
-}
-
-modal_interaction_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
-    modal_interaction := *editor.modal_interaction;
-    assert(modal_interaction.open);
-
-    active_panel := get_active_panel(editor);
-    assert(active_panel != null);
-
-    if modal_interaction.action == .SEARCH_AND_REPLACE {
-        array_reset_keeping_memory(*active_panel.highlights);
-        active_panel.highlight_index = -1;
-    }
-
-    close_modal_interaction(editor, platform, input);
-}
-
-#scope_module
 
 find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, newly_created: bool {
     for * editor.documents {
