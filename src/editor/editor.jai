@@ -298,12 +298,7 @@ Panel :: struct {
 Mini_Panel :: struct {
     open: bool;
 
-    // For now, this is an enum of things we might want to do, but this is not extensible. Once we
-    // want to do a plugin architecture, we should replace the current procs that switch on the
-    // action and call out to plugin procs there.
-    //
-    // :MiniPanelAPI
-    action: Action;
+    procs: Mini_Panel_Procs;
 
     selecting: bool;
 
@@ -330,10 +325,8 @@ Mini_Panel :: struct {
         highlight_x0: s64;
         highlight_x1: s64;
 
-        // The proc that fills these in can put things in here for the other procs. You can use the
-        // items_arena.
-        //
-        // :MiniPanelAPI
+        // The proc that fills these in can put things in here for the other procs. It can use the
+        // items_arena to allocate.
         userdata: *void;
 
         Flags :: enum_flags u64 {
@@ -342,6 +335,17 @@ Mini_Panel :: struct {
             BINARY :: 0x01;
         }
     }
+}
+
+Mini_Panel_Procs :: struct {
+    get_action_text:      Mini_Panel_Get_Action_Text_Proc;
+    can_select_text_line: Mini_Panel_Can_Select_Text_Line_Proc;
+    init:                 Mini_Panel_Init_Proc;
+    update:               Mini_Panel_Update_Proc;
+    delete_backward:      Mini_Panel_Delete_Backward_Proc;
+    autocomplete:         Mini_Panel_Autocomplete_Proc;
+    confirm:              Mini_Panel_Confirm_Proc;
+    cancel:               Mini_Panel_Cancel_Proc;
 }
 
 // TODO(jt): @Cleanup action_text has to be allocated somewhere, for now the proc just temp
@@ -1156,21 +1160,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
     if editor.mini_panel.open {
+        mini_panel := *editor.mini_panel;
+
         background_h := (MINI_PANEL_LINES + 1) * cell_h;
         background_y := max(window_h - background_h, 0);
         draw_rect(*render_rects, 0, background_y, window_w, window_h, BACKGROUND_COLOR);
 
-        if editor.mini_panel.item_index == -1 {
+        if mini_panel.item_index == -1 {
             draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h, MINI_PANEL_LINE_COLOR);
         }
 
-        action_text := mini_panel_get_action_text_proc(editor, platform, input);
+        action_text := mini_panel.procs.get_action_text(editor, platform, input);
 
-        line_view := text_buffer_make_view_for_line(editor.mini_panel.buffer, 0,, temp);
+        line_view := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
 
         line_x    := cast(f32, _font_compute_position_on_line(editor.font, action_text, action_text.count, binary = false));
-        cursor0_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor0.x, binary = false));
-        cursor1_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, editor.mini_panel.buffer.cursor1.x, binary = false));
+        cursor0_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, mini_panel.buffer.cursor0.x, binary = false));
+        cursor1_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, mini_panel.buffer.cursor1.x, binary = false));
 
         draw_rect(*render_rects, cursor0_x, background_y, cursor1_x, background_y + cell_h, SELECTION_COLOR);
         draw_rect(*render_rects, cursor0_x, background_y, cursor0_x + cell_w, background_y + cell_h, CURSOR_COLOR);
@@ -1179,14 +1185,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, TEXT_COLOR, binary = false);
 
-        index0 := max(editor.mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
-        index1 := min(index0 + MINI_PANEL_LINES, editor.mini_panel.items.count - 1);
+        index0 := max(mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
+        index1 := min(index0 + MINI_PANEL_LINES, mini_panel.items.count - 1);
 
         it_index := 0;
         for index0..index1 {
-            item := *editor.mini_panel.items[it];
+            item := *mini_panel.items[it];
 
-            if it == editor.mini_panel.item_index {
+            if it == mini_panel.item_index {
                 y0 := background_y + (it_index + 1) * cell_h;
                 y1 := background_y + (it_index + 2) * cell_h;
                 draw_rect(*render_rects, 0, y0, window_w, y1, MINI_PANEL_LINE_COLOR);
@@ -1368,7 +1374,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     mini_panel := *editor.mini_panel;
     active_panel := get_active_panel(editor);
 
-    min_item_index := ifx mini_panel_can_select_text_line_proc(editor, platform, input) then -1 else 0;
+    min_item_index := ifx mini_panel.procs.can_select_text_line(editor, platform, input) then -1 else 0;
 
     buffer_changed := false;
     old_item_index := mini_panel.item_index;
@@ -1387,23 +1393,23 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, mini_panel.selecting);
 
         case .DELETE_FORWARD;         text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
-        case .DELETE_BACKWARD;        buffer_changed |= mini_panel_delete_backward_proc(editor, platform, input);
+        case .DELETE_BACKWARD;        buffer_changed |= mini_panel.procs.delete_backward(editor, platform, input);
 
         case .SCROLL_UP;              mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
         case .SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
 
         case .START_SELECTING;        mini_panel.selecting = true;  text_buffer_join_cursors(*mini_panel.buffer);
 
-        case .AUTOCOMPLETE;           buffer_changed |= mini_panel_autocomplete_proc(editor, platform, input);
+        case .AUTOCOMPLETE;           buffer_changed |= mini_panel.procs.autocomplete(editor, platform, input);
 
-        case .CONFIRM;                buffer_changed |= mini_panel_confirm_proc(editor, platform, input);
+        case .CONFIRM;                buffer_changed |= mini_panel.procs.confirm(editor, platform, input);
 
         case .CANCEL_OR_STOP_SELECTING; {
             if mini_panel.selecting {
                 text_buffer_join_cursors(*mini_panel.buffer);
                 mini_panel.selecting = false;
             } else {
-                mini_panel_cancel_proc(editor, platform, input);
+                mini_panel.procs.cancel(editor, platform, input);
             }
         }
     }
@@ -1443,7 +1449,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         // calling this until they have all been processed. Otherwise we'll be doing expensive stuff
         // multiple times per frame. Maybe we need to move this one level up and track the dirty
         // flags on the mini panel itself?
-        mini_panel_update_proc(editor, platform, input, buffer_changed, mini_panel.item_index != old_item_index);
+        mini_panel.procs.update(editor, platform, input, buffer_changed, mini_panel.item_index != old_item_index);
     }
 }
 
@@ -1675,7 +1681,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .MOVE_LEFT;           text_buffer_move_cursor_x(*document.buffer, -1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
         case .MOVE_RIGHT;          text_buffer_move_cursor_x(*document.buffer,  1, shift_selecting || panel.selecting); panel.flags |= .CLAMP_SCROLL_TO_CURSOR; if shift_selecting then panel.selecting = false;
 
-        case .SEARCH;              open_mini_panel(editor, platform, input, .SEARCH);
+        case .SEARCH;              open_mini_panel(editor, platform, input, mini_panel_search_procs);
         case .SEARCH_AND_REPLACE;  open_modal_interaction(editor, platform, input, .SEARCH_AND_REPLACE);
 
         case .OPEN_FILE; {
@@ -1686,7 +1692,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 path = String.path_strip_filename(panel.document.backing_file_path);
             }
 
-            open_mini_panel(editor, platform, input, .OPEN_FILE, path);
+            open_mini_panel(editor, platform, input, mini_panel_open_file_procs, path);
         }
         case .SAVE_FILE; {
             if document.backing_file_path.count {
@@ -1703,8 +1709,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 }
             }
         }
-        case .SWITCH_TO_DOCUMENT;  open_mini_panel(editor, platform, input, .SWITCH_TO_DOCUMENT);
-        case .CLOSE_DOCUMENT;      open_mini_panel(editor, platform, input, .CLOSE_DOCUMENT);
+        case .SWITCH_TO_DOCUMENT;           open_mini_panel(editor, platform, input, mini_panel_switch_to_document_procs);
+        case .CLOSE_DOCUMENT;               open_mini_panel(editor, platform, input, mini_panel_close_document_procs);
 
         case .SWAP_LINE_UP; // TODO(jt)
         case .SWAP_LINE_DOWN; // TODO(jt)
@@ -1838,19 +1844,19 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 }
 
-open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, action: Mini_Panel.Action, initial_text := "") {
+open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mini_Panel_Procs, initial_text := "") {
     mini_panel := *editor.mini_panel;
 
     assert(!mini_panel.open);
 
     text_buffer_insert(*mini_panel.buffer, initial_text);
 
-    mini_panel.action = action;
+    mini_panel.procs = procs;
 
     mini_panel.open = true;
 
-    mini_panel_init_proc(editor, platform, input);
-    mini_panel_update_proc(editor, platform, input, true, true);
+    procs.init(editor, platform, input);
+    procs.update(editor, platform, input, true, true);
 }
 
 #scope_module
@@ -1877,90 +1883,6 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 }
 
 #scope_file
-
-// :MiniPanelAPI
-//
-// These mini_panel_* procs currently switch on the action enum of the mini panel and do hardcoded
-// stuff, but are later expected to be the entry points for mini panel plugins. This is why some of
-// them get more parameters than they actually need.
-//
-// UPDATE: All of the hardcoded functionality has been moved to other files, so that the API
-// crystalizes some more (e.g. we see what we need to be able to call from this file in the plugins).
-//
-// XXX: Next we replace the action enum with a struct containing the procs. Once we do that, we
-// should be in a good spot to be able to do real mini panel plugins eventually.
-
-mini_panel_get_action_text_proc :: (editor: *Editor, platform: Platform, input: Input) -> string {
-    if #complete editor.mini_panel.action == {
-        case .SEARCH;              return mini_panel_search_get_action_text(editor, platform, input);
-        case .OPEN_FILE;           return mini_panel_open_file_get_action_text(editor, platform, input);
-        case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_get_action_text(editor, platform, input);
-        case .CLOSE_DOCUMENT;      return mini_panel_close_document_get_action_text(editor, platform, input);
-    }
-}
-
-mini_panel_can_select_text_line_proc :: (editor: *Editor, platform: Platform, input: Input) -> bool {
-    if #complete editor.mini_panel.action == {
-        case .SEARCH;              return mini_panel_search_can_select_text_line(editor, platform, input);
-        case .OPEN_FILE;           return mini_panel_open_file_can_select_text_line(editor, platform, input);
-        case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_can_select_text_line(editor, platform, input);
-        case .CLOSE_DOCUMENT;      return mini_panel_close_document_can_select_text_line(editor, platform, input);
-    }
-}
-
-mini_panel_init_proc :: (editor: *Editor, platform: Platform, input: Input) {
-    if #complete editor.mini_panel.action == {
-        case .SEARCH;              mini_panel_search_init(editor, platform, input);
-        case .OPEN_FILE;           mini_panel_open_file_init(editor, platform, input);
-        case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_init(editor, platform, input);
-        case .CLOSE_DOCUMENT;      mini_panel_switch_to_document_init(editor, platform, input);
-    }
-}
-
-mini_panel_update_proc :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
-    if #complete editor.mini_panel.action == {
-        case .SEARCH;              mini_panel_search_update(editor, platform, input, buffer_changed, selected_item_changed);
-        case .OPEN_FILE;           mini_panel_open_file_update(editor, platform, input, buffer_changed, selected_item_changed);
-        case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_update(editor, platform, input, buffer_changed, selected_item_changed);
-        case .CLOSE_DOCUMENT;      mini_panel_close_document_update(editor, platform, input, buffer_changed, selected_item_changed);
-    }
-}
-
-mini_panel_autocomplete_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
-    if #complete editor.mini_panel.action == {
-        case .SEARCH;              return mini_panel_search_autocomplete(editor, platform, input);
-        case .OPEN_FILE;           return mini_panel_open_file_autocomplete(editor, platform, input);
-        case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_autocomplete(editor, platform, input);
-        case .CLOSE_DOCUMENT;      return mini_panel_close_document_autocomplete(editor, platform, input);
-    }
-}
-
-mini_panel_delete_backward_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
-    if #complete editor.mini_panel.action == {
-        case .SEARCH;              return mini_panel_search_delete_backward(editor, platform, input);
-        case .OPEN_FILE;           return mini_panel_open_file_delete_backward(editor, platform, input);
-        case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_delete_backward(editor, platform, input);
-        case .CLOSE_DOCUMENT;      return mini_panel_close_document_delete_backward(editor, platform, input);
-    }
-}
-
-mini_panel_confirm_proc :: (editor: *Editor, platform: Platform, input: Input) -> changed: bool {
-    if #complete editor.mini_panel.action == {
-        case .SEARCH;              return mini_panel_search_confirm(editor, platform, input);
-        case .OPEN_FILE;           return mini_panel_open_file_confirm(editor, platform, input);
-        case .SWITCH_TO_DOCUMENT;  return mini_panel_switch_to_document_confirm(editor, platform, input);
-        case .CLOSE_DOCUMENT;      return mini_panel_close_document_confirm(editor, platform, input);
-    }
-}
-
-mini_panel_cancel_proc :: (editor: *Editor, platform: Platform, input: Input) {
-    if #complete editor.mini_panel.action ==  {
-        case .SEARCH;              mini_panel_search_cancel(editor, platform, input);
-        case .OPEN_FILE;           mini_panel_open_file_cancel(editor, platform, input);
-        case .SWITCH_TO_DOCUMENT;  mini_panel_switch_to_document_cancel(editor, platform, input);
-        case .CLOSE_DOCUMENT;      mini_panel_close_document_cancel(editor, platform, input);
-    }
-}
 
 open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, action: Modal_Interaction.Action, initial_text := "") {
     modal_interaction := *editor.modal_interaction;

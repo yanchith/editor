@@ -1,11 +1,13 @@
-mini_panel_open_file_get_action_text:      Mini_Panel_Get_Action_Text_Proc      = get_action_text;
-mini_panel_open_file_can_select_text_line: Mini_Panel_Can_Select_Text_Line_Proc = can_select_text_line;
-mini_panel_open_file_init:                 Mini_Panel_Init_Proc                 = init;
-mini_panel_open_file_update:               Mini_Panel_Update_Proc               = update;
-mini_panel_open_file_delete_backward:      Mini_Panel_Delete_Backward_Proc      = delete_backward;
-mini_panel_open_file_autocomplete:         Mini_Panel_Autocomplete_Proc         = autocomplete;
-mini_panel_open_file_confirm:              Mini_Panel_Confirm_Proc              = confirm;
-mini_panel_open_file_cancel:               Mini_Panel_Cancel_Proc               = cancel;
+mini_panel_open_file_procs: Mini_Panel_Procs = {
+    get_action_text,
+    can_select_text_line,
+    init,
+    update,
+    delete_backward,
+    autocomplete,
+    confirm,
+    cancel,
+};
 
 #scope_file
 

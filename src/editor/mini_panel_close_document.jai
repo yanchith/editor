@@ -1,11 +1,13 @@
-mini_panel_close_document_get_action_text:      Mini_Panel_Get_Action_Text_Proc      = get_action_text;
-mini_panel_close_document_can_select_text_line: Mini_Panel_Can_Select_Text_Line_Proc = can_select_text_line;
-mini_panel_close_document_init:                 Mini_Panel_Init_Proc                 = init;
-mini_panel_close_document_update:               Mini_Panel_Update_Proc               = update;
-mini_panel_close_document_delete_backward:      Mini_Panel_Delete_Backward_Proc      = delete_backward;
-mini_panel_close_document_autocomplete:         Mini_Panel_Autocomplete_Proc         = autocomplete;
-mini_panel_close_document_confirm:              Mini_Panel_Confirm_Proc              = confirm;
-mini_panel_close_document_cancel:               Mini_Panel_Cancel_Proc               = cancel;
+mini_panel_close_document_procs: Mini_Panel_Procs = {
+    get_action_text,
+    can_select_text_line,
+    init,
+    update,
+    delete_backward,
+    autocomplete,
+    confirm,
+    cancel,
+};
 
 #scope_file
 
@@ -36,7 +38,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         search_text_char_count := mini_panel.buffer.line_chars[0];
 
         for * editor.documents {
-            if mini_panel.action == .CLOSE_DOCUMENT && it.kind == .SCRATCH {
+            if it.kind == .SCRATCH {
                 continue;
             }
 
