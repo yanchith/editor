@@ -51,10 +51,10 @@ TODO(jt): @Stream things:
 TODO(jt): Fancy stuff to do:
 
 - [ ] Panel tiling
-- [ ] Themes
 - [ ] Syntax Highlighting
 - [ ] Syntax aware indentation (C-i)
 - [ ] Syntax aware parentheses
+- [ ] Themes
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode
 - [ ] Multiple Cursors
