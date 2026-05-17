@@ -124,6 +124,7 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
     return font;
 }
 
+// Reset all font structures for the new pixel height. Implies font_new_frame.
 font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
     arena_pop_to_mark(font.arena, font.arena_mark);
 
@@ -183,12 +184,14 @@ font_reset_for_pixel_height :: (font: *Font, pixel_height: s32) {
 
     table_ensure_space(*font.glyph_table, table_size);
 
-    font.glyph_cache_stamp = 0;
+    // Set stamp to 1, because link_and_initialize sets the stamps of the entries to zero, and our
+    // own warning would fire when doing layout and render.
+    font.glyph_cache_stamp = 1;
 
     font.glyph_cache_hits   = 0;
     font.glyph_cache_misses = 0;
 
-    link_initial_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
+    link_and_initialize_glyph_entries(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail);
 }
 
 // Tell the glyph cache it can safely evict stuff from last frame. If you forget to call this, the
@@ -453,11 +456,14 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
 
 #scope_file
 
-link_initial_glyph_entries :: (entries: [] Glyph_Entry, head_index: *s32, tail_index: *s32) {
+link_and_initialize_glyph_entries :: (entries: [] Glyph_Entry, head_index: *s32, tail_index: *s32) {
     for * entries {
+        it.stamp = 0;
+
         it.prev = cast(s32, it_index - 1);
         it.next = cast(s32, it_index + 1);
     }
+
     entries[0].prev = -1;
     entries[entries.count - 1].next = -1;
 
