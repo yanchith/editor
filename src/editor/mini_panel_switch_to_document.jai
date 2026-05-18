@@ -41,6 +41,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
         search_text_char_count := mini_panel.buffer.line_chars[0];
 
+        max_time_of_last_interaction: Apollo_Time;
+
         for * editor.documents {
             document_name: string;
             if it.kind == {
@@ -50,6 +52,12 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
             found_index, found := String.index_of_string_nocase(document_name, search_text);
             if found {
+                // Select the most recent document, except the one pointed to by the currently active panel.
+                if active_panel.document != it && it.time_of_last_interaction > max_time_of_last_interaction {
+                    max_time_of_last_interaction = it.time_of_last_interaction;
+                    mini_panel.item_index = mini_panel.items.count;
+                }
+
                 s := "";
                 if document_name.count {
                     s = arena_push_string(mini_panel.items_arena, document_name);
@@ -92,16 +100,14 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
         return false;
     }
 
+    // TODO(jt): The reset also nukes the edit history of the mini panel buffer... maybe
+    // we don't want that?
     if mini_panel.items.count == 1 {
-        // TODO(jt): The reset also nukes the edit history of the mini panel buffer... maybe
-        // we don't want that?
         text_buffer_reset(*mini_panel.buffer);
         text_buffer_insert(*mini_panel.buffer, mini_panel.items[0].text);
 
         return true;
     } else if mini_panel.items.count > 1 {
-        // TODO(jt): The reset also nukes the edit history of the mini panel buffer... maybe
-        // we don't want that?
         text_buffer_reset(*mini_panel.buffer);
         text_buffer_insert(*mini_panel.buffer, mini_panel.items[mini_panel.item_index].text);
 
