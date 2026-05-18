@@ -23,7 +23,7 @@ TODO(jt): Early stuff to do:
 - [X] Messages
 - [X] Modeline
 - [X] Keymap support
-- [~] Find/replace and modal/interactive commands.
+- [X] Find/replace and modal/interactive commands.
 - [X] Open non-utf8 text buffers and binary files.
 
 TODO(jt): @Stream things:
@@ -43,8 +43,7 @@ TODO(jt): @Stream things:
 - [ ] C-u C-<space> and cursor undo.
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Flash cursor with typing (needs tuning)
-- [X] Trail behind cursor (needs tuning)
-- [ ] When switching-to/closing documents, sort by most recent first.
+- [X] When switching-to/closing documents, sort by recency.
 - [ ] Read-only mode for documents.
 
 
@@ -2036,8 +2035,6 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
     panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes for e.g. to_float64_seconds.
     panel.scroll = { 0, 0 };
 
-    panel.flags |= .CLAMP_SCROLL_TO_CURSOR; // Because we are inserting potentially large text.
-
     panel.selecting = false;
     panel.document = document;
 
@@ -2048,6 +2045,9 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
     hello_arena := make_arena(platform, .LARGE);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
     text_buffer_insert(*document.buffer, hello_text, undo_barrier = true);
+
+    document.buffer.cursor0 = { 0, 0 };
+    document.buffer.cursor1 = { 0, 0 };
 
     // For when you want to materialize The Year of Glad.
     //
