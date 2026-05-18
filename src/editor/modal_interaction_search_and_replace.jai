@@ -79,7 +79,6 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
         return false;
     }
 
-    // XXX: Also sanitize the mini panel procs this way.
     active_panel := get_active_panel(editor);
     sanity_assert(active_panel != null);
     if !active_panel {
@@ -285,12 +284,6 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
 }
 
 cancel :: (editor: *Editor, platform: Platform, input: Input) {
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
-        return;
-    }
-
     active_panel := get_active_panel(editor);
     sanity_assert(active_panel != null);
     if !active_panel {

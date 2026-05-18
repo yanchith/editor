@@ -30,10 +30,14 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
     ProfileZone("mini_panel_open_file_update_proc");
 
     mini_panel := *editor.mini_panel;
-    active_panel := get_active_panel(editor);
-
     sanity_assert(mini_panel.open);
     if !mini_panel.open {
+        return;
+    }
+
+    active_panel := get_active_panel(editor);
+    sanity_assert(active_panel != null);
+    if !active_panel {
         return;
     }
 
@@ -150,10 +154,14 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
 
 confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
     mini_panel := *editor.mini_panel;
-    active_panel := get_active_panel(editor);
-
     sanity_assert(mini_panel.open);
     if !mini_panel.open {
+        return false;
+    }
+
+    active_panel := get_active_panel(editor);
+    sanity_assert(active_panel != null);
+    if !active_panel {
         return false;
     }
 

@@ -28,11 +28,15 @@ can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> b
 }
 
 init :: (editor: *Editor, platform: Platform, input: Input) {
-    mini_panel   := *editor.mini_panel;
-    active_panel := get_active_panel(editor);
-
+    mini_panel := *editor.mini_panel;
     sanity_assert(mini_panel.open);
     if !mini_panel.open {
+        return;
+    }
+
+    active_panel := get_active_panel(editor);
+    sanity_assert(active_panel != null);
+    if !active_panel {
         return;
     }
 
@@ -44,11 +48,15 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
 update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
     ProfileZone("mini_panel_search_update_proc");
 
-    mini_panel   := *editor.mini_panel;
-    active_panel := get_active_panel(editor);
-
+    mini_panel := *editor.mini_panel;
     sanity_assert(mini_panel.open);
     if !mini_panel.open {
+        return;
+    }
+
+    active_panel := get_active_panel(editor);
+    sanity_assert(active_panel != null);
+    if !active_panel {
         return;
     }
 
@@ -165,7 +173,6 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
 delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
     mini_panel := *editor.mini_panel;
-
     sanity_assert(mini_panel.open);
     if !mini_panel.open {
         return false;
@@ -185,11 +192,15 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
 }
 
 confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
-    mini_panel   := *editor.mini_panel;
-    active_panel := get_active_panel(editor);
-
+    mini_panel := *editor.mini_panel;
     sanity_assert(mini_panel.open);
     if !mini_panel.open {
+        return false;
+    }
+
+    active_panel := get_active_panel(editor);
+    sanity_assert(active_panel != null);
+    if !active_panel {
         return false;
     }
 
@@ -218,11 +229,15 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 }
 
 cancel :: (editor: *Editor, platform: Platform, input: Input) {
-    mini_panel   := *editor.mini_panel;
-    active_panel := get_active_panel(editor);
-
+    mini_panel := *editor.mini_panel;
     sanity_assert(mini_panel.open);
     if !mini_panel.open {
+        return;
+    }
+
+    active_panel := get_active_panel(editor);
+    sanity_assert(active_panel != null);
+    if !active_panel {
         return;
     }
 
