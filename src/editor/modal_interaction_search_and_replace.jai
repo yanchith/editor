@@ -21,6 +21,10 @@ Search_And_Replace_Userdata :: struct {
 
     replacing_key_map: Key_Map(Action);
 
+    found_count:     s64;
+    replaced_count:  s64;
+    processed_count: s64;
+
     State :: enum {
         INPUT_TO_SEARCH   :: 0;
         INPUT_TO_REPLACE  :: 1;
@@ -47,7 +51,7 @@ get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Pot
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH;   return "Text to replace: ";
         case .INPUT_TO_REPLACE;  return tprint("Replace % with: ", userdata.input_to_search);
-        case .REPLACING;         return tprint("Replacing % with % ", userdata.input_to_search, userdata.input_to_replace); // TODO(jt): Progress bar - X/Y.
+        case .REPLACING;         return tprint("Replacing % with % (%/%)", userdata.input_to_search, userdata.input_to_replace, userdata.processed_count + 1, userdata.found_count);
     }
 }
 
@@ -137,16 +141,20 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                                 index += 1;
                             }
                         }
+
+                        userdata.replaced_count += 1;
+                        userdata.processed_count += 1;
                     } else if action == .NO {
                         active_panel.highlight_index += 1;
+                        userdata.processed_count += 1;
                     }
 
                     if active_panel.highlight_index >= active_panel.highlights.count {
                         array_reset_keeping_memory(*active_panel.highlights);
                         active_panel.highlight_index = -1;
 
+                        editor_log(editor, "Done! Replaced % matches", userdata.replaced_count);
                         close_modal_interaction(editor, platform, input);
-                        editor_log(editor, "Done!"); // TODO(jt): Say how much stuff we replaced, etc...
                     } else {
                         highlight := active_panel.highlights[active_panel.highlight_index];
                         x := highlight.cursor_x0;
@@ -160,6 +168,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                     array_reset_keeping_memory(*active_panel.highlights);
                     active_panel.highlight_index = -1;
 
+                    editor_log(editor, "Cancel! Replaced % matches", userdata.replaced_count);
                     close_modal_interaction(editor, platform, input);
                 }
             }
@@ -271,12 +280,16 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
 
             if active_panel.highlights.count && new_highlight_index != -1 {
                 userdata.state = .REPLACING;
+
+                userdata.found_count = active_panel.highlights.count;
+                userdata.replaced_count = 0;
+                userdata.processed_count = 0;
             } else {
                 array_reset_keeping_memory(*active_panel.highlights);
                 active_panel.highlight_index = -1;
 
-                close_modal_interaction(editor, platform, input);
                 editor_log(editor, "No matches found");
+                close_modal_interaction(editor, platform, input);
             }
         }
         case .REPLACING; assert(false);
