@@ -4,14 +4,12 @@ TODO(jt): Known serious bugs:
 
 (none currently)
 
-TODO(jt): Early stuff to do:
+TODO(jt): Stuff to do:
 
 - [X] Implement Arena, or use Flat_Pool.
 - [X] Display text on screen
 - [X] Nice font rendering.
-
 - [X] Gap Buffer (or other text datastructure)
-
 - [X] Basic file navigation
 - [X] Basic file editing
 - [X] Load file/Save file with file navigation in mini panel
@@ -25,29 +23,6 @@ TODO(jt): Early stuff to do:
 - [X] Keymap support
 - [X] Find/replace and modal/interactive commands.
 - [X] Open non-utf8 text buffers and binary files.
-
-TODO(jt): @Stream things:
-
-- [X] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
-- [X] OPEN_FILE starts in the directory of the currently open document
-- [X] OPEN_FILE, switch to buffer and close buffer get tab completions.
-- [X] Selection in mini panel text buffer.
-- [ ] Selection in modal interaction text buffer.
-- [ ] Keep displaying (and updating) panel selection while SEARCH is active.
-- [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
-- [ ] M-d, C-<backspace> (delete forward/backward word)
-- [ ] M-u, M-l (upcase/downcase word and move cursor)
-- [ ] M-x
-- [ ] M-g g (go to line)
-- [ ] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
-- [ ] C-u C-<space> and cursor undo.
-- [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
-- [X] Flash cursor with typing (needs tuning)
-- [X] When switching-to/closing documents, sort by recency.
-- [ ] Read-only mode for documents.
-
-
-TODO(jt): Fancy stuff to do:
 
 - [ ] Panel tiling
 - [ ] Syntax Highlighting
@@ -69,19 +44,25 @@ TODO(jt): Fancy stuff to do:
 - [ ] 4coder style floating annotations? (e.g. name of the function or if statement expresion after closing brace)
 - [ ] Customization and plugins
 
-TODO(jt): Decide whether we want to be using context.allocator. The problem is that it is not always
-clear without carefully reading a procedure's code, if that procedure *actively* expects the context
-allocator to be overriden. The alternative is to use an explicit allocator parameter, which is
-slighly more annoying. For now we are using context allocator and we'll see how it goes.
+TODO(jt): @Stream Small things to do:
 
-Related problems to the above are:
-
-Q: Should we be using temp or not?
-A: Use it (it is very convenient!), but not for return values, unless it is really clear that that's
-   what's happening (one example being the tprint function).
-
-Q: What if the procedure allocates stuff with multiple different (long-lived) lifetimes?
-A: Pass an allocator for each lifetime. Fortunately, these situations are rare.
+- [X] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
+- [X] OPEN_FILE starts in the directory of the currently open document
+- [X] OPEN_FILE, switch to buffer and close buffer get tab completions.
+- [X] Selection in mini panel text buffer.
+- [ ] Selection in modal interaction text buffer.
+- [ ] Keep displaying (and updating) panel selection while SEARCH is active.
+- [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
+- [ ] M-d, C-<backspace> (delete forward/backward word)
+- [ ] M-u, M-l (upcase/downcase word and move cursor)
+- [ ] M-x
+- [ ] M-g g (go to line)
+- [ ] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
+- [ ] C-u C-<space> and cursor undo.
+- [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
+- [X] Flash cursor with typing (needs tuning)
+- [X] When switching-to/closing documents, sort by recency.
+- [ ] Read-only mode for documents.
 
 */
 
@@ -205,6 +186,7 @@ Document :: struct {
     locator: Bucket_Locator;
 
     kind: Kind;
+    flags: Flags;
     time_of_last_interaction: Apollo_Time;
 
     buffer: Text_Buffer;
@@ -220,9 +202,18 @@ Document :: struct {
     backing_file_path: string;
     backing_file_exists: bool;
 
-    Kind :: enum {
+    Kind :: enum u32 {
         SCRATCH;
+        // COMPILATION;
         FILE;
+    }
+
+    Flags :: enum_flags u32 {
+        NONE :: 0;
+
+        // READ_ONLY
+        // CONSISTENT_INDENTATION
+        // CONSISTENT_NEWLINES
     }
 
     //
@@ -294,7 +285,6 @@ Panel :: struct {
     }
 }
 
-// TODO(jt): @Cleanup Can we split this into its own file?
 Mini_Panel :: struct {
     open: bool;
     procs: Mini_Panel_Procs;
@@ -340,8 +330,6 @@ Mini_Panel_Procs :: struct {
     cancel:               Mini_Panel_Cancel_Proc;
 }
 
-// TODO(jt): @Cleanup action_text has to be allocated somewhere, for now the proc just temp
-// allocates, but maybe we want to formalize this later?
 Mini_Panel_Get_Action_Text_Proc      :: #type (editor: *Editor, platform: Platform, input: Input) -> /* Possibly short lifetime */ string;
 Mini_Panel_Can_Select_Text_Line_Proc :: #type (editor: *Editor, platform: Platform, input: Input) -> bool;
 Mini_Panel_Init_Proc                 :: #type (editor: *Editor, platform: Platform, input: Input);
@@ -415,7 +403,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<right>", .MOVE_RIGHT);
 
         key_map_add(key_map, "C-s",     .SEARCH);
-        // TODO(jt): @Cleanup In Emacs, SEARCH_AND_REPLACE is C-M-%, but our platform layer sucks, so we just rebound it to something else.
+        // TODO(jt): @Cleanup In Emacs, SEARCH_AND_REPLACE is C-M-%, but our platform layer sucks, so we just bound it to something else for now.
         key_map_add(key_map, "C-r",     .SEARCH_AND_REPLACE);
 
         key_map_add(key_map, "C-x C-f", .OPEN_FILE);
@@ -698,7 +686,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     window_h := cast(f32, input.window_size.y);
 
     if editor.mini_panel.open {
-        // TODO(jt): Handle mouse in mini panel?
+        // TODO(jt): Handle mouse in mini panel.
+    } else if editor.modal_interaction.open {
+        // TODO(jt): Handle mouse in modal interaction.
     } else {
         // TODO(jt): Mouse stuff should activate the clicked panel! See :MultiplePanels
 
@@ -706,7 +696,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Mouse wheel scrolling
         //
         if input.mouse_wheel_delta != 0 && !(editor.input_state.modifiers & .CTRL) {
-            // TODO(jt): This is choppy on macOS touchpad scrolling. Get underlying float scroll value?
             active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
             active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
 
@@ -1417,9 +1406,9 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         }
     }
 
-    // TODO(jt): Animated cursor in modal interaction
+    // TODO(jt): Animated cursor in mini panel
     // TODO(jt): Do animated horizontal scroll of buffer in mini panel.
-    // TODO(jt): Do animated vertical scroll of item list in mini_panel.
+    // TODO(jt): Do animated vertical scroll of item list in mini panel.
     if !buffered && action == .NONE && event.flags & .PRESSED {
         if event.type == {
             case .CODEPOINT; {
@@ -1690,7 +1679,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .OPEN_FILE; {
             path := "./";
 
-            // TODO(jt): In the future, we could set the path to the project directory.
             if panel.document.kind == .FILE && panel.document.backing_file_path.count {
                 path = String.path_strip_filename(panel.document.backing_file_path);
             }
@@ -1715,8 +1703,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .SWITCH_TO_DOCUMENT;           open_mini_panel(editor, platform, input, mini_panel_switch_to_document_procs);
         case .CLOSE_DOCUMENT;               open_mini_panel(editor, platform, input, mini_panel_close_document_procs);
 
-        case .SWAP_LINE_UP; // TODO(jt)
-        case .SWAP_LINE_DOWN; // TODO(jt)
+        case .SWAP_LINE_UP;                 // TODO(jt): text_buffer_swap_line_up
+        case .SWAP_LINE_DOWN;               // TODO(jt): text_buffer_swap_line_down
 
         case .MOVE_TO_START_OF_LINE;        text_buffer_move_cursor_to_start_of_line(*document.buffer, panel.selecting); panel.flags = .CLAMP_SCROLL_TO_CURSOR;
         case .MOVE_TO_END_OF_LINE;          text_buffer_move_cursor_to_end_of_line(*document.buffer, panel.selecting);   panel.flags = .CLAMP_SCROLL_TO_CURSOR;
@@ -1757,8 +1745,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .DELETE_FORWARD;               panel.selecting = false; text_buffer_delete_forward(*document.buffer);  panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         case .DELETE_BACKWARD;              panel.selecting = false; text_buffer_delete_backward(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
-        case .DELETE_FORWARD_WORD;          // TODO(jt): text_buffer_delete_until_next_word_boundary.
-        case .DELETE_BACKWARD_WORD;         // TODO(jt): text_buffer_delete_until_previous_word_boundary.
+        case .DELETE_FORWARD_WORD;          // TODO(jt): text_buffer_delete_until_next_word_boundary
+        case .DELETE_BACKWARD_WORD;         // TODO(jt): text_buffer_delete_until_previous_word_boundary
 
         case .INSERT_LINE_BEFORE; {
             // TODO(jt): Preserve CRLF in CRLF-only documents.
@@ -1775,7 +1763,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         }
 
         // TODO(jt): Make indentation configurable.
-        // TODO(jt): Preserve tab-ness in tab-only documents.
+        // TODO(jt): Preserve tabness in tab-only documents.
         case .INDENT_OR_AUTOCOMPLETE;       text_buffer_insert(*document.buffer, "    "); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
         case .UNDO_EDIT;                    text_buffer_undo_edit(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
@@ -1863,8 +1851,6 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
 
 #scope_module
 
-// TODO(jt): Instead of relying that this is globally visible, give procs a pointer to this
-// procedure, so they can call it.
 close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     mini_panel := *editor.mini_panel;
     assert(mini_panel.open);
@@ -1954,6 +1940,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     document: Document;
     document.kind = kind;
+    document.flags = .NONE;
     document.time_of_last_interaction = editor.input_state.time;
     text_buffer_init(*document.buffer, buffer_arena, buffer_edit_text_arena);
 
@@ -2113,7 +2100,6 @@ scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
 
     top: f64 = 0; // Just here for symmetry with scrolling
 
-    // TODO(jt): Scroll by less? :Config
     delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
     delta = min(delta, panel.scroll_target.y - top);
 
@@ -2133,7 +2119,6 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     bottom := cast(f64, panel.document.buffer.line_count) * cell_h;
     sanity_assert(bottom >= panel.scroll_target.y);
 
-    // TODO(jt): Scroll by less? :Config
     delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
     delta = min(delta, bottom - (panel.scroll_target.y + delta));
 
