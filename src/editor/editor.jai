@@ -2229,9 +2229,7 @@ make_arena :: (platform: Platform, size: Arena_Size) -> *Arena {
     procs.mem_commit   = platform.mem_commit;
     procs.mem_decommit = platform.mem_decommit;
 
-    reserve_size := cast(s64, size);
-
-    arena := arena_allocate(procs, reserve_size = reserve_size);
+    arena := arena_allocate(procs, reserve_size = cast(s64, size));
 
     return arena;
 }

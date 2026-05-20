@@ -31,7 +31,7 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
             // As of beta 0.2.026, Basic.free sets requested_size and old_size to zero. That is
             // completely valid, because general purpose allocators in C land don't get to know
             // old_size and have to deal. However, if we did know old-size, we could could actually
-            // reclaim memory here with arena_maybe_modify_last_push. Datastructures like dynamic
+            // reclaim memory here with arena_modify_last_push. Datastructures like dynamic
             // array or hash table could fill in the size, if they wanted to.
             return null;
         }
@@ -40,11 +40,11 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
             arena := cast(*Arena, allocator_data);
             assert(arena != null);
 
-            if arena_maybe_modify_last_push(arena, old_memory, old_size, requested_size) {
+            if arena_modify_last_push(arena, old_memory, old_size, requested_size) {
                 return old_memory;
             }
 
-            // arena_maybe_modify_last_push could have said no to a shrink operation, in which case
+            // arena_modify_last_push could have said no to a shrink operation, in which case
             // we don't want to allocate a new spot within the same arena.
             if requested_size <= old_size {
                 return old_memory;
@@ -86,7 +86,7 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
 
         case .IS_THIS_YOURS; {
             arena := cast(*Arena, allocator_data);
-            result := arena_is_this_yours(arena, old_memory);
+            result := arena_contains(arena, old_memory);
 
             return cast(*void, cast(s64, result));
         }
@@ -115,13 +115,14 @@ Arena_Procs :: struct {
 }
 
 Arena :: struct {
-    // Things given by the caller before arena_init as arguments to arena_allocate. At least procs must be set, because they don't have a default. Don't change them after init.
+    // Things given by the caller before arena_init as arguments to arena_allocate. At least procs
+    // must be set, because they don't have a default. Don't change them after init.
     procs: Arena_Procs;
-    reserve_size := ARENA_DEFAULT_RESERVE_SIZE;        // How much memory we reserve, aligned to page size. Can't get more.
-    commit_size  := ARENA_DEFAULT_COMMIT_SIZE;         // The minimal size that is (de)committed, aligned to page size. Should be less than reserve size.
-    retain_size  := ARENA_DEFAULT_RETAIN_SIZE; // The minimal size that is not decommitted once it has been committed, aligned to page size. Should be less than reserve size.
+    reserve_size := ARENA_DEFAULT_RESERVE_SIZE;  // How much memory we reserve, aligned to page size. Can't get more.
+    commit_size  := ARENA_DEFAULT_COMMIT_SIZE;   // The minimal size that is (de)committed, aligned to page size.
+    retain_size  := ARENA_DEFAULT_RETAIN_SIZE;   // The minimal size that is not decommitted once it has been committed, aligned to page size.
 
-    // Internal stuff. Don't write to these yourself.
+    // Internal stuff. Consider read-only.
 
     memory_start: *void;
     memory_end:   *void;
@@ -209,9 +210,17 @@ arena_release :: (arena: *Arena) {
     arena.procs.mem_release(memory_start, memory_end - memory_start);
 }
 
-arena_is_this_yours :: (arena: Arena, pointer: *void) -> bool {
+arena_contains :: (arena: Arena, pointer: *void) -> bool {
     return pointer >= arena.memory_start && pointer < arena.memory_start + arena.allocated;
 }
+
+// :ArenaPushEmpty
+//
+// We could allow pushing empty arrays or strings (by retuning a pointer in the executable's memory and
+// not modifying the arena at all), but that might cause confusion, because the thing does not
+// really live in the arena, and arena_contains/IS_THIS_YOURS would return false for these empty
+// allocations. For now we decided not to do it. This means callers need to make sure stuff is not
+// empty themselves.
 
 arena_push :: (arena: *Arena, _size: s64, alignment: s64 = DEFAULT_ALIGNMENT) -> *void {
     assert(_size > 0, "Can not push zero size");
@@ -271,14 +280,6 @@ arena_push :: (arena: *Arena, $T: Type, min_alignment := 1) -> *T {
 
     return pointer;
 }
-
-// :ArenaPushEmpty
-//
-// We could allow pushing empty arrays strings (by retuning a pointer in the executable's memory and
-// not modifying the arena at all), but that might cause confusion, because the thing does not
-// really live in the arena, and arena_is_this_yours would return false for these empty
-// allocations. For now we decided not to do it. This means callers need to make sure stuff is not
-// empty themselves.
 
 arena_push_array :: (arena: *Arena, $T: Type, count: s64, min_alignment := 1) -> [] T {
     assert(count > 0, "Can not push empty arrays");
@@ -345,13 +346,15 @@ arena_push_string :: (arena: *Arena, s: string, min_alignment := 1) -> string {
 // allocation. (And even then it sometimes won't because of alignment of subsequent allocations, but
 // it is guaranteed to succeed if you just made the last allocation right now). Speaking of
 // alignment, you can't change it here.
-arena_maybe_modify_last_push :: (arena: *Arena, pointer: *void, old_size: s64, new_size: s64, overwrite_memory := DEFAULT_OVERWRITE_MEMORY) -> success: bool {
+arena_modify_last_push :: (arena: *Arena, pointer: *void, old_size: s64, new_size: s64, overwrite_memory := DEFAULT_OVERWRITE_MEMORY) -> success: bool {
     if !arena.memory_start {
         arena_init(arena);
     }
 
     if pointer + old_size != arena.memory_start + arena.allocated {
-        return false; // This is not the last allocation. (May be a false negative.)
+        // This is not the last allocation. May be a false negative, if we introduced padding after
+        // this allocation by pushing and popping something with stronger alignment requirements.
+        return false;
     }
 
     if old_size < new_size {
