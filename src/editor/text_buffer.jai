@@ -41,6 +41,9 @@ Text_Buffer :: struct {
     edit_text_arena_mark: Arena_Mark;
 }
 
+// XXX: There is some renaming ahead. Cursor -> Text_Location, cursor0 -> point, cursor1 -> point? Also,
+// we maybe don't want to store these on the text buffer, but on the document, because there can be
+// multiple. Think about this.
 Cursor :: struct {
     x: s64;
     y: s64;
