@@ -82,7 +82,7 @@ gap_buffer_move_gap_to :: (gb: *Gap_Buffer, index: s64) {
 }
 
 gap_buffer_insert :: (gb: *Gap_Buffer, text: string) {
-    inline gap_buffer_insert(gb, cast([] u8, text));
+    /*inline?*/ gap_buffer_insert(gb, cast([] u8, text));
 }
 
 // Inserts at the gap, advancing the gap index.

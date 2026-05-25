@@ -143,7 +143,7 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
 }
 
 text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false, undo_fuse_with_delete_selection := false) {
-    /*inline*/ text_buffer_insert(buffer, cast(string, bytes), undo_barrier, undo_fuse_with_delete_selection);
+    /*inline?*/ text_buffer_insert(buffer, cast(string, bytes), undo_barrier, undo_fuse_with_delete_selection);
 }
 
 // TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
@@ -213,7 +213,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
 }
 
 text_buffer_delete_selection :: (buffer: *Text_Buffer) -> string /* Pointing to the internal gap buffer */ {
-    return inline text_buffer_delete_selection(buffer, buffer.cursor0, buffer.cursor1);
+    return /*inline?*/ text_buffer_delete_selection(buffer, buffer.cursor0, buffer.cursor1);
 }
 
 text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, __end: Text_Location) -> string /* Pointing to the internal gap buffer */ {
