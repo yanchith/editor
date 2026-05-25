@@ -15,8 +15,8 @@ Text_Buffer :: struct {
 
     binary_mode: bool;
 
-    cursor0: Cursor;
-    cursor1: Cursor;
+    cursor0: Text_Location;
+    cursor1: Text_Location;
 
     gb: Gap_Buffer;   // Stores the UTF-8 bytes.
     // SoA version of a line struct:
@@ -41,15 +41,12 @@ Text_Buffer :: struct {
     edit_text_arena_mark: Arena_Mark;
 }
 
-// XXX: There is some renaming ahead. Cursor -> Text_Location, cursor0 -> point, cursor1 -> point? Also,
-// we maybe don't want to store these on the text buffer, but on the document, because there can be
-// multiple. Think about this.
-Cursor :: struct {
+Text_Location :: struct {
     x: s64;
     y: s64;
 }
 
-operator == :: (a: Cursor, b: Cursor) -> bool {
+operator == :: (a: Text_Location, b: Text_Location) -> bool {
     return a.x == b.x && a.y == b.y;
 }
 
@@ -61,10 +58,10 @@ Edit :: struct {
     gb_index_after:  s64;
 
     // The actual positions the cursors were before and after the operation. They are not sorted!
-    cursor0_before: Cursor;
-    cursor0_after:  Cursor;
-    cursor1_before: Cursor;
-    cursor1_after:  Cursor;
+    cursor0_before: Text_Location;
+    cursor0_after:  Text_Location;
+    cursor1_before: Text_Location;
+    cursor1_after:  Text_Location;
 
     type:  Type;
     flags: Flags;
@@ -164,7 +161,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
     insert_caused_delete_selection := false;
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_between_cursors(buffer);
+        text_buffer_delete_selection(buffer);
         assert(buffer.cursor0 == buffer.cursor1);
 
         insert_caused_delete_selection = true;
@@ -172,7 +169,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
         // Fallthrough!
     }
 
-    gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, text_buffer_get_min_cursor(buffer));
+    gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, text_buffer_get_min_cursor(buffer));
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     gap_buffer_insert(*buffer.gb, text);
 
@@ -215,20 +212,20 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
     assert_valid(buffer);
 }
 
-text_buffer_delete_between_cursors :: (buffer: *Text_Buffer) -> string /* Pointing to the internal gap buffer */ {
-    return inline text_buffer_delete_between_cursors(buffer, buffer.cursor0, buffer.cursor1);
+text_buffer_delete_selection :: (buffer: *Text_Buffer) -> string /* Pointing to the internal gap buffer */ {
+    return inline text_buffer_delete_selection(buffer, buffer.cursor0, buffer.cursor1);
 }
 
-text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, __start: Cursor, __end: Cursor) -> string /* Pointing to the internal gap buffer */ {
-    ProfileZone("text_buffer_delete_between_cursors");
+text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, __end: Text_Location) -> string /* Pointing to the internal gap buffer */ {
+    ProfileZone("text_buffer_delete_selection");
 
     // Force copy to avoid "maybe by reference" aliasing.
     _start := __start;
     _end := __end;
 
     assert_valid(buffer);
-    assert_cursor_valid(buffer, _start);
-    assert_cursor_valid(buffer, _end);
+    assert_location_valid(buffer, _start);
+    assert_location_valid(buffer, _end);
 
     if _start == _end {
         return "";
@@ -236,10 +233,10 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, __start: Cursor, __
 
     start := _start;
     end   := _end;
-    sort_cursors(*start, *end);
+    sort_locations(*start, *end);
 
-    start_gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start);
-    end_gb_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end);
+    start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, start);
+    end_gb_index   := text_buffer_get_gap_buffer_index_for_location(buffer, end);
     delete_count := end_gb_index - start_gb_index;
 
     gap_buffer_move_gap_to(*buffer.gb, start_gb_index);
@@ -276,20 +273,20 @@ text_buffer_delete_between_cursors :: (buffer: *Text_Buffer, __start: Cursor, __
 }
 
 // TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
-// text_buffer_delete_between_cursors does. There's also an update index function we can call.
+// text_buffer_delete_selection does. There's also an update index function we can call.
 text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_delete_forward");
 
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_between_cursors(buffer);
+        text_buffer_delete_selection(buffer);
         assert(buffer.cursor0 == buffer.cursor1);
 
         return;
     }
 
-    gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, buffer.cursor0);
+    gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, buffer.cursor0);
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
 
     bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
@@ -370,20 +367,20 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 }
 
 // TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
-// text_buffer_delete_between_cursors does. There's also an update index function we can call.
+// text_buffer_delete_selection does. There's also an update index function we can call.
 text_buffer_delete_backward :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_delete_backward");
 
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_between_cursors(buffer);
+        text_buffer_delete_selection(buffer);
         assert(buffer.cursor0 == buffer.cursor1);
 
         return;
     }
 
-    gb_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, buffer.cursor0);
+    gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, buffer.cursor0);
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
 
     bytes := gap_buffer_get_bytes_before_gap(buffer.gb);
@@ -477,8 +474,8 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     ProfileZone("text_buffer_delete_line");
 
-    line_end := text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
-    view     := text_buffer_make_view_between_cursors(buffer, buffer.cursor0, line_end,, temp);
+    line_end := text_buffer_get_end_of_line(buffer, buffer.cursor0.y);
+    view     := text_buffer_make_view_for_interval(buffer, buffer.cursor0, line_end,, temp);
 
     is_only_whitespace := true;
     for view {
@@ -489,10 +486,10 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     }
 
     if is_only_whitespace {
-        line_end := text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y, include_newline = true);
-        return text_buffer_delete_between_cursors(buffer, buffer.cursor0, line_end);
+        line_end := text_buffer_get_end_of_line(buffer, buffer.cursor0.y, include_newline = true);
+        return text_buffer_delete_selection(buffer, buffer.cursor0, line_end);
     } else {
-        return text_buffer_delete_between_cursors(buffer, buffer.cursor0, line_end);
+        return text_buffer_delete_selection(buffer, buffer.cursor0, line_end);
     }
 }
 
@@ -642,15 +639,15 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
-text_buffer_get_start_cursor_for_line :: (buffer: Text_Buffer, line_index: s64) -> Cursor {
+text_buffer_get_start_of_line :: (buffer: Text_Buffer, line_index: s64) -> Text_Location {
     assert_line_valid(buffer, line_index);
 
-    start: Cursor = { 0, line_index };
+    start: Text_Location = { 0, line_index };
 
     return start;
 }
 
-text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false) -> Cursor {
+text_buffer_get_end_of_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false) -> Text_Location {
     assert_line_valid(buffer, line_index);
 
     line_chars := buffer.line_chars[line_index];
@@ -661,19 +658,12 @@ text_buffer_get_end_cursor_for_line :: (buffer: Text_Buffer, line_index: s64, in
         endx = line_chars - 1;
     }
 
-    end: Cursor = { endx, line_index };
+    end: Text_Location = { endx, line_index };
 
     return end;
 }
 
-text_buffer_get_cursors_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false) -> Cursor, Cursor {
-    start: Cursor = text_buffer_get_start_cursor_for_line(buffer, line_index);
-    end:   Cursor = text_buffer_get_end_cursor_for_line(buffer, line_index, include_newline);
-
-    return start, end;
-}
-
-// A 2x-ish faster, specialized version of text_buffer_make_view_between_cursors. Use if you can.
+// A 2x-ish faster, specialized version of text_buffer_make_view_for_interval. Use if you can.
 text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include_newline := false, force_allocate := false) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
     ProfileZone("text_buffer_make_view_for_line");
 
@@ -692,34 +682,34 @@ text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include
     return cast(string, view);
 }
 
-text_buffer_byte_count_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor) -> s64 {
-    ProfileZone("text_buffer_byte_count_between_cursors");
+text_buffer_get_byte_count_for_interval :: (buffer: Text_Buffer, _start: Text_Location, _end: Text_Location) -> s64 {
+    ProfileZone("text_buffer_get_byte_count_for_interval");
 
-    assert_cursor_valid(buffer, _start);
-    assert_cursor_valid(buffer, _end);
+    assert_location_valid(buffer, _start);
+    assert_location_valid(buffer, _end);
 
     start := _start;
     end   := _end;
-    sort_cursors(*start, *end);
+    sort_locations(*start, *end);
 
-    start_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start);
-    end_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end);
+    start_index := text_buffer_get_gap_buffer_index_for_location(buffer, start);
+    end_index   := text_buffer_get_gap_buffer_index_for_location(buffer, end);
 
     return end_index - start_index;
 }
 
-text_buffer_make_view_between_cursors :: (buffer: Text_Buffer, _start: Cursor, _end: Cursor, force_allocate := false) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
-    ProfileZone("text_buffer_make_view_between_cursors");
+text_buffer_make_view_for_interval :: (buffer: Text_Buffer, _start: Text_Location, _end: Text_Location, force_allocate := false) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
+    ProfileZone("text_buffer_make_view_for_interval");
 
-    assert_cursor_valid(buffer, _start);
-    assert_cursor_valid(buffer, _end);
+    assert_location_valid(buffer, _start);
+    assert_location_valid(buffer, _end);
 
     start := _start;
     end   := _end;
-    sort_cursors(*start, *end);
+    sort_locations(*start, *end);
 
-    start_index := text_buffer_get_gap_buffer_index_for_cursor(buffer, start);
-    end_index   := text_buffer_get_gap_buffer_index_for_cursor(buffer, end);
+    start_index := text_buffer_get_gap_buffer_index_for_location(buffer, start);
+    end_index   := text_buffer_get_gap_buffer_index_for_location(buffer, end);
 
     view := gap_buffer_make_view(buffer.gb, start_index, end_index - start_index, force_allocate = force_allocate);
 
@@ -733,7 +723,7 @@ text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
 
     if delta > 0 {
         while delta > 0 {
-            // Cursor can be past the last non-newline character. However, the last line does not
+            // Text_Location can be past the last non-newline character. However, the last line does not
             // have the newline character, so we only pretend it does.
             if buffer.cursor0.y == buffer.line_chars.count - 1 {
                 buffer.cursor0.x = min(buffer.cursor0.x + 1, buffer.line_chars[buffer.cursor0.y]);
@@ -773,7 +763,7 @@ text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
 
     assert_valid(buffer);
 
-    // Cursor can not be past the last line
+    // Text_Location can not be past the last line
     buffer.cursor0.y = clamp(buffer.cursor0.y + delta, 0, buffer.line_chars.count - 1);
 
     // Clamp X.
@@ -842,8 +832,7 @@ text_buffer_move_cursor_to_start_of_line :: (buffer: *Text_Buffer, selecting: bo
 
     assert_valid(buffer);
 
-    line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
-    line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
+    line_view := text_buffer_make_view_for_line(buffer, buffer.cursor0.y,, temp);
 
     first_nonspace_index := -1;
     for line_view {
@@ -873,7 +862,7 @@ text_buffer_move_cursor_to_end_of_line :: (buffer: *Text_Buffer, selecting: bool
 
     assert_valid(buffer);
 
-    buffer.cursor0 = text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
+    buffer.cursor0 = text_buffer_get_end_of_line(buffer, buffer.cursor0.y);
 
     if !selecting {
         buffer.cursor1 = buffer.cursor0;
@@ -935,8 +924,8 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
         }
     }
 
-    line_start         := text_buffer_get_start_cursor_for_line(buffer, buffer.cursor0.y);
-    view_before_cursor := text_buffer_make_view_between_cursors(buffer, line_start, buffer.cursor0,, temp);
+    line_start         := text_buffer_get_start_of_line(buffer, buffer.cursor0.y);
+    view_before_cursor := text_buffer_make_view_for_interval(buffer, line_start, buffer.cursor0,, temp);
 
     found, inside_word, dx := search_line_backward(view_before_cursor, buffer.binary_mode);
     if found || inside_word {
@@ -951,10 +940,9 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
 
             y_changed = true;
 
-            buffer.cursor0 = text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
+            buffer.cursor0 = text_buffer_get_end_of_line(buffer, buffer.cursor0.y);
 
-            line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
-            line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
+            line_view            := text_buffer_make_view_for_line(buffer, buffer.cursor0.y,, temp);
 
             found, inside_word, dx = search_line_backward(line_view, buffer.binary_mode);
             if found || inside_word {
@@ -1026,8 +1014,8 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
         }
     }
 
-    line_end          := text_buffer_get_end_cursor_for_line(buffer, buffer.cursor0.y);
-    view_after_cursor := text_buffer_make_view_between_cursors(buffer, buffer.cursor0, line_end,, temp);
+    line_end          := text_buffer_get_end_of_line(buffer, buffer.cursor0.y);
+    view_after_cursor := text_buffer_make_view_for_interval(buffer, buffer.cursor0, line_end,, temp);
 
     found, inside_word, dx := search_line_forward(view_after_cursor, buffer.binary_mode);
     if found || inside_word {
@@ -1044,8 +1032,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
 
             buffer.cursor0.x = 0;
 
-            line_start, line_end := text_buffer_get_cursors_for_line(buffer, buffer.cursor0.y);
-            line_view            := text_buffer_make_view_between_cursors(buffer, line_start, line_end,, temp);
+            line_view := text_buffer_make_view_for_line(buffer, buffer.cursor0.y,, temp);
 
             found, inside_word, dx = search_line_forward(line_view, buffer.binary_mode);
             if found || inside_word {
@@ -1152,7 +1139,7 @@ text_buffer_join_cursors :: (buffer: *Text_Buffer) {
     buffer.cursor1 = buffer.cursor0;
 }
 
-text_buffer_get_min_cursor :: (buffer: Text_Buffer) -> Cursor {
+text_buffer_get_min_cursor :: (buffer: Text_Buffer) -> Text_Location {
     if buffer.cursor0.y < buffer.cursor1.y {
         return buffer.cursor0;
     } else if buffer.cursor0.y > buffer.cursor1.y {
@@ -1164,7 +1151,7 @@ text_buffer_get_min_cursor :: (buffer: Text_Buffer) -> Cursor {
     }
 }
 
-text_buffer_get_max_cursor :: (buffer: Text_Buffer) -> Cursor {
+text_buffer_get_max_cursor :: (buffer: Text_Buffer) -> Text_Location {
     if buffer.cursor0.y < buffer.cursor1.y {
         return buffer.cursor1;
     } else if buffer.cursor0.y > buffer.cursor1.y {
@@ -1266,12 +1253,12 @@ text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s
     return index;
 }
 
-text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cursor) -> s64 {
-    ProfileZone("text_buffer_get_gap_buffer_index_for_cursor");
+text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, location: Text_Location) -> s64 {
+    ProfileZone("text_buffer_get_gap_buffer_index_for_location");
 
-    assert_cursor_valid(buffer, cursor);
+    assert_location_valid(buffer, location);
 
-    line_index := cursor.y;
+    line_index := location.y;
     if line_index >= buffer.line_bytes.count {
         // We are past the last line. Return index past the last byte in the gap buffer.
         return buffer.gb.count;
@@ -1282,7 +1269,7 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
     // TODO(jt): @Speed After doing SoA on the line arrays, this got a big boost. Likely another big
     // boost would be to pack the data tighter, but that introduces a lot of noisy casts in places,
     // so we'll have to try multiple versions and pick the least ugly, e.g. making only these line
-    // arrays u32, or also making cursor u32, decide where to put the casts, etc.
+    // arrays u32, or also making Text_Location u32, decide where to put the casts, etc.
     //
     // @Speed I tried unrolling this loop manually, but the speed benefits were negligible. Maybe
     // the compiler already unrolls?
@@ -1291,7 +1278,7 @@ text_buffer_get_gap_buffer_index_for_cursor :: (buffer: Text_Buffer, cursor: Cur
         index += buffer.line_bytes[it];
     }
 
-    for 0..cursor.x - 1 {
+    for 0..location.x - 1 {
         first_byte := buffer.gb[index];
 
         codepoint_bytes: s64 = 1;
@@ -1317,8 +1304,8 @@ assert_valid :: (buffer: Text_Buffer) {
 
     assert(buffer.line_bytes.count > 0, "Text_Buffer not initialized (has to have at least one line). Call text_buffer_init().");
     assert(buffer.line_bytes.count == buffer.line_chars.count, "Line arrays desync");
-    assert_cursor_valid(buffer, buffer.cursor0);
-    assert_cursor_valid(buffer, buffer.cursor1);
+    assert_location_valid(buffer, buffer.cursor0);
+    assert_location_valid(buffer, buffer.cursor1);
 
     // This is too expensive to do in shipping builds. We completely recreate the line index from
     // the buffer contents and compare.
@@ -1413,7 +1400,7 @@ assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
     assert(line_index < buffer.line_bytes.count);
 }
 
-assert_cursor_valid :: (buffer: Text_Buffer, cursor: Cursor) {
+assert_location_valid :: (buffer: Text_Buffer, cursor: Text_Location) {
     assert(cursor.y >= 0 && cursor.y < buffer.line_bytes.count);
     // The cursor can go past the last non-newline character, or past the last character on the last
     // line, where there is no newline at the end.
@@ -1453,8 +1440,8 @@ update_index_for_insert :: (buffer: *Text_Buffer, _text: string) {
     // ourselves throughout the rest of the insert.
     bytes_on_line_before_cursor: s64;
     {
-        line_start := text_buffer_get_start_cursor_for_line(buffer, buffer.cursor0.y);
-        bytes_on_line_before_cursor = text_buffer_byte_count_between_cursors(buffer, line_start, buffer.cursor0);
+        line_start := text_buffer_get_start_of_line(buffer, buffer.cursor0.y);
+        bytes_on_line_before_cursor = text_buffer_get_byte_count_for_interval(buffer, line_start, buffer.cursor0);
     }
 
     if buffer.binary_mode {
@@ -1564,7 +1551,7 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, _text: string, deletin
 
     if deleting_selection {
         // The selection delete sorts cursors, and so must we.
-        sort_cursors(*buffer.cursor0, *buffer.cursor1);
+        sort_locations(*buffer.cursor0, *buffer.cursor1);
     }
 
     text := _text;
@@ -1689,7 +1676,7 @@ is_through_edit :: (text: string) -> bool {
     return false;
 }
 
-sort_cursors :: (start: *Cursor, end: *Cursor) {
+sort_locations :: (start: *Text_Location, end: *Text_Location) {
     if start.y > end.y {
         swap(start, end);
     } else if start.y == end.y && start.x > end.x {
