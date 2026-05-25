@@ -12,11 +12,11 @@ mini_panel_search_procs: Mini_Panel_Procs = {
 #scope_file
 
 Search_Userdata :: struct {
-    original_cursor0: Cursor;
+    original_cursor0: Text_Location;
 }
 
 Search_Item_Userdata :: struct {
-    cursor: Cursor;
+    cursor: Text_Location;
 }
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
