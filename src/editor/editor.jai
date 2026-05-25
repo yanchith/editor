@@ -221,7 +221,7 @@ Document :: struct {
     //
 
     // Preserved at the start of each frame to find out if we want to kick off cursor animation.
-    old_cursor: Cursor;
+    old_cursor: Text_Location;
     old_cursor_position: DVector2;
 
     cursor_anim_flags: Cursor_Anim_Flags;
@@ -956,10 +956,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if cursor_start.y == cursor_end.y {
                 ProfileZone(":DrawSelectionSingleLine");
 
-                line_start := text_buffer_get_start_cursor_for_line(document.buffer, cursor_start.y);
+                line_start := text_buffer_get_start_of_line(document.buffer, cursor_start.y);
 
-                view_before_cursor   := text_buffer_make_view_between_cursors(document.buffer, line_start, cursor_start,, temp);
-                view_between_cursors := text_buffer_make_view_between_cursors(document.buffer, cursor_start, cursor_end,, temp);
+                view_before_cursor   := text_buffer_make_view_for_interval(document.buffer, line_start, cursor_start,, temp);
+                view_between_cursors := text_buffer_make_view_for_interval(document.buffer, cursor_start, cursor_end,, temp);
 
                 selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
                 selection_x1 := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0;
@@ -983,10 +983,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 // First line, if in viewport
                 if cursor_start.y >= viewport_line0 && cursor_start.y <= viewport_line1 {
-                    line_start, line_end := text_buffer_get_cursors_for_line(document.buffer, cursor_start.y);
+                    line_start := text_buffer_get_start_of_line(document.buffer, cursor_start.y);
+                    line_end   := text_buffer_get_end_of_line(document.buffer, cursor_start.y);
 
-                    view_before_cursor := text_buffer_make_view_between_cursors(document.buffer, line_start, cursor_start,, temp);
-                    view_after_cursor  := text_buffer_make_view_between_cursors(document.buffer, cursor_start, line_end,, temp);
+                    view_before_cursor := text_buffer_make_view_for_interval(document.buffer, line_start, cursor_start,, temp);
+                    view_after_cursor  := text_buffer_make_view_for_interval(document.buffer, cursor_start, line_end,, temp);
 
                     selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
                     selection_x1 := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0;
@@ -1004,7 +1005,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         continue;
                     }
 
-                    line_end  := text_buffer_get_end_cursor_for_line(document.buffer, it);
+                    line_end  := text_buffer_get_end_of_line(document.buffer, it);
                     line_view := text_buffer_make_view_for_line(document.buffer, it,, temp);
                     selection_x0 := 0.0;
                     selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x, binary = document.buffer.binary_mode);
@@ -1017,9 +1018,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 // Last line, if in viewport
                 if cursor_end.y >= viewport_line0 && cursor_end.y <= viewport_line1 {
-                    line_start := text_buffer_get_start_cursor_for_line(document.buffer, cursor_end.y);
+                    line_start := text_buffer_get_start_of_line(document.buffer, cursor_end.y);
 
-                    view_before_cursor := text_buffer_make_view_between_cursors(document.buffer, line_start, cursor_end,, temp);
+                    view_before_cursor := text_buffer_make_view_for_interval(document.buffer, line_start, cursor_end,, temp);
 
                     selection_x0 := 0.0;
                     selection_x1 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x, binary = document.buffer.binary_mode);
@@ -1106,9 +1107,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             // TODO(jt): @Speed Horizontal culling?
 
-            viewport_start := text_buffer_get_start_cursor_for_line(document.buffer, viewport_line0);
-            viewport_end   := text_buffer_get_end_cursor_for_line(document.buffer, viewport_line1);
-            viewport_view  := text_buffer_make_view_between_cursors(document.buffer, viewport_start, viewport_end,, temp);
+            viewport_start := text_buffer_get_start_of_line(document.buffer, viewport_line0);
+            viewport_end   := text_buffer_get_end_of_line(document.buffer, viewport_line1);
+            viewport_view  := text_buffer_make_view_for_interval(document.buffer, viewport_start, viewport_end,, temp);
 
             // Because we start the layout just before the current viewport, the rendering scroll Y offset
             // is just the fractional part of the cell.
@@ -1771,7 +1772,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
         case .COPY; {
             panel.selecting = false;
-            text := text_buffer_make_view_between_cursors(document.buffer, document.buffer.cursor0, document.buffer.cursor1,, temp);
+            text := text_buffer_make_view_for_interval(document.buffer, document.buffer.cursor0, document.buffer.cursor1,, temp);
             if text {
                 platform.clipboard_set_text(text);
             }
@@ -1780,7 +1781,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         }
         case .CUT; {
             panel.selecting = false;
-            deleted := text_buffer_delete_between_cursors(*document.buffer);
+            deleted := text_buffer_delete_selection(*document.buffer);
             if deleted {
                 platform.clipboard_set_text(deleted);
             }
@@ -2139,7 +2140,7 @@ get_cursor_position :: (document: Document, font: Font) -> cursor_position: DVec
     position.x = font_compute_position_on_line(font, line_view, x, binary = document.buffer.binary_mode);
     position.y = cast(f64, y) * font.line_height_in_pixels;
 
-    line_end   := text_buffer_get_end_cursor_for_line(document.buffer, y);
+    line_end   := text_buffer_get_end_of_line(document.buffer, y);
     line_end_x := font_compute_position_on_line(font, line_view, line_end.x, binary = document.buffer.binary_mode);
 
     return position, line_end_x;
