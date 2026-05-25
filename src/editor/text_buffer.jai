@@ -147,8 +147,8 @@ text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false
 }
 
 // TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
-// switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so it would
-// suply .REVERT, etc.
+// switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so we would
+// supply .REVERT, etc.
 text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false, undo_fuse_with_delete_selection := false) {
     ProfileZone("text_buffer_insert");
 
