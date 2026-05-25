@@ -942,7 +942,7 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
 
             buffer.cursor0 = text_buffer_get_end_of_line(buffer, buffer.cursor0.y);
 
-            line_view            := text_buffer_make_view_for_line(buffer, buffer.cursor0.y,, temp);
+            line_view := text_buffer_make_view_for_line(buffer, buffer.cursor0.y,, temp);
 
             found, inside_word, dx = search_line_backward(line_view, buffer.binary_mode);
             if found || inside_word {
