@@ -63,7 +63,7 @@ TODO(jt): @Stream Small things to do:
 - [X] Flash cursor with typing (needs tuning)
 - [X] When switching-to/closing documents, sort by recency.
 - [ ] Read-only mode for documents.
-- [ ] FreeType subpixel rendering (Fred says it exists)
+- [ ] FreeType subpixel rendering... we need to rebuild freetype for this.
 
 */
 
@@ -145,6 +145,7 @@ Editor :: struct {
 
     font: Font;
     font_size: s32; // Scaled!
+    font_subpixel: bool;
 
     input_state: Input_State;
 
@@ -251,7 +252,7 @@ Panel :: struct {
     // issues with f32 vectors. Doubles suffice for now (verified up to 4GB of prose), but maybe we
     // should do our own numeric type eventually (either 58:6 fixed point or maybe s64 + f32 offset)?
     scroll_source: DVector2;
-    scroll_target: DVector2;
+    scroll_target: DVector2; // XXX: Snap scroll_target to integers, in case the font already doesn't snap?
     scroll_time_start: Apollo_Time;
 
     scroll: DVector2;
@@ -615,8 +616,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.key == {
-                        case .F1;  toggle_dev_view(*editor.dev_view, .ATLAS_TEXTURE); handled = true;
-                        case .F2;  toggle_dev_view(*editor.dev_view, .PALETTE); handled = true;
+                        case .F1;   toggle_dev_view(*editor.dev_view, .ATLAS_TEXTURE); handled = true;
+                        case .F2;   toggle_dev_view(*editor.dev_view, .PALETTE); handled = true;
+                        case .F12;  editor.font_subpixel = !editor.font_subpixel; handled = true;
                     }
                 }
 
@@ -664,7 +666,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
         if editor.font.pixel_height != physical_pixel_height {
             editor_log(editor, "Resetting font to new physical pixel height: %", physical_pixel_height);
-            font_reset_for_pixel_height(*editor.font, physical_pixel_height);
+            font_reset_for_options(*editor.font, physical_pixel_height, false);
 
             for * editor.panels {
                 it.flags |= .CLAMP_SCROLL_TO_CURSOR;
