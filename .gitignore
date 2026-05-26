@@ -6,3 +6,7 @@
 
 # RemedyBG
 *.rdbg
+
+# The freetype directory is a little too big to include, so we just keep the built libraries and generated bindings
+/modules/freetype/source
+/modules/freetype/.build
