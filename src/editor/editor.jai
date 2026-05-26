@@ -699,8 +699,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Mouse wheel scrolling
         //
         if input.mouse_wheel_delta != 0 && !(editor.input_state.modifiers & .CTRL) {
-            active_panel.scroll_target.y -= cast(f64, input.mouse_wheel_delta);
-            active_panel.scroll_target.y = clamp(active_panel.scroll_target.y, 0, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
+            target := active_panel.scroll_target;
+            target.y -= cast(f64, input.mouse_wheel_delta);
+            target.y = clamp(target.y, 0, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
+            setup_instant_scroll_interpolation(active_panel, target);
 
             active_panel.flags |= .CLAMP_CURSOR_TO_SCROLL;
             active_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
@@ -726,8 +728,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 if mouse.x < SCROLL_APRON {
                     boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
 
-                    active_panel.scroll_target.x -= SCROLL_SPEED * boost * dt;
-                    active_panel.scroll_target.x = max(active_panel.scroll_target.x, 0);
+                    target := active_panel.scroll_target;
+                    target.x -= SCROLL_SPEED * boost * dt;
+                    target.x = max(target.x, 0);
+                    setup_instant_scroll_interpolation(active_panel, target);
 
                     wants_next_frame = true;
                 } else if mouse.x > window_w - SCROLL_APRON {
@@ -743,8 +747,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     // scroll to a short line.)
                     max_x := max(font_compute_position_on_line(editor.font, line_view, active_panel.document.buffer.cursor0.x, binary = active_panel.document.buffer.binary_mode) - window_w + apron, 0);
 
-                    active_panel.scroll_target.x += SCROLL_SPEED * boost * dt;
-                    active_panel.scroll_target.x = min(active_panel.scroll_target.x, max_x);
+                    target := active_panel.scroll_target;
+                    target.x += SCROLL_SPEED * boost * dt;
+                    target.x = min(target.x, max_x);
+                    setup_instant_scroll_interpolation(active_panel, target);
 
                     wants_next_frame = true;
                 }
@@ -753,15 +759,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 if mouse.y < SCROLL_APRON {
                     boost := (SCROLL_APRON - mouse.y) * SCROLL_BOOST;
 
-                    active_panel.scroll_target.y -= SCROLL_SPEED * boost * dt;
-                    active_panel.scroll_target.y = max(active_panel.scroll_target.y, 0);
+                    target := active_panel.scroll_target;
+                    target.y -= SCROLL_SPEED * boost * dt;
+                    target.y = max(target.y, 0);
+                    setup_instant_scroll_interpolation(active_panel, target);
 
                     wants_next_frame = true;
                 } else if mouse.y > panel_h - SCROLL_APRON {
                     boost := (mouse.y - (panel_h - SCROLL_APRON)) * SCROLL_BOOST;
 
-                    active_panel.scroll_target.y += SCROLL_SPEED * boost * dt;
-                    active_panel.scroll_target.y = min(active_panel.scroll_target.y, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
+                    target := active_panel.scroll_target;
+                    target.y += SCROLL_SPEED * boost * dt;
+                    target.y = min(target.y, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
+                    setup_instant_scroll_interpolation(active_panel, target);
 
                     wants_next_frame = true;
                 }
