@@ -126,10 +126,10 @@ shortcut_parse :: (_s: string) -> success: bool, Shortcut {
             case "<home>";       key.type = .KEY; key.key = .HOME;
             case "<end>";        key.type = .KEY; key.key = .END;
 
-            case "<prior>";     #through;
-            case "<pageup>";    key.type = .KEY; key.key = .PAGE_UP;
-            case "<next>";      #through;
-            case "<pagedown>";  key.type = .KEY; key.key = .PAGE_DOWN;
+            case "<prior>";      #through;
+            case "<pageup>";     key.type = .KEY; key.key = .PAGE_UP;
+            case "<next>";       #through;
+            case "<pagedown>";   key.type = .KEY; key.key = .PAGE_DOWN;
 
             case "<f1>";         key.type = .KEY; key.key = .F1;
             case "<f2>";         key.type = .KEY; key.key = .F2;
