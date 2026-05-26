@@ -63,6 +63,7 @@ TODO(jt): @Stream Small things to do:
 - [X] Flash cursor with typing (needs tuning)
 - [X] When switching-to/closing documents, sort by recency.
 - [ ] Read-only mode for documents.
+- [ ] FreeType subpixel rendering (Fred says it exists)
 
 */
 
