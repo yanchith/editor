@@ -665,11 +665,11 @@ uniform sampler2D diffuse_texture;
 
 void main () {
     // Regular:
-    // float a = texture(diffuse_texture, v_tex_coords).r;
-    // f_color = v_color * vec4(1, 1, 1, a);
+    float a = texture(diffuse_texture, v_tex_coords).r;
+    f_color = v_color * vec4(1, 1, 1, a);
     // Subpixel:
-    vec3 c = texture(diffuse_texture, v_tex_coords).rgb;
-    f_color = v_color * vec4(c, 1);
+    // vec3 c = texture(diffuse_texture, v_tex_coords).rgb;
+    // f_color = v_color * vec4(c, 1);
 }
 #endif
 END
