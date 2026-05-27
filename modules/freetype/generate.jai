@@ -259,7 +259,7 @@ compile_freetype_variant :: (os_target: Operating_System_Tag, cpu_target: CPU_Ta
         return false, "", "";
     }
 
-    log("Configuring to build the dynamic lib");
+    log("Configuring to build the dynamic lib: %", dynamic_config_command);
     run_or_exit(dynamic_config_command, FREETYPE_PATH);
 
     log("Building the dynamic lib");
