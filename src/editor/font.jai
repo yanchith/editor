@@ -537,9 +537,9 @@ copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s3
 }
 
 copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
-    ProfileZone("copy_glyph_cell");
+    ProfileZone("copy_glyph_cell_subpixel");
     for y: 0..min(dest_height, source_height) - 1 {
-        for x: 0..min(dest_width, source_width) - 1 {
+        for x: 0..min(dest_width, source_width / 3) - 1 {
             dest_p   := dest + y * dest_pitch + x;
             source_p := source + y * source_pitch + x * 3;
 
@@ -548,9 +548,9 @@ copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest
             b: u8 = (source_p + 2).*;
             a: u8 = 255;
 
-            c: u32 = (cast(u32, r) << 24) | (cast(u32, g) << 16) | (cast(u32, b) << 8) | a;
+            rgba: u32 = (cast(u32, r) << 24) | (cast(u32, g) << 16) | (cast(u32, b) << 8) | a;;
 
-            dest_p.* = c;
+            dest_p.* = rgba;
         }
     }
 }

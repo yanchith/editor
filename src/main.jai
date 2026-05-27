@@ -235,7 +235,8 @@ main :: () {
             Clipboard.os_clipboard_set_text(text);
         }
 
-        renderer_text_shader.gl_handle = Simp.get_shader_program(SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL);
+        shader := #ifx Editor.FONT_SUBPIXEL SHADER_TEXT_SUBPIXEL else SHADER_TEXT;
+        renderer_text_shader.gl_handle = Simp.get_shader_program(shader);
         renderer_text_shader.alpha_blend = true;
 
         renderer: Editor.Renderer;
@@ -321,7 +322,7 @@ main :: () {
             // makes no difference on my machine. Maybe it makes a difference somewhere else? Maybe
             // if we use something better than OpenGL?
             glTexImage2D(GL_TEXTURE_2D, 0,
-                         GL_R8,
+                         GL_RGBA,
                          cast(u32, texture.width), cast(u32, texture.height), 0,
                          GL_RGBA, GL_UNSIGNED_BYTE,
                          data.data);
@@ -639,7 +640,7 @@ print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
 
 // This is a modified version of SHADER_SPRITE_LEFT_HANDED from Simp, so that we can pass in a
 // single-channel texture and have the colors map the way we want.
-SHADER_SPRITE_LEFT_HANDED_SINGLE_CHANNEL :: #string END
+SHADER_TEXT :: #string END
 OUT_IN vec2 v_tex_coords;
 OUT_IN vec4 v_color;
 
@@ -664,12 +665,38 @@ out vec4 f_color;
 uniform sampler2D diffuse_texture;
 
 void main () {
-    // Regular:
     float a = texture(diffuse_texture, v_tex_coords).r;
     f_color = v_color * vec4(1, 1, 1, a);
-    // Subpixel:
-    // vec3 c = texture(diffuse_texture, v_tex_coords).rgb;
-    // f_color = v_color * vec4(c, 1);
+}
+#endif
+END
+
+SHADER_TEXT_SUBPIXEL :: #string END
+OUT_IN vec2 v_tex_coords;
+OUT_IN vec4 v_color;
+
+#ifdef VERTEX_SHADER
+// These have to be named vert_xyz, because OpenGL is looking for those idents.
+in vec4 vert_position;
+in vec4 vert_color;
+in vec2 vert_uv0;
+
+uniform mat4 projection;
+
+void main() {
+    v_tex_coords = vert_uv0.xy;
+    v_color = vert_color;
+    gl_Position = projection * vec4(vert_position.xy, 0.0, 1.0);
+}
+#endif
+
+#ifdef FRAGMENT_SHADER
+out vec4 f_color;
+
+uniform sampler2D diffuse_texture;
+
+void main () {
+    f_color = v_color * texture(diffuse_texture, v_tex_coords);
 }
 #endif
 END
