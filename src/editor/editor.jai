@@ -145,7 +145,6 @@ Editor :: struct {
 
     font: Font;
     font_size: s32; // Scaled!
-    font_subpixel: bool;
 
     input_state: Input_State;
 
@@ -381,7 +380,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
     log("Initializing font for physical pixel height: %", physical_pixel_height);
 
-    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, physical_pixel_height, false);
+    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, physical_pixel_height);
 
     input_state_update_on_frame_start(*editor.input_state, input);
     for input.events {
@@ -551,13 +550,25 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     editor.messages.allocator = arena_allocator(editor.perm_arena);
 
+    #if FONT_SUBPIXEL {
+        atlas: [] u8;
+        atlas.count = editor.font.glyph_atlas.count * 4;
+        atlas.data  = cast(*u8, editor.font.glyph_atlas.data);
 
-    renderer.create_texture_r8unorm(
-        TEXTURE_ID_GLYPH_ATLAS,
-        editor.font.glyph_atlas,
-        editor.font.glyph_atlas_width_in_pixels,
-        editor.font.glyph_atlas_height_in_pixels,
-    );
+        renderer.create_texture_rgba8unorm(
+            TEXTURE_ID_GLYPH_ATLAS,
+            atlas,
+            editor.font.glyph_atlas_width_in_pixels,
+            editor.font.glyph_atlas_height_in_pixels,
+        );
+    } else {
+        renderer.create_texture_r8unorm(
+            TEXTURE_ID_GLYPH_ATLAS,
+            editor.font.glyph_atlas,
+            editor.font.glyph_atlas_width_in_pixels,
+            editor.font.glyph_atlas_height_in_pixels,
+        );
+    }
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
@@ -618,7 +629,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     if it.key == {
                         case .F1;   toggle_dev_view(*editor.dev_view, .ATLAS_TEXTURE); handled = true;
                         case .F2;   toggle_dev_view(*editor.dev_view, .PALETTE); handled = true;
-                        case .F12;  editor.font_subpixel = !editor.font_subpixel; handled = true;
                     }
                 }
 
@@ -664,10 +674,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     {
         want_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
-        want_subpixel     := editor.font_subpixel;
-        if editor.font.pixel_height != want_pixel_height || editor.font.subpixel != want_subpixel {
-            editor_log(editor, "Resetting font to new physical pixel height: % (subpixel: %)", want_pixel_height, want_subpixel);
-            font_reset_for_options(*editor.font, want_pixel_height, want_subpixel);
+        if editor.font.pixel_height != want_pixel_height {
+            editor_log(editor, "Resetting font to new physical pixel height: % (subpixel: %)", want_pixel_height, FONT_SUBPIXEL);
+            font_reset_for_options(*editor.font, want_pixel_height);
 
             for * editor.panels {
                 it.flags |= .CLAMP_SCROLL_TO_CURSOR;
@@ -1323,7 +1332,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // update_texture_r8unorm does early return (because the update region is empty), either it or
     // draw_rects blocks for about 10ms, but at least one of them does. We should probably just
     // switch to our own rendering backend (raw Vulkan/Metal or SGPU) and tune it for latency.
-    renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, update_region);
+    #if FONT_SUBPIXEL {
+        atlas: [] u8;
+        atlas.count = editor.font.glyph_atlas.count * 4;
+        atlas.data  = cast(*u8, editor.font.glyph_atlas.data);
+
+        renderer.update_texture_rgba8unorm(TEXTURE_ID_GLYPH_ATLAS, atlas, update_region);
+    } else {
+        renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, update_region);
+    }
     renderer.draw_rects(render_rects);
 
     return wants_quit, wants_next_frame;

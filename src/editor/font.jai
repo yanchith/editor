@@ -1,9 +1,9 @@
 #import "freetype";
 
-ATLAS_WIDTH_IN_PIXELS  :: 1024;
-ATLAS_HEIGHT_IN_PIXELS :: 1024;
+FONT_SUBPIXEL :: false;
 
-R64 : f32 : 1.0 / 64.0;
+FONT_ATLAS_WIDTH_IN_PIXELS  :: 1024;
+FONT_ATLAS_HEIGHT_IN_PIXELS :: 1024;
 
 // TODO(jt): All procedures in this file should eventually handle tabs (basically by pretending it
 // is N spaces). Currently, the editor just inserts spaces everywhere, so it is kind of fine, but we
@@ -21,7 +21,6 @@ Font :: struct {
 
     // These options can be reset with reset_for_options.
     pixel_height: s32;
-    subpixel: bool;
 
     //
     // Font info stuff. Does not change once we have loaded a font.
@@ -29,7 +28,6 @@ Font :: struct {
 
     ft_library:     FT_Library;
     ft_face:        FT_Face;
-    ft_load_target: FT_Load_Target;
 
     //
     // Scaled metrics for currently set pixel_height in the FreeType 26:6 fixed point format. (64-bit, because FT_Pos is 64-bit on Unix)
@@ -53,7 +51,7 @@ Font :: struct {
     // Glyph cache stuff
     //
 
-    glyph_atlas: [] u8;
+    glyph_atlas: [] PIXEL_TYPE;
     glyph_atlas_cell_width_in_pixels: s32;
     glyph_atlas_cell_height_in_pixels: s32;
     glyph_atlas_width_in_cells: s32;
@@ -100,7 +98,7 @@ Glyph_Entry :: struct {
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena. If the
 // arena already stores some allocations, they won't be popped, but you should not use it after
 // passing it to the font.
-make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_height: s32, subpixel: bool) -> Font {
+make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_height: s32) -> Font {
     font: Font;
     font.arena        = arena;
     font.arena_mark   = arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
@@ -116,19 +114,23 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
         return font;
     }
 
+    #if FONT_SUBPIXEL {
+        FT_Library_SetLcdFilter(font.ft_library, .DEFAULT);
+    }
+
     error = FT_New_Memory_Face(font.ft_library, ttf_buffer.data, cast(s32, ttf_buffer.count), 0, *font.ft_face);
     if error {
         log_error("FreeType error when creating a new Face");
         return font;
     }
 
-    font_reset_for_options(*font, pixel_height, subpixel);
+    font_reset_for_options(*font, pixel_height);
 
     return font;
 }
 
 // Reset all font structures for new options. Implies font_new_frame, so don't do this in the middle of the frame.
-font_reset_for_options :: (font: *Font, pixel_height: s32, subpixel: bool) {
+font_reset_for_options :: (font: *Font, pixel_height: s32) {
     arena_pop_to_mark(font.arena, font.arena_mark);
 
 
@@ -139,16 +141,6 @@ font_reset_for_options :: (font: *Font, pixel_height: s32, subpixel: bool) {
         return;
     }
     font.pixel_height = pixel_height;
-
-    // XXX: This is not working. Maybe we need to call this on initialization?
-    if subpixel {
-        FT_Library_SetLcdFilter(font.ft_library, .DEFAULT);
-        font.ft_load_target = .LCD;
-    } else {
-        FT_Library_SetLcdFilter(font.ft_library, .NONE);
-        font.ft_load_target = .NORMAL;
-    }
-    font.subpixel = subpixel;
 
     font.ascender    = font.ft_face.size.metrics.ascender;
     font.descender   = font.ft_face.size.metrics.descender;
@@ -165,8 +157,8 @@ font_reset_for_options :: (font: *Font, pixel_height: s32, subpixel: bool) {
 
     atlas_cell_width_in_pixels  := font.max_glyph_width_in_integer_pixels + PADDING;
     atlas_cell_height_in_pixels := font.max_glyph_height_in_integer_pixels + PADDING;
-    atlas_width_in_cells        := ATLAS_WIDTH_IN_PIXELS / atlas_cell_width_in_pixels;
-    atlas_height_in_cells       := ATLAS_HEIGHT_IN_PIXELS / atlas_cell_height_in_pixels;
+    atlas_width_in_cells        := FONT_ATLAS_WIDTH_IN_PIXELS / atlas_cell_width_in_pixels;
+    atlas_height_in_cells       := FONT_ATLAS_HEIGHT_IN_PIXELS / atlas_cell_height_in_pixels;
     table_size                  := atlas_width_in_cells * atlas_height_in_cells;
 
     assert(atlas_width_in_cells > 0);
@@ -176,17 +168,17 @@ font_reset_for_options :: (font: *Font, pixel_height: s32, subpixel: bool) {
     log(
         "Glyph atlas size is %x% cells (% entries), %x% pixels. Glyph cell is %x% pixels.",
         atlas_width_in_cells, atlas_height_in_cells, table_size,
-        ATLAS_WIDTH_IN_PIXELS, ATLAS_HEIGHT_IN_PIXELS,
+        FONT_ATLAS_WIDTH_IN_PIXELS, FONT_ATLAS_HEIGHT_IN_PIXELS,
         atlas_cell_width_in_pixels, atlas_cell_height_in_pixels,
     );
 
-    font.glyph_atlas                       = arena_push_array(font.arena, u8, ATLAS_WIDTH_IN_PIXELS * ATLAS_HEIGHT_IN_PIXELS);
+    font.glyph_atlas                       = arena_push_array(font.arena, PIXEL_TYPE, FONT_ATLAS_WIDTH_IN_PIXELS * FONT_ATLAS_HEIGHT_IN_PIXELS);
     font.glyph_atlas_cell_width_in_pixels  = atlas_cell_width_in_pixels;
     font.glyph_atlas_cell_height_in_pixels = atlas_cell_height_in_pixels;
     font.glyph_atlas_width_in_cells        = atlas_width_in_cells;
     font.glyph_atlas_height_in_cells       = atlas_height_in_cells;
-    font.glyph_atlas_width_in_pixels       = ATLAS_WIDTH_IN_PIXELS;
-    font.glyph_atlas_height_in_pixels      = ATLAS_HEIGHT_IN_PIXELS;
+    font.glyph_atlas_width_in_pixels       = FONT_ATLAS_WIDTH_IN_PIXELS;
+    font.glyph_atlas_height_in_pixels      = FONT_ATLAS_HEIGHT_IN_PIXELS;
     font.glyph_entries                     = arena_push_array(font.arena, Glyph_Entry, table_size);
     font.glyph_entries_head                = 0;
     font.glyph_entries_tail                = 0;
@@ -309,7 +301,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
 
             {
                 ProfileZone("FT_Load_Glyph(FT_LOAD_RENDER)");
-                error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER | cast(s32, font.ft_load_target));
+                error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER | cast(s32, FT_LOAD_TARGET));
 
                 if error {
                     // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
@@ -342,9 +334,15 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
                 font.glyph_atlas_width_in_pixels * glyph_cell_y * font.glyph_atlas_cell_height_in_pixels +
                 glyph_cell_x * font.glyph_atlas_cell_width_in_pixels;
 
-            clear_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels);
-            copy_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels,
-                            glyph_bitmap.buffer, cast(s32, glyph_bitmap.width), cast(s32, glyph_bitmap.rows), cast(s32, glyph_bitmap.pitch));
+            #if FONT_SUBPIXEL {
+                clear_glyph_cell_subpixel(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels);
+                copy_glyph_cell_subpixel(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels,
+                                         glyph_bitmap.buffer, cast(s32, glyph_bitmap.width), cast(s32, glyph_bitmap.rows), cast(s32, glyph_bitmap.pitch));
+            } else {
+                clear_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels);
+                copy_glyph_cell(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels,
+                                glyph_bitmap.buffer, cast(s32, glyph_bitmap.width), cast(s32, glyph_bitmap.rows), cast(s32, glyph_bitmap.pitch));
+            }
 
             table_add(*font.glyph_table, cast(s32, glyph_index), entry_index);
             array_add(
@@ -413,7 +411,7 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
             }
         }
 
-        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT | cast(s32, font.ft_load_target));
+        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT | cast(s32, FT_LOAD_TARGET));
         if error {
             // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
             continue;
@@ -455,7 +453,7 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
             }
         }
 
-        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT | cast(s32, font.ft_load_target));
+        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT | cast(s32, FT_LOAD_TARGET));
         if error {
             // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
             continue;
@@ -516,6 +514,16 @@ clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
     }
 }
 
+clear_glyph_cell_subpixel :: (dest: *u32, width: s32, height: s32, pitch: s32) {
+    ProfileZone("clear_glyph_cell_subpixel");
+    for y: 0..height - 1 {
+        for x: 0..width - 1 {
+            p := dest + y * pitch + x;
+            p.* = 0;
+        }
+    }
+}
+
 copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
     ProfileZone("copy_glyph_cell");
     for y: 0..min(dest_height, source_height) - 1 {
@@ -526,3 +534,24 @@ copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s3
         }
     }
 }
+
+copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
+    ProfileZone("copy_glyph_cell");
+    for y: 0..min(dest_height, source_height) - 1 {
+        for x: 0..min(dest_width, source_width) - 1 {
+            dest_p   := dest + y * dest_pitch + x;
+            source_p := source + y * source_pitch + x;
+            dest_p.* = source_p.*;
+        }
+    }
+}
+
+#if FONT_SUBPIXEL {
+    FT_LOAD_TARGET :: FT_Load_Target.LCD;
+    PIXEL_TYPE     :: u32;
+} else {
+    FT_LOAD_TARGET :: FT_Load_Target.NORMAL;
+    PIXEL_TYPE     :: u8;
+}
+
+R64: f32 : 1.0 / 64.0;

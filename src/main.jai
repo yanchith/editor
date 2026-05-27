@@ -252,6 +252,20 @@ main :: () {
 
             table_add(*renderer_textures, texture_id, texture);
         }
+        renderer.create_texture_rgba8unorm = (texture_id: Editor.Texture_ID, data: [] u8, width: s32, height: s32) {
+            bitmap: Simp.Bitmap;
+            Simp.bitmap_alloc(*bitmap, width, height, .RGBA8,, temp);
+            bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
+
+            assert(bitmap.data.count == data.count);
+            memcpy(bitmap.data.data, data.data, data.count);
+
+            texture: Simp.Texture;
+            Simp.texture_load_from_bitmap(*texture, *bitmap);
+
+            table_add(*renderer_textures, texture_id, texture);
+        }
+
         renderer.update_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, update_rect: IRect) {
             ProfileZone("renderer.update_texture_r8unorm");
 
@@ -282,6 +296,37 @@ main :: () {
                          GL_RED, GL_UNSIGNED_BYTE,
                          data.data);
         }
+        renderer.update_texture_rgba8unorm = (texture_id: Editor.Texture_ID, data: [] u8, update_rect: IRect) {
+            ProfileZone("renderer.update_texture_rgba8unorm");
+
+            texture := table_find_pointer(*renderer_textures, texture_id);
+            if !texture {
+                log_error("Can't update nonexistent texture: %", texture_id);
+                return;
+            }
+
+            update_xoffset := update_rect.x0;
+            update_yoffset := update_rect.y0;
+            update_width   := update_rect.x1 - update_rect.x0;
+            update_height  := update_rect.y1 - update_rect.y0;
+
+            if update_width == 0 || update_height == 0 {
+                return;
+            }
+
+            gl_texture := texture.gl_handle;
+            glBindTexture(GL_TEXTURE_2D, gl_texture);
+
+            // TODO(jt): @Speed We could do glTexSubImage2D and copy just the updated region, but it
+            // makes no difference on my machine. Maybe it makes a difference somewhere else? Maybe
+            // if we use something better than OpenGL?
+            glTexImage2D(GL_TEXTURE_2D, 0,
+                         GL_R8,
+                         cast(u32, texture.width), cast(u32, texture.height), 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE,
+                         data.data);
+        }
+
         renderer.draw_rects = (render_rects: [] Editor.Render_Rect) {
             ProfileZone("renderer.draw_rects");
 
@@ -599,6 +644,7 @@ OUT_IN vec2 v_tex_coords;
 OUT_IN vec4 v_color;
 
 #ifdef VERTEX_SHADER
+// These have to be named vert_xyz, because OpenGL is looking for those idents.
 in vec4 vert_position;
 in vec4 vert_color;
 in vec2 vert_uv0;
@@ -613,13 +659,17 @@ void main() {
 #endif
 
 #ifdef FRAGMENT_SHADER
-out vec4 color;
+out vec4 f_color;
 
 uniform sampler2D diffuse_texture;
 
 void main () {
-    float a = texture(diffuse_texture, v_tex_coords).r;
-    color = v_color * vec4(1, 1, 1, a);
+    // Regular:
+    // float a = texture(diffuse_texture, v_tex_coords).r;
+    // f_color = v_color * vec4(1, 1, 1, a);
+    // Subpixel:
+    vec3 c = texture(diffuse_texture, v_tex_coords).rgb;
+    f_color = v_color * vec4(c, 1);
 }
 #endif
 END
