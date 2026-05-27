@@ -540,8 +540,16 @@ copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest
     for y: 0..min(dest_height, source_height) - 1 {
         for x: 0..min(dest_width, source_width) - 1 {
             dest_p   := dest + y * dest_pitch + x;
-            source_p := source + y * source_pitch + x;
-            dest_p.* = source_p.*;
+            source_p := source + y * source_pitch + x * 3;
+
+            r: u8 = (source_p + 0).*;
+            g: u8 = (source_p + 1).*;
+            b: u8 = (source_p + 2).*;
+            a: u8 = 255;
+
+            c: u32 = (cast(u32, r) << 24) | (cast(u32, g) << 16) | (cast(u32, b) << 8) | a;
+
+            dest_p.* = c;
         }
     }
 }
