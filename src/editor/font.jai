@@ -1,5 +1,8 @@
 #import "freetype";
 
+// TODO(jt): @Cleanup Subpixel rendering is shelved for now. Search FONT_SUBPIXEL to find places in
+// code it affects. Either complete the work and evaluate whether the results are worth it, or
+// remove it.
 FONT_SUBPIXEL :: false;
 
 FONT_ATLAS_WIDTH_IN_PIXELS  :: 1024;
