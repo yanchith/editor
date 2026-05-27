@@ -11,7 +11,7 @@
 // #define FT_LOAD_TARGET_LCD_V   FT_LOAD_TARGET_( FT_RENDER_MODE_LCD_V  )
 
 FT_LOAD_TARGET_ :: inline (render_mode: FT_Render_Mode) -> s32 {
-    return (cast(s32, render_mode) & 15) >> 16;
+    return (cast(s32, render_mode) & 15) << 16;
 }
 
 FT_Load_Target :: enum s32 {
