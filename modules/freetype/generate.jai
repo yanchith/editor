@@ -193,7 +193,7 @@ compile_freetype_variant :: (os_target: Operating_System_Tag, cpu_target: CPU_Ta
             static_library_extension = "lib";
             dynamic_library_extension = "dll";
             source_library_name = "freetype";
-            build_dir_suffix = "Release/"; // XXX: And what about debug?
+            build_dir_suffix = ifx compile_debug then "Debug/" else "Release/";
 
             array_add(*static_config_command,  tprint("-DCMAKE_CONFIGURATION_TYPES=%", build_type));
             array_add(*dynamic_config_command, tprint("-DCMAKE_CONFIGURATION_TYPES=%", build_type));
