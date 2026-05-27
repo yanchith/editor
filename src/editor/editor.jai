@@ -374,7 +374,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
 
-    editor.font_size = 20;
+    editor.font_size = 40;
     log("Current font pixel height: %", editor.font_size);
 
     physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
