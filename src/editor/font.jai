@@ -335,6 +335,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
                 glyph_cell_x * font.glyph_atlas_cell_width_in_pixels;
 
             #if FONT_SUBPIXEL {
+                assert(glyph_bitmap.pixel_mode == cast(u8, FT_Pixel_Mode.LCD), "Pixel mode is: %", glyph_bitmap.pixel_mode);
                 clear_glyph_cell_subpixel(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels);
                 copy_glyph_cell_subpixel(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels,
                                          glyph_bitmap.buffer, cast(s32, glyph_bitmap.width), cast(s32, glyph_bitmap.rows), cast(s32, glyph_bitmap.pitch));
