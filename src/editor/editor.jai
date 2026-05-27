@@ -251,7 +251,9 @@ Panel :: struct {
     // issues with f32 vectors. Doubles suffice for now (verified up to 4GB of prose), but maybe we
     // should do our own numeric type eventually (either 58:6 fixed point or maybe s64 + f32 offset)?
     scroll_source: DVector2;
-    scroll_target: DVector2; // XXX: Snap scroll_target to integers, in case the font already doesn't snap?
+    // TODO(jt): Snap scroll_target to integers, so we don't blur the font. (At least LiberationMono
+    // actually takes care to advance in integer amount of pixels when laying out the line.)
+    scroll_target: DVector2;
     scroll_time_start: Apollo_Time;
 
     scroll: DVector2;
