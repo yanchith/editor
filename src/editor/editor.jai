@@ -381,7 +381,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
     log("Initializing font for physical pixel height: %", physical_pixel_height);
 
-    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, physical_pixel_height);
+    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, physical_pixel_height, false);
 
     input_state_update_on_frame_start(*editor.input_state, input);
     for input.events {
@@ -663,10 +663,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     {
-        physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
-        if editor.font.pixel_height != physical_pixel_height {
-            editor_log(editor, "Resetting font to new physical pixel height: %", physical_pixel_height);
-            font_reset_for_options(*editor.font, physical_pixel_height, false);
+        want_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
+        want_subpixel     := editor.font_subpixel;
+        if editor.font.pixel_height != want_pixel_height || editor.font.subpixel != want_subpixel {
+            editor_log(editor, "Resetting font to new physical pixel height: % (subpixel: %)", want_pixel_height, want_subpixel);
+            font_reset_for_options(*editor.font, want_pixel_height, want_subpixel);
 
             for * editor.panels {
                 it.flags |= .CLAMP_SCROLL_TO_CURSOR;

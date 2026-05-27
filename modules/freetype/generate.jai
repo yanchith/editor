@@ -1,7 +1,7 @@
 //
 // This is our adapted version of the generate.jai modules/freetype in the Secret Beta. We removed
-// platforms we don't build for and simplfied what remained. You can run this at compile time
-// (easier) or runtime (debugging).
+// platforms we don't build for and simplified what remained. We also added ftlcdfil.h to the build,
+// so we can do subpixel rendering. You can run this at compile time (easier) or runtime (debugging).
 //
 // If you want to generate the bindings again, download freetype and extract it into
 // source/freetype-x.y.z. Then modify devel/ftoption.h:
@@ -128,6 +128,7 @@ generate_bindings :: (args: [] string) -> bool {
     sources := string.[
         "freetype/freetype.h",
         "freetype/tttables.h",
+        "freetype/ftlcdfil.h",
     ];
     for sources {
         array_add(*options.source_files, tprint("%/%", freetype_include, it));
@@ -138,6 +139,8 @@ generate_bindings :: (args: [] string) -> bool {
     options.auto_detect_enum_prefixes = true;
     options.log_stripped_declarations = false;
     options.generate_compile_time_struct_checks = false;
+
+    array_add(*options.generate_enums_from_macros_with_prefixes, "FT_LOAD_TARGET");
 
     return BG.generate_bindings(options, output_name);
 }
@@ -150,6 +153,9 @@ compile_freetype_variant :: (os_target: Operating_System_Tag, cpu_target: CPU_Ta
     }
 
     absolute_build_dir := tprint("%/%_build%", get_absolute_path("."), target_directory, suffix);
+
+    // TODO(jt): @Audit I don't know what some of these compiler arguments are, and should probably
+    // double check them, but for now I trust that Raphael probably did a good job.
 
     static_library_extension: string;
     static_config_command: [..] string;

@@ -27,9 +27,9 @@ Font :: struct {
     // Font info stuff. Does not change once we have loaded a font.
     //
 
-    ft_library: FT_Library;
-    ft_face:    FT_Face;
-    ft_load_target_flags: s32;
+    ft_library:     FT_Library;
+    ft_face:        FT_Face;
+    ft_load_target: FT_Load_Target;
 
     //
     // Scaled metrics for currently set pixel_height in the FreeType 26:6 fixed point format. (64-bit, because FT_Pos is 64-bit on Unix)
@@ -100,7 +100,7 @@ Glyph_Entry :: struct {
 // The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena. If the
 // arena already stores some allocations, they won't be popped, but you should not use it after
 // passing it to the font.
-make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_height: s32) -> Font {
+make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_height: s32, subpixel: bool) -> Font {
     font: Font;
     font.arena        = arena;
     font.arena_mark   = arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
@@ -122,7 +122,7 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
         return font;
     }
 
-    font_reset_for_options(*font, pixel_height, false);
+    font_reset_for_options(*font, pixel_height, subpixel);
 
     return font;
 }
@@ -140,13 +140,13 @@ font_reset_for_options :: (font: *Font, pixel_height: s32, subpixel: bool) {
     }
     font.pixel_height = pixel_height;
 
-    // XXX: We need to rebuild freetype.
+    // XXX: This is not working. Maybe we need to call this on initialization?
     if subpixel {
-        // FT_Library_SetLcdFilter(ft_library, FT_LCD_FILTER_DEFAULT);
-        // font.ft_load_target_flags = FT_LOAD_TARGET_LCD;
+        FT_Library_SetLcdFilter(font.ft_library, .DEFAULT);
+        font.ft_load_target = .LCD;
     } else {
-        // FT_Library_SetLcdFilter(ft_library, FT_LCD_FILTER_NONE);
-        font.ft_load_target_flags = 0;
+        FT_Library_SetLcdFilter(font.ft_library, .NONE);
+        font.ft_load_target = .NORMAL;
     }
     font.subpixel = subpixel;
 
@@ -309,7 +309,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
 
             {
                 ProfileZone("FT_Load_Glyph(FT_LOAD_RENDER)");
-                error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER | font.ft_load_target_flags);
+                error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER | cast(s32, font.ft_load_target));
 
                 if error {
                     // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
@@ -413,7 +413,7 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
             }
         }
 
-        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT | font.ft_load_target_flags);
+        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT | cast(s32, font.ft_load_target));
         if error {
             // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
             continue;
@@ -455,7 +455,7 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
             }
         }
 
-        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT | font.ft_load_target_flags);
+        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT | cast(s32, font.ft_load_target));
         if error {
             // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
             continue;
