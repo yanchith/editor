@@ -89,10 +89,10 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
             // // case .POINTER_DEREFERENCE;  #through; // TODO(jt): @Audit Does this still exist in JAI?
             // case .POSTFIX_DEREFERENCE;  highlight_token.type = .OPERATOR;
 
-            // case .NOTE; {
-            //     highlight_token.type = .ATTRIBUTE;
-            //     highlight_token.loc0.x -= 1;
-            // }
+            case .NOTE; {
+                highlight_token.type = .ATTRIBUTE;
+                highlight_token.loc0.x -= 1;
+            }
 
             case; {
                 if token.type >= .__FIRST_KEYWORD && token.type <= .__LAST_KEYWORD {
