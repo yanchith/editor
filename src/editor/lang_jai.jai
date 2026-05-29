@@ -20,7 +20,9 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
 
     JL.set_input_from_string(*lexer, contents);
 
-    last_token_is_pound := false;
+    last_token_is_pound  := false;
+    last_token_is_dollar := false;
+    last_token_is_double_dollar := false;
     while 1 {
         // The lexer has a MAX_CONCURRENT_TOKENS, which is how many you can still access before they
         // get overwritten.
@@ -40,17 +42,18 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
             // case .DOUBLE_DOLLAR;        highlight_token.type = .PREPROCESSOR_DIRECTIVE;
 
             case .IDENT; {
-                if last_token_is_pound {
+                if last_token_is_pound || last_token_is_dollar {
                     highlight_token.type = .PREPROCESSOR_DIRECTIVE;
-                    highlight_token.loc0.x -= 1; // nocheckin Is there space between the # and the ident?
+                    highlight_token.loc0.x -= 1;
+                } else if last_token_is_double_dollar {
+                    highlight_token.type = .PREPROCESSOR_DIRECTIVE;
+                    highlight_token.loc0.x -= 2;
                 }
             }
 
             case .NUMBER;               highlight_token.type = .NUMBER_LITERAL;
             case .STRING;               highlight_token.type = .STRING_LITERAL;
-            // case .KEYWORD_TRUE;         #through;
-            // case .KEYWORD_FALSE;        highlight_token.type = .BOOLEAN_LITERAL;
-            // case .TRIPLE_MINUS;         highlight_token.type = .PREPROCESSOR_DIRECTIVE; // TODO(jt): Make a OTHER_LITERAL or something?
+            case .TRIPLE_MINUS;         highlight_token.type = .PREPROCESSOR_DIRECTIVE; // TODO(jt): Make a OTHER_LITERAL or something?
 
             // case #char "+";             #through;
             // case #char "-";             #through;
@@ -96,12 +99,19 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
 
             case; {
                 if token.type >= .__FIRST_KEYWORD && token.type <= .__LAST_KEYWORD {
-                    highlight_token.type = .KEYWORD;
+                    if last_token_is_pound {
+                        highlight_token.type = .PREPROCESSOR_DIRECTIVE;
+                        highlight_token.loc0.x -= 1;
+                    } else {
+                        highlight_token.type = .KEYWORD;
+                    }
                 }
             }
         }
 
-        last_token_is_pound = token.type == #char "#";
+        last_token_is_pound  = token.type == #char "#";
+        last_token_is_dollar = token.type == DOLLAR;
+        last_token_is_double_dollar = token.type == .DOUBLE_DOLLAR;
         if highlight_token.type == .UNINITIALIZED {
             continue;
         }
