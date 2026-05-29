@@ -20,7 +20,7 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
 
     JL.set_input_from_string(*lexer, contents);
 
-    // last_token_is_pound := false;
+    last_token_is_pound := false;
     while 1 {
         // The lexer has a MAX_CONCURRENT_TOKENS, which is how many you can still access before they
         // get overwritten.
@@ -40,10 +40,10 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
             // case .DOUBLE_DOLLAR;        highlight_token.type = .PREPROCESSOR_DIRECTIVE;
 
             case .IDENT; {
-                // if last_token_is_pound {
-                //     highlight_token.type = .PREPROCESSOR_DIRECTIVE;
-                //     highlight_token.loc0.x -= 1; // nocheckin Is there space between the # and the ident?
-                // }
+                if last_token_is_pound {
+                    highlight_token.type = .PREPROCESSOR_DIRECTIVE;
+                    highlight_token.loc0.x -= 1; // nocheckin Is there space between the # and the ident?
+                }
             }
 
             case .NUMBER;               highlight_token.type = .NUMBER_LITERAL;
@@ -101,7 +101,7 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
             }
         }
 
-        // last_token_is_pound = token.type == #char "#";
+        last_token_is_pound = token.type == #char "#";
         if highlight_token.type == .UNINITIALIZED {
             continue;
         }
