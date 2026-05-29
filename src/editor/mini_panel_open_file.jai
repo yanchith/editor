@@ -222,6 +222,8 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                             set_panel_document(editor, active_panel, document);
                             recenter_active_panel(editor, input, true);
                         }
+
+                        update_syntax_highlights(editor, document, platform, input);
                     }
                 } else {
                     editor_log(editor, "Opening new file with path: %", file_absolute_path);

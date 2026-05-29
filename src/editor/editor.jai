@@ -115,6 +115,7 @@ operator==     :: Math.operator==;
 #load "mini_panel_switch_to_document.jai";
 #load "mini_panel_close_document.jai";
 #load "modal_interaction_search_and_replace.jai";
+#load "lang_jai.jai";
 #load "hello.jai";
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
@@ -187,14 +188,13 @@ Document :: struct {
     locator: Bucket_Locator;
 
     kind: Kind;
+    mode: Mode;
     flags: Flags;
     time_of_last_interaction: Apollo_Time;
 
     buffer: Text_Buffer;
 
-    // The arena is currently just for backing_file_path. The buffer has its own arenas. I don't
-    // like this, but maybe it will become clear what to do later, once we have more stuff here.
-    arena: *Arena;
+    arena: *Arena; // For backing_file_path and syntax_highlight_tokens.
 
     // Newly created documents (and scratch documents) do not have a backing file until saved, at
     // which point a backing file path is assigned and file created. A document with a
@@ -203,10 +203,18 @@ Document :: struct {
     backing_file_path: string;
     backing_file_exists: bool;
 
+    syntax_highlight_tokens: [..] Syntax_Highlight_Token;
+
     Kind :: enum u32 {
         SCRATCH;
         // COMPILATION;
         FILE;
+    }
+
+    Mode :: enum u32 {
+        PLAIN_TEXT :: 0;
+
+        JAI :: 1;
     }
 
     Flags :: enum_flags u32 {
@@ -215,6 +223,32 @@ Document :: struct {
         // READ_ONLY
         // CONSISTENT_INDENTATION
         // CONSISTENT_NEWLINES
+    }
+
+    Syntax_Highlight_Token :: struct {
+        loc0: Text_Location;
+        loc1: Text_Location;
+        type:    Type;
+
+        Type :: enum u32 {
+            UNINITIALIZED :: 0;
+
+            KEYWORD :: 1;
+            NUMBER_LITERAL  :: 2;
+            STRING_LITERAL  :: 3;
+            BOOLEAN_LITERAL :: 4;
+
+            OPERATOR    :: 5;
+            PARENTHESIS :: 6;
+
+            // TYPE;
+            // IDENTIFIER; (variable, parameter, global...)
+
+            PREPROCESSOR_DIRECTIVE :: 5;
+            ATTRIBUTE              :: 6; // [[attribute]] or __attribute__() in C. @Note in JAI, #[attribute] in Rust, [Attribute] in C#;
+
+            COMMENT :: 6;
+        }
     }
 
     //
@@ -1146,9 +1180,49 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             offset.x = -panel.scroll.x;
             offset.y = -viewport_y0 + cell_h * cast(f64, viewport_line0);
 
+            color_ranges: [..] Font_Color_Range;
+            color_ranges.allocator = temp;
+
+            highlight_tokens_start := 0;
+            highlight_tokens_end   := 0;
+            // TODO(jt): @Speed Fast-seek forward or binary search or something, so we don't iterate
+            // the whole thing to find the start.
+            for document.syntax_highlight_tokens {
+                if it.loc0.y == viewport_line0 {
+                    highlight_tokens_start = it_index;
+                    break;
+                }
+            }
+
+            for array_view(document.syntax_highlight_tokens, highlight_tokens_start) {
+                if it.loc0.y > viewport_line1 {
+                    highlight_tokens_end   = highlight_tokens_start + it_index;
+                    break;
+                }
+            }
+
+            editor_log(editor, "nocheckin start: %, end: %, vl0: %, vl1: %", highlight_tokens_start, highlight_tokens_end, viewport_line0, viewport_line1);
+
+            for array_view(document.syntax_highlight_tokens, highlight_tokens_start, highlight_tokens_end) {
+                r: Font_Color_Range;
+                r.line_index = it.loc0.y - viewport_line0;
+                r.line_start = it.loc0.x;
+                r.line_end   = it.loc1.x;
+
+                if it.type == {
+                    case .KEYWORD;         r.color = unpack_srgb(0xe95410ff);
+                    case .STRING_LITERAL;  r.color = unpack_srgb(0x98c379ff);
+                    case .NUMBER_LITERAL;  r.color = unpack_srgb(0x759fbfff);
+
+                    case; continue;
+                }
+
+                array_add(*color_ranges, r);
+            }
+
             // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
             // to the left of the screen, but we don't have to emit render rects for it.
-            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, TEXT_COLOR, binary = document.buffer.binary_mode);
+            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, TEXT_COLOR, color_ranges, binary = document.buffer.binary_mode);
         }
 
         panel.flags = 0;
@@ -1171,7 +1245,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         percent_string := temp_right_pad(tprint("%\%", percent), 5);
 
         s := tprint("  % % (%,%)", temp_right_pad(document_name, 20), percent_string, cursor.y + 1, cursor.x);
-        _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, TEXT_COLOR, binary = false);
+        _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, TEXT_COLOR, .[], binary = false);
     }
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
@@ -1199,7 +1273,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         main_line := tprint("%%", action_text, line_view);
 
-        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, TEXT_COLOR, binary = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, TEXT_COLOR, .[], binary = false);
 
         index0 := max(mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
         index1 := min(index0 + MINI_PANEL_LINES, mini_panel.items.count - 1);
@@ -1223,7 +1297,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, TEXT_COLOR, binary = cast(bool, item.flags & .BINARY));
+            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, TEXT_COLOR, .[], binary = cast(bool, item.flags & .BINARY));
 
             it_index += 1;
         }
@@ -1244,14 +1318,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         main_line := tprint("%%", action_text, line_view);
 
-        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, modal_interaction_line_y }, TEXT_COLOR, binary = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, modal_interaction_line_y }, TEXT_COLOR, .[], binary = false);
     } else {
         message_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
 
         if editor.messages.count && !editor.last_message_seen {
             message := editor.messages[editor.messages.count - 1];
-            _font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, TEXT_COLOR, binary = false);
+            _font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, TEXT_COLOR, .[], binary = false);
         }
     }
 
@@ -1958,6 +2032,13 @@ close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
     modal_interaction.open = false;
 }
 
+update_syntax_highlights :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
+    if #complete document.mode == {
+        case .PLAIN_TEXT; // Nothing
+        case .JAI;        lang_jai_update_syntax_highlights(editor, document, platform, input);
+    }
+}
+
 find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, newly_created: bool {
     for * editor.documents {
         if it.kind != kind                            continue;
@@ -1974,6 +2055,14 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     document: Document;
     document.kind = kind;
+    document.mode = .PLAIN_TEXT;
+    {
+        ext, ext_found := String.path_extension(backing_file_path);
+        if ext_found && ext == "jai" {
+            document.mode = .JAI;
+        }
+    }
+
     document.flags = .NONE;
     document.time_of_last_interaction = editor.input_state.time;
     text_buffer_init(*document.buffer, buffer_arena, buffer_edit_text_arena);
@@ -1982,6 +2071,8 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
     if backing_file_path.count {
         document.backing_file_path = arena_push_string(document_arena, backing_file_path);
     }
+
+    document.syntax_highlight_tokens.allocator = arena_allocator(document_arena);
 
     document.cursor_flash_source = CURSOR_COLOR;
     document.cursor_flash_target = CURSOR_COLOR;
