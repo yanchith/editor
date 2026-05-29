@@ -179,6 +179,8 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
 }
 
 advance :: (editor: *Editor, platform: Platform, input: Input) {
+    ProfileZone("modal_interaction_search_and_replace_advance_proc");
+
     modal_interaction := *editor.modal_interaction;
     sanity_assert(modal_interaction.open);
     if !modal_interaction.open {
@@ -216,6 +218,9 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
             search_text := userdata.input_to_search;
             search_text_char_count := ifx document.buffer.binary_mode then search_text.count else count_utf8_chars(search_text);
 
+            // TODO(jt): @Speed This causes us to miss frames above 4MB buffers. It is serviceable
+            // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
+            // fan-out & collect threading, but we should also do SIMD.
             gb_index := 0;
             for 0..document.buffer.line_bytes.count - 1 {
                 gb_count := document.buffer.line_bytes[it];

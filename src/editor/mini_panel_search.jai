@@ -76,6 +76,9 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
             search_text_char_count := mini_panel.buffer.line_chars[0];
 
+            // TODO(jt): @Speed This causes us to miss frames above 4MB buffers. It is serviceable
+            // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
+            // fan-out & collect threading, but we should also do SIMD.
             gb_index := 0;
             for 0..document.buffer.line_bytes.count - 1 {
                 gb_count := document.buffer.line_bytes[it];

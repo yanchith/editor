@@ -376,7 +376,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
     assert(success);
 
-    editor.font_size = 40;
+    editor.font_size = 20;
     log("Current font pixel height: %", editor.font_size);
 
     physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
@@ -476,7 +476,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     // :PanelInit (this will evantually be a procedure)
     {
-        panel.highlights_arena = make_arena(platform, .SMALL);
+        panel.highlights_arena = make_arena(platform, .LARGE);
         panel.highlights.allocator = arena_allocator(panel.highlights_arena);
         panel.highlight_index = -1;
     }
@@ -2061,7 +2061,7 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
 
     // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
     // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
-    HELLO_SIZE: s64 : 64 << 10;
+    HELLO_SIZE: s64 : 128 << 10;
 
     hello_arena := make_arena(platform, .LARGE);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
