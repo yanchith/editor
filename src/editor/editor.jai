@@ -1198,8 +1198,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     if it.type == {
                         case .KEYWORD;                 r.color = unpack_srgb(0xe95410ff);
-                        case .ATTRIBUTE;               r.color = unpack_srgb(0xe95410ff); // TODO(jt): Bold
-                        case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgb(0xe95410ff); // TODO(jt): Bold
+                        case .ATTRIBUTE;               r.color = unpack_srgb(0xf06525ff); // TODO(jt): Bold
+                        case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgb(0xf06525ff); // TODO(jt): Bold
                         case .STRING_LITERAL;          r.color = unpack_srgb(0x98c379ff);
                         case .NUMBER_LITERAL;          r.color = unpack_srgb(0x759fbfff);
 
