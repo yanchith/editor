@@ -132,7 +132,7 @@ CURSOR_COLOR            :: #run unpack_srgb(0x50ffa0ff);
 ACTIVE_CURSOR_COLOR     :: #run unpack_srgb(0xffffffff);
 SELECTION_COLOR         :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
 HIGHLIGHT_COLOR         :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.4; return c; };
-ACTIVE_HIGHLIGHT_COLOR  :: #run unpack_srgb(0xd05050ff);
+ACTIVE_HIGHLIGHT_COLOR  :: #run unpack_srgb(0xd08080ff);
 LINE_COLOR              :: Vector4.{ 0, 0, 0, 0 };
 MINI_PANEL_LINE_COLOR   :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
 MODELINE_COLOR          :: #run unpack_srgb(0x090909ff);
@@ -1197,10 +1197,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     r.line_end   = it.loc1.x;
 
                     if it.type == {
-                        case .KEYWORD;         r.color = unpack_srgb(0xe95410ff);
-                        case .ATTRIBUTE;       r.color = unpack_srgb(0xe95410ff); // TODO(jt): Bold
-                        case .STRING_LITERAL;  r.color = unpack_srgb(0x98c379ff);
-                        case .NUMBER_LITERAL;  r.color = unpack_srgb(0x759fbfff);
+                        case .KEYWORD;                 r.color = unpack_srgb(0xe95410ff);
+                        case .ATTRIBUTE;               r.color = unpack_srgb(0xe95410ff); // TODO(jt): Bold
+                        case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgb(0xe95410ff); // TODO(jt): Bold
+                        case .STRING_LITERAL;          r.color = unpack_srgb(0x98c379ff);
+                        case .NUMBER_LITERAL;          r.color = unpack_srgb(0x759fbfff);
 
                         case; continue;
                     }
