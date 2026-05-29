@@ -218,7 +218,7 @@ Font_Color_Range :: struct {
     color: Vector4;
     line_index: s64;
     line_start: s64;
-    line_end:   s64; // Inclusive!
+    line_end:   s64;
 }
 
 font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, color_ranges: [] Font_Color_Range, binary: bool) {
@@ -385,7 +385,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
         if next_color_range_index != -1 {
             color_range := *color_ranges[next_color_range_index];
             if current_line_index == color_range.line_index {
-                if current_char_index >= color_range.line_start && current_char_index <= color_range.line_end {
+                if current_char_index >= color_range.line_start && current_char_index < color_range.line_end {
                     color = color_range.color;
                 }
 
