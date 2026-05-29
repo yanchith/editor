@@ -25,7 +25,7 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
     last_token_is_double_dollar := false;
     while 1 {
         // The lexer has a MAX_CONCURRENT_TOKENS, which is how many you can still access before they
-        // get overwritten.
+        // get overwritten. Pretty cool.
         token := JL.peek_next_token(*lexer);
         JL.eat_token(*lexer);
 
@@ -37,10 +37,6 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
         highlight_token.loc1 = { token.c1 - 1, token.l1 - 1 };
 
         if token.type == {
-            // TODO(jt): Make a GENERIC_TYPENAME token type or something?
-            // case DOLLAR;                highlight_token.type = .PREPROCESSOR_DIRECTIVE;
-            // case .DOUBLE_DOLLAR;        highlight_token.type = .PREPROCESSOR_DIRECTIVE;
-
             case .IDENT; {
                 if last_token_is_pound || last_token_is_dollar {
                     highlight_token.type = .PREPROCESSOR_DIRECTIVE;
@@ -122,4 +118,4 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
     log("nocheckin tokens: %", document.syntax_highlight_tokens);
 }
 
-DOLLAR :: #char "$";
+DOLLAR :: #char "$"; // Thank you Emacs!
