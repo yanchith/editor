@@ -212,9 +212,8 @@ Document :: struct {
     }
 
     Mode :: enum u32 {
-        PLAIN_TEXT :: 0;
-
-        JAI :: 1;
+        PLAIN_TEXT;
+        JAI;
     }
 
     Flags :: enum_flags u32 {
@@ -233,21 +232,20 @@ Document :: struct {
         Type :: enum u32 {
             UNINITIALIZED :: 0;
 
-            KEYWORD :: 1;
-            NUMBER_LITERAL  :: 2;
-            STRING_LITERAL  :: 3;
-            BOOLEAN_LITERAL :: 4;
+            KEYWORD;
+            NUMBER_LITERAL;
+            STRING_LITERAL;
 
-            OPERATOR    :: 5;
-            PARENTHESIS :: 6;
+            OPERATOR;
+            PARENTHESIS;
 
             // TYPE;
             // IDENTIFIER; (variable, parameter, global...)
 
-            PREPROCESSOR_DIRECTIVE :: 5;
-            ATTRIBUTE              :: 6; // [[attribute]] or __attribute__() in C. @Note in JAI, #[attribute] in Rust, [Attribute] in C#;
+            PREPROCESSOR_DIRECTIVE;
+            ATTRIBUTE; // [[attribute]] or __attribute__() in C. @Note in JAI, #[attribute] in Rust, [Attribute] in C#;
 
-            COMMENT :: 6;
+            COMMENT;
         }
     }
 
@@ -985,7 +983,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Draw Highlights
         //
         for panel.highlights {
-            if it.cursor_y < viewport_line0  continue; // TODO(jt): @Speed Binary search for the start instead?
+            if it.cursor_y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
             if it.cursor_y > viewport_line1  break;
 
             // TODO(jt): @Speed Compute gap buffer indices incrementally as we go through the loop.
@@ -1189,10 +1187,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             {
                 ProfileZone(":FindSyntaxHighlights");
 
-                // TODO(jt): @Speed Fast-seek forward or binary search or something, so we don't iterate
-                // the whole thing to find the start.
                 for document.syntax_highlight_tokens {
-                    if it.loc0.y < viewport_line0  continue;
+                    if it.loc0.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
                     if it.loc0.y > viewport_line1  break;
 
                     r: Font_Color_Range;
@@ -1205,7 +1201,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .ATTRIBUTE;       r.color = unpack_srgb(0xe95410ff); // TODO(jt): Bold
                         case .STRING_LITERAL;  r.color = unpack_srgb(0x98c379ff);
                         case .NUMBER_LITERAL;  r.color = unpack_srgb(0x759fbfff);
-
 
                         case; continue;
                     }
