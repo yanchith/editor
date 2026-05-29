@@ -1183,41 +1183,48 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             color_ranges: [..] Font_Color_Range;
             color_ranges.allocator = temp;
 
-            highlight_tokens_start := 0;
-            highlight_tokens_end   := 0;
-            // TODO(jt): @Speed Fast-seek forward or binary search or something, so we don't iterate
-            // the whole thing to find the start.
-            for document.syntax_highlight_tokens {
-                if it.loc0.y == viewport_line0 {
-                    highlight_tokens_start = it_index;
-                    break;
-                }
-            }
+            //
+            // Find syntax highlights for current screen
+            //
+            {
+                ProfileZone(":FindSyntaxHighlights");
 
-            for array_view(document.syntax_highlight_tokens, highlight_tokens_start) {
-                if it.loc0.y > viewport_line1 {
-                    highlight_tokens_end   = highlight_tokens_start + it_index;
-                    break;
-                }
-            }
-
-            editor_log(editor, "nocheckin start: %, end: %, vl0: %, vl1: %", highlight_tokens_start, highlight_tokens_end, viewport_line0, viewport_line1);
-
-            for array_view(document.syntax_highlight_tokens, highlight_tokens_start, highlight_tokens_end) {
-                r: Font_Color_Range;
-                r.line_index = it.loc0.y - viewport_line0;
-                r.line_start = it.loc0.x;
-                r.line_end   = it.loc1.x;
-
-                if it.type == {
-                    case .KEYWORD;         r.color = unpack_srgb(0xe95410ff);
-                    case .STRING_LITERAL;  r.color = unpack_srgb(0x98c379ff);
-                    case .NUMBER_LITERAL;  r.color = unpack_srgb(0x759fbfff);
-
-                    case; continue;
+                highlight_tokens_start := 0;
+                // TODO(jt): @Speed Fast-seek forward or binary search or something, so we don't iterate
+                // the whole thing to find the start.
+                for document.syntax_highlight_tokens {
+                    if it.loc0.y >= viewport_line0 && it.loc1.y <= viewport_line1 {
+                        highlight_tokens_start = it_index;
+                        break;
+                    }
                 }
 
-                array_add(*color_ranges, r);
+                highlight_tokens_end := highlight_tokens_start;
+                for array_view(document.syntax_highlight_tokens, highlight_tokens_start) {
+                    if it.loc0.y > viewport_line1 {
+                        highlight_tokens_end = highlight_tokens_start + it_index;
+                        break;
+                    }
+                }
+
+                // editor_log(editor, "nocheckin start: %, end: %, vl0: %, vl1: %", highlight_tokens_start, highlight_tokens_end, viewport_line0, viewport_line1);
+
+                for array_view(document.syntax_highlight_tokens, highlight_tokens_start, highlight_tokens_end) {
+                    r: Font_Color_Range;
+                    r.line_index = it.loc0.y - viewport_line0;
+                    r.line_start = it.loc0.x;
+                    r.line_end   = it.loc1.x;
+
+                    if it.type == {
+                        case .KEYWORD;         r.color = unpack_srgb(0xe95410ff);
+                        case .STRING_LITERAL;  r.color = unpack_srgb(0x98c379ff);
+                        case .NUMBER_LITERAL;  r.color = unpack_srgb(0x759fbfff);
+
+                        case; continue;
+                    }
+
+                    array_add(*color_ranges, r);
+                }
             }
 
             // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
