@@ -214,26 +214,44 @@ font_new_frame :: (font: *Font) {
     font.glyph_cache_misses = 0;
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, color: Vector4, binary: bool) {
+Font_Color_Range :: struct {
+    color: Vector4;
+    line_index: s64;
+    line_start: s64;
+    line_end:   s64; // Inclusive!
+}
+
+font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, color_ranges: [] Font_Color_Range, binary: bool) {
     if binary {
-        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, color, true);
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, default_color, color_ranges, true);
     } else {
-        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, color, false);
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, default_color, color_ranges, false);
     }
 }
 
-_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, color: Vector4, $binary: bool) {
+_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, color_ranges: [] Font_Color_Range, $binary: bool) {
     ProfileZone("font_layout_and_draw_text");
+
+    next_color_range_index: s64 = -1;
+    if color_ranges.count {
+        next_color_range_index = 0;
+    }
 
     // Cursors are in 26:6 pixels (64-bit, because on Unix, FT_Pos is 64-bit even if they only use 32 bits).
     cursor_x: s64 = 0;
     cursor_y: s64 = font.ascender;
+
+    current_line_index: s64 = 0;
+    current_char_index: s64 = 0;
 
     ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
     for :ITERATOR text {
         if it == #char "\n" {
             cursor_x = 0;
             cursor_y += font.line_height;
+            current_char_index = 0;
+            current_line_index += 1;
+
             continue;
         }
 
@@ -363,6 +381,23 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
             sanity_assert(font.glyph_entries_tail == entry_index);
         }
 
+        color := default_color;
+        if next_color_range_index != -1 {
+            color_range := *color_ranges[next_color_range_index];
+            if current_line_index == color_range.line_index {
+                if current_char_index >= color_range.line_start && current_char_index <= color_range.line_end {
+                    color = color_range.color;
+                }
+
+                if current_char_index == color_range.line_end {
+                    next_color_range_index += 1;
+                    if next_color_range_index >= color_ranges.count {
+                        next_color_range_index = -1;
+                    }
+                }
+            }
+        }
+
         // Order of operations here is somewhat important. Cursor and offset can be big, so
         // we subtract those first, so that the small glyph offset doesn't get destroyed.
         rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
@@ -385,6 +420,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
         rr.color = color;
 
         cursor_x += glyph_advance;
+        current_char_index += 1;
     }
 }
 
