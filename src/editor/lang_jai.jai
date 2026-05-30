@@ -33,17 +33,18 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
         if lexer.reported_error         break;
 
         highlight_token: Document.Syntax_Highlight_Token;
-        highlight_token.loc0 = { token.c0 - 1, token.l0 - 1 };
-        highlight_token.loc1 = { token.c1 - 1, token.l1 - 1 };
+        highlight_token.x0 = token.c0 - 1; // nocheckin Is c0 and c1 in unicode or bytes?
+        highlight_token.x1 = token.c1 - 1;
+        highlight_token.y  = token.l0 - 1;
 
         if token.type == {
             case .IDENT; {
                 if last_token_is_pound || last_token_is_dollar {
                     highlight_token.type = .PREPROCESSOR_DIRECTIVE;
-                    highlight_token.loc0.x -= 1;
+                    highlight_token.x0 -= 1;
                 } else if last_token_is_double_dollar {
                     highlight_token.type = .PREPROCESSOR_DIRECTIVE;
-                    highlight_token.loc0.x -= 2;
+                    highlight_token.x0 -= 2;
                 }
             }
 
@@ -90,14 +91,14 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
 
             case .NOTE; {
                 highlight_token.type = .ATTRIBUTE;
-                highlight_token.loc0.x -= 1;
+                highlight_token.x0 -= 1;
             }
 
             case; {
                 if token.type >= .__FIRST_KEYWORD && token.type <= .__LAST_KEYWORD {
                     if last_token_is_pound {
                         highlight_token.type = .PREPROCESSOR_DIRECTIVE;
-                        highlight_token.loc0.x -= 1;
+                        highlight_token.x0 -= 1;
                     } else {
                         highlight_token.type = .KEYWORD;
                     }
