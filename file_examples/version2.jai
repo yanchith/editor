@@ -157,6 +157,13 @@ main :: () {
     success2, b2 := read_building(cast([] u8, bytes2));
     success3, b3 := read_building(cast([] u8, bytes3));
 
+    /* Here is a test block comment! */ a := cast(s32, 42); /* And here is another one! */
+
+    /* And 
+here 
+  is a 
+    multiline block comment */ thingo := 1;
+
     print("Read (%) building 1. Data is %\n", success1, b1);
     print("Read (%) building 2. Data is %\n", success2, b2);
     print("Read (%) building 3. Data is %\n", success3, b3);
