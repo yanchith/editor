@@ -1,6 +1,8 @@
 JL :: #import "Jai_Lexer";
 
 lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
+    ProfileZone("lang_jai_update_syntax_highlights");
+
     sanity_assert(document != null);
     if document == null {
         return;
@@ -34,23 +36,28 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
         if lexer.reported_error         break;
 
         highlight_token: Document.Syntax_Highlight_Token;
-        highlight_token.x0 = token.c0 - 1; // TODO(jt): @Audit is c0 and c1 counting in unicode or bytes?
-        highlight_token.x1 = token.c1 - 1;
-        highlight_token.y  = token.l0 - 1;
-
-        // TODO(jt): Things until we are somewhat satisfied with this:
+        // The highlight token interval is inclusive on both sides. This is sort of an arbitrary
+        // choice we can revisit. Note however, that Jai_Lexer produces end-exclusive horizontal
+        // range and end-inclusive vertical range due to the way set_end_of_token works. To correct
+        // for this, we subtract 2 from c1.
         //
-        // - Modify lexer to output comments
-        // - Modify font to be able to mix in multiple font weights in a single atlas (regular, bold, italic, etc.) and make use of this.
+        // TODO(jt): @Audit is c0 and c1 counting in unicode or bytes?
+        highlight_token.loc0.x = token.c0 - 1;
+        highlight_token.loc0.y = token.l0 - 1;
+        highlight_token.loc1.x = token.c1 - 2;
+        highlight_token.loc1.y = token.l1 - 1;
+
+        // TODO(jt): Modify font to be able to mix in multiple font weights in a single atlas
+        // (regular, bold, italic, etc.) and make use of this.
 
         if token.type == {
             case .IDENT; {
                 if last_token_is_pound || last_token_is_dollar {
                     highlight_token.type = .PREPROCESSOR_DIRECTIVE;
-                    highlight_token.x0 -= 1;
+                    highlight_token.loc0.x -= 1;
                 } else if last_token_is_double_dollar {
                     highlight_token.type = .PREPROCESSOR_DIRECTIVE;
-                    highlight_token.x0 -= 2;
+                    highlight_token.loc0.x -= 2;
                 }
             }
 
@@ -60,14 +67,17 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
 
             case .NOTE; {
                 highlight_token.type = .ATTRIBUTE;
-                highlight_token.x0 -= 1;
+                highlight_token.loc0.x -= 1;
             }
+
+            case .COMMENT;        #through;
+            case .BLOCK_COMMENT;  highlight_token.type = .COMMENT;
 
             case; {
                 if token.type >= .__FIRST_KEYWORD && token.type <= .__LAST_KEYWORD {
                     if last_token_is_pound {
                         highlight_token.type = .PREPROCESSOR_DIRECTIVE;
-                        highlight_token.x0 -= 1;
+                        highlight_token.loc0.x -= 1;
                     } else {
                         highlight_token.type = .KEYWORD;
                     }
@@ -78,11 +88,10 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
         last_token_is_pound  = token.type == #char "#";
         last_token_is_dollar = token.type == DOLLAR;
         last_token_is_double_dollar = token.type == .DOUBLE_DOLLAR;
-        if highlight_token.type == .UNINITIALIZED {
-            continue;
-        }
 
-        array_add(*document.syntax_highlight_tokens, highlight_token);
+        if highlight_token.type != .UNINITIALIZED {
+            array_add(*document.syntax_highlight_tokens, highlight_token);
+        }
     }
 }
 
