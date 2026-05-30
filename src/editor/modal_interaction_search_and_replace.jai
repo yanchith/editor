@@ -1,3 +1,5 @@
+// TODO(jt): @Bug In the X/Y text Y counts every match, even ones above the cursor when we started the search.
+
 // TODO(jt): Preserve capitalization when replacing - our match text can be all lowercase, which
 // will match all sorts of text, but we want to preserve at least CamelCase, UPPER_CASE, etc.
 
@@ -102,9 +104,9 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                 case .NO; {
                     if action == .YES {
                         highlight := active_panel.highlights[active_panel.highlight_index];
-                        x0 := highlight.cursor_x0;
-                        x1 := highlight.cursor_x1;
-                        y  := highlight.cursor_y;
+                        x0 := highlight.x0;
+                        x1 := highlight.x1;
+                        y  := highlight.y;
 
                         document := active_panel.document;
 
@@ -131,12 +133,12 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                             index := active_panel.highlight_index;
                             while index < active_panel.highlights.count {
                                 highlight := *active_panel.highlights[index];
-                                if highlight.cursor_y > y {
+                                if highlight.y > y {
                                     break;
                                 }
 
-                                highlight.cursor_x0 += delta;
-                                highlight.cursor_x1 += delta;
+                                highlight.x0 += delta;
+                                highlight.x1 += delta;
 
                                 index += 1;
                             }
@@ -157,8 +159,8 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         close_modal_interaction(editor, platform, input);
                     } else {
                         highlight := active_panel.highlights[active_panel.highlight_index];
-                        x := highlight.cursor_x0;
-                        y := highlight.cursor_y;
+                        x := highlight.x0;
+                        y := highlight.y;
 
                         text_buffer_move_cursor_to(*active_panel.document.buffer, x, y, false);
                         recenter_active_panel(editor, input, true);
@@ -251,9 +253,9 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
                     highlight_index := active_panel.highlights.count;
 
                     highlight := array_add(*active_panel.highlights);
-                    highlight.cursor_x0 = x0;
-                    highlight.cursor_x1 = x1;
-                    highlight.cursor_y  = it;
+                    highlight.x0 = x0;
+                    highlight.x1 = x1;
+                    highlight.y  = it;
 
                     if new_highlight_index == -1 && it >= old_cursor_y {
                         new_highlight_index = highlight_index;
@@ -276,8 +278,8 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
                 active_panel.highlight_index = new_highlight_index;
 
                 highlight := active_panel.highlights[new_highlight_index];
-                x := highlight.cursor_x0;
-                y := highlight.cursor_y;
+                x := highlight.x0;
+                y := highlight.y;
 
                 text_buffer_move_cursor_to(*document.buffer, x, y, false);
                 recenter_active_panel(editor, input, true);

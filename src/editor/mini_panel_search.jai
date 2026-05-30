@@ -113,9 +113,9 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     x1 := x0 + search_text_char_count;
 
                     highlight := array_add(*active_panel.highlights);
-                    highlight.cursor_x0 = x0;
-                    highlight.cursor_x1 = x1;
-                    highlight.cursor_y  = it;
+                    highlight.x0 = x0;
+                    highlight.x1 = x1;
+                    highlight.y  = it;
 
                     item_index := mini_panel.items.count;
                     item := array_add(*mini_panel.items);

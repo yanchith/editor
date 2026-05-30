@@ -387,13 +387,18 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
             if current_line_index == color_range.line_index {
                 if current_char_index >= color_range.line_start && current_char_index < color_range.line_end {
                     color = color_range.color;
-                }
-
-                if current_char_index == color_range.line_end {
+                } else if current_char_index == color_range.line_end {
+                    // Advance to next color range
                     next_color_range_index += 1;
                     if next_color_range_index >= color_ranges.count {
                         next_color_range_index = -1;
                     }
+                }
+            } else if current_line_index > color_range.line_index {
+                // Advance to next color range
+                next_color_range_index += 1;
+                if next_color_range_index >= color_ranges.count {
+                    next_color_range_index = -1;
                 }
             }
         }
