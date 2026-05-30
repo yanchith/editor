@@ -9,7 +9,8 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
     array_reset_keeping_memory(*document.syntax_highlight_tokens);
 
     // TODO(jt): @Memory It's possible that cached_make_atom inside the Lexer leaks memory. Maybe we
-    // want to pass in temp as the context allocator? Maybe we want to audit the lexer code a bit.
+    // want to pass in temp as the context allocator when we call the lexer? Maybe we want to audit
+    // the lexer code a bit.
     lexer: JL.Lexer;
 
     // TODO(jt): @Speed @Memory This always copies the entire text buffer. This is bad! Instead
@@ -33,9 +34,14 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
         if lexer.reported_error         break;
 
         highlight_token: Document.Syntax_Highlight_Token;
-        highlight_token.x0 = token.c0 - 1; // nocheckin Is c0 and c1 in unicode or bytes?
+        highlight_token.x0 = token.c0 - 1; // TODO(jt): @Audit is c0 and c1 counting in unicode or bytes?
         highlight_token.x1 = token.c1 - 1;
         highlight_token.y  = token.l0 - 1;
+
+        // TODO(jt): Things until we are somewhat satisfied with this:
+        //
+        // - Modify lexer to output comments
+        // - Modify font to be able to mix in multiple font weights in a single atlas (regular, bold, italic, etc.) and make use of this.
 
         if token.type == {
             case .IDENT; {
@@ -50,44 +56,7 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
 
             case .NUMBER;               highlight_token.type = .NUMBER_LITERAL;
             case .STRING;               highlight_token.type = .STRING_LITERAL;
-            case .TRIPLE_MINUS;         highlight_token.type = .PREPROCESSOR_DIRECTIVE; // TODO(jt): Make a OTHER_LITERAL or something?
-
-            // case #char "+";             #through;
-            // case #char "-";             #through;
-            // case #char "*";             #through;
-            // case #char "/";             #through;
-            // case #char "%";             #through;
-            // case .BITWISE_XOR;          #through;
-            // case .BITWISE_NOT;          #through;
-            // case .BITWISE_AND;          #through;
-            // case .BITWISE_OR;           #through;
-            // case .PLUSEQUALS;           #through;
-            // case .MINUSEQUALS;          #through;
-            // case .TIMESEQUALS;          #through;
-            // case .DIVEQUALS;            #through;
-            // case .MODEQUALS;            #through;
-            // case .ISEQUAL;              #through;
-            // case .ISNOTEQUAL;           #through;
-            // case .LOGICAL_AND;          #through;
-            // case .LOGICAL_OR;           #through;
-            // case .LESSEQUALS;           #through;
-            // case .GREATEREQUALS;        #through;
-            // case .SHIFT_LEFT;           #through;
-            // case .SHIFT_RIGHT;          #through;
-            // case .ROTATE_LEFT;          #through;
-            // case .ROTATE_RIGHT;         #through;
-            // case .TRIPLE_EQUALS;        #through;
-            // case .SHIFT_LEFT_EQUALS;    #through;
-            // case .SHIFT_RIGHT_EQUALS;   #through;
-            // case .ROTATE_LEFT_EQUALS;   #through;
-            // case .ROTATE_RIGHT_EQUALS;  #through;
-            // case .BITWISE_AND_EQUALS;   #through;
-            // case .BITWISE_OR_EQUALS;    #through;
-            // case .BITWISE_XOR_EQUALS;   #through;
-            // case .LOGICAL_AND_EQUALS;   #through;
-            // case .LOGICAL_OR_EQUALS;    #through;
-            // // case .POINTER_DEREFERENCE;  #through; // TODO(jt): @Audit Does this still exist in JAI?
-            // case .POSTFIX_DEREFERENCE;  highlight_token.type = .OPERATOR;
+            case .TRIPLE_MINUS;         highlight_token.type = .PREPROCESSOR_DIRECTIVE;
 
             case .NOTE; {
                 highlight_token.type = .ATTRIBUTE;
@@ -115,8 +84,6 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
 
         array_add(*document.syntax_highlight_tokens, highlight_token);
     }
-
-    log("nocheckin tokens: %", document.syntax_highlight_tokens);
 }
 
 DOLLAR :: #char "$"; // Thank you Emacs!
