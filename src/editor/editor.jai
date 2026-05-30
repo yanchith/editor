@@ -226,8 +226,9 @@ Document :: struct {
     }
 
     Syntax_Highlight_Token :: struct {
-        loc0: Text_Location;
-        loc1: Text_Location;
+        x0: s64;
+        x1: s64;
+        y:  s64;
         type:    Type;
 
         Type :: enum u32 {
@@ -315,9 +316,9 @@ Panel :: struct {
     }
 
     Highlight :: struct {
-        cursor_x0: s64;
-        cursor_x1: s64;
-        cursor_y:  s64;
+        x0: s64;
+        x1: s64;
+        y:  s64;
     }
 }
 
@@ -984,15 +985,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Draw Highlights
         //
         for panel.highlights {
-            if it.cursor_y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
-            if it.cursor_y > viewport_line1  break;
+            if it.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
+            if it.y > viewport_line1  break;
 
             // TODO(jt): @Speed Compute gap buffer indices incrementally as we go through the loop.
-            line_view := text_buffer_make_view_for_line(document.buffer, it.cursor_y,, temp);
+            line_view := text_buffer_make_view_for_line(document.buffer, it.y,, temp);
 
-            x0 := font_compute_position_on_line(editor.font, line_view, it.cursor_x0, binary = document.buffer.binary_mode);
-            x1 := font_compute_position_on_line(editor.font, line_view, it.cursor_x1, binary = document.buffer.binary_mode);
-            y0 := cast(f64, it.cursor_y) * cell_h;
+            x0 := font_compute_position_on_line(editor.font, line_view, it.x0, binary = document.buffer.binary_mode);
+            x1 := font_compute_position_on_line(editor.font, line_view, it.x1, binary = document.buffer.binary_mode);
+            y0 := cast(f64, it.y) * cell_h;
             y1 := y0 + cell_h;
 
             highlight_rect: DRect = { x0, y0, x1, y1 };
@@ -1189,13 +1190,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 ProfileZone(":FindSyntaxHighlights");
 
                 for document.syntax_highlight_tokens {
-                    if it.loc0.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
-                    if it.loc0.y > viewport_line1  break;
+                    if it.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
+                    if it.y > viewport_line1  break;
 
                     r: Font_Color_Range;
-                    r.line_index = it.loc0.y - viewport_line0;
-                    r.line_start = it.loc0.x;
-                    r.line_end   = it.loc1.x;
+                    r.line_index = it.y - viewport_line0;
+                    r.line_start = it.x0;
+                    r.line_end   = it.x1;
 
                     if it.type == {
                         case .KEYWORD;                 r.color = unpack_srgb(0xe95410ff);
