@@ -221,16 +221,24 @@ Document :: struct {
     Flags :: enum_flags u32 {
         NONE :: 0;
 
+        // :ClearTransientDocumentFlags
+        //
+        // These get set during event processing and unset after update for this document's panel is done.
+        CHANGED_THIS_FRAME :: 0x01;
+
         // READ_ONLY
         // CONSISTENT_INDENTATION
         // CONSISTENT_NEWLINES
+
+        // These get set and unset in setup_cursor_anim_interpolation.
+        CURSOR_ANIM_TRIGGERED_BY_MOUSE    :: 0x1000;
+        CURSOR_ANIM_TRIGGERED_BY_KEYBOARD :: 0x2000;
     }
 
     Syntax_Highlight_Token :: struct {
-        x0: s64;
-        x1: s64;
-        y:  s64;
-        type:    Type;
+        loc0: Text_Location;
+        loc1: Text_Location;
+        type: Type;
 
         Type :: enum u32 {
             UNINITIALIZED :: 0;
@@ -260,7 +268,6 @@ Document :: struct {
     old_cursor: Text_Location;
     old_cursor_position: DVector2;
 
-    cursor_anim_flags: Cursor_Anim_Flags;
     cursor_anim_source: DVector2;
     cursor_anim_target: DVector2;
     cursor_anim_time_start: Apollo_Time;
@@ -270,13 +277,6 @@ Document :: struct {
     cursor_flash_target: Vector4;
     cursor_flash_time_start: Apollo_Time;
     cursor_flash: Vector4;
-
-    Cursor_Anim_Flags :: enum_flags {
-        NONE :: 0;
-
-        TRIGGERED_BY_MOUSE    :: 0x01;
-        TRIGGERED_BY_KEYBOARD :: 0x02;
-    }
 }
 
 Panel :: struct {
@@ -293,7 +293,6 @@ Panel :: struct {
 
     scroll: DVector2;
 
-    // These get set during event processing and unset after update.
     flags: Flags;
 
     selecting: bool;
@@ -307,11 +306,13 @@ Panel :: struct {
     Flags :: enum_flags {
         NONE :: 0;
 
+        // :ClearTransientPanelFlags
+        //
+        // These get set during event processing and unset after update for this panel is done.
         CLAMP_CURSOR_TO_SCROLL        :: 0x01;
         CLAMP_SCROLL_TO_CURSOR        :: 0x02;
         CLAMP_SCROLL_TO_START_OF_LINE :: 0x04; // Implies CLAMP_SCROLL_TO_CURSOR;
         CLAMP_SCROLL_TO_END_OF_LINE   :: 0x08; // Implies CLAMP_SCROLL_TO_CURSOR;
-
         RECEIVED_KEYBOARD_INTERACTION :: 0x10;
         RECEIVED_MOUSE_INTERACTION    :: 0x20;
     }
@@ -638,7 +639,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
 
         if it.document.cursor_anim_time_start == Apollo_Time.{ 0, 0 } {
-            setup_cursor_anim_interpolation(it.document, input.time, it.document.old_cursor_position, it.document.old_cursor_position, .NONE);
+            setup_cursor_anim_interpolation(it.document, input.time, it.document.old_cursor_position, it.document.old_cursor_position);
         }
     }
 
@@ -855,6 +856,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if !document {
             // TODO(jt): Draw something in empty panels?
             continue;
+        }
+
+        if document.flags & .CHANGED_THIS_FRAME {
+            update_syntax_highlights(editor, document, platform, input);
         }
 
         panel_w := window_w;
@@ -1104,12 +1109,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // Because the cursor position can be changed by both editing, mouse interaction,
             // scrolling, etc, we detect cursor changes every frame here (instead of in all the
             // places where the cursor can change).
-            if panel.document.old_cursor != panel.document.buffer.cursor0 {
-                flags: Document.Cursor_Anim_Flags;
-                if panel.flags & .RECEIVED_MOUSE_INTERACTION     flags |= .TRIGGERED_BY_MOUSE;
-                if panel.flags & .RECEIVED_KEYBOARD_INTERACTION  flags |= .TRIGGERED_BY_KEYBOARD;
+            //
+            // UPDATE: Now we do the same for cursor flash animation.
+            if document.old_cursor != document.buffer.cursor0 {
+                triggered_by_mouse    := cast(bool, panel.flags & .RECEIVED_MOUSE_INTERACTION);
+                triggered_by_keyboard := cast(bool, panel.flags & .RECEIVED_KEYBOARD_INTERACTION);
+                setup_cursor_anim_interpolation(document, input.time, document.old_cursor_position, new_cursor_position, triggered_by_mouse, triggered_by_keyboard);
+            }
 
-                setup_cursor_anim_interpolation(panel.document, input.time, panel.document.old_cursor_position, new_cursor_position, flags);
+            if document.flags & .CHANGED_THIS_FRAME {
+                setup_cursor_flash_interpolation(document, input.time, ACTIVE_CURSOR_COLOR, CURSOR_COLOR);
             }
 
             FLASH_TIME:         f64 : 0.20; // TODO(jt): Make flash time configurable. :Config
@@ -1117,8 +1126,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             ANIM_TIME_KEYBOARD: f64 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
 
             anim_time: f64 = 0.0;
-            if document.cursor_anim_flags & .TRIGGERED_BY_MOUSE     anim_time = max(anim_time, ANIM_TIME_MOUSE);
-            if document.cursor_anim_flags & .TRIGGERED_BY_KEYBOARD  anim_time = max(anim_time, ANIM_TIME_KEYBOARD);
+            if document.flags & .CURSOR_ANIM_TRIGGERED_BY_MOUSE     anim_time = max(anim_time, ANIM_TIME_MOUSE);
+            if document.flags & .CURSOR_ANIM_TRIGGERED_BY_KEYBOARD  anim_time = max(anim_time, ANIM_TIME_KEYBOARD);
 
             // TODO(jt): Division by zero. (We work around it for scroll and cursor animation.)
             flash_t := cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(document.cursor_flash_time_start)) / FLASH_TIME);
@@ -1191,13 +1200,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 ProfileZone(":FindSyntaxHighlights");
 
                 for document.syntax_highlight_tokens {
-                    if it.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
-                    if it.y > viewport_line1  break;
+                    if it.loc1.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
+                    if it.loc0.y > viewport_line1  break;
 
                     r: Font_Color_Range;
-                    r.line_index = it.y - viewport_line0;
-                    r.line_start = it.x0;
-                    r.line_end   = it.x1;
+                    r.x0 = it.loc0.x;
+                    r.y0 = it.loc0.y - viewport_line0;
+                    r.x1 = it.loc1.x;
+                    r.y1 = it.loc1.y - viewport_line0;
 
                     if it.type == {
                         case .KEYWORD;                 r.color = unpack_srgb(0xe95410ff);
@@ -1205,6 +1215,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgb(0xf06525ff); // TODO(jt): Bold
                         case .STRING_LITERAL;          r.color = unpack_srgb(0x98c379ff);
                         case .NUMBER_LITERAL;          r.color = unpack_srgb(0x759fbfff);
+
+                        case .COMMENT;                 r.color = unpack_srgb(0xa0a0a0ff);
 
                         case; continue;
                     }
@@ -1218,7 +1230,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, TEXT_COLOR, color_ranges, binary = document.buffer.binary_mode);
         }
 
-        panel.flags = 0;
+        clear_transient_document_flags(*document.flags);
+        clear_transient_panel_flags(*panel.flags);
     }
 
     {
@@ -1932,7 +1945,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 
     if action_kind >= .EDIT || inserted {
-        setup_cursor_flash_interpolation(document, input.time, ACTIVE_CURSOR_COLOR, CURSOR_COLOR);
+        document.flags |= .CHANGED_THIS_FRAME;
     }
 }
 
@@ -2291,12 +2304,16 @@ setup_instant_scroll_interpolation :: (panel: *Panel, target: DVector2) {
     panel.scroll = panel.scroll_source;
 }
 
-setup_cursor_anim_interpolation :: (document: *Document, time: Apollo_Time, source: DVector2, target: DVector2, flags: Document.Cursor_Anim_Flags) {
-    document.cursor_anim_flags = flags;
+setup_cursor_anim_interpolation :: (document: *Document, time: Apollo_Time, source: DVector2, target: DVector2, triggered_by_mouse := false, triggered_by_keyboard := false) {
     document.cursor_anim_source = source;
     document.cursor_anim_target = target;
     document.cursor_anim_time_start = time;
     document.cursor_anim = source;
+
+    if triggered_by_mouse     document.flags |= .CURSOR_ANIM_TRIGGERED_BY_MOUSE;
+    else                      document.flags &= ~.CURSOR_ANIM_TRIGGERED_BY_MOUSE;
+    if triggered_by_keyboard  document.flags |= .CURSOR_ANIM_TRIGGERED_BY_KEYBOARD;
+    else                      document.flags &= ~.CURSOR_ANIM_TRIGGERED_BY_KEYBOARD;
 }
 
 setup_cursor_flash_interpolation :: (document: *Document, time: Apollo_Time, source: Vector4, target: Vector4) {
@@ -2307,6 +2324,21 @@ setup_cursor_flash_interpolation :: (document: *Document, time: Apollo_Time, sou
 }
 
 #scope_file
+
+clear_transient_document_flags :: (flags: *Document.Flags) {
+    // :ClearTransientDocumentFlags
+    flags.* &= ~.CHANGED_THIS_FRAME;
+}
+
+clear_transient_panel_flags :: (flags: *Panel.Flags) {
+    // :ClearTransientPanelFlags
+    flags.* &= ~.CLAMP_CURSOR_TO_SCROLL;
+    flags.* &= ~.CLAMP_SCROLL_TO_CURSOR;
+    flags.* &= ~.CLAMP_SCROLL_TO_START_OF_LINE;
+    flags.* &= ~.CLAMP_SCROLL_TO_END_OF_LINE;
+    flags.* &= ~.RECEIVED_KEYBOARD_INTERACTION;
+    flags.* &= ~.RECEIVED_MOUSE_INTERACTION;
+}
 
 draw_rect :: (render_rects: *[..] Render_Rect, x0: f32, y0: f32, x1: f32, y1: f32, _color: Vector3 = { 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
     color: Vector4;

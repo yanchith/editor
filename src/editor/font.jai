@@ -216,9 +216,10 @@ font_new_frame :: (font: *Font) {
 
 Font_Color_Range :: struct {
     color: Vector4;
-    line_index: s64;
-    line_start: s64;
-    line_end:   s64;
+    x0: s64;
+    y0: s64;
+    x1: s64; // Inclusive! The range would not exist, if it would be empty!
+    y1: s64; // Inclusive! The range would not exist, if it would be empty!
 }
 
 font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, color_ranges: [] Font_Color_Range, binary: bool) {
@@ -232,9 +233,9 @@ font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Ren
 _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, color_ranges: [] Font_Color_Range, $binary: bool) {
     ProfileZone("font_layout_and_draw_text");
 
-    next_color_range_index: s64 = -1;
+    color_range_index: s64 = -1;
     if color_ranges.count {
-        next_color_range_index = 0;
+        color_range_index = 0;
     }
 
     // Cursors are in 26:6 pixels (64-bit, because on Unix, FT_Pos is 64-bit even if they only use 32 bits).
@@ -382,23 +383,36 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
         }
 
         color := default_color;
-        if next_color_range_index != -1 {
-            color_range := *color_ranges[next_color_range_index];
-            if current_line_index == color_range.line_index {
-                if current_char_index >= color_range.line_start && current_char_index < color_range.line_end {
-                    color = color_range.color;
-                } else if current_char_index == color_range.line_end {
-                    // Advance to next color range
-                    next_color_range_index += 1;
-                    if next_color_range_index >= color_ranges.count {
-                        next_color_range_index = -1;
-                    }
+        if color_range_index != -1 {
+            // Seek towards next token, if we are past the current one.
+            past_vertically   := current_line_index > color_ranges[color_range_index].y1;
+            past_horizontally := current_line_index == color_ranges[color_range_index].y1 && current_char_index > color_ranges[color_range_index].x1;
+            while color_range_index != -1 && (past_vertically || past_horizontally) {
+                color_range_index += 1;
+                if color_range_index >= color_ranges.count {
+                    color_range_index = -1;
+                } else {
+                    past_vertically   = current_line_index > color_ranges[color_range_index].y1;
+                    past_horizontally = current_line_index == color_ranges[color_range_index].y1 && current_char_index > color_ranges[color_range_index].x1;
                 }
-            } else if current_line_index > color_range.line_index {
-                // Advance to next color range
-                next_color_range_index += 1;
-                if next_color_range_index >= color_ranges.count {
-                    next_color_range_index = -1;
+            }
+
+            if color_range_index != -1 {
+                color_range := *color_ranges[color_range_index];
+                if current_line_index > color_range.y0 && current_line_index < color_range.y1 {
+                    color = color_range.color;
+                } else if current_line_index == color_range.y0 && current_line_index == color_range.y1 {
+                    if current_char_index >= color_range.x0 && current_char_index <= color_range.x1 {
+                        color = color_range.color;
+                    }
+                } else if current_line_index == color_range.y0 {
+                    if current_char_index >= color_range.x0 {
+                        color = color_range.color;
+                    }
+                } else if current_line_index == color_range.y1 {
+                    if current_char_index <= color_range.x1 {
+                        color = color_range.color;
+                    }
                 }
             }
         }
