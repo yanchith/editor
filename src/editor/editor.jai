@@ -1950,29 +1950,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                 log("nocheckin indent level: %", indentation_level);
 
-
-                // nocheckin This is mega stupid... probably do this inside the buffer itself. Only
-                // insert or delete... etc.
-
-                text_buffer_move_cursor_to(*document.buffer, 0, cursor.y, false);
-
-                line := text_buffer_make_view_for_line(document.buffer, cursor.y,, temp);
-                space_count := 0;
-                for line {
-                    if it != #char " " {
-                        break;
-                    }
-                    space_count += 1;
-                }
-
-                while space_count > 0 {
-                    text_buffer_delete_forward(*document.buffer);
-                    space_count -= 1;
-                }
-
-                to_insert := alloc_string(indentation_level,,temp);
-                memset(to_insert.data, #char " ", indentation_level);
-                text_buffer_insert(*document.buffer, to_insert);
+                text_buffer_indent_line(*document.buffer, indentation_level);
             } else {
                 text_buffer_insert(*document.buffer, "    ");
             }
