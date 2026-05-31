@@ -1835,11 +1835,14 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             cursor_moved   |= text_buffer_move_cursor_to_end_of_line(*document.buffer, false);
         }
 
-        // TODO(jt): Make indentation configurable.
         // TODO(jt): Preserve tabness in tab-only documents.
         case .INDENT_OR_AUTOCOMPLETE; {
             if document.indentation_scopes.count {
-                INDENT :: 4; // TODO(jt): Make this configurable. :Config.
+                // TODO(jt): Indent all selected lines.
+                // TODO(jt): Respect (possibly incorrect) indentation of line previous to first indented line.
+                // TODO(jt): @Bug This fails to indent an empty line.
+
+                INDENT :: 4; // TODO(jt): Make indent amount configurable. :Config.
 
                 cursor := document.buffer.cursor0;
 
@@ -1853,7 +1856,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     if current.first_child_index != -1 {
                         child := *document.indentation_scopes[current.first_child_index];
 
-                        if text_interval_contains(child.loc0, child.loc1, cursor) {
+                        if cursor.y > child.loc0.y && cursor.y < child.loc1.y {
                             current_index = current.first_child_index;
                         }
 
@@ -1861,14 +1864,12 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                             index := child.next_sibling_index;
                             child = *document.indentation_scopes[index];
 
-                            if text_interval_contains(child.loc0, child.loc1, cursor) {
+                            if cursor.y > child.loc0.y && cursor.y < child.loc1.y {
                                 current_index = index;
                             }
                         }
                     }
                 }
-
-                log("nocheckin indent level: %", indentation_level);
 
                 buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level);
             } else {
