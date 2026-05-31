@@ -111,7 +111,7 @@ gap_buffer_insert :: (gb: *Gap_Buffer, value: u8, count: s64) {
 
     maybe_grow_for_insert(gb, count);
 
-    memset(gb.bytes.data + gb.gap_index, value, count);
+    memset(gb.bytes.data + gb.gap_index, value, count); // nocheckin HERE is the buggy bug
     gb.gap_index += count;
     gb.gap_count -= count;
 
