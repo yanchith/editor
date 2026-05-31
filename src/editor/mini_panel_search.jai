@@ -91,6 +91,9 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 //
                 // Note that even though we pass in temp, making of the view will only
                 // allocate for one of the lines - the one that crosses the gap.
+                //
+                // UPDATE: Could we have a for_expansion that just does this line-oriented iteration
+                // for us (including the manual gap buffer index counting?)
                 line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
                 line_text  := cast(string, line_bytes);
 
