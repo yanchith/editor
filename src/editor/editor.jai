@@ -1146,7 +1146,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             // TODO(jt): For visuals, it would be nice, if the interpolated cursor left a trail
             // behind it as it moves, because currently, when it moves very fast, you can spot the
-            // individual positions it occupies.
+            // individual positions it occupies. Fred does this with a CRT persistence effect.
+            // Maybe we jsut want to do that?
 
             anim_t := cast(f32, (to_float64_seconds(input.time) + USUAL_DELTA_TIME - to_float64_seconds(document.cursor_anim_time_start)) / anim_time);
             anim_t = clamp(anim_t, 0.0, 1.0);
@@ -1221,12 +1222,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     if it.type == {
                         case .KEYWORD;                 r.color = unpack_srgb(0xe95410ff);
-                        case .ATTRIBUTE;               r.color = unpack_srgb(0xf06525ff); r.variant = .BOLD_ITALIC;
-                        case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgb(0xf06525ff); r.variant = .BOLD;
+                        case .ATTRIBUTE;               r.color = unpack_srgb(0xe95410ff); r.variant = .BOLD;
+                        case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgb(0xe95410ff); r.variant = .BOLD;
                         case .STRING_LITERAL;          r.color = unpack_srgb(0x98c379ff);
                         case .NUMBER_LITERAL;          r.color = unpack_srgb(0x759fbfff);
 
-                        case .COMMENT;                 r.color = unpack_srgb(0xa0a0a0ff); r.variant = .ITALIC;
+                        case .COMMENT;                 r.color = unpack_srgb(0xa0a0a0ff);
 
                         case; continue;
                     }
