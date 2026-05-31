@@ -1941,6 +1941,12 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
     if buffer_changed {
         document.flags |= .CHANGED_THIS_FRAME;
+
+        // We have to update these after every changed, because the very next changed could be
+        // needing this. Doesn't matter much as long as we hit our frame budgets. Also, we could
+        // start being smart about this, becuase not every subsequent action needs these to be
+        // updated, but for now this is how it is.
+        update_indentation_scopes(editor, document, platform, input);
     }
 }
 
