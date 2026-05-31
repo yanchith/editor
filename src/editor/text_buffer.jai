@@ -493,6 +493,62 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     }
 }
 
+// TODO(jt): @Bug Shouldn't really be visible, but:
+//
+// for get_toplevel_command_line() {
+//                                ^
+// If we indent here -------------+  we get the value as though we were inside one of those paren pairs.
+text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) {
+    ProfileZone("text_buffer_indent_line");
+
+    assert_valid(buffer);
+
+    buffer.cursor0.x = 0;
+
+    gb_index := text_buffer_get_gap_buffer_index_for_line(buffer, buffer.cursor0.y);
+
+    start := gb_index;
+    end   := gb_index + buffer.line_bytes[buffer.cursor0.y] - 1;
+
+    // TODO(jt): @Speed SIMDify loop.
+    space_count := 0;
+    for start..end {
+        if buffer.gb[it] != #char " " {
+            break;
+        }
+
+        space_count += 1;
+    }
+
+    if space_count > indentation_level {
+        delete_count := space_count - indentation_level;
+
+        gap_buffer_move_gap_to(*buffer.gb, gb_index);
+        gap_buffer_delete_forward(*buffer.gb, delete_count);
+
+        buffer.line_bytes[buffer.cursor0.y] -= delete_count;
+        buffer.line_chars[buffer.cursor0.y] -= delete_count;
+
+        // nocheckin update undo... for which we have to make a memset version
+    } else if indentation_level > space_count {
+        insert_count := indentation_level - space_count;
+
+        gap_buffer_move_gap_to(*buffer.gb, gb_index);
+        gap_buffer_insert(*buffer.gb, #char " ", insert_count);
+
+        buffer.line_bytes[buffer.cursor0.y] += insert_count;
+        buffer.line_chars[buffer.cursor0.y] += insert_count;
+
+        // nocheckin update undo... for which we have to make a memset version
+    }
+
+    buffer.cursor1 = buffer.cursor0;
+
+    text_buffer_move_cursor_to_start_of_line(buffer, false);
+
+    // assert_valid(buffer); // Called by the function above.
+}
+
 text_buffer_undo_edit :: (buffer: *Text_Buffer) {
     ProfileZone("text_buffer_undo_edit");
 
@@ -1400,11 +1456,11 @@ assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
     assert(line_index < buffer.line_bytes.count);
 }
 
-assert_location_valid :: (buffer: Text_Buffer, cursor: Text_Location) {
-    assert(cursor.y >= 0 && cursor.y < buffer.line_bytes.count);
-    // The cursor can go past the last non-newline character, or past the last character on the last
-    // line, where there is no newline at the end.
-    assert(cursor.x >= 0 && cursor.x <= buffer.line_chars[cursor.y]);
+assert_location_valid :: (buffer: Text_Buffer, loc: Text_Location) {
+    assert(loc.y >= 0 && loc.y < buffer.line_bytes.count);
+    // The location/cursor can go past the last non-newline character, or past the last character on
+    // the last line, where there is no newline at the end.
+    assert(loc.x >= 0 && loc.x <= buffer.line_chars[loc.y]);
 }
 
 discard_unapplied_edits :: (buffer: *Text_Buffer) {
