@@ -223,6 +223,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                             recenter_active_panel(editor, input, true);
                         }
 
+                        update_indentation_scopes(editor, document, platform, input);
                         update_syntax_highlights(editor, document, platform, input);
                     }
                 } else {
