@@ -50,6 +50,20 @@ operator == :: (a: Text_Location, b: Text_Location) -> bool {
     return a.x == b.x && a.y == b.y;
 }
 
+text_interval_contains :: (start: Text_Location, end: Text_Location, loc: Text_Location) -> bool {
+    if loc.y > start.y && loc.y < end.y {
+        return true;
+    } else if loc.y == start.y && loc.y == end.y {
+        return loc.x >= start.x && loc.x <= end.x;
+    } else if loc.y == start.y {
+        return loc.x >= start.x;
+    } else if loc.y == end.y {
+        return loc.x <= end.x;
+    }
+
+    return false;
+}
+
 Edit :: struct {
     text: string;
     text_mark: Arena_Mark; // Marks the restore point after the text of this edit has been inserted.
@@ -142,20 +156,20 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
-text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false, undo_fuse_with_delete_selection := false) {
-    /*inline?*/ text_buffer_insert(buffer, cast(string, bytes), undo_barrier, undo_fuse_with_delete_selection);
+text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false, undo_fuse_with_delete_selection := false) -> changed: bool {
+    /*inline?*/ return text_buffer_insert(buffer, cast(string, bytes), undo_barrier, undo_fuse_with_delete_selection);
 }
 
 // TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
 // switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so we would
 // supply .REVERT, etc.
-text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false, undo_fuse_with_delete_selection := false) {
+text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false, undo_fuse_with_delete_selection := false) -> changed: bool {
     ProfileZone("text_buffer_insert");
 
     assert_valid(buffer);
 
     if text.count == 0 {
-        return;
+        return false;
     }
 
     insert_caused_delete_selection := false;
@@ -210,6 +224,8 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
     buffer.cursor1 = buffer.cursor0;
 
     assert_valid(buffer);
+
+    return true;
 }
 
 text_buffer_delete_selection :: (buffer: *Text_Buffer) -> string /* Pointing to the internal gap buffer */ {
@@ -274,16 +290,16 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, _
 
 // TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
 // text_buffer_delete_selection does. There's also an update index function we can call.
-text_buffer_delete_forward :: (buffer: *Text_Buffer) {
+text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
     ProfileZone("text_buffer_delete_forward");
 
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_selection(buffer);
+        deleted := text_buffer_delete_selection(buffer);
         assert(buffer.cursor0 == buffer.cursor1);
 
-        return;
+        return deleted.count > 0;
     }
 
     gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, buffer.cursor0);
@@ -291,7 +307,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
 
     bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
     if bytes.count == 0 {
-        return;
+        return false;
     }
 
     newline_advance := string_starts_with_newline(bytes, binary = buffer.binary_mode);
@@ -364,20 +380,22 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) {
     buffer.cursor1 = buffer.cursor0;
 
     assert_valid(buffer);
+
+    return true;
 }
 
 // TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
 // text_buffer_delete_selection does. There's also an update index function we can call.
-text_buffer_delete_backward :: (buffer: *Text_Buffer) {
+text_buffer_delete_backward :: (buffer: *Text_Buffer) -> changed: bool {
     ProfileZone("text_buffer_delete_backward");
 
     assert_valid(buffer);
 
     if buffer.cursor0 != buffer.cursor1 {
-        text_buffer_delete_selection(buffer);
+        deleted := text_buffer_delete_selection(buffer);
         assert(buffer.cursor0 == buffer.cursor1);
 
-        return;
+        return deleted.count > 0;
     }
 
     gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, buffer.cursor0);
@@ -385,7 +403,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
 
     bytes := gap_buffer_get_bytes_before_gap(buffer.gb);
     if bytes.count == 0 {
-        return;
+        return false;
     }
 
     newline_advance := string_ends_with_newline(bytes, binary = buffer.binary_mode);
@@ -468,6 +486,8 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) {
     buffer.cursor1 = buffer.cursor0;
 
     assert_valid(buffer);
+
+    return true;
 }
 
 // TODO(jt): @Bug Undoing this restores the selection as though we'd have selected it manually, but we haven't.
@@ -498,7 +518,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
 // for get_toplevel_command_line() {
 //                                ^
 // If we indent here -------------+  we get the value as though we were inside one of those paren pairs.
-text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) {
+text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> changed: bool {
     ProfileZone("text_buffer_indent_line");
 
     assert_valid(buffer);
@@ -520,6 +540,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) {
         space_count += 1;
     }
 
+    changed := false;
+
     if space_count > indentation_level {
         delete_count := space_count - indentation_level;
 
@@ -530,6 +552,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) {
         buffer.line_chars[buffer.cursor0.y] -= delete_count;
 
         // nocheckin update undo... for which we have to make a memset version
+
+        changed = true;
     } else if indentation_level > space_count {
         insert_count := indentation_level - space_count;
 
@@ -540,6 +564,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) {
         buffer.line_chars[buffer.cursor0.y] += insert_count;
 
         // nocheckin update undo... for which we have to make a memset version
+
+        changed = true;
     }
 
     buffer.cursor1 = buffer.cursor0;
@@ -547,15 +573,17 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) {
     text_buffer_move_cursor_to_start_of_line(buffer, false);
 
     // assert_valid(buffer); // Called by the function above.
+
+    return changed;
 }
 
-text_buffer_undo_edit :: (buffer: *Text_Buffer) {
+text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
     ProfileZone("text_buffer_undo_edit");
 
     assert_valid(buffer);
 
     if buffer.applied_edit_count == 0 {
-        return;
+        return false;
     }
 
     applied_count := 0;
@@ -618,15 +646,17 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) {
     buffer.applied_edit_count -= applied_count;
 
     assert_valid(buffer);
+
+    return true;
 }
 
-text_buffer_redo_edit :: (buffer: *Text_Buffer) {
+text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
     ProfileZone("text_buffer_redo_edit");
 
     assert_valid(buffer);
 
     if buffer.applied_edit_count == buffer.edits.count {
-        return;
+        return false;
     }
 
     applied_count := 0;
@@ -693,6 +723,8 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) {
     buffer.applied_edit_count += applied_count;
 
     assert_valid(buffer);
+
+    return true;
 }
 
 text_buffer_get_start_of_line :: (buffer: Text_Buffer, line_index: s64) -> Text_Location {
@@ -772,10 +804,12 @@ text_buffer_make_view_for_interval :: (buffer: Text_Buffer, _start: Text_Locatio
     return cast(string, view);
 }
 
-text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool) {
+text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_x");
 
     assert_valid(buffer);
+
+    original_cursor := buffer.cursor0;
 
     if delta > 0 {
         while delta > 0 {
@@ -812,12 +846,16 @@ text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
     }
 
     assert_valid(buffer);
+
+    return original_cursor != buffer.cursor0;
 }
 
-text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool) {
+text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_y");
 
     assert_valid(buffer);
+
+    original_cursor := buffer.cursor0;
 
     // Text_Location can not be past the last line
     buffer.cursor0.y = clamp(buffer.cursor0.y + delta, 0, buffer.line_chars.count - 1);
@@ -834,6 +872,8 @@ text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
     }
 
     assert_valid(buffer);
+
+    return original_cursor != buffer.cursor0;
 }
 
 text_buffer_move_cursor_to :: (buffer: *Text_Buffer, _x: s64, _y: s64, selecting: bool) {
@@ -853,10 +893,12 @@ text_buffer_move_cursor_to :: (buffer: *Text_Buffer, _x: s64, _y: s64, selecting
     assert_valid(buffer);
 }
 
-text_buffer_move_cursor_to_start :: (buffer: *Text_Buffer, selecting: bool) {
+text_buffer_move_cursor_to_start :: (buffer: *Text_Buffer, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_start");
 
     assert_valid(buffer);
+
+    original_cursor := buffer.cursor0;
 
     buffer.cursor0 = { 0, 0 };
 
@@ -865,12 +907,16 @@ text_buffer_move_cursor_to_start :: (buffer: *Text_Buffer, selecting: bool) {
     }
 
     assert_valid(buffer);
+
+    return original_cursor != buffer.cursor0;
 }
 
-text_buffer_move_cursor_to_end :: (buffer: *Text_Buffer, selecting: bool) {
+text_buffer_move_cursor_to_end :: (buffer: *Text_Buffer, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_end");
 
     assert_valid(buffer);
+
+    original_cursor := buffer.cursor0;
 
     y := buffer.line_chars.count - 1;
     x := buffer.line_chars[y];
@@ -881,12 +927,16 @@ text_buffer_move_cursor_to_end :: (buffer: *Text_Buffer, selecting: bool) {
     }
 
     assert_valid(buffer);
+
+    return original_cursor != buffer.cursor0;
 }
 
-text_buffer_move_cursor_to_start_of_line :: (buffer: *Text_Buffer, selecting: bool)  {
+text_buffer_move_cursor_to_start_of_line :: (buffer: *Text_Buffer, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_start_of_line");
 
     assert_valid(buffer);
+
+    original_cursor := buffer.cursor0;
 
     line_view := text_buffer_make_view_for_line(buffer, buffer.cursor0.y,, temp);
 
@@ -911,12 +961,16 @@ text_buffer_move_cursor_to_start_of_line :: (buffer: *Text_Buffer, selecting: bo
     }
 
     assert_valid(buffer);
+
+    return original_cursor != buffer.cursor0;
 }
 
-text_buffer_move_cursor_to_end_of_line :: (buffer: *Text_Buffer, selecting: bool)  {
+text_buffer_move_cursor_to_end_of_line :: (buffer: *Text_Buffer, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_end_of_line");
 
     assert_valid(buffer);
+
+    original_cursor := buffer.cursor0;
 
     buffer.cursor0 = text_buffer_get_end_of_line(buffer, buffer.cursor0.y);
 
@@ -925,14 +979,16 @@ text_buffer_move_cursor_to_end_of_line :: (buffer: *Text_Buffer, selecting: bool
     }
 
     assert_valid(buffer);
+
+    return original_cursor != buffer.cursor0;
 }
 
-text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, selecting: bool) -> y_changed: bool {
+text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, selecting: bool) -> cursor_moved: bool, cursor_y_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_previous_word_boundary");
 
     assert_valid(buffer);
 
-    y_changed := false;
+    original_cursor := buffer.cursor0;
 
     _search_line_backward :: (line_view: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
         // The line is empty, so we couldn't have started inside a word.
@@ -994,8 +1050,6 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
                 break;
             }
 
-            y_changed = true;
-
             buffer.cursor0 = text_buffer_get_end_of_line(buffer, buffer.cursor0.y);
 
             line_view := text_buffer_make_view_for_line(buffer, buffer.cursor0.y,, temp);
@@ -1014,15 +1068,15 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
 
     assert_valid(buffer);
 
-    return y_changed;
+    return original_cursor != buffer.cursor0, original_cursor.y != buffer.cursor0.y;
 }
 
-text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selecting: bool) -> y_changed: bool {
+text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selecting: bool) -> cursor_moved: bool, cursor_y_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_next_word_boundary");
 
     assert_valid(buffer);
 
-    y_changed := false;
+    original_cursor := buffer.cursor0;
 
     _search_line_forward :: (line_view: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
         // The line is empty, so we couldn't have started inside a word.
@@ -1084,8 +1138,6 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
                 break;
             }
 
-            y_changed = true;
-
             buffer.cursor0.x = 0;
 
             line_view := text_buffer_make_view_for_line(buffer, buffer.cursor0.y,, temp);
@@ -1104,15 +1156,17 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
 
     assert_valid(buffer);
 
-    return y_changed;
+    return original_cursor != buffer.cursor0, original_cursor.y != buffer.cursor0.y;
 }
 
 // TODO(jt): @Speed Searching through 45 lines towards the end of a 1GB file takes about 350
 // milliseconds. Most of that time is spent in text_buffer_make_view_for_line.
-text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecting: bool) {
+text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_previous_blank_line");
 
     assert_valid(buffer);
+
+    original_cursor := buffer.cursor0;
 
     found := false;
     found_index := -1;
@@ -1147,14 +1201,18 @@ text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecti
     }
 
     assert_valid(buffer);
+
+    return original_cursor != buffer.cursor0;
 }
 
 // TODO(jt): @Speed Searching through 45 lines towards the end of a 1GB file takes about 350
 // milliseconds. Most of that time is spent in text_buffer_make_view_for_line.
-text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: bool) {
+text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_next_blank_line");
 
     assert_valid(buffer);
+
+    original_cursor := buffer.cursor0;
 
     found := false;
     found_index := -1;
@@ -1189,6 +1247,8 @@ text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: 
     }
 
     assert_valid(buffer);
+
+    return original_cursor != buffer.cursor0;
 }
 
 text_buffer_join_cursors :: (buffer: *Text_Buffer) {
