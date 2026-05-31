@@ -91,29 +91,31 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
 
     assert_valid(gb);
 
-    if bytes.count > gb.gap_count {
-        old_count   := gb.bytes.count;
-        new_count   := round_up_grow_size(old_count + bytes.count - gb.gap_count);
-        grow_amount := new_count - old_count;
-
-        array_resize(*gb.bytes, new_count,, gb.allocator);
-
-        tail_data  := gb.bytes.data + gb.gap_index + gb.gap_count;
-        tail_count := old_count - gb.gap_count - gb.gap_index;
-
-        // tail_count can be zero if we started with an empty buffer, or if the gap was at the end,
-        // but the copy should be fine with it.
-        Memory.copy(tail_data + grow_amount, tail_data, tail_count);
-
-        // Preserve gap position, but enlarge it.
-        gb.gap_count += grow_amount;
-    }
+    maybe_grow_for_insert(gb, bytes.count);
 
     Memory.copy(gb.bytes.data + gb.gap_index, bytes.data, bytes.count);
     gb.gap_index += bytes.count;
     gb.gap_count -= bytes.count;
 
     gb.count += bytes.count;
+
+    #if SANITY {
+        memset(gb.bytes.data + gb.gap_index, 0xcd, gb.gap_count);
+    }
+}
+
+gap_buffer_insert :: (gb: *Gap_Buffer, value: u8, count: s64) {
+    ProfileZone("gap_buffer_insert (memset)");
+
+    assert_valid(gb);
+
+    maybe_grow_for_insert(gb, count);
+
+    memset(gb.bytes.data + gb.gap_index, value, count);
+    gb.gap_index += count;
+    gb.gap_count -= count;
+
+    gb.count += count;
 
     #if SANITY {
         memset(gb.bytes.data + gb.gap_index, 0xcd, gb.gap_count);
@@ -256,6 +258,26 @@ operator *[] :: (gb: Gap_Buffer, index: s64) -> *u8 {
 }
 
 #scope_file
+
+maybe_grow_for_insert :: (gb: *Gap_Buffer, insert_count: s64) {
+    if insert_count > gb.gap_count {
+        old_count   := gb.bytes.count;
+        new_count   := round_up_grow_size(old_count + insert_count - gb.gap_count);
+        grow_amount := new_count - old_count;
+
+        array_resize(*gb.bytes, new_count,, gb.allocator);
+
+        tail_data  := gb.bytes.data + gb.gap_index + gb.gap_count;
+        tail_count := old_count - gb.gap_count - gb.gap_index;
+
+        // tail_count can be zero if we started with an empty buffer, or if the gap was at the end,
+        // but the copy should be fine with it.
+        Memory.copy(tail_data + grow_amount, tail_data, tail_count);
+
+        // Preserve gap position, but enlarge it.
+        gb.gap_count += grow_amount;
+    }
+}
 
 assert_valid :: (gb: Gap_Buffer) {
     assert(gb.count == gb.bytes.count - gb.gap_count);
