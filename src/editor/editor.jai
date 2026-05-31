@@ -408,17 +408,27 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     editor.perm_arena = make_arena(platform, .LARGE);
 
-    font_arena := make_arena(platform, .LARGE);
-    success, ttf_buffer := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
-    assert(success);
+    {
+        ProfileZone(":InitFont");
+        font_arena := make_arena(platform, .LARGE);
 
-    editor.font_size = 20;
-    log("Current font pixel height: %", editor.font_size);
+        success := true;
+        success=, ttf_regular     := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
+        assert(success);
+        success=, ttf_bold        := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Bold.ttf",, arena_allocator(font_arena));
+        assert(success);
+        success=, ttf_italic      := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Italic.ttf",, arena_allocator(font_arena));
+        assert(success);
+        success=, ttf_bold_italic := platform.read_file("./data/fonts/LiberationMono/LiberationMono-BoldItalic.ttf",, arena_allocator(font_arena));
+        assert(success);
 
-    physical_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
-    log("Initializing font for physical pixel height: %", physical_pixel_height);
+        FONT_SIZE :: 20;
 
-    editor.font = make_font(font_arena, ttf_buffer, TEXTURE_ID_GLYPH_ATLAS, physical_pixel_height);
+        want_pixel_height := cast(s32, ceil(FONT_SIZE * input.window_scale_factor));
+
+        editor.font_size = FONT_SIZE;
+        editor.font = make_font(font_arena, ttf_regular, ttf_bold, ttf_italic, ttf_bold_italic, TEXTURE_ID_GLYPH_ATLAS, want_pixel_height);
+    }
 
     input_state_update_on_frame_start(*editor.input_state, input);
     for input.events {
@@ -1190,8 +1200,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             offset.x = -panel.scroll.x;
             offset.y = -viewport_y0 + cell_h * cast(f64, viewport_line0);
 
-            color_ranges: [..] Font_Color_Range;
-            color_ranges.allocator = temp;
+            style_ranges: [..] Font_Style_Range;
+            style_ranges.allocator = temp;
 
             //
             // Find syntax highlights for current screen
@@ -1203,7 +1213,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     if it.loc1.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
                     if it.loc0.y > viewport_line1  break;
 
-                    r: Font_Color_Range;
+                    r: Font_Style_Range;
                     r.x0 = it.loc0.x;
                     r.y0 = it.loc0.y - viewport_line0;
                     r.x1 = it.loc1.x;
@@ -1211,23 +1221,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     if it.type == {
                         case .KEYWORD;                 r.color = unpack_srgb(0xe95410ff);
-                        case .ATTRIBUTE;               r.color = unpack_srgb(0xf06525ff); // TODO(jt): Bold
-                        case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgb(0xf06525ff); // TODO(jt): Bold
+                        case .ATTRIBUTE;               r.color = unpack_srgb(0xf06525ff); r.variant = .BOLD_ITALIC;
+                        case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgb(0xf06525ff); r.variant = .BOLD;
                         case .STRING_LITERAL;          r.color = unpack_srgb(0x98c379ff);
                         case .NUMBER_LITERAL;          r.color = unpack_srgb(0x759fbfff);
 
-                        case .COMMENT;                 r.color = unpack_srgb(0xa0a0a0ff);
+                        case .COMMENT;                 r.color = unpack_srgb(0xa0a0a0ff); r.variant = .ITALIC;
 
                         case; continue;
                     }
 
-                    array_add(*color_ranges, r);
+                    array_add(*style_ranges, r);
                 }
             }
 
             // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
             // to the left of the screen, but we don't have to emit render rects for it.
-            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, TEXT_COLOR, color_ranges, binary = document.buffer.binary_mode);
+            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, TEXT_COLOR, style_ranges, binary = document.buffer.binary_mode);
         }
 
         clear_transient_document_flags(*document.flags);

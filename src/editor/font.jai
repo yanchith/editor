@@ -1,8 +1,7 @@
 #import "freetype";
 
-// TODO(jt): @Cleanup Subpixel rendering is shelved for now. Search FONT_SUBPIXEL to find places in
-// code it affects. Either complete the work and evaluate whether the results are worth it, or
-// remove it.
+// TODO(jt): @Cleanup Subpixel rendering is shelved for now. Search for FONT_SUBPIXEL to find places
+// in code it affects. Either complete the work and evaluate the results, or remove it.
 FONT_SUBPIXEL :: false;
 
 FONT_ATLAS_WIDTH_IN_PIXELS  :: 1024;
@@ -29,8 +28,11 @@ Font :: struct {
     // Font info stuff. Does not change once we have loaded a font.
     //
 
-    ft_library:     FT_Library;
-    ft_face:        FT_Face;
+    ft_library:              FT_Library;
+    ft_face_for_regular:     FT_Face;
+    ft_face_for_bold:        FT_Face;
+    ft_face_for_italic:      FT_Face;
+    ft_face_for_bold_italic: FT_Face;
 
     //
     // Scaled metrics for currently set pixel_height in the FreeType 26:6 fixed point format. (64-bit, because FT_Pos is 64-bit on Unix)
@@ -68,7 +70,7 @@ Font :: struct {
 
     // TODO(jt): @Speed @Memory Remove this hash table and do hashing over glyph_entries
     // directly. We'll have to make the size a power of two, etc.
-    glyph_table: Table(s32, s32);
+    glyph_table: Table(u64, s32);
 
     glyph_cache_stamp: u32; // This can overflow, but we only ever compare it for equality to detect same-frame evictions.
     glyph_cache_hits: s64;
@@ -80,7 +82,9 @@ Glyph_Entry :: struct {
     prev: s32;
     next: s32;
 
-    glyph_index: s32; // So that we can remove it from the hash table.
+    // The key, so that we can remove the from the hash table.
+    glyph_index: u32;
+    glyph_variant: Font_Variant;
 
     //
     // Metrics, metadata, anything that we know about the glyph.
@@ -98,14 +102,16 @@ Glyph_Entry :: struct {
     glyph_bitmap_height: s32;  // In integer pixels.
 }
 
-// The caller should keep ttf_buffer alive. Easiest way is to put it in the passed in arena. If the
-// arena already stores some allocations, they won't be popped, but you should not use it after
-// passing it to the font.
-make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_height: s32) -> Font {
+// The regular ttf buffer is mandatory, the rest can be an empty arrays. The caller should keep the
+// ttf buffers alive. Easiest way is to put them in the passed in arena. If the arena already stores
+// some allocations, they won't be popped, but you should not use it after passing it to the font.
+//
+// TOOD(jt): Also be able to load font variants from a font collection.
+make_font :: (arena: *Arena, ttf_regular: [] u8, ttf_bold: [] u8, ttf_italic: [] u8, ttf_bold_italic: [] u8, texture_id: Texture_ID, pixel_height: s32) -> Font {
     font: Font;
-    font.arena        = arena;
-    font.arena_mark   = arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
-    font.texture_id   = texture_id;
+    font.arena      = arena;
+    font.arena_mark = arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
+    font.texture_id = texture_id;
     // pixel_height assigned in font_reset_for_pixel_height.
 
     error: FT_Error;
@@ -121,10 +127,34 @@ make_font :: (arena: *Arena, ttf_buffer: [] u8, texture_id: Texture_ID, pixel_he
         FT_Library_SetLcdFilter(font.ft_library, .DEFAULT);
     }
 
-    error = FT_New_Memory_Face(font.ft_library, ttf_buffer.data, cast(s32, ttf_buffer.count), 0, *font.ft_face);
+    error = FT_New_Memory_Face(font.ft_library, ttf_regular.data, cast(s32, ttf_regular.count), 0, *font.ft_face_for_regular);
     if error {
-        log_error("FreeType error when creating a new Face");
+        log_error("FreeType error when creating a new face from the regular ttf buffer");
         return font;
+    }
+
+    if ttf_bold.count {
+        error = FT_New_Memory_Face(font.ft_library, ttf_bold.data, cast(s32, ttf_bold.count), 0, *font.ft_face_for_bold);
+        if error {
+            log_error("FreeType error when creating a new face from the bold ttf buffer");
+            return font;
+        }
+    }
+
+    if ttf_italic.count {
+        error = FT_New_Memory_Face(font.ft_library, ttf_italic.data, cast(s32, ttf_italic.count), 0, *font.ft_face_for_italic);
+        if error {
+            log_error("FreeType error when creating a new face from the italic ttf buffer");
+            return font;
+        }
+    }
+
+    if ttf_bold_italic.count {
+        error = FT_New_Memory_Face(font.ft_library, ttf_bold_italic.data, cast(s32, ttf_bold_italic.count), 0, *font.ft_face_for_bold_italic);
+        if error {
+            log_error("FreeType error when creating a new face from the bold_italic ttf buffer");
+            return font;
+        }
     }
 
     font_reset_for_options(*font, pixel_height);
@@ -138,20 +168,46 @@ font_reset_for_options :: (font: *Font, pixel_height: s32) {
 
 
     error: FT_Error;
-    error = FT_Set_Pixel_Sizes(font.ft_face, 0, cast(u32, pixel_height));
+    error = FT_Set_Pixel_Sizes(font.ft_face_for_regular, 0, cast(u32, pixel_height));
     if error {
-        log_error("FreeType error when setting pixel size");
+        log_error("FreeType error when setting pixel size to the regular face");
         return;
     }
+
+    if font.ft_face_for_bold != null {
+        error = FT_Set_Pixel_Sizes(font.ft_face_for_bold, 0, cast(u32, pixel_height));
+        if error {
+            log_error("FreeType error when setting pixel size to the bold face");
+            return;
+        }
+    }
+
+    if font.ft_face_for_italic != null {
+        error = FT_Set_Pixel_Sizes(font.ft_face_for_italic, 0, cast(u32, pixel_height));
+        if error {
+            log_error("FreeType error when setting pixel size to the italic face");
+            return;
+        }
+    }
+
+
+    if font.ft_face_for_bold_italic != null {
+        error = FT_Set_Pixel_Sizes(font.ft_face_for_bold_italic, 0, cast(u32, pixel_height));
+        if error {
+            log_error("FreeType error when setting pixel size to the bold_italic face");
+            return;
+        }
+    }
+
     font.pixel_height = pixel_height;
 
-    font.ascender    = font.ft_face.size.metrics.ascender;
-    font.descender   = font.ft_face.size.metrics.descender;
-    font.line_height = font.ft_face.size.metrics.height;
+    font.ascender    = font.ft_face_for_regular.size.metrics.ascender;
+    font.descender   = font.ft_face_for_regular.size.metrics.descender;
+    font.line_height = font.ft_face_for_regular.size.metrics.height;
 
-    font.line_height_in_pixels = cast(f32, font.ft_face.size.metrics.height) * R64;
-    font.max_glyph_width_in_pixels  = cast(f32, font.ft_face.size.metrics.max_advance) * R64;
-    font.max_glyph_height_in_pixels = cast(f32, font.ft_face.size.metrics.height) * R64;
+    font.line_height_in_pixels = cast(f32, font.ft_face_for_regular.size.metrics.height) * R64;
+    font.max_glyph_width_in_pixels  = cast(f32, font.ft_face_for_regular.size.metrics.max_advance) * R64;
+    font.max_glyph_height_in_pixels = cast(f32, font.ft_face_for_regular.size.metrics.height) * R64;
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
     font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
 
@@ -186,7 +242,7 @@ font_reset_for_options :: (font: *Font, pixel_height: s32) {
     font.glyph_entries_head                = 0;
     font.glyph_entries_tail                = 0;
 
-    glyph_table: Table(s32, s32);
+    glyph_table: Table(u64, s32);
     glyph_table.allocator = arena_allocator(font.arena);
     font.glyph_table = glyph_table;
 
@@ -214,28 +270,36 @@ font_new_frame :: (font: *Font) {
     font.glyph_cache_misses = 0;
 }
 
-Font_Color_Range :: struct {
-    color: Vector4;
+Font_Variant :: enum u32 {
+    REGULAR :: 0;
+    BOLD    :: 1;
+    ITALIC  :: 2;
+    BOLD_ITALIC :: 3;
+}
+
+Font_Style_Range :: struct {
     x0: s64;
     y0: s64;
     x1: s64; // Inclusive! The range would not exist, if it would be empty!
     y1: s64; // Inclusive! The range would not exist, if it would be empty!
+    color: Vector4;
+    variant: Font_Variant;
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, color_ranges: [] Font_Color_Range, binary: bool) {
+font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, style_ranges: [] Font_Style_Range, binary: bool) {
     if binary {
-        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, default_color, color_ranges, true);
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, default_color, style_ranges, true);
     } else {
-        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, default_color, color_ranges, false);
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, default_color, style_ranges, false);
     }
 }
 
-_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, color_ranges: [] Font_Color_Range, $binary: bool) {
+_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, style_ranges: [] Font_Style_Range, $binary: bool) {
     ProfileZone("font_layout_and_draw_text");
 
-    color_range_index: s64 = -1;
-    if color_ranges.count {
-        color_range_index = 0;
+    style_range_index: s64 = -1;
+    if style_ranges.count {
+        style_range_index = 0;
     }
 
     // Cursors are in 26:6 pixels (64-bit, because on Unix, FT_Pos is 64-bit even if they only use 32 bits).
@@ -266,9 +330,61 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
             continue; // Not rendered.
         }
 
+        glyph_color   := default_color;
+        glyph_variant := Font_Variant.REGULAR;
+        if style_range_index != -1 {
+            // Seek towards next token, if we are past the current one.
+            past_vertically   := current_line_index > style_ranges[style_range_index].y1;
+            past_horizontally := current_line_index == style_ranges[style_range_index].y1 && current_char_index > style_ranges[style_range_index].x1;
+            while style_range_index != -1 && (past_vertically || past_horizontally) {
+                style_range_index += 1;
+                if style_range_index >= style_ranges.count {
+                    style_range_index = -1;
+                } else {
+                    past_vertically   = current_line_index > style_ranges[style_range_index].y1;
+                    past_horizontally = current_line_index == style_ranges[style_range_index].y1 && current_char_index > style_ranges[style_range_index].x1;
+                }
+            }
+
+            if style_range_index != -1 {
+                style_range := *style_ranges[style_range_index];
+                if current_line_index > style_range.y0 && current_line_index < style_range.y1 {
+                    glyph_color   = style_range.color;
+                    glyph_variant = style_range.variant;
+                } else if current_line_index == style_range.y0 && current_line_index == style_range.y1 {
+                    if current_char_index >= style_range.x0 && current_char_index <= style_range.x1 {
+                        glyph_color   = style_range.color;
+                        glyph_variant = style_range.variant;
+                    }
+                } else if current_line_index == style_range.y0 {
+                    if current_char_index >= style_range.x0 {
+                        glyph_color   = style_range.color;
+                        glyph_variant = style_range.variant;
+                    }
+                } else if current_line_index == style_range.y1 {
+                    if current_char_index <= style_range.x1 {
+                        glyph_color   = style_range.color;
+                        glyph_variant = style_range.variant;
+                    }
+                }
+            }
+        }
+
+        // @Hack In this routine, we extract metrics based on the weight/style of the character. In
+        // the font_compute_xyz we always get metrics from the regular variant of the font. This is
+        // probably okay, unless the font is inconsistent or badly authored, but I assume this would
+        // be rare for popular fonts.
+        ft_face: FT_Face;
+        if #complete glyph_variant == {
+            case .REGULAR;      ft_face = font.ft_face_for_regular;
+            case .BOLD;         ft_face = font.ft_face_for_bold;
+            case .ITALIC;       ft_face = font.ft_face_for_italic;
+            case .BOLD_ITALIC;  ft_face = font.ft_face_for_bold_italic;
+        }
+
         // FT_Get_Char_Index returns 0, if it can't find the character. 0 also automatically maps to
         // 'missing glyph' in FT_Load_Glyph.
-        glyph_index := FT_Get_Char_Index(font.ft_face, it);
+        glyph_index := FT_Get_Char_Index(ft_face, it);
 
         // These get filled in one of the branches below. Either we compute them, or we get them from the cache.
         glyph_advance: s32;       // In 26:6 pixels.
@@ -280,13 +396,15 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
         glyph_cell_x: s32;
         glyph_cell_y: s32;
 
-        entry_index_pointer := table_find_pointer(*font.glyph_table, cast(s32, glyph_index));
+        entry_index_pointer := table_find_pointer(*font.glyph_table, compose_key(glyph_index, glyph_variant));
         if entry_index_pointer {
             font.glyph_cache_hits += 1;
 
             entry_index := entry_index_pointer.*;
             entry := *font.glyph_entries[entry_index];
-            sanity_assert(entry.glyph_index == cast(s32, glyph_index));
+
+            sanity_assert(entry.glyph_index == glyph_index);
+            sanity_assert(entry.glyph_variant == glyph_variant);
 
             entry.stamp = font.glyph_cache_stamp;
 
@@ -316,14 +434,15 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
                 log_error("Overwriting glyph cache slot % during same frame. Rendering will be incorrect.", entry_index);
             }
 
-            table_remove(*font.glyph_table, entry.glyph_index);
+            table_remove(*font.glyph_table, compose_key(entry.glyph_index, entry.glyph_variant));
 
             entry.stamp = font.glyph_cache_stamp;
-            entry.glyph_index = cast(s32, glyph_index);
+            entry.glyph_index   = glyph_index;
+            entry.glyph_variant = glyph_variant;
 
             {
                 ProfileZone("FT_Load_Glyph(FT_LOAD_RENDER)");
-                error := FT_Load_Glyph(font.ft_face, glyph_index, FT_LOAD_RENDER | cast(s32, FT_LOAD_TARGET));
+                error := FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_RENDER | cast(s32, FT_LOAD_TARGET));
 
                 if error {
                     // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
@@ -331,9 +450,9 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
                 }
             }
 
-            glyph         := font.ft_face.glyph; // unlike metrics and bitmap, glyph is a pointer
-            glyph_metrics := *font.ft_face.glyph.metrics;
-            glyph_bitmap  := *font.ft_face.glyph.bitmap;
+            glyph         := ft_face.glyph; // unlike metrics and bitmap, glyph is a pointer
+            glyph_metrics := *ft_face.glyph.metrics;
+            glyph_bitmap  := *ft_face.glyph.bitmap;
 
             // On Unix, FT_Pos is defined as s64, even if they only utilize only 32 bits.
             entry.glyph_advance       = cast(s32, glyph_metrics.horiAdvance);
@@ -367,7 +486,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
                                 glyph_bitmap.buffer, cast(s32, glyph_bitmap.width), cast(s32, glyph_bitmap.rows), cast(s32, glyph_bitmap.pitch));
             }
 
-            table_add(*font.glyph_table, cast(s32, glyph_index), entry_index);
+            table_add(*font.glyph_table, compose_key(glyph_index, glyph_variant), entry_index);
             array_add(
                 update_regions,
                 irect_from_point_and_size(
@@ -380,41 +499,6 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
 
             move_back_glyph_entry(font.glyph_entries, *font.glyph_entries_head, *font.glyph_entries_tail, entry_index);
             sanity_assert(font.glyph_entries_tail == entry_index);
-        }
-
-        color := default_color;
-        if color_range_index != -1 {
-            // Seek towards next token, if we are past the current one.
-            past_vertically   := current_line_index > color_ranges[color_range_index].y1;
-            past_horizontally := current_line_index == color_ranges[color_range_index].y1 && current_char_index > color_ranges[color_range_index].x1;
-            while color_range_index != -1 && (past_vertically || past_horizontally) {
-                color_range_index += 1;
-                if color_range_index >= color_ranges.count {
-                    color_range_index = -1;
-                } else {
-                    past_vertically   = current_line_index > color_ranges[color_range_index].y1;
-                    past_horizontally = current_line_index == color_ranges[color_range_index].y1 && current_char_index > color_ranges[color_range_index].x1;
-                }
-            }
-
-            if color_range_index != -1 {
-                color_range := *color_ranges[color_range_index];
-                if current_line_index > color_range.y0 && current_line_index < color_range.y1 {
-                    color = color_range.color;
-                } else if current_line_index == color_range.y0 && current_line_index == color_range.y1 {
-                    if current_char_index >= color_range.x0 && current_char_index <= color_range.x1 {
-                        color = color_range.color;
-                    }
-                } else if current_line_index == color_range.y0 {
-                    if current_char_index >= color_range.x0 {
-                        color = color_range.color;
-                    }
-                } else if current_line_index == color_range.y1 {
-                    if current_char_index <= color_range.x1 {
-                        color = color_range.color;
-                    }
-                }
-            }
         }
 
         // Order of operations here is somewhat important. Cursor and offset can be big, so
@@ -436,7 +520,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
             cast(f32, glyph_bitmap_height) / font.glyph_atlas_height_in_pixels,
         );
         rr.texture_id = font.texture_id;
-        rr.color = color;
+        rr.color = glyph_color;
 
         cursor_x += glyph_advance;
         current_char_index += 1;
@@ -470,13 +554,13 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
             }
         }
 
-        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT | cast(s32, FT_LOAD_TARGET));
+        error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | cast(s32, FT_LOAD_TARGET));
         if error {
             // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
             continue;
         }
 
-        advance += font.ft_face.glyph.metrics.horiAdvance;
+        advance += font.ft_face_for_regular.glyph.metrics.horiAdvance;
     }
 
     scaled_advance: f64 = cast(f64, advance) * R64;
@@ -512,13 +596,13 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
             }
         }
 
-        error := FT_Load_Char(font.ft_face, it, FT_LOAD_DEFAULT | cast(s32, FT_LOAD_TARGET));
+        error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | cast(s32, FT_LOAD_TARGET));
         if error {
             // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
             continue;
         }
 
-        advance += font.ft_face.glyph.metrics.horiAdvance;
+        advance += font.ft_face_for_regular.glyph.metrics.horiAdvance;
     };
 
     return character_index;
@@ -561,6 +645,10 @@ move_back_glyph_entry :: (entries: [] Glyph_Entry, head_index: *s32, tail_index:
 
     entries[tail_index.*].next = index;
     tail_index.* = index;
+}
+
+compose_key :: inline (glyph_index: u32, glyph_variant: Font_Variant) -> u64 {
+    return (cast(u64, glyph_index) << 32) | cast(u64, glyph_variant);
 }
 
 clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
