@@ -205,6 +205,7 @@ Document :: struct {
     backing_file_path: string;
     backing_file_exists: bool;
 
+    indentation_scopes:      [..] Indentation_Scope;
     syntax_highlight_tokens: [..] Syntax_Highlight_Token;
 
     Kind :: enum u32 {
@@ -233,6 +234,18 @@ Document :: struct {
         // These get set and unset in setup_cursor_anim_interpolation.
         CURSOR_ANIM_TRIGGERED_BY_MOUSE    :: 0x1000;
         CURSOR_ANIM_TRIGGERED_BY_KEYBOARD :: 0x2000;
+    }
+
+    Indentation_Scope :: struct {
+        loc0: Text_Location;
+        loc1: Text_Location;
+
+        open_paren: u32;
+        nesting_depth: u32;
+
+        parent_index:       s64 = -1;
+        first_child_index:  s64 = -1;
+        next_sibling_index: s64 = -1;
     }
 
     Syntax_Highlight_Token :: struct {
@@ -1227,7 +1240,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .STRING_LITERAL;          r.color = unpack_srgb(0x98c379ff);
                         case .NUMBER_LITERAL;          r.color = unpack_srgb(0x759fbfff);
 
-                        case .COMMENT;                 r.color = unpack_srgb(0xa0a0a0ff);
+                        case .COMMENT;                 r.color = unpack_srgb(0xa0a0a0ff); r.variant = .ITALIC;
 
                         case; continue;
                     }
@@ -1889,7 +1902,83 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
         // TODO(jt): Make indentation configurable.
         // TODO(jt): Preserve tabness in tab-only documents.
-        case .INDENT_OR_AUTOCOMPLETE;       text_buffer_insert(*document.buffer, "    "); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        case .INDENT_OR_AUTOCOMPLETE; {
+            if document.indentation_scopes.count {
+                INDENT :: 4; // TODO(jt): Make this configurable. :Config.
+
+                cursor := document.buffer.cursor0;
+
+                indentation_level := 0;
+                current_index     := 0;
+                while current_index != -1 {
+                    current := *document.indentation_scopes[current_index];
+                    indentation_level = current.nesting_depth * INDENT;
+
+                    current_index = -1;
+                    if current.first_child_index != -1 {
+                        child := *document.indentation_scopes[current.first_child_index];
+
+                        // nocheckin put this into text_buffer.jai
+                        contained :: (x: Text_Location, a: Text_Location, b: Text_Location) -> bool {
+                            if x.y > a.y && x.y < b.y {
+                                return true;
+                            } else if x.y == a.y && x.y == b.y {
+                                return x.x >= a.x && x.x <= b.x;
+                            } else if x.y == a.y {
+                                return x.x >= a.x;
+                            } else if x.y == b.y {
+                                return x.x <= b.x;
+                            }
+
+                            return false;
+                        }
+
+                        if contained(cursor, child.loc0, child.loc1) {
+                            current_index = current.first_child_index;
+                        }
+
+                        while current_index == -1 && child.next_sibling_index != -1 {
+                            index := child.next_sibling_index;
+                            child = *document.indentation_scopes[index];
+
+                            if contained(cursor, child.loc0, child.loc1) {
+                                current_index = index;
+                            }
+                        }
+                    }
+                }
+
+                log("nocheckin indent level: %", indentation_level);
+
+
+                // nocheckin This is mega stupid... probably do this inside the buffer itself. Only
+                // insert or delete... etc.
+
+                text_buffer_move_cursor_to(*document.buffer, 0, cursor.y, false);
+
+                line := text_buffer_make_view_for_line(document.buffer, cursor.y,, temp);
+                space_count := 0;
+                for line {
+                    if it != #char " " {
+                        break;
+                    }
+                    space_count += 1;
+                }
+
+                while space_count > 0 {
+                    text_buffer_delete_forward(*document.buffer);
+                    space_count -= 1;
+                }
+
+                to_insert := alloc_string(indentation_level,,temp);
+                memset(to_insert.data, #char " ", indentation_level);
+                text_buffer_insert(*document.buffer, to_insert);
+            } else {
+                text_buffer_insert(*document.buffer, "    ");
+            }
+
+            panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        }
 
         case .UNDO_EDIT;                    text_buffer_undo_edit(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         case .REDO_EDIT;                    text_buffer_redo_edit(*document.buffer); panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
@@ -2049,6 +2138,13 @@ close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
     modal_interaction.open = false;
 }
 
+update_indentation_scopes :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
+    if #complete document.mode == {
+        case .PLAIN_TEXT; // Nothing
+        case .JAI;        lang_jai_update_indentation_scopes(editor, document, platform, input);
+    }
+}
+
 update_syntax_highlights :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
     if #complete document.mode == {
         case .PLAIN_TEXT; // Nothing
@@ -2089,6 +2185,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         document.backing_file_path = arena_push_string(document_arena, backing_file_path);
     }
 
+    document.indentation_scopes.allocator      = arena_allocator(document_arena);
     document.syntax_highlight_tokens.allocator = arena_allocator(document_arena);
 
     document.cursor_flash_source = CURSOR_COLOR;
