@@ -50,20 +50,6 @@ operator == :: (a: Text_Location, b: Text_Location) -> bool {
     return a.x == b.x && a.y == b.y;
 }
 
-text_interval_contains :: (start: Text_Location, end: Text_Location, loc: Text_Location) -> bool {
-    if loc.y > start.y && loc.y < end.y {
-        return true;
-    } else if loc.y == start.y && loc.y == end.y {
-        return loc.x >= start.x && loc.x <= end.x;
-    } else if loc.y == start.y {
-        return loc.x >= start.x;
-    } else if loc.y == end.y {
-        return loc.x <= end.x;
-    }
-
-    return false;
-}
-
 Edit :: struct {
     text: string;
     text_mark: Arena_Mark; // Marks the restore point after the text of this edit has been inserted.
@@ -513,11 +499,6 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     }
 }
 
-// TODO(jt): @Bug Shouldn't really be visible, but:
-//
-// for get_toplevel_command_line() {
-//                                ^
-// If we indent here -------------+  we get the value as though we were inside one of those paren pairs.
 text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> changed: bool {
     ProfileZone("text_buffer_indent_line");
 
