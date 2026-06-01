@@ -54,11 +54,10 @@ Edit :: struct {
     type:  Type;
     flags: Flags;
 
-    // nocheckin text_mark must not be used to reset stuff if this is INSERT_MEMSET.
     text: string;
-    text_mark: Arena_Mark; // Marks the restore point after the text of this edit has been inserted.
+    text_mark: Arena_Mark = { -1 }; // Marks the restore point after the text of this edit has been inserted.
 
-    // Nonzero, if this is INSERT_MEMSET, in which case this should be used instead of text.
+    // Nonzero, if this is INSERT_MEMSET, in which case use this and ignore text and text_mark.
     memset_value: u8;
     memset_count: s64;
 
@@ -82,6 +81,7 @@ Edit :: struct {
         DELETE_SELECTION;
         DELETE_FORWARD;
         DELETE_BACKWARD;
+        DELETE_BACKWARD_MEMSET;
     }
 
     Flags :: enum_flags u32 {
@@ -508,6 +508,11 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     }
 }
 
+// nocheckin the undo/redo here is buggy AF. It could be because we give it user-visible cursors
+// which it then uses for insertion/deletion, but we maybe want to give it one set of cursors for
+// index updating and another set of cursors to restore for the user. If this is the case, maybe we
+// should revisit assertability of cursors in undo/redo... The ones that are there to update the
+// indices should maybe be assertable?
 text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> changed: bool {
     ProfileZone("text_buffer_indent_line");
 
@@ -518,18 +523,17 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
 
     buffer.cursor0.x = 0;
 
-    gb_index := text_buffer_get_gap_buffer_index_for_line(buffer, buffer.cursor0.y);
+    line_gb_index := text_buffer_get_gap_buffer_index_for_line(buffer, buffer.cursor0.y);
 
-    start := gb_index;
-    end   := gb_index + buffer.line_bytes[buffer.cursor0.y] - 1;
+    line_start := line_gb_index;
+    line_end   := line_gb_index + buffer.line_bytes[buffer.cursor0.y] - 1;
 
     // TODO(jt): @Speed SIMDify loop.
     space_count := 0;
-    for start..end {
+    for line_start..line_end {
         if buffer.gb[it] != #char " " {
             break;
         }
-
         space_count += 1;
     }
 
@@ -538,21 +542,42 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
     changed := false;
     if space_count > indentation_level {
         delete_count := space_count - indentation_level;
+        log("nocheckin delete count: %", delete_count);
 
-        gap_buffer_move_gap_to(*buffer.gb, gb_index);
-        gap_buffer_delete_forward(*buffer.gb, delete_count);
+        gap_buffer_move_gap_to(*buffer.gb, line_gb_index + indentation_level);
+        gb_index_before := buffer.gb.gap_index;
+
+        gap_buffer_delete_backward(*buffer.gb, delete_count);
+        gb_index_after := buffer.gb.gap_index;
 
         buffer.line_bytes[buffer.cursor0.y] -= delete_count;
         buffer.line_chars[buffer.cursor0.y] -= delete_count;
 
-        // nocheckin update undo... for which we have to make a memset version
+        edit := array_add(*buffer.edits);
+        edit.type = .DELETE_BACKWARD_MEMSET;
+        edit.flags = .BARRIER;
+        edit.memset_value = #char " ";
+        edit.memset_count = delete_count;
+        // gb_index_before actually doesn't correspond to cursor0_before, because the cursor could
+        // have been anyplace on the line and we place the gap index to line up with the operation.
+        // This is probably fine.
+        edit.gb_index_before = gb_index_before;
+        edit.gb_index_after  = gb_index_after;
+        edit.cursor0_before = original_cursor0;
+        edit.cursor0_after  = cursor_after;
+        edit.cursor1_before = original_cursor1;
+        edit.cursor0_after  = cursor_after;
 
         changed = true;
     } else if indentation_level > space_count {
         insert_count := indentation_level - space_count;
+        log("nocheckin insert count: %", insert_count);
 
-        gap_buffer_move_gap_to(*buffer.gb, gb_index);
+        gap_buffer_move_gap_to(*buffer.gb, line_gb_index + space_count);
+        gb_index_before := buffer.gb.gap_index;
+
         gap_buffer_insert(*buffer.gb, #char " ", insert_count);
+        gb_index_after := buffer.gb.gap_index;
 
         buffer.line_bytes[buffer.cursor0.y] += insert_count;
         buffer.line_chars[buffer.cursor0.y] += insert_count;
@@ -562,11 +587,11 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         edit.flags = .BARRIER;
         edit.memset_value = #char " ";
         edit.memset_count = insert_count;
-        // gb_index_before actually doesn't correspond to cursor0_before, because the gap buffer
-        // index points to the beginning of the line, and the cursor points to wherever the cursor
-        // was. This is probably fine.
-        edit.gb_index_before = gb_index;
-        edit.gb_index_after = gb_index + insert_count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+        // gb_index_before actually doesn't correspond to cursor0_before, because the cursor could
+        // have been anyplace on the line and we place the gap index to line up with the operation.
+        // This is probably fine.
+        edit.gb_index_before = gb_index_before;
+        edit.gb_index_after = gb_index_after;
         edit.cursor0_before = original_cursor0;
         edit.cursor0_after  = cursor_after;
         edit.cursor1_before = original_cursor1;
@@ -601,10 +626,20 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_after);
 
         if #complete edit.type == {
-            case .INSERT;  #through;
-            case .INSERT_MEMSET; {
+            case .INSERT; {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
+
+                update_index_for_delete_backward(buffer, cast(string, deleted_bytes));
+            }
+
+            case .INSERT_MEMSET; {
+                deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.memset_count);
+                #if SANITY {
+                    for deleted_bytes {
+                        sanity_assert(it == edit.memset_value);
+                    }
+                }
 
                 update_index_for_delete_backward(buffer, cast(string, deleted_bytes));
             }
@@ -622,6 +657,11 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
             case .DELETE_BACKWARD; {
                 gap_buffer_insert(*buffer.gb, edit.text);
                 update_index_for_insert(buffer, edit.text);
+            }
+
+            case .DELETE_BACKWARD_MEMSET; {
+                gap_buffer_insert(*buffer.gb, edit.memset_value, edit.memset_count);
+                update_index_for_insert(buffer, edit.memset_value, edit.memset_count);
             }
         };
 
@@ -702,6 +742,17 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
             case .DELETE_BACKWARD; {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
+
+                update_index_for_delete_backward(buffer, cast(string, deleted_bytes));
+            }
+
+            case .DELETE_BACKWARD_MEMSET; {
+                deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.memset_count);
+                #if SANITY {
+                    for deleted_bytes {
+                        sanity_assert(it == edit.memset_value);
+                    }
+                }
 
                 update_index_for_delete_backward(buffer, cast(string, deleted_bytes));
             }
@@ -1536,17 +1587,27 @@ assert_location_valid :: (buffer: Text_Buffer, loc: Text_Location) {
 }
 
 discard_unapplied_edits :: (buffer: *Text_Buffer) {
-    if buffer.applied_edit_count < buffer.edits.count {
-        edit := buffer.edits[buffer.applied_edit_count];
+    if buffer.edits.count && buffer.applied_edit_count < buffer.edits.count {
 
         // Edit texts are allocated in order they were created. If we are hosing everything beyond a
         // certain point, we can just use the restore mark from the beginning of the chain.
         //
         // However, we can only do it if we have a unique arena for the edit text.
         if buffer.arena != buffer.edit_text_arena {
-            // nocheckin if this is INSERT_MEMSET, do not pop! We could alternatively just take the
-            // mark from the previous edit...
-            arena_pop_to_mark(buffer.edit_text_arena, edit.text_mark);
+            // Additionally, some edits don't have their text allocated at all (INSERT_MEMSET), so
+            // we need to find the first that does (by looking at their arena marks).
+
+            edit_index := buffer.applied_edit_count - 1;
+            edit       := *buffer.edits[edit_index];
+
+            while edit.text_mark.allocated == -1 && edit_index > 0 {
+                edit_index -= 1;
+                edit        = *buffer.edits[edit_index];
+            }
+
+            if edit.text_mark.allocated != -1 {
+                arena_pop_to_mark(buffer.edit_text_arena, edit.text_mark);
+            }
         }
 
         buffer.edits.count = buffer.applied_edit_count;
