@@ -31,8 +31,12 @@ Text_Buffer :: struct {
     line_chars: [..] s64; // Always at least one.
     line_count: s64;
 
+    // TODO(jt): @Memory A slight improvement on having edit texts in a separate arena is also
+    // having the edits there as a linked list. When we discard_unapplied_edits, we can also fully
+    // nuke the edit metadata. This will leave just gap_buffer, line_bytes and line_chars sharing
+    // the main arena.
     edits: [..] Edit;
-    // Undoing decreases this. Redoing increses. When editing, this is the same as edits.count,
+    // Undoing decreases this. Redoing increases. When editing, this is the same as edits.count,
     // because edits that were undone are discarded (at least until we do Emacs-like undo)
     applied_edit_count: s64;
     // This arena stores the actual edit texts. This way, we can actually pop/decommit it at least
