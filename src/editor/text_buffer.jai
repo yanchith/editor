@@ -264,7 +264,7 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, _
 
     discard_unapplied_edits(buffer);
     edit := array_add(*buffer.edits);
-    edit.type = .DELETE_SELECTION;
+    edit.type = .DELETE_SELECTION; // nocheckin get rid of DELETE SELECTION, and unify everything under {insert/delete}_{forward/backward}{_memset}?
     edit.flags = .BARRIER;
     edit.text = arena_push_string(buffer.edit_text_arena, deleted);
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
