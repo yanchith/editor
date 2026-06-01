@@ -51,8 +51,16 @@ operator == :: (a: Text_Location, b: Text_Location) -> bool {
 }
 
 Edit :: struct {
+    type:  Type;
+    flags: Flags;
+
+    // nocheckin text_mark must not be used to reset stuff if this is INSERT_MEMSET.
     text: string;
     text_mark: Arena_Mark; // Marks the restore point after the text of this edit has been inserted.
+
+    // Nonzero, if this is INSERT_MEMSET, in which case this should be used instead of text.
+    memset_value: u8;
+    memset_count: s64;
 
     gb_index_before: s64;
     gb_index_after:  s64;
@@ -63,28 +71,27 @@ Edit :: struct {
     cursor1_before: Text_Location;
     cursor1_after:  Text_Location;
 
-    type:  Type;
-    flags: Flags;
-
     Type :: enum u32 {
         // All of these operations restore cursors to the values defined by the edit. Editing
         // forward always collapses cursors (because that's what mutating text does), but undoing
         // edits restores cursors in case of DELETE_SELECTION. The cursor restoration is automatic
         // (the edit values are taken).
-        INSERT           :: 0;
-        DELETE_SELECTION :: 1;
-        DELETE_FORWARD   :: 2;
-        DELETE_BACKWARD  :: 3;
+        INSERT;
+        INSERT_MEMSET;
+
+        DELETE_SELECTION;
+        DELETE_FORWARD;
+        DELETE_BACKWARD;
     }
 
     Flags :: enum_flags u32 {
         NONE :: 0;
 
-        THROUGH :: 0x01; // When undoing or redoing edits, process all directly subsequent edits with this flag.
-        BARRIER :: 0x02; // Suppresses looking for THROUGH.
+        THROUGH :: 0x1; // When undoing or redoing edits, process all directly subsequent edits with this flag.
+        BARRIER :: 0x2; // Suppresses looking for THROUGH.
 
-        FUSED_WITH_PREVIOUS :: 0x04; // When undoing, also apply previous edit, regardless of current edit's BARRIER.
-        FUSED_WITH_NEXT     :: 0x08; // When redoing, also apply next edit, regardless of current edit's BARRIER.
+        FUSED_WITH_PREVIOUS :: 0x4; // When undoing, also apply previous edit, regardless of current edit's BARRIER.
+        FUSED_WITH_NEXT     :: 0x8; // When redoing, also apply next edit, regardless of current edit's BARRIER.
     }
 }
 
@@ -175,14 +182,6 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
 
     discard_unapplied_edits(buffer);
     edit := array_add(*buffer.edits);
-    edit.text = arena_push_string(buffer.edit_text_arena, text);
-    edit.text_mark = arena_get_mark(buffer.edit_text_arena);
-    edit.gb_index_before = gb_index;
-    edit.gb_index_after = gb_index + text.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-    edit.cursor0_before = buffer.cursor0;
-    // edit.cursor0_after is set at the end of this function.
-    edit.cursor1_before = buffer.cursor1;
-    // edit.cursor1_after is set at the end of this function.
     edit.type = .INSERT;
     edit.flags = .NONE;
     if undo_barrier {
@@ -191,6 +190,14 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
         // TODO(jt): Also don't add through, if the edit timestamps were too far apart.
         edit.flags |= .THROUGH;
     }
+    edit.text = arena_push_string(buffer.edit_text_arena, text);
+    edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+    edit.gb_index_before = gb_index;
+    edit.gb_index_after = gb_index + text.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+    edit.cursor0_before = buffer.cursor0;
+    // edit.cursor0_after is set at the end of this function.
+    edit.cursor1_before = buffer.cursor1;
+    // edit.cursor1_after is set at the end of this function.
 
     if insert_caused_delete_selection && undo_fuse_with_delete_selection {
         edit.flags |= .FUSED_WITH_PREVIOUS;
@@ -253,6 +260,8 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, _
 
     discard_unapplied_edits(buffer);
     edit := array_add(*buffer.edits);
+    edit.type = .DELETE_SELECTION;
+    edit.flags = .BARRIER;
     edit.text = arena_push_string(buffer.edit_text_arena, deleted);
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = start_gb_index;
@@ -262,8 +271,6 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, _
     edit.cursor0_after = start;
     edit.cursor1_before = _end;
     edit.cursor1_after = start;
-    edit.type = .DELETE_SELECTION;
-    edit.flags = .BARRIER;
 
     buffer.applied_edit_count = buffer.edits.count;
 
@@ -315,6 +322,11 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
 
         discard_unapplied_edits(buffer);
         edit := array_add(*buffer.edits);
+        edit.type = .DELETE_FORWARD;
+        edit.flags = .NONE;
+        if is_through_edit(cast(string, deleted)) {
+            edit.flags |= .THROUGH;
+        }
         edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
@@ -323,11 +335,6 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
         edit.cursor0_after = buffer.cursor0;
         edit.cursor1_before = buffer.cursor0;
         edit.cursor1_after = buffer.cursor0;
-        edit.type = .DELETE_FORWARD;
-        edit.flags = .NONE;
-        if is_through_edit(cast(string, deleted)) {
-            edit.flags |= .THROUGH;
-        }
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
@@ -345,6 +352,12 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
 
             discard_unapplied_edits(buffer);
             edit := array_add(*buffer.edits);
+            edit.type = .DELETE_FORWARD;
+            edit.flags = .NONE;
+            if is_through_edit(cast(string, deleted)) {
+                edit.flags |= .THROUGH;
+            }
+
             edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
             edit.text_mark = arena_get_mark(buffer.edit_text_arena);
             edit.gb_index_before = gb_index;
@@ -353,11 +366,6 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
             edit.cursor0_after = buffer.cursor0;
             edit.cursor1_before = buffer.cursor0;
             edit.cursor1_after = buffer.cursor0;
-            edit.type = .DELETE_FORWARD;
-            edit.flags = .NONE;
-            if is_through_edit(cast(string, deleted)) {
-                edit.flags |= .THROUGH;
-            }
 
             buffer.applied_edit_count = buffer.edits.count;
         }
@@ -417,6 +425,12 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) -> changed: bool {
 
         discard_unapplied_edits(buffer);
         edit := array_add(*buffer.edits);
+        edit.type = .DELETE_BACKWARD;
+        edit.flags = .NONE;
+        if is_through_edit(cast(string, deleted)) {
+            edit.flags |= .THROUGH;
+        }
+
         edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
@@ -425,11 +439,6 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) -> changed: bool {
         edit.cursor0_after = buffer.cursor0;
         edit.cursor1_before = old_cursor;
         edit.cursor1_after = buffer.cursor0;
-        edit.type = .DELETE_BACKWARD;
-        edit.flags = .NONE;
-        if is_through_edit(cast(string, deleted)) {
-            edit.flags |= .THROUGH;
-        }
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
@@ -504,6 +513,9 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
 
     assert_valid(buffer);
 
+    original_cursor0 := buffer.cursor0;
+    original_cursor1 := buffer.cursor1;
+
     buffer.cursor0.x = 0;
 
     gb_index := text_buffer_get_gap_buffer_index_for_line(buffer, buffer.cursor0.y);
@@ -521,8 +533,9 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         space_count += 1;
     }
 
-    changed := false;
+    cursor_after: Text_Location = { indentation_level, buffer.cursor0.y };
 
+    changed := false;
     if space_count > indentation_level {
         delete_count := space_count - indentation_level;
 
@@ -544,16 +557,28 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         buffer.line_bytes[buffer.cursor0.y] += insert_count;
         buffer.line_chars[buffer.cursor0.y] += insert_count;
 
-        // nocheckin update undo... for which we have to make a memset version
+        edit := array_add(*buffer.edits);
+        edit.type = .INSERT_MEMSET;
+        edit.flags = .BARRIER;
+        edit.memset_value = #char " ";
+        edit.memset_count = insert_count;
+        // gb_index_before actually doesn't correspond to cursor0_before, because the gap buffer
+        // index points to the beginning of the line, and the cursor points to wherever the cursor
+        // was. This is probably fine.
+        edit.gb_index_before = gb_index;
+        edit.gb_index_after = gb_index + insert_count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+        edit.cursor0_before = original_cursor0;
+        edit.cursor0_after  = cursor_after;
+        edit.cursor1_before = original_cursor1;
+        edit.cursor0_after  = cursor_after;
 
         changed = true;
     }
 
+    buffer.cursor0 = cursor_after;
     buffer.cursor1 = buffer.cursor0;
 
-    text_buffer_move_cursor_to_start_of_line(buffer, false);
-
-    // assert_valid(buffer); // Called by the function above.
+    assert_valid(buffer);
 
     return changed;
 }
@@ -575,8 +600,9 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
         buffer.cursor1 = edit.cursor1_after;
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_after);
 
-        if edit.type == {
-            case .INSERT; {
+        if #complete edit.type == {
+            case .INSERT;  #through;
+            case .INSERT_MEMSET; {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
 
@@ -648,10 +674,15 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
         buffer.cursor1 = edit.cursor1_before;
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_before);
 
-        if edit.type == {
+        if #complete edit.type == {
             case .INSERT; {
                 gap_buffer_insert(*buffer.gb, edit.text);
                 update_index_for_insert(buffer, edit.text);
+            }
+
+            case .INSERT_MEMSET; {
+                gap_buffer_insert(*buffer.gb, edit.memset_value, edit.memset_count);
+                update_index_for_insert(buffer, edit.memset_value, edit.memset_count);
             }
 
             case .DELETE_SELECTION; {
@@ -1513,11 +1544,21 @@ discard_unapplied_edits :: (buffer: *Text_Buffer) {
         //
         // However, we can only do it if we have a unique arena for the edit text.
         if buffer.arena != buffer.edit_text_arena {
+            // nocheckin if this is INSERT_MEMSET, do not pop! We could alternatively just take the
+            // mark from the previous edit...
             arena_pop_to_mark(buffer.edit_text_arena, edit.text_mark);
         }
 
         buffer.edits.count = buffer.applied_edit_count;
     }
+}
+
+update_index_for_insert :: (buffer: *Text_Buffer, value: u8, count: s64) {
+    // TODO(jt): @Cleanup @Hack @Speed We can do much better than calling the generic thing.
+    text := alloc_string(count,, temp);
+    memset(text.data, value, count);
+
+    update_index_for_insert(buffer, text);
 }
 
 // TODO(jt): @Speed This is super slow on large data to the point that it takes the most of the
