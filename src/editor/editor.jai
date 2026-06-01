@@ -1841,8 +1841,10 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 // TODO(jt): Indent all selected lines.
                 // TODO(jt): Respect (possibly incorrect) indentation of line previous to first indented line.
                 // TODO(jt): @Bug This fails to indent an empty line.
+                // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
 
-                INDENT :: 4; // TODO(jt): Make indent amount configurable. :Config.
+                // TODO(jt): Make indent amount configurable, or maybe detect it fron content :Config.
+                INDENT :: 4;
 
                 cursor := document.buffer.cursor0;
 
