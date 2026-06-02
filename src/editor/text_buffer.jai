@@ -26,7 +26,7 @@ Text_Buffer :: struct {
     //    byte_count: s64;
     // }
     //
-    // TODO(jt): @Speed keep line_chars empty in binary mode, because they are the same as bytes.
+    // TODO(jt): @Speed Ignore line_chars in binary mode, because they are the same as bytes.
     line_bytes: [..] s64; // Always at least one.
     line_chars: [..] s64; // Always at least one.
     line_count: s64;
@@ -68,13 +68,10 @@ Edit :: struct {
     gb_index_before: s64;
     gb_index_after:  s64;
 
-    // The actual positions the cursors were before and after the operation. They are not sorted.
-    // (Not sorrted, so that we can restore selection? if so, we can just have the user cursor
-    // unsorrted the edit cursors sorted, nocheckin)
+    // The actual position of the cursor0 before and after the edit took place. Cursor1 is not
+    // saved, because we don't need it for edits. (It is saved for display.)
     cursor0_for_edit_before: Text_Location;
     cursor0_for_edit_after:  Text_Location;
-    cursor1_for_edit_before: Text_Location;
-    cursor1_for_edit_after:  Text_Location;
 
     // The positions for human display. Quite often, these are the same as the cursors for editing,
     // but some operations move the cursors before and after doing the actual edit.
@@ -89,7 +86,6 @@ Edit :: struct {
         // INSERT_BACKWARD does not exist as a human-triggered action, but the undo system support
         // it to undo DELETE_BACKWARD.
 
-        DELETE_SELECTION;
         DELETE_FORWARD;
         DELETE_BACKWARD;
         DELETE_BACKWARD_MEMSET;
@@ -160,14 +156,14 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
-text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false, undo_fuse_with_delete_selection := false) -> changed: bool {
-    /*inline?*/ return text_buffer_insert(buffer, cast(string, bytes), undo_barrier, undo_fuse_with_delete_selection);
+text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false) -> changed: bool {
+    /*inline?*/ return text_buffer_insert(buffer, cast(string, bytes), undo_barrier);
 }
 
 // TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
 // switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so we would
 // supply .REVERT, etc.
-text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false, undo_fuse_with_delete_selection := false) -> changed: bool {
+text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false) -> changed: bool {
     ProfileZone("text_buffer_insert");
 
     assert_valid(buffer);
@@ -205,16 +201,15 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = gb_index;
     edit.gb_index_after = gb_index + text.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+    // The after cursors are set, well after.
     edit.cursor0_for_edit_before = buffer.cursor0;
-    // edit.cursor0_for_edit_after is set at the end of this function.
-    edit.cursor1_for_edit_before = buffer.cursor1;
-    // edit.cursor1_for_edit_after is set at the end of this function.
+    edit.cursor0_for_display_before = buffer.cursor0;
+    edit.cursor1_for_display_before = buffer.cursor1;
 
-    if insert_caused_delete_selection && undo_fuse_with_delete_selection {
+    if insert_caused_delete_selection {
         edit.flags |= .FUSED_WITH_PREVIOUS;
 
         previous_edit := *buffer.edits[buffer.edits.count - 2];
-        assert(previous_edit.type == .DELETE_SELECTION);
         previous_edit.flags |= .FUSED_WITH_NEXT;
     }
 
@@ -223,8 +218,8 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
     update_index_for_insert(buffer, text);
 
     edit.cursor0_for_edit_after = buffer.cursor0;
-    edit.cursor1_for_edit_after = buffer.cursor0;
-    use_edit_cursors_for_display(edit);
+    edit.cursor0_for_display_after = buffer.cursor0;
+    edit.cursor1_for_display_after = buffer.cursor0;
 
     buffer.cursor1 = buffer.cursor0;
 
@@ -272,18 +267,15 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, _
 
     discard_unapplied_edits(buffer);
     edit := array_add(*buffer.edits);
-    edit.type = .DELETE_SELECTION; // nocheckin get rid of DELETE SELECTION, and unify everything under {insert/delete}_{forward/backward}{_memset}?
+    edit.type = .DELETE_FORWARD;
     edit.flags = .BARRIER;
     edit.text = arena_push_string(buffer.edit_text_arena, deleted);
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = start_gb_index;
     edit.gb_index_after = start_gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-    // nocheckin use sorted cursors for edit? what about assertability and reversability of
-    // DELETE_SELECTION? Isn't it just DELETE_FORWARD/BACKWARD (whatever is easier to do)?
-    edit.cursor0_for_edit_before = _start;
+    // We give the sorted start cursor for edit, and the unsorted cursors for display.
+    edit.cursor0_for_edit_before = start;
     edit.cursor0_for_edit_after = start;
-    edit.cursor1_for_edit_before = _end;
-    edit.cursor1_for_edit_after = start;
     edit.cursor0_for_display_before = _start;
     edit.cursor0_for_display_after = start;
     edit.cursor1_for_display_before = _end;
@@ -291,14 +283,14 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, _
 
     buffer.applied_edit_count = buffer.edits.count;
 
-    update_index_for_delete_forward(buffer, deleted, deleting_selection = true);
+    update_index_for_delete_forward(buffer, deleted);
 
     assert_valid(buffer);
 
     return deleted;
 }
 
-// TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
+// TODO(jt): @Cleanup Take a second parameter to specify the count to delete. Do delete in batch, like
 // text_buffer_delete_selection does. There's also an update index function we can call.
 text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
     ProfileZone("text_buffer_delete_forward");
@@ -350,9 +342,10 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
         edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
         edit.cursor0_for_edit_before = buffer.cursor0;
         edit.cursor0_for_edit_after = buffer.cursor0;
-        edit.cursor1_for_edit_before = buffer.cursor0;
-        edit.cursor1_for_edit_after = buffer.cursor0;
-        use_edit_cursors_for_display(edit);
+        edit.cursor0_for_display_before = buffer.cursor0;
+        edit.cursor0_for_display_after = buffer.cursor0;
+        edit.cursor1_for_display_before = buffer.cursor0;
+        edit.cursor1_for_display_after = buffer.cursor0;
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
@@ -381,9 +374,10 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
             edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
             edit.cursor0_for_edit_before = buffer.cursor0;
             edit.cursor0_for_edit_after = buffer.cursor0;
-            edit.cursor1_for_edit_before = buffer.cursor0;
-            edit.cursor1_for_edit_after = buffer.cursor0;
-            use_edit_cursors_for_display(edit);
+            edit.cursor0_for_display_before = buffer.cursor0;
+            edit.cursor0_for_display_after = buffer.cursor0;
+            edit.cursor1_for_display_before = buffer.cursor0;
+            edit.cursor1_for_display_after = buffer.cursor0;
 
             buffer.applied_edit_count = buffer.edits.count;
         }
@@ -454,9 +448,10 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) -> changed: bool {
         edit.gb_index_after = gb_index - deleted.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
         edit.cursor0_for_edit_before = old_cursor;
         edit.cursor0_for_edit_after = buffer.cursor0;
-        edit.cursor1_for_edit_before = old_cursor;
-        edit.cursor1_for_edit_after = buffer.cursor0;
-        use_edit_cursors_for_display(edit);
+        edit.cursor0_for_display_before = old_cursor;
+        edit.cursor0_for_display_after = buffer.cursor0;
+        edit.cursor1_for_display_before = old_cursor;
+        edit.cursor1_for_display_after = buffer.cursor0;
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
@@ -489,9 +484,10 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) -> changed: bool {
             edit.gb_index_after = gb_index - deleted.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
             edit.cursor0_for_edit_before = old_cursor;
             edit.cursor0_for_edit_after = buffer.cursor0;
-            edit.cursor1_for_edit_before = old_cursor;
-            edit.cursor1_for_edit_after = buffer.cursor0;
-            use_edit_cursors_for_display(edit);
+            edit.cursor0_for_display_before = old_cursor;
+            edit.cursor0_for_display_after = buffer.cursor0;
+            edit.cursor1_for_display_before = old_cursor;
+            edit.cursor1_for_display_after = buffer.cursor0;
 
             buffer.applied_edit_count = buffer.edits.count;
         }
@@ -527,11 +523,6 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     }
 }
 
-// nocheckin the undo/redo here is buggy AF. It could be because we give it user-visible cursors
-// which it then uses for insertion/deletion, but we maybe want to give it one set of cursors for
-// index updating and another set of cursors to restore for the user. If this is the case, maybe we
-// should revisit assertability of cursors in undo/redo... The ones that are there to update the
-// indices should maybe be assertable?
 text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> changed: bool {
     ProfileZone("text_buffer_indent_line");
 
@@ -589,8 +580,6 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         edit.gb_index_after  = gb_index_after;
         edit.cursor0_for_edit_before = edit_cursor_before;
         edit.cursor0_for_edit_after = edit_cursor_after;
-        edit.cursor1_for_edit_before = edit_cursor_before;
-        edit.cursor1_for_edit_after = edit_cursor_after;
         edit.cursor0_for_display_before = original_cursor0;
         edit.cursor0_for_display_after = display_cursor_after;
         edit.cursor1_for_display_before = original_cursor1;
@@ -631,8 +620,6 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         edit.gb_index_after = gb_index_after;
         edit.cursor0_for_edit_before = edit_cursor_before;
         edit.cursor0_for_edit_after = edit_cursor_after;
-        edit.cursor1_for_edit_before = edit_cursor_before;
-        edit.cursor1_for_edit_after = edit_cursor_after;
         edit.cursor0_for_display_before = original_cursor0;
         edit.cursor0_for_display_after = display_cursor_after;
         edit.cursor1_for_display_before = original_cursor1;
@@ -666,8 +653,9 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
     for < 0..buffer.applied_edit_count - 1 {
         edit := buffer.edits[it];
 
+        // Note that cursor1 s not set here. This is fine because the stuff we call here doesn't
+        // need it (We just update index for insert/delete which only operates on cursor0.)
         buffer.cursor0 = edit.cursor0_for_edit_after;
-        buffer.cursor1 = edit.cursor1_for_edit_after;
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_after);
 
         if #complete edit.type == {
@@ -691,14 +679,17 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
                 update_index_for_delete_backward(buffer, cast(string, deleted_bytes));
             }
 
-            case .DELETE_SELECTION; {
-                gap_buffer_insert(*buffer.gb, edit.text);
-                update_index_for_insert(buffer, edit.text);
-            }
-
             case .DELETE_FORWARD; {
                 gap_buffer_insert(*buffer.gb, edit.text);
                 update_index_for_insert(buffer, edit.text);
+
+                sanity_assert(edit.cursor0_for_edit_before == edit.cursor0_for_edit_after);
+                sanity_assert(edit.gb_index_before == edit.gb_index_after);
+                // @Hack The cursor does not move when we "insert backward", but we don't have a
+                // real insert backward, so we doctor the cursor and gap index so that the asserts
+                // down below don't fire.
+                buffer.cursor0 = edit.cursor0_for_edit_after;
+                gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_after);
             }
 
             case .DELETE_BACKWARD; {
@@ -712,9 +703,8 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
             }
         };
 
-        // nocheckin this should be assertable when we are done
-        // sanity_assert(buffer.cursor0 == edit.cursor0_for_edit_before);
-        // sanity_assert(buffer.cursor1 == edit.cursor1_for_edit_before);
+        sanity_assert(buffer.cursor0 == edit.cursor0_for_edit_before);
+        sanity_assert(buffer.gb.gap_index == edit.gb_index_before);
         buffer.cursor0 = edit.cursor0_for_display_before;
         buffer.cursor1 = edit.cursor1_for_display_before;
 
@@ -760,8 +750,9 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
     for buffer.applied_edit_count..buffer.edits.count - 1 {
         edit := buffer.edits[it];
 
+        // Note that cursor1 s not set here. This is fine because the stuff we call here doesn't
+        // need it (We just update index for insert/delete which only operates on cursor0.)
         buffer.cursor0 = edit.cursor0_for_edit_before;
-        buffer.cursor1 = edit.cursor1_for_edit_before;
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_before);
 
         if #complete edit.type == {
@@ -773,13 +764,6 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
             case .INSERT_FORWARD_MEMSET; {
                 gap_buffer_insert(*buffer.gb, edit.memset_value, edit.memset_count);
                 update_index_for_insert(buffer, edit.memset_value, edit.memset_count);
-            }
-
-            case .DELETE_SELECTION; {
-                deleted_bytes := gap_buffer_delete_forward(*buffer.gb, edit.text.count);
-                sanity_assert(cast(string, deleted_bytes) == edit.text);
-
-                update_index_for_delete_forward(buffer, cast(string, deleted_bytes), deleting_selection = true);
             }
 
             case .DELETE_FORWARD; {
@@ -808,9 +792,8 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
             }
         };
 
-        // nocheckin this should be assertable when we are done
-        // sanity_assert(buffer.cursor0 == edit.cursor0_for_edit_after);
-        // sanity_assert(buffer.cursor1 == edit.cursor1_for_edit_after);
+        sanity_assert(buffer.cursor0 == edit.cursor0_for_edit_after);
+        sanity_assert(buffer.gb.gap_index == edit.gb_index_after);
         buffer.cursor0 = edit.cursor0_for_display_after;
         buffer.cursor1 = edit.cursor1_for_display_after;
 
@@ -1675,13 +1658,12 @@ update_index_for_insert :: (buffer: *Text_Buffer, value: u8, count: s64) {
     update_index_for_insert(buffer, text);
 }
 
+// This does not touch (or assert anything about) cursor1. The calling code must manage that.
+//
 // TODO(jt): @Speed This is super slow on large data to the point that it takes the most of the
 // time. We could parse lines with SIMD?
 update_index_for_insert :: (buffer: *Text_Buffer, _text: string) {
     ProfileZone("update_index_for_insert");
-
-    // Insert never happens for spread cursors.
-    assert(buffer.cursor0 == buffer.cursor1);
 
     text := _text;
 
@@ -1794,17 +1776,11 @@ update_index_for_insert :: (buffer: *Text_Buffer, _text: string) {
             bytes_on_line_before_cursor += codepoint_advance;
         }
     }
-
-    // The calling code must manage cursor1
 }
 
-update_index_for_delete_forward :: (buffer: *Text_Buffer, _text: string, deleting_selection := false) {
+// This does not touch (or assert anything about) cursor1. The calling code must manage that.
+update_index_for_delete_forward :: (buffer: *Text_Buffer, _text: string) {
     ProfileZone("update_index_for_delete_forward");
-
-    if deleting_selection {
-        // The selection delete sorts cursors, and so must we.
-        sort_locations(*buffer.cursor0, *buffer.cursor1);
-    }
 
     text := _text;
 
@@ -1837,17 +1813,13 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, _text: string, deletin
             assert(text.count >= 0);
         }
     }
-
-    // The calling code must manage cursor1
 }
 
+// This does not touch (or assert anything about) cursor1. The calling code must manage that.
 update_index_for_delete_backward :: (buffer: *Text_Buffer, _text: string) {
     ProfileZone("update_index_for_delete_backward");
 
     text := _text;
-
-    // Delete backward never happens for spread cursors.
-    assert(buffer.cursor0 == buffer.cursor1);
 
     while text.count {
         newline_advance := string_ends_with_newline(text, binary = buffer.binary_mode);
@@ -1887,8 +1859,6 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, _text: string) {
             }
         }
     }
-
-    // The calling code must manage cursor1
 }
 
 add_line :: (buffer: *Text_Buffer) {
@@ -1916,13 +1886,6 @@ remove_line :: (buffer: *Text_Buffer, index: s64) {
     array_ordered_remove_by_index(*buffer.line_bytes, index);
     array_ordered_remove_by_index(*buffer.line_chars, index);
     buffer.line_count -= 1;
-}
-
-use_edit_cursors_for_display :: (edit: *Edit) {
-    edit.cursor0_for_display_before = edit.cursor0_for_edit_before;
-    edit.cursor0_for_display_after  = edit.cursor0_for_edit_after;
-    edit.cursor1_for_display_before = edit.cursor1_for_edit_before;
-    edit.cursor1_for_display_after  = edit.cursor1_for_edit_after;
 }
 
 is_through_edit :: (text: string) -> bool {
