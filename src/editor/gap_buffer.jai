@@ -104,6 +104,7 @@ gap_buffer_insert :: (gb: *Gap_Buffer, bytes: [] u8) {
     }
 }
 
+// Inserts at the gap, advancing the gap index.
 gap_buffer_insert :: (gb: *Gap_Buffer, value: u8, count: s64) {
     ProfileZone("gap_buffer_insert (memset)");
 
