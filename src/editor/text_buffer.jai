@@ -235,7 +235,8 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer) -> string /* Pointing to 
 text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, __end: Text_Location) -> string /* Pointing to the internal gap buffer */ {
     ProfileZone("text_buffer_delete_selection");
 
-    // Force copy to avoid "maybe by reference" aliasing.
+    // Force copy to avoid "maybe by reference" aliasing. We use all of _start, _end, start and end,
+    // so none of those can alias with buffer.cursor0 or buffer.cursor1.
     _start := __start;
     _end := __end;
 
