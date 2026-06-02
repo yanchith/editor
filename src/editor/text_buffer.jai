@@ -68,11 +68,20 @@ Edit :: struct {
     gb_index_before: s64;
     gb_index_after:  s64;
 
-    // The actual positions the cursors were before and after the operation. They are not sorted!
-    cursor0_before: Text_Location;
-    cursor0_after:  Text_Location;
-    cursor1_before: Text_Location;
-    cursor1_after:  Text_Location;
+    // The actual positions the cursors were before and after the operation. They are not sorted.
+    // (Not sorrted, so that we can restore selection? if so, we can just have the user cursor
+    // unsorrted the edit cursors sorted, nocheckin)
+    cursor0_for_edit_before: Text_Location;
+    cursor0_for_edit_after:  Text_Location;
+    cursor1_for_edit_before: Text_Location;
+    cursor1_for_edit_after:  Text_Location;
+
+    // The positions for human display. Quite often, these are the same as the cursors for editing,
+    // but some operations move the cursors before and after doing the actual edit.
+    cursor0_for_display_before: Text_Location;
+    cursor0_for_display_after:  Text_Location;
+    cursor1_for_display_before: Text_Location;
+    cursor1_for_display_after:  Text_Location;
 
     Type :: enum u32 {
         // All of these operations restore cursors to the values defined by the edit. Editing
@@ -198,10 +207,10 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = gb_index;
     edit.gb_index_after = gb_index + text.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-    edit.cursor0_before = buffer.cursor0;
-    // edit.cursor0_after is set at the end of this function.
-    edit.cursor1_before = buffer.cursor1;
-    // edit.cursor1_after is set at the end of this function.
+    edit.cursor0_for_edit_before = buffer.cursor0;
+    // edit.cursor0_for_edit_after is set at the end of this function.
+    edit.cursor1_for_edit_before = buffer.cursor1;
+    // edit.cursor1_for_edit_after is set at the end of this function.
 
     if insert_caused_delete_selection && undo_fuse_with_delete_selection {
         edit.flags |= .FUSED_WITH_PREVIOUS;
@@ -215,8 +224,9 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
 
     update_index_for_insert(buffer, text);
 
-    edit.cursor0_after = buffer.cursor0;
-    edit.cursor1_after = buffer.cursor0;
+    edit.cursor0_for_edit_after = buffer.cursor0;
+    edit.cursor1_for_edit_after = buffer.cursor0;
+    use_edit_cursors_for_display(edit);
 
     buffer.cursor1 = buffer.cursor0;
 
@@ -270,11 +280,16 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, _
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = start_gb_index;
     edit.gb_index_after = start_gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-
-    edit.cursor0_before = _start;
-    edit.cursor0_after = start;
-    edit.cursor1_before = _end;
-    edit.cursor1_after = start;
+    // nocheckin use sorted cursors for edit? what about assertability and reversability of
+    // DELETE_SELECTION? Isn't it just DELETE_FORWARD/BACKWARD (whatever is easier to do)?
+    edit.cursor0_for_edit_before = _start;
+    edit.cursor0_for_edit_after = start;
+    edit.cursor1_for_edit_before = _end;
+    edit.cursor1_for_edit_after = start;
+    edit.cursor0_for_display_before = _start;
+    edit.cursor0_for_display_after = start;
+    edit.cursor1_for_display_before = _end;
+    edit.cursor1_for_display_after = start;
 
     buffer.applied_edit_count = buffer.edits.count;
 
@@ -335,10 +350,11 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
         edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-        edit.cursor0_before = buffer.cursor0;
-        edit.cursor0_after = buffer.cursor0;
-        edit.cursor1_before = buffer.cursor0;
-        edit.cursor1_after = buffer.cursor0;
+        edit.cursor0_for_edit_before = buffer.cursor0;
+        edit.cursor0_for_edit_after = buffer.cursor0;
+        edit.cursor1_for_edit_before = buffer.cursor0;
+        edit.cursor1_for_edit_after = buffer.cursor0;
+        use_edit_cursors_for_display(edit);
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
@@ -361,15 +377,15 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
             if is_through_edit(cast(string, deleted)) {
                 edit.flags |= .THROUGH;
             }
-
             edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
             edit.text_mark = arena_get_mark(buffer.edit_text_arena);
             edit.gb_index_before = gb_index;
             edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-            edit.cursor0_before = buffer.cursor0;
-            edit.cursor0_after = buffer.cursor0;
-            edit.cursor1_before = buffer.cursor0;
-            edit.cursor1_after = buffer.cursor0;
+            edit.cursor0_for_edit_before = buffer.cursor0;
+            edit.cursor0_for_edit_after = buffer.cursor0;
+            edit.cursor1_for_edit_before = buffer.cursor0;
+            edit.cursor1_for_edit_after = buffer.cursor0;
+            use_edit_cursors_for_display(edit);
 
             buffer.applied_edit_count = buffer.edits.count;
         }
@@ -382,7 +398,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
     return true;
 }
 
-// TODO(jt): Take a second parameter to specify the count to delete. Do delete in batch, like
+// TODO(jt): @Cleanup Take a second parameter to specify the count to delete. Do delete in batch, like
 // text_buffer_delete_selection does. There's also an update index function we can call.
 text_buffer_delete_backward :: (buffer: *Text_Buffer) -> changed: bool {
     ProfileZone("text_buffer_delete_backward");
@@ -434,15 +450,15 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) -> changed: bool {
         if is_through_edit(cast(string, deleted)) {
             edit.flags |= .THROUGH;
         }
-
         edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
         edit.gb_index_after = gb_index - deleted.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-        edit.cursor0_before = old_cursor;
-        edit.cursor0_after = buffer.cursor0;
-        edit.cursor1_before = old_cursor;
-        edit.cursor1_after = buffer.cursor0;
+        edit.cursor0_for_edit_before = old_cursor;
+        edit.cursor0_for_edit_after = buffer.cursor0;
+        edit.cursor1_for_edit_before = old_cursor;
+        edit.cursor1_for_edit_after = buffer.cursor0;
+        use_edit_cursors_for_display(edit);
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
@@ -464,19 +480,20 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) -> changed: bool {
 
             discard_unapplied_edits(buffer);
             edit := array_add(*buffer.edits);
-            edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
-            edit.text_mark = arena_get_mark(buffer.edit_text_arena);
-            edit.gb_index_before = gb_index;
-            edit.gb_index_after = gb_index - deleted.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-            edit.cursor0_before = old_cursor;
-            edit.cursor0_after = buffer.cursor0;
-            edit.cursor1_before = old_cursor;
-            edit.cursor1_after = buffer.cursor0;
             edit.type = .DELETE_BACKWARD;
             edit.flags = .NONE;
             if is_through_edit(cast(string, deleted)) {
                 edit.flags |= .THROUGH;
             }
+            edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
+            edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+            edit.gb_index_before = gb_index;
+            edit.gb_index_after = gb_index - deleted.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+            edit.cursor0_for_edit_before = old_cursor;
+            edit.cursor0_for_edit_after = buffer.cursor0;
+            edit.cursor1_for_edit_before = old_cursor;
+            edit.cursor1_for_edit_after = buffer.cursor0;
+            use_edit_cursors_for_display(edit);
 
             buffer.applied_edit_count = buffer.edits.count;
         }
@@ -522,10 +539,12 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
 
     assert_valid(buffer);
 
+    // This routine assumes this is a ascii. Actually, it assumes it is exactly space, but that
+    // could be improved.
+    INDENTATION_VALUE: u8 : #char " ";
+
     original_cursor0 := buffer.cursor0;
     original_cursor1 := buffer.cursor1;
-
-    buffer.cursor0.x = 0;
 
     line_gb_index := text_buffer_get_gap_buffer_index_for_line(buffer, buffer.cursor0.y);
 
@@ -535,18 +554,15 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
     // TODO(jt): @Speed SIMDify loop.
     space_count := 0;
     for line_start..line_end {
-        if buffer.gb[it] != #char " " {
+        if buffer.gb[it] != INDENTATION_VALUE {
             break;
         }
         space_count += 1;
     }
 
-    cursor_after: Text_Location = { indentation_level, buffer.cursor0.y };
-
     changed := false;
     if space_count > indentation_level {
         delete_count := space_count - indentation_level;
-        log("nocheckin delete count: %", delete_count);
 
         gap_buffer_move_gap_to(*buffer.gb, line_gb_index + indentation_level);
         gb_index_before := buffer.gb.gap_index;
@@ -557,55 +573,82 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         buffer.line_bytes[buffer.cursor0.y] -= delete_count;
         buffer.line_chars[buffer.cursor0.y] -= delete_count;
 
+        edit_cursor_before: Text_Location = original_cursor0;
+        edit_cursor_before.x = space_count;
+        edit_cursor_after: Text_Location = original_cursor0;
+        edit_cursor_after.x = indentation_level;
+
+        display_cursor_after: Text_Location = original_cursor0;
+        display_cursor_after.x -= delete_count;
+        display_cursor_after.x = max(display_cursor_after.x, 0);
+
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_BACKWARD_MEMSET;
         edit.flags = .BARRIER;
-        edit.memset_value = #char " ";
+        edit.memset_value = INDENTATION_VALUE;
         edit.memset_count = delete_count;
-        // gb_index_before actually doesn't correspond to cursor0_before, because the cursor could
-        // have been anyplace on the line and we place the gap index to line up with the operation.
-        // This is probably fine.
         edit.gb_index_before = gb_index_before;
         edit.gb_index_after  = gb_index_after;
-        edit.cursor0_before = original_cursor0;
-        edit.cursor0_after  = cursor_after;
-        edit.cursor1_before = original_cursor1;
-        edit.cursor0_after  = cursor_after;
+        edit.cursor0_for_edit_before = edit_cursor_before;
+        edit.cursor0_for_edit_after = edit_cursor_after;
+        edit.cursor1_for_edit_before = edit_cursor_before;
+        edit.cursor1_for_edit_after = edit_cursor_after;
+        edit.cursor0_for_display_before = original_cursor0;
+        edit.cursor0_for_display_after = display_cursor_after;
+        edit.cursor1_for_display_before = original_cursor1;
+        edit.cursor1_for_display_after = display_cursor_after;
+
+        buffer.applied_edit_count = buffer.edits.count;
+
+        buffer.cursor0 = display_cursor_after;
+        buffer.cursor1 = display_cursor_after;
 
         changed = true;
     } else if indentation_level > space_count {
         insert_count := indentation_level - space_count;
-        log("nocheckin insert count: %", insert_count);
 
         gap_buffer_move_gap_to(*buffer.gb, line_gb_index + space_count);
         gb_index_before := buffer.gb.gap_index;
 
-        gap_buffer_insert(*buffer.gb, #char " ", insert_count);
+        gap_buffer_insert(*buffer.gb, INDENTATION_VALUE, insert_count);
         gb_index_after := buffer.gb.gap_index;
 
         buffer.line_bytes[buffer.cursor0.y] += insert_count;
         buffer.line_chars[buffer.cursor0.y] += insert_count;
 
+        edit_cursor_before: Text_Location = original_cursor0;
+        edit_cursor_before.x = space_count;
+        edit_cursor_after: Text_Location = original_cursor0;
+        edit_cursor_after.x = indentation_level;
+
+        display_cursor_after: Text_Location = original_cursor0;
+        display_cursor_after.x += insert_count;
+
         edit := array_add(*buffer.edits);
         edit.type = .INSERT_MEMSET;
         edit.flags = .BARRIER;
-        edit.memset_value = #char " ";
+        edit.memset_value = INDENTATION_VALUE;
         edit.memset_count = insert_count;
-        // gb_index_before actually doesn't correspond to cursor0_before, because the cursor could
-        // have been anyplace on the line and we place the gap index to line up with the operation.
-        // This is probably fine.
         edit.gb_index_before = gb_index_before;
         edit.gb_index_after = gb_index_after;
-        edit.cursor0_before = original_cursor0;
-        edit.cursor0_after  = cursor_after;
-        edit.cursor1_before = original_cursor1;
-        edit.cursor0_after  = cursor_after;
+        edit.cursor0_for_edit_before = edit_cursor_before;
+        edit.cursor0_for_edit_after = edit_cursor_after;
+        edit.cursor1_for_edit_before = edit_cursor_before;
+        edit.cursor1_for_edit_after = edit_cursor_after;
+        edit.cursor0_for_display_before = original_cursor0;
+        edit.cursor0_for_display_after = display_cursor_after;
+        edit.cursor1_for_display_before = original_cursor1;
+        edit.cursor1_for_display_after = display_cursor_after;
+
+        buffer.applied_edit_count = buffer.edits.count;
+
+        buffer.cursor0 = display_cursor_after;
+        buffer.cursor1 = display_cursor_after;
 
         changed = true;
+    } else {
+        changed = false;
     }
-
-    buffer.cursor0 = cursor_after;
-    buffer.cursor1 = buffer.cursor0;
 
     assert_valid(buffer);
 
@@ -625,8 +668,8 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
     for < 0..buffer.applied_edit_count - 1 {
         edit := buffer.edits[it];
 
-        buffer.cursor0 = edit.cursor0_after;
-        buffer.cursor1 = edit.cursor1_after;
+        buffer.cursor0 = edit.cursor0_for_edit_after;
+        buffer.cursor1 = edit.cursor1_for_edit_after;
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_after);
 
         if #complete edit.type == {
@@ -641,6 +684,8 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.memset_count);
                 #if SANITY {
                     for deleted_bytes {
+                        // TODO(jt): @Bug This sometimes asserts, but I can't figure out the repro
+                        // sequence. Write a fuzzer?
                         sanity_assert(it == edit.memset_value);
                     }
                 }
@@ -669,8 +714,11 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
             }
         };
 
-        buffer.cursor0 = edit.cursor0_before;
-        buffer.cursor1 = edit.cursor1_before;
+        // nocheckin this should be assertable when we are done
+        // sanity_assert(buffer.cursor0 == edit.cursor0_for_edit_before);
+        // sanity_assert(buffer.cursor1 == edit.cursor1_for_edit_before);
+        buffer.cursor0 = edit.cursor0_for_display_before;
+        buffer.cursor1 = edit.cursor1_for_display_before;
 
         applied_count += 1;
 
@@ -714,8 +762,8 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
     for buffer.applied_edit_count..buffer.edits.count - 1 {
         edit := buffer.edits[it];
 
-        buffer.cursor0 = edit.cursor0_before;
-        buffer.cursor1 = edit.cursor1_before;
+        buffer.cursor0 = edit.cursor0_for_edit_before;
+        buffer.cursor1 = edit.cursor1_for_edit_before;
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_before);
 
         if #complete edit.type == {
@@ -762,8 +810,11 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
             }
         };
 
-        buffer.cursor0 = edit.cursor0_after;
-        buffer.cursor1 = edit.cursor1_after;
+        // nocheckin this should be assertable when we are done
+        // sanity_assert(buffer.cursor0 == edit.cursor0_for_edit_after);
+        // sanity_assert(buffer.cursor1 == edit.cursor1_for_edit_after);
+        buffer.cursor0 = edit.cursor0_for_display_after;
+        buffer.cursor1 = edit.cursor1_for_display_after;
 
         applied_count += 1;
 
@@ -1867,6 +1918,13 @@ remove_line :: (buffer: *Text_Buffer, index: s64) {
     array_ordered_remove_by_index(*buffer.line_bytes, index);
     array_ordered_remove_by_index(*buffer.line_chars, index);
     buffer.line_count -= 1;
+}
+
+use_edit_cursors_for_display :: (edit: *Edit) {
+    edit.cursor0_for_display_before = edit.cursor0_for_edit_before;
+    edit.cursor0_for_display_after  = edit.cursor0_for_edit_after;
+    edit.cursor1_for_display_before = edit.cursor1_for_edit_before;
+    edit.cursor1_for_display_after  = edit.cursor1_for_edit_after;
 }
 
 is_through_edit :: (text: string) -> bool {
