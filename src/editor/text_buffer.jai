@@ -84,12 +84,10 @@ Edit :: struct {
     cursor1_for_display_after:  Text_Location;
 
     Type :: enum u32 {
-        // All of these operations restore cursors to the values defined by the edit. Editing
-        // forward always collapses cursors (because that's what mutating text does), but undoing
-        // edits restores cursors in case of DELETE_SELECTION. The cursor restoration is automatic
-        // (the edit values are taken).
-        INSERT;
-        INSERT_MEMSET;
+        INSERT_FORWARD;
+        INSERT_FORWARD_MEMSET;
+        // INSERT_BACKWARD does not exist as a human-triggered action, but the undo system support
+        // it to undo DELETE_BACKWARD.
 
         DELETE_SELECTION;
         DELETE_FORWARD;
@@ -195,7 +193,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
 
     discard_unapplied_edits(buffer);
     edit := array_add(*buffer.edits);
-    edit.type = .INSERT;
+    edit.type = .INSERT_FORWARD;
     edit.flags = .NONE;
     if undo_barrier {
         edit.flags |= .BARRIER;
@@ -625,7 +623,7 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         display_cursor_after.x += insert_count;
 
         edit := array_add(*buffer.edits);
-        edit.type = .INSERT_MEMSET;
+        edit.type = .INSERT_FORWARD_MEMSET;
         edit.flags = .BARRIER;
         edit.memset_value = INDENTATION_VALUE;
         edit.memset_count = insert_count;
@@ -673,14 +671,14 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_after);
 
         if #complete edit.type == {
-            case .INSERT; {
+            case .INSERT_FORWARD; {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
 
                 update_index_for_delete_backward(buffer, cast(string, deleted_bytes));
             }
 
-            case .INSERT_MEMSET; {
+            case .INSERT_FORWARD_MEMSET; {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.memset_count);
                 #if SANITY {
                     for deleted_bytes {
@@ -767,12 +765,12 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_before);
 
         if #complete edit.type == {
-            case .INSERT; {
+            case .INSERT_FORWARD; {
                 gap_buffer_insert(*buffer.gb, edit.text);
                 update_index_for_insert(buffer, edit.text);
             }
 
-            case .INSERT_MEMSET; {
+            case .INSERT_FORWARD_MEMSET; {
                 gap_buffer_insert(*buffer.gb, edit.memset_value, edit.memset_count);
                 update_index_for_insert(buffer, edit.memset_value, edit.memset_count);
             }
