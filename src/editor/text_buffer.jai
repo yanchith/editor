@@ -156,14 +156,23 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
-text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false) -> changed: bool {
-    /*inline?*/ return text_buffer_insert(buffer, cast(string, bytes), undo_barrier);
+text_buffer_insert_char :: (buffer: *Text_Buffer, char: u32, undo_barrier := false, undo_fuse := false) -> changed: bool {
+    buf: [4] u8;
+    s: string;
+    s.data = buf.data;
+    Unicode.character_utf32_to_utf8(char, *s);
+
+    return text_buffer_insert(buffer, s, undo_barrier, undo_fuse);
+}
+
+text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false, undo_fuse := false) -> changed: bool {
+    /*inline?*/ return text_buffer_insert(buffer, cast(string, bytes), undo_barrier, undo_fuse);
 }
 
 // TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
 // switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so we would
 // supply .REVERT, etc.
-text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false) -> changed: bool {
+text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false, undo_fuse := false) -> changed: bool {
     ProfileZone("text_buffer_insert");
 
     assert_valid(buffer);
@@ -206,7 +215,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
     edit.cursor0_for_display_before = buffer.cursor0;
     edit.cursor1_for_display_before = buffer.cursor1;
 
-    if insert_caused_delete_selection {
+    if undo_fuse || insert_caused_delete_selection {
         edit.flags |= .FUSED_WITH_PREVIOUS;
 
         previous_edit := *buffer.edits[buffer.edits.count - 2];
