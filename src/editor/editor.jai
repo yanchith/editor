@@ -4,6 +4,14 @@ TODO(jt): Known serious bugs:
 
 (none currently)
 
+Expo things to show:
+
+- Not that many abstractions in the editor. It is mostly very concrete code.
+- Casey-style Glyph cache
+- Casey-style platform layer
+- Keymaps
+- Arenas (virtual memory, commit/decommit, but everyone has these)
+
 TODO(jt): Stuff to do:
 
 - [X] Implement Arena, or use Flat_Pool.
@@ -24,20 +32,23 @@ TODO(jt): Stuff to do:
 - [X] Find/replace and modal/interactive commands.
 - [X] Open non-utf8 text buffers and binary files.
 
+- [~] Syntax Highlighting
+- [~] Syntax aware indentation (C-i)
+- [ ] Mode defined parentheses (suround, autoclose)
+- [ ] Mode defined comments
+- [ ] Watch opened files for changes on disk
+- [ ] *compilation* buffer
 - [ ] Panel tiling
-- [ ] Syntax Highlighting
-- [ ] Syntax aware indentation (C-i)
-- [ ] Syntax aware parentheses
 - [ ] Themes
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode
 - [ ] Multiple Cursors
-- [ ] *compilation* buffer
 - [ ] Projects (project settings, project compilations, project text search with jumping, project-wide find/replace)
 - [ ] Emacs-like undo? (If I find out I can't live without)
 - [ ] Emacs-like kill ring (If I find out I can't live without)
 - [ ] Lister panels (dired, etc)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
+- [ ] FreeType subpixel rendering
 - [ ] Font Kerning
 - [ ] Very nice text rendering (kb_text_shape + Slug)
 - [ ] Git integration (via plugin?)
@@ -65,7 +76,6 @@ TODO(jt): @Stream Small things to do:
 - [X] Flash cursor with typing (needs tuning)
 - [X] When switching-to/closing documents, sort by recency.
 - [ ] Read-only mode for documents.
-- [ ] FreeType subpixel rendering.
 
 */
 
@@ -577,7 +587,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "C-<space>",   .START_SELECTING);
 
-        key_map_add(key_map, "<tab>",       .AUTOCOMPLETE);
+        key_map_add(key_map, "<tab>",       .INDENT_OR_AUTOCOMPLETE);
+        key_map_add(key_map, "C-i",         .INDENT_OR_AUTOCOMPLETE);
 
         key_map_add(key_map, "<enter>",     .CONFIRM);
         key_map_add(key_map, "C-m",         .CONFIRM);
@@ -1494,7 +1505,7 @@ Mini_Panel_Action :: enum {
 
     START_SELECTING;
 
-    AUTOCOMPLETE;
+    INDENT_OR_AUTOCOMPLETE;
 
     CONFIRM;
     CANCEL_OR_STOP_SELECTING;
@@ -1511,28 +1522,28 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
 
     buffered, action := key_map_input(*editor.mini_panel.key_map, event, editor.input_state.modifiers);
     if action == {
-        case .MOVE_UP;                mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
-        case .MOVE_DOWN;              mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
-        case .MOVE_LEFT;              text_buffer_move_cursor_x(*mini_panel.buffer, -1, mini_panel.selecting);
-        case .MOVE_RIGHT;             text_buffer_move_cursor_x(*mini_panel.buffer,  1, mini_panel.selecting);
+        case .MOVE_UP;                 mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
+        case .MOVE_DOWN;               mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
+        case .MOVE_LEFT;               text_buffer_move_cursor_x(*mini_panel.buffer, -1, mini_panel.selecting);
+        case .MOVE_RIGHT;              text_buffer_move_cursor_x(*mini_panel.buffer,  1, mini_panel.selecting);
 
-        case .MOVE_TO_START_OF_LINE;  text_buffer_move_cursor_to_start_of_line(*mini_panel.buffer, mini_panel.selecting);
-        case .MOVE_TO_END_OF_LINE;    text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, mini_panel.selecting);
+        case .MOVE_TO_START_OF_LINE;   text_buffer_move_cursor_to_start_of_line(*mini_panel.buffer, mini_panel.selecting);
+        case .MOVE_TO_END_OF_LINE;     text_buffer_move_cursor_to_end_of_line(*mini_panel.buffer, mini_panel.selecting);
 
-        case .MOVE_FORWARD_WORD;      text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, mini_panel.selecting);
-        case .MOVE_BACKWARD_WORD;     text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, mini_panel.selecting);
+        case .MOVE_FORWARD_WORD;       text_buffer_move_cursor_to_next_word_boundary(*mini_panel.buffer, mini_panel.selecting);
+        case .MOVE_BACKWARD_WORD;      text_buffer_move_cursor_to_previous_word_boundary(*mini_panel.buffer, mini_panel.selecting);
 
-        case .DELETE_FORWARD;         text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
-        case .DELETE_BACKWARD;        buffer_changed |= mini_panel.procs.delete_backward(editor, platform, input);
+        case .DELETE_FORWARD;          text_buffer_delete_forward(*mini_panel.buffer); buffer_changed = true;
+        case .DELETE_BACKWARD;         buffer_changed |= mini_panel.procs.delete_backward(editor, platform, input);
 
-        case .SCROLL_UP;              mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
-        case .SCROLL_DOWN;            mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+        case .SCROLL_UP;               mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+        case .SCROLL_DOWN;             mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
 
-        case .START_SELECTING;        mini_panel.selecting = true;  text_buffer_join_cursors(*mini_panel.buffer);
+        case .START_SELECTING;         mini_panel.selecting = true;  text_buffer_join_cursors(*mini_panel.buffer);
 
-        case .AUTOCOMPLETE;           buffer_changed |= mini_panel.procs.autocomplete(editor, platform, input);
+        case .INDENT_OR_AUTOCOMPLETE;  buffer_changed |= mini_panel.procs.autocomplete(editor, platform, input);
 
-        case .CONFIRM;                buffer_changed |= mini_panel.procs.confirm(editor, platform, input);
+        case .CONFIRM;                 buffer_changed |= mini_panel.procs.confirm(editor, platform, input);
 
         case .CANCEL_OR_STOP_SELECTING; {
             if mini_panel.selecting {
