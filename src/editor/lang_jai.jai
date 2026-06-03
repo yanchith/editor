@@ -1,5 +1,12 @@
 JL :: #import "Jai_Lexer";
 
+LANG_JAI_SURROUND_PAIRS: [] Surround_Pair = .[
+    { #char "{", #char "}" },
+    { #char "(", #char ")" },
+    { #char "[", #char "]" },
+    { #char "\"", #char "\"" },
+];
+
 lang_jai_update_indentation_scopes :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
     ProfileZone("lang_jai_update_syntax_highlights");
 
