@@ -34,7 +34,7 @@ TODO(jt): Stuff to do:
 
 - [~] Syntax Highlighting
 - [~] Syntax aware indentation (C-i)
-- [ ] Mode defined parentheses (suround, autoclose)
+- [ ] Mode defined parentheses (surround, autoclose)
 - [ ] Mode defined comments
 - [ ] Watch opened files for changes on disk
 - [ ] *compilation* buffer
@@ -346,6 +346,9 @@ Panel :: struct {
         y:  s64;
     }
 }
+
+// TODO(jt): @Design @Cleanup Try moving Mini_Panel, Modal_Interaction, and their APIs to their own
+// files, so that we slowly start formalizing how people would do more of this stuff.
 
 Mini_Panel :: struct {
     open: bool;
@@ -1559,28 +1562,10 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     // TODO(jt): Do animated horizontal scroll of buffer in mini panel.
     // TODO(jt): Do animated vertical scroll of item list in mini panel.
     if !buffered && action == .NONE && event.flags & .PRESSED {
-        if event.type == {
-            case .CODEPOINT; {
-                codepoint := event.codepoint;
-
-                if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
-                    if codepoint == {
-                        case; {
-                            // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
-                            // this back to codepoints for its linedata tracking. Add
-                            // text_buffer_insert_utf32?
-                            buf: [4] u8;
-                            s: string;
-                            s.data = buf.data;
-                            Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
-
-                            if !string_starts_with_newline(s, binary = false) {
-                                text_buffer_insert(*mini_panel.buffer, s);
-                                buffer_changed = true;
-                            }
-                        }
-                    }
-                }
+        if event.type == .CODEPOINT {
+            if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
+                char := cast(u32, event.codepoint);
+                buffer_changed |= text_buffer_insert_char(*mini_panel.buffer, char);
             }
         }
     }
@@ -1648,28 +1633,10 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
     // TODO(jt): Do selecting in modal interaction
     // TODO(jt): Animated cursor in modal interaction
     if !buffered && action == .NONE && event.flags & .PRESSED {
-        if event.type == {
-            case .CODEPOINT; {
-                codepoint := event.codepoint;
-
-                if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
-                    if codepoint == {
-                        case; {
-                            // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
-                            // this back to codepoints for its linedata tracking. Add
-                            // text_buffer_insert_utf32?
-                            buf: [4] u8;
-                            s: string;
-                            s.data = buf.data;
-                            Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
-
-                            if !string_starts_with_newline(s, binary = false) {
-                                text_buffer_insert(*modal_interaction.buffer, s);
-                                buffer_changed = true;
-                            }
-                        }
-                    }
-                }
+        if event.type == .CODEPOINT {
+            if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
+                char := cast(u32, event.codepoint);
+                buffer_changed |= text_buffer_insert_char(*modal_interaction.buffer, char);
             }
         }
     }
@@ -1924,20 +1891,32 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             case .CODEPOINT; {
                 panel.selecting = false;
 
-                codepoint := event.codepoint;
+                char := cast(u32, event.codepoint);
 
-                // TODO(jt): @Speed This is a little dumb, because buffer will be parsing
-                // this back to codepoints for its linedata tracking. Add
-                // text_buffer_insert_utf32?
-                buf: [4] u8;
-                s: string;
-                s.data = buf.data;
-                Unicode.character_utf32_to_utf8(cast(u32, codepoint), *s);
+                handled := false;
+                opens, closes, paired_char := is_part_of_surround_pair(document, char);
 
-                text_buffer_insert(*document.buffer, s);
-                panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
-                buffer_changed = true;
+                if closes {
+                    // nocheckin handle closing
+                }
+
+                if opens && !handled {
+                    if document.buffer.cursor0 == document.buffer.cursor1 {
+                        text_buffer_insert_char(*document.buffer, char);
+                        text_buffer_insert_char(*document.buffer, paired_char, undo_fuse = true);
+                        text_buffer_move_cursor_x(*document.buffer, -1, false);
+                        buffer_changed = true;
+                        handled = true;
+                    } else {
+                        // nocheckin handle surrounding selection
+                    }
+                }
+
+                if !handled {
+                    buffer_changed |= text_buffer_insert_char(*document.buffer, char);
+                    panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+                }
             }
         }
     }
@@ -2051,6 +2030,49 @@ close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
     modal_interaction.userdata = null;
 
     modal_interaction.open = false;
+}
+
+// TODO(jt): @Cleanup Once we have this sort-of defined make a Procs (+constants) struct out of
+// these, like we have for other APIs.
+
+Surround_Pair :: struct {
+    open:  u32;
+    close: u32;
+}
+
+PLAIN_TEXT_SURROUND_PAIRS: [] Surround_Pair = .[
+    { #char "{", #char "}" },
+    { #char "(", #char ")" },
+    { #char "[", #char "]" },
+    { #char "\"", #char "\"" },
+];
+
+get_surround_pairs :: (document: Document) -> /* Static */ [] Surround_Pair {
+    if #complete document.mode == {
+        case .PLAIN_TEXT;  return PLAIN_TEXT_SURROUND_PAIRS;
+        case .JAI;         return LANG_JAI_SURROUND_PAIRS;
+    }
+}
+
+is_part_of_surround_pair :: (document: Document, char: u32) -> opens: bool, closes: bool, paired_char: u32 {
+    pairs := get_surround_pairs(document);
+
+    opens  := false;
+    closes := false;
+    paired_char: u32;
+    for pairs {
+        if it.open == char {
+            opens = true;
+            paired_char = it.close;
+        }
+
+        if it.close == char {
+            closes = true;
+            paired_char = it.open;
+        }
+    }
+
+    return opens, closes, paired_char;
 }
 
 update_indentation_scopes :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
