@@ -1896,20 +1896,53 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 handled := false;
                 opens, closes, paired_char := is_part_of_surround_pair(document, char);
 
-
                 if closes {
-                    // nocheckin handle closing
+                    if document.buffer.cursor0 == document.buffer.cursor1 {
+                        // nocheckin handle balanced closing
+                    } else {
+                        // Surrounding selection never cares for unbalanced parentheses
+                        c0 := document.buffer.cursor0;
+                        c1 := document.buffer.cursor1;
+                        text_location_sort(*c0, *c1);
+
+                        text_buffer_join_cursors(*document.buffer);
+
+                        text_buffer_move_cursor_to(*document.buffer, c0, false);
+                        text_buffer_insert_char(*document.buffer, paired_char, undo_barrier = true);
+
+                        c1.x += 1; // Because we just inserted the starting paren.
+                        text_buffer_move_cursor_to(*document.buffer, c1, false);
+                        text_buffer_insert_char(*document.buffer, char, undo_fuse = true);
+
+                        buffer_changed = true;
+                        handled = true;
+                    }
                 }
 
                 if opens && !handled {
                     if document.buffer.cursor0 == document.buffer.cursor1 {
-                        text_buffer_insert_char(*document.buffer, char);
+                        // nocheckin handle balancing
+                        text_buffer_insert_char(*document.buffer, char, /*undo_barrier = true*/);
                         text_buffer_insert_char(*document.buffer, paired_char, undo_fuse = true);
                         text_buffer_move_cursor_x(*document.buffer, -1, false);
                         buffer_changed = true;
                         handled = true;
                     } else {
-                        // nocheckin handle surrounding selection
+                        // Surrounding selection never cares for unbalanced parentheses
+                        c0 := document.buffer.cursor0;
+                        c1 := document.buffer.cursor1;
+                        text_location_sort(*c0, *c1);
+
+                        text_buffer_join_cursors(*document.buffer);
+
+                        text_buffer_move_cursor_to(*document.buffer, c1, false);
+                        text_buffer_insert_char(*document.buffer, paired_char, undo_barrier = true);
+
+                        text_buffer_move_cursor_to(*document.buffer, c0, false);
+                        text_buffer_insert_char(*document.buffer, char, undo_fuse = true);
+
+                        buffer_changed = true;
+                        handled = true;
                     }
                 }
 
@@ -2035,19 +2068,19 @@ close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
 // TODO(jt): @Cleanup Once we have this sort-of defined make a Procs (+constants) struct out of
 // these, like we have for other APIs.
 
-Surround_Pair :: struct {
+Paren_Pair :: struct {
     open:  u32;
     close: u32;
 }
 
-PLAIN_TEXT_SURROUND_PAIRS: [] Surround_Pair = .[
+PLAIN_TEXT_SURROUND_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
     { #char "[", #char "]" },
     { #char "\"", #char "\"" },
 ];
 
-get_surround_pairs :: (document: Document) -> /* Static */ [] Surround_Pair {
+get_surround_pairs :: (document: Document) -> /* Static */ [] Paren_Pair {
     if #complete document.mode == {
         case .PLAIN_TEXT;  return PLAIN_TEXT_SURROUND_PAIRS;
         case .JAI;         return LANG_JAI_SURROUND_PAIRS;
