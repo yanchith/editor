@@ -18,8 +18,8 @@ update_indentation_scopes :: (document: *Document) {
     sibling_index := -1;
     {
         scope := array_add(*document.indentation_scopes);
-        scope.loc0 = { 0, 0 };
-        scope.loc1 = { document.buffer.line_count - 1, document.buffer.line_chars[document.buffer.line_count - 1] };
+        scope.loc0 = text_buffer_get_start(document.buffer);
+        scope.loc1 = text_buffer_get_end(document.buffer);
         scope.nesting_depth = 0;
     }
 
