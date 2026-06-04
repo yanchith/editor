@@ -34,7 +34,8 @@ TODO(jt): Stuff to do:
 
 - [~] Syntax Highlighting
 - [~] Syntax aware indentation (C-i)
-- [ ] Mode defined parentheses (surround, autoclose)
+- [~] Mode defined parentheses (surround, autoclose)
+- [~] Matching parentheses highlight
 - [ ] Mode defined comments
 - [ ] Watch opened files for changes on disk
 - [ ] *compilation* buffer
@@ -1831,9 +1832,41 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .DELETE_BACKWARD_WORD;         // TODO(jt): text_buffer_delete_until_previous_word_boundary
 
         case .INSERT_LINE_BEFORE; {
+            // nocheckin Getting there, but still have to iron out a few kinks
+
+            should_make_space_for_block := false;
+            if document.buffer.cursor0.x > 0 {
+                curr_loc := document.buffer.cursor0;
+                prev_loc := curr_loc;
+                prev_loc.x -= 1;
+
+                prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
+                curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
+
+                opens, _, paired_char := is_part_of_surround_pair(document, prev_byte);
+                if opens && paired_char == curr_byte {
+                    should_make_space_for_block = true;
+                }
+            }
+
             // TODO(jt): Preserve CRLF in CRLF-only documents.
             panel.selecting = false;
             buffer_changed |= text_buffer_insert(*document.buffer, "\n", undo_barrier = true);
+
+            if should_make_space_for_block {
+                buffer_changed |= text_buffer_insert(*document.buffer, "\n", undo_fuse = true);
+                cursor_moved   |= text_buffer_move_cursor_y(*document.buffer, -1, false);
+            }
+
+            if document.indentation_scopes.count {
+                // nocheckin this is super slow, so maybe at least don't do it again at the end of the function?
+                update_indentation_scopes(document);
+                indentation_level := find_indentation_level(document);
+                if indentation_level {
+                    buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level);
+                    cursor_moved   |= text_buffer_move_cursor_to_end_of_line(*document.buffer, false);
+                }
+            }
         }
         case .INSERT_LINE_AFTER; {
             // TODO(jt): Preserve CRLF in CRLF-only documents.
@@ -1848,39 +1881,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             if document.indentation_scopes.count {
                 // TODO(jt): Indent all selected lines.
                 // TODO(jt): Respect (possibly incorrect) indentation of line previous to first indented line.
-                // TODO(jt): @Bug This fails to indent an empty line.
-                // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
-
-                // TODO(jt): Make indent amount configurable, or maybe detect it fron content :Config.
-                INDENT :: 4;
-
-                cursor := document.buffer.cursor0;
-
-                indentation_level := 0;
-                current_index     := 0;
-                while current_index != -1 {
-                    current := *document.indentation_scopes[current_index];
-                    indentation_level = current.nesting_depth * INDENT;
-
-                    current_index = -1;
-                    if current.first_child_index != -1 {
-                        child := *document.indentation_scopes[current.first_child_index];
-
-                        if cursor.y > child.loc0.y && cursor.y < child.loc1.y {
-                            current_index = current.first_child_index;
-                        }
-
-                        while current_index == -1 && child.next_sibling_index != -1 {
-                            index := child.next_sibling_index;
-                            child = *document.indentation_scopes[index];
-
-                            if cursor.y > child.loc0.y && cursor.y < child.loc1.y {
-                                current_index = index;
-                            }
-                        }
-                    }
-                }
-
+                indentation_level := find_indentation_level(document);
                 buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level);
             } else {
                 buffer_changed |= text_buffer_insert(*document.buffer, "    ");
