@@ -639,14 +639,11 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         space_count += 1;
     }
 
-    log("nocheckin %:", indentation_level);
-
     changed := false;
     if space_count > indentation_level {
         delete_count := space_count - indentation_level;
-        log("nocheckin delete count: %", delete_count);
 
-        gap_buffer_move_gap_to(*buffer.gb, line_gb_index + indentation_level);
+        gap_buffer_move_gap_to(*buffer.gb, line_gb_index + space_count);
         gb_index_before := buffer.gb.gap_index;
 
         gap_buffer_delete_backward(*buffer.gb, delete_count);
@@ -654,8 +651,6 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
 
         buffer.line_bytes[buffer.cursor0.y] -= delete_count;
         buffer.line_chars[buffer.cursor0.y] -= delete_count;
-
-        log("nocheckin bytes: % chars: %", buffer.line_bytes[buffer.cursor0.y], buffer.line_chars[buffer.cursor0.y]);
 
         edit_cursor_before: Text_Location = original_cursor0;
         edit_cursor_before.x = space_count;
