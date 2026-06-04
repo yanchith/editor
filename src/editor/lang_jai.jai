@@ -1,6 +1,6 @@
 JL :: #import "Jai_Lexer";
 
-LANG_JAI_SURROUND_PAIRS: [] Surround_Pair = .[
+LANG_JAI_SURROUND_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
     { #char "[", #char "]" },
@@ -34,7 +34,7 @@ lang_jai_update_indentation_scopes :: (editor: *Editor, document: *Document, pla
         // TODO(jt): @Speed SIMDify looking for parentheses!
         line := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
         for byte, byte_index: line {
-            for paren_pair: PARENS {
+            for paren_pair: INDENTATION_PARENS {
                 if byte == paren_pair.open {
                     index := document.indentation_scopes.count;
                     parent := *document.indentation_scopes[parent_index];
@@ -183,12 +183,7 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
 
 #scope_file
 
-Paren_Pair :: struct {
-    open:  u8;
-    close: u8;
-}
-
-PARENS :: Paren_Pair.[
+INDENTATION_PARENS :: Paren_Pair.[
     { #char "(", #char ")" },
     { #char "{", #char "}" },
     { #char "[", #char "]" },

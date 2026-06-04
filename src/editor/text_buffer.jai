@@ -54,6 +54,14 @@ operator == :: (a: Text_Location, b: Text_Location) -> bool {
     return a.x == b.x && a.y == b.y;
 }
 
+text_location_sort :: (loc0: *Text_Location, loc1: *Text_Location) {
+    if loc0.y > loc1.y {
+        swap(loc0, loc1);
+    } else if loc0.y == loc1.y && loc0.x > loc1.x {
+        swap(loc0, loc1);
+    }
+}
+
 Edit :: struct {
     type:  Type;
     flags: Flags;
@@ -259,7 +267,7 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, _
 
     start := _start;
     end   := _end;
-    sort_locations(*start, *end);
+    text_location_sort(*start, *end);
 
     start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, start);
     end_gb_index   := text_buffer_get_gap_buffer_index_for_location(buffer, end);
@@ -610,8 +618,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
 
     assert_valid(buffer);
 
-    // This routine assumes this is a ascii. Actually, it assumes it is exactly space, but that
-    // could be improved.
+    // This routine assumes this is a ascii. Actually, it assumes it is exactly space,
+    // but that part could be improved.
     INDENTATION_VALUE: u8 : #char " ";
 
     original_cursor0 := buffer.cursor0;
@@ -631,9 +639,12 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         space_count += 1;
     }
 
+    log("nocheckin %:", indentation_level);
+
     changed := false;
     if space_count > indentation_level {
         delete_count := space_count - indentation_level;
+        log("nocheckin delete count: %", delete_count);
 
         gap_buffer_move_gap_to(*buffer.gb, line_gb_index + indentation_level);
         gb_index_before := buffer.gb.gap_index;
@@ -643,6 +654,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
 
         buffer.line_bytes[buffer.cursor0.y] -= delete_count;
         buffer.line_chars[buffer.cursor0.y] -= delete_count;
+
+        log("nocheckin bytes: % chars: %", buffer.line_bytes[buffer.cursor0.y], buffer.line_chars[buffer.cursor0.y]);
 
         edit_cursor_before: Text_Location = original_cursor0;
         edit_cursor_before.x = space_count;
@@ -713,8 +726,6 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         buffer.cursor1 = display_cursor_after;
 
         changed = true;
-    } else {
-        changed = false;
     }
 
     assert_valid(buffer);
@@ -959,7 +970,7 @@ text_buffer_get_byte_count_for_interval :: (buffer: Text_Buffer, _start: Text_Lo
 
     start := _start;
     end   := _end;
-    sort_locations(*start, *end);
+    text_location_sort(*start, *end);
 
     start_index := text_buffer_get_gap_buffer_index_for_location(buffer, start);
     end_index   := text_buffer_get_gap_buffer_index_for_location(buffer, end);
@@ -975,7 +986,7 @@ text_buffer_make_view_for_interval :: (buffer: Text_Buffer, _start: Text_Locatio
 
     start := _start;
     end   := _end;
-    sort_locations(*start, *end);
+    text_location_sort(*start, *end);
 
     start_index := text_buffer_get_gap_buffer_index_for_location(buffer, start);
     end_index   := text_buffer_get_gap_buffer_index_for_location(buffer, end);
@@ -1058,12 +1069,16 @@ text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
 }
 
 text_buffer_move_cursor_to :: (buffer: *Text_Buffer, _x: s64, _y: s64, selecting: bool) {
+    /*inline?*/ text_buffer_move_cursor_to(buffer, { _x, _y }, selecting);
+}
+
+text_buffer_move_cursor_to :: (buffer: *Text_Buffer, loc: Text_Location, selecting: bool) {
     ProfileZone("text_buffer_move_cursor_to");
 
     assert_valid(buffer);
 
-    y := clamp(_y, 0, buffer.line_count - 1);
-    x := clamp(_x, 0, buffer.line_chars[y]);
+    y := clamp(loc.y, 0, buffer.line_count - 1);
+    x := clamp(loc.x, 0, buffer.line_chars[y]);
 
     buffer.cursor0 = { x, y };
 
@@ -1981,14 +1996,6 @@ is_through_edit :: (text: string) -> bool {
     }
 
     return false;
-}
-
-sort_locations :: (start: *Text_Location, end: *Text_Location) {
-    if start.y > end.y {
-        swap(start, end);
-    } else if start.y == end.y && start.x > end.x {
-        swap(start, end);
-    }
 }
 
 // TODO(jt): Make this configurable (per-programming language)?  :Config
