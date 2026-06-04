@@ -914,6 +914,21 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
     return true;
 }
 
+// Returns 0 if locations is at the end of the last line
+// TODO(jt): Also do a text_buffer_get_char_at_cursor that would decode the byte.
+text_buffer_get_byte_at_location :: (buffer: Text_Buffer, loc: Text_Location) -> u8 {
+    assert_location_valid(buffer, loc);
+
+    if loc.y == buffer.line_count && loc.x >= buffer.line_chars.count {
+        return 0;
+    }
+
+    gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, loc);
+    byte := buffer.gb[gb_index];
+
+    return byte;
+}
+
 text_buffer_get_start :: (buffer: Text_Buffer) -> Text_Location {
     return { 0, 0 };
 }
@@ -1570,12 +1585,12 @@ text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s
     return index;
 }
 
-text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, location: Text_Location) -> s64 {
+text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, loc: Text_Location) -> s64 {
     ProfileZone("text_buffer_get_gap_buffer_index_for_location");
 
-    assert_location_valid(buffer, location);
+    assert_location_valid(buffer, loc);
 
-    line_index := location.y;
+    line_index := loc.y;
     if line_index >= buffer.line_bytes.count {
         // We are past the last line. Return index past the last byte in the gap buffer.
         return buffer.gb.count;
@@ -1595,7 +1610,7 @@ text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, location:
         index += buffer.line_bytes[it];
     }
 
-    for 0..location.x - 1 {
+    for 0..loc.x - 1 {
         first_byte := buffer.gb[index];
 
         codepoint_bytes: s64 = 1;

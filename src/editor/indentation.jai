@@ -88,3 +88,40 @@ update_indentation_scopes :: (document: *Document) {
         gb_index += gb_count;
     }
 }
+
+find_indentation_level :: (document: Document) -> s64 {
+    // TODO(jt): @Bug This fails to indent an empty line.
+    // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
+
+    // TODO(jt): Make indent amount configurable, or maybe detect it fron content :Config.
+    INDENT :: 4;
+
+    cursor := document.buffer.cursor0;
+
+    indentation_level := 0;
+    current_index     := 0;
+    while current_index != -1 {
+        current := *document.indentation_scopes[current_index];
+        indentation_level = current.nesting_depth * INDENT;
+
+        current_index = -1;
+        if current.first_child_index != -1 {
+            child := *document.indentation_scopes[current.first_child_index];
+
+            if cursor.y > child.loc0.y && cursor.y < child.loc1.y {
+                current_index = current.first_child_index;
+            }
+
+            while current_index == -1 && child.next_sibling_index != -1 {
+                index := child.next_sibling_index;
+                child = *document.indentation_scopes[index];
+
+                if cursor.y > child.loc0.y && cursor.y < child.loc1.y {
+                    current_index = index;
+                }
+            }
+        }
+    }
+
+    return indentation_level;
+}
