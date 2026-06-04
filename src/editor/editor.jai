@@ -1897,9 +1897,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 opens, closes, paired_char := is_part_of_surround_pair(document, char);
 
                 if closes {
-                    if document.buffer.cursor0 == document.buffer.cursor1 {
-                        // nocheckin handle balanced closing
-                    } else {
+                    if document.buffer.cursor0 != document.buffer.cursor1 {
                         // Surrounding selection never cares for unbalanced parentheses
                         c0 := document.buffer.cursor0;
                         c1 := document.buffer.cursor1;
@@ -1921,7 +1919,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                 if opens && !handled {
                     if document.buffer.cursor0 == document.buffer.cursor1 {
-                        // nocheckin handle balancing
+                        // TODO(jt): handle balancing?
                         text_buffer_insert_char(*document.buffer, char, /*undo_barrier = true*/);
                         text_buffer_insert_char(*document.buffer, paired_char, undo_fuse = true);
                         text_buffer_move_cursor_x(*document.buffer, -1, false);
