@@ -1137,6 +1137,35 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
 
         //
+        // Draw matching parenthesis highlight
+        //
+        {
+            found := false;
+            highlight_loc: Text_Location;
+
+            for document.indentation_scopes {
+                if it.loc0 == document.buffer.cursor0 {
+                    found = true;
+                    highlight_loc = it.loc1;
+                    break;
+                }
+
+                if it.loc1 == document.buffer.cursor0 {
+                    found = true;
+                    highlight_loc = it.loc0;
+                    break;
+                }
+            }
+
+            if found {
+                highlight_position := get_position_of_location(document, editor.font, highlight_loc) - panel.scroll;
+                highlight_rect := rect_from_point_and_size(cast(f32, highlight_position.x), cast(f32, highlight_position.y), cell_w, cell_h);
+
+                draw_rect(*render_rects, highlight_rect, ACTIVE_HIGHLIGHT_COLOR);
+            }
+        }
+
+        //
         // Draw cursor
         //
         {
@@ -2349,6 +2378,16 @@ get_cursor_position :: (document: Document, font: Font) -> cursor_position: DVec
     line_end_x := font_compute_position_on_line(font, line_view, line_end.x, binary = document.buffer.binary_mode);
 
     return position, line_end_x;
+}
+
+get_position_of_location :: (document: Document, font: Font, loc: Text_Location) -> DVector2 {
+    line_view := text_buffer_make_view_for_line(document.buffer, loc.y,, temp);
+
+    position: DVector2;
+    position.x = font_compute_position_on_line(font, line_view, loc.x, binary = document.buffer.binary_mode);
+    position.y = cast(f64, loc.y) * font.line_height_in_pixels;
+
+    return position;
 }
 
 setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time, source: DVector2, target: DVector2) {
