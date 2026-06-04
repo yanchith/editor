@@ -121,6 +121,7 @@ operator==     :: Math.operator==;
 #load "font.jai";
 #load "gap_buffer.jai";
 #load "text_buffer.jai";
+#load "indentation.jai";
 #load "color.jai";
 #load "mini_panel_search.jai";
 #load "mini_panel_open_file.jai";
@@ -1966,11 +1967,10 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     if buffer_changed {
         document.flags |= .CHANGED_THIS_FRAME;
 
-        // We have to update these after every changed, because the very next changed could be
-        // needing this. Doesn't matter much as long as we hit our frame budgets. Also, we could
-        // start being smart about this, becuase not every subsequent action needs these to be
-        // updated, but for now this is how it is.
-        update_indentation_scopes(editor, document, platform, input);
+        // We have to update these after every change, because the very next edit could be needing
+        // this. Doesn't matter much as long as we hit our frame budgets. Also, we could start being
+        // smart about this, becuase not every subsequent action needs these up to date.
+        update_indentation_scopes(document);
     }
 }
 
@@ -2071,6 +2071,12 @@ Paren_Pair :: struct {
     close: u32;
 }
 
+PLAIN_TEXT_INDENTATION_PAIRS: [] Paren_Pair = .[
+    { #char "{", #char "}" },
+    { #char "(", #char ")" },
+    { #char "[", #char "]" },
+];
+
 PLAIN_TEXT_SURROUND_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
@@ -2104,13 +2110,6 @@ is_part_of_surround_pair :: (document: Document, char: u32) -> opens: bool, clos
     }
 
     return opens, closes, paired_char;
-}
-
-update_indentation_scopes :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
-    if #complete document.mode == {
-        case .PLAIN_TEXT; // Nothing
-        case .JAI;        lang_jai_update_indentation_scopes(editor, document, platform, input);
-    }
 }
 
 update_syntax_highlights :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
