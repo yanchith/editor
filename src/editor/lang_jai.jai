@@ -42,7 +42,12 @@ lang_jai_update_indentation_scopes :: (editor: *Editor, document: *Document, pla
                     scope: Document.Indentation_Scope;
                     scope.loc0.x = count_utf8_chars(String.slice(cast(string, line), 0, byte_index));
                     scope.loc0.y = line_index;
-                    // scope.loc1 is set when we find the closing paren.
+
+                    // loc1 is properly set when we find the closing paren, but until then we set it
+                    // to the end of the document, so that it forms a non-empty interval that can be
+                    // found when someone searches the tree.
+                    scope.loc1 = text_buffer_get_end(document.buffer);
+
                     scope.open_paren = byte;
                     scope.nesting_depth = parent.nesting_depth + 1;
                     scope.parent_index = parent_index;
@@ -73,9 +78,10 @@ lang_jai_update_indentation_scopes :: (editor: *Editor, document: *Document, pla
                         parent := *document.indentation_scopes[parent_index];
 
                         sibling_index = scope_index;
-                    } else {
-                        // TODO(jt): Handle this somehow? The file doesn't need to be parseable.
                     }
+
+                    // Ignoring mismatching closing parens is an alright behavior, but maybe there
+                    // is something better we can do?
 
                     continue byte;
                 }

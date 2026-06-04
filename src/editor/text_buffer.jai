@@ -914,6 +914,16 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
     return true;
 }
 
+text_buffer_get_start :: (buffer: Text_Buffer) -> Text_Location {
+    return { 0, 0 };
+}
+
+text_buffer_get_end :: (buffer: Text_Buffer) -> Text_Location {
+    y := buffer.line_count - 1;
+    x := buffer.line_chars[y];
+    return { x, y };
+}
+
 text_buffer_get_start_of_line :: (buffer: Text_Buffer, line_index: s64) -> Text_Location {
     assert_line_valid(buffer, line_index);
 
