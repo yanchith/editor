@@ -613,7 +613,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     return deleted;
 }
 
-text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> changed: bool {
+text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64, undo_fuse := false) -> changed: bool {
     ProfileZone("text_buffer_indent_line");
 
     assert_valid(buffer);
@@ -675,6 +675,13 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         edit.cursor1_for_display_before = original_cursor1;
         edit.cursor1_for_display_after = display_cursor_after;
 
+        if undo_fuse {
+            edit.flags |= .FUSED_WITH_PREVIOUS;
+
+            previous_edit := *buffer.edits[buffer.edits.count - 2];
+            previous_edit.flags |= .FUSED_WITH_NEXT;
+        }
+
         buffer.applied_edit_count = buffer.edits.count;
 
         buffer.cursor0 = display_cursor_after;
@@ -714,6 +721,13 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64) -> cha
         edit.cursor0_for_display_after = display_cursor_after;
         edit.cursor1_for_display_before = original_cursor1;
         edit.cursor1_for_display_after = display_cursor_after;
+
+        if undo_fuse {
+            edit.flags |= .FUSED_WITH_PREVIOUS;
+
+            previous_edit := *buffer.edits[buffer.edits.count - 2];
+            previous_edit.flags |= .FUSED_WITH_NEXT;
+        }
 
         buffer.applied_edit_count = buffer.edits.count;
 
@@ -760,6 +774,8 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
                     for deleted_bytes {
                         // TODO(jt): @Bug This sometimes asserts, but I can't figure out the repro
                         // sequence. Write a fuzzer?
+                        //
+                        // UPDATE: Strike 2. Still happens. Still can't reproduce.
                         sanity_assert(it == edit.memset_value);
                     }
                 }

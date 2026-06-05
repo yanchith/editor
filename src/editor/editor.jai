@@ -1859,11 +1859,11 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             }
 
             if document.indentation_scopes.count {
-                // nocheckin this is super slow, so maybe at least don't do it again at the end of the function?
+                // TODO(jt): This is super slow, so maybe don't do it again at the end of this routine?
                 update_indentation_scopes(document);
                 indentation_level := find_indentation_level(document);
                 if indentation_level {
-                    buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level);
+                    buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level, undo_fuse = true);
                     cursor_moved   |= text_buffer_move_cursor_to_end_of_line(*document.buffer, false);
                 }
             }
