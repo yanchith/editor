@@ -170,20 +170,24 @@ text_buffer_insert_char :: (buffer: *Text_Buffer, char: u32, undo_barrier := fal
     s.data = buf.data;
     Unicode.character_utf32_to_utf8(char, *s);
 
-    return text_buffer_insert(buffer, s, undo_barrier, undo_fuse);
+    return text_buffer_insert(buffer, s, true, undo_barrier, undo_fuse);
 }
 
-text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_barrier := false, undo_fuse := false) -> changed: bool {
-    /*inline?*/ return text_buffer_insert(buffer, cast(string, bytes), undo_barrier, undo_fuse);
+text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo := true, undo_barrier := false, undo_fuse := false) -> changed: bool {
+    /*inline?*/ return text_buffer_insert(buffer, cast(string, bytes), undo, undo_barrier, undo_fuse);
 }
 
 // TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
 // switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so we would
 // supply .REVERT, etc.
-text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false, undo_fuse := false) -> changed: bool {
+text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo := true, undo_barrier := false, undo_fuse := false) -> changed: bool {
     ProfileZone("text_buffer_insert");
 
     assert_valid(buffer);
+    if !undo {
+        assert(!undo_barrier);
+        assert(!undo_fuse);
+    }
 
     if text.count == 0 {
         return false;
@@ -205,38 +209,44 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_barrier := false
     gap_buffer_insert(*buffer.gb, text);
 
     discard_unapplied_edits(buffer);
-    edit := array_add(*buffer.edits);
-    edit.type = .INSERT_FORWARD;
-    edit.flags = .NONE;
-    if undo_barrier {
-        edit.flags |= .BARRIER;
-    } else if is_through_edit(text) {
-        // TODO(jt): Also don't add through, if the edit timestamps were too far apart.
-        edit.flags |= .THROUGH;
+
+    edit: *Edit;
+    if undo {
+        edit = array_add(*buffer.edits);
+        edit.type = .INSERT_FORWARD;
+        edit.flags = .NONE;
+        if undo_barrier {
+            edit.flags |= .BARRIER;
+        } else if is_through_edit(text) {
+            // TODO(jt): Also don't add through, if the edit timestamps were too far apart.
+            edit.flags |= .THROUGH;
+        }
+        edit.text = arena_push_string(buffer.edit_text_arena, text);
+        edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+        edit.gb_index_before = gb_index;
+        edit.gb_index_after = gb_index + text.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+        // The after cursors are set, well after.
+        edit.cursor0_for_edit_before = buffer.cursor0;
+        edit.cursor0_for_display_before = buffer.cursor0;
+        edit.cursor1_for_display_before = buffer.cursor1;
+
+        if undo_fuse || insert_caused_delete_selection {
+            edit.flags |= .FUSED_WITH_PREVIOUS;
+
+            previous_edit := *buffer.edits[buffer.edits.count - 2];
+            previous_edit.flags |= .FUSED_WITH_NEXT;
+        }
+
+        buffer.applied_edit_count = buffer.edits.count;
     }
-    edit.text = arena_push_string(buffer.edit_text_arena, text);
-    edit.text_mark = arena_get_mark(buffer.edit_text_arena);
-    edit.gb_index_before = gb_index;
-    edit.gb_index_after = gb_index + text.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-    // The after cursors are set, well after.
-    edit.cursor0_for_edit_before = buffer.cursor0;
-    edit.cursor0_for_display_before = buffer.cursor0;
-    edit.cursor1_for_display_before = buffer.cursor1;
-
-    if undo_fuse || insert_caused_delete_selection {
-        edit.flags |= .FUSED_WITH_PREVIOUS;
-
-        previous_edit := *buffer.edits[buffer.edits.count - 2];
-        previous_edit.flags |= .FUSED_WITH_NEXT;
-    }
-
-    buffer.applied_edit_count = buffer.edits.count;
 
     update_index_for_insert(buffer, text);
 
-    edit.cursor0_for_edit_after = buffer.cursor0;
-    edit.cursor0_for_display_after = buffer.cursor0;
-    edit.cursor1_for_display_after = buffer.cursor0;
+    if undo {
+        edit.cursor0_for_edit_after = buffer.cursor0;
+        edit.cursor0_for_display_after = buffer.cursor0;
+        edit.cursor1_for_display_after = buffer.cursor0;
+    }
 
     buffer.cursor1 = buffer.cursor0;
 

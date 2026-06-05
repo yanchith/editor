@@ -2009,7 +2009,7 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
 
     assert(!mini_panel.open);
 
-    text_buffer_insert(*mini_panel.buffer, initial_text);
+    text_buffer_insert(*mini_panel.buffer, initial_text, undo = false);
 
     mini_panel.procs = procs;
     mini_panel.open = true;
@@ -2070,7 +2070,7 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, pr
     key_map_add(key_map, "C-m",         .CONFIRM);
     key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
 
-    text_buffer_insert(*modal_interaction.buffer, initial_text);
+    text_buffer_insert(*modal_interaction.buffer, initial_text, undo = false);
 
     modal_interaction.procs = procs;
     modal_interaction.open = true;
@@ -2267,7 +2267,7 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
 
     hello_arena := make_arena(platform, .LARGE);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
-    text_buffer_insert(*document.buffer, hello_text, undo_barrier = true);
+    text_buffer_insert(*document.buffer, hello_text, undo = false);
 
     document.buffer.cursor0 = { 0, 0 };
     document.buffer.cursor1 = { 0, 0 };
