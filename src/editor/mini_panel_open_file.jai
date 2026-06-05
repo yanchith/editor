@@ -215,7 +215,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                     // TODO(jt): Detect/Watch file changes on disk!
                     success, file_contents := platform.read_file(file_absolute_path,, temp);
                     if success {
-                        text_buffer_insert(*document.buffer, file_contents);
+                        text_buffer_insert(*document.buffer, file_contents, undo = false);
                         text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
                         if active_panel {
