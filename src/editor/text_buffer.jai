@@ -1761,24 +1761,35 @@ assert_location_valid :: (buffer: Text_Buffer, loc: Text_Location) {
 discard_unapplied_edits :: (buffer: *Text_Buffer) {
     if buffer.edits.count && buffer.applied_edit_count < buffer.edits.count {
 
-        // Edit texts are allocated in order they were created. If we are hosing everything beyond a
-        // certain point, we can just use the restore mark from the beginning of the chain.
+        // Edit texts are allocated in order they were created. To hose everything beyond a certain
+        // point, use the restore mark from the beginning of that chain.
         //
         // However, we can only do it if we have a unique arena for the edit text.
         if buffer.arena != buffer.edit_text_arena {
-            // Additionally, some edits don't have their text allocated at all (INSERT_MEMSET), so
-            // we need to find the first that does (by looking at their arena marks).
+            if buffer.applied_edit_count == 0 {
+                // If all edits are unapplied, we pop to the original state when we received the arena.
+                arena_pop_to_mark(buffer.edit_text_arena, buffer.edit_text_arena_mark);
+            } else {
+                // Otherwise, we scan backwards to an edit that has a mark defined. (Not all edits
+                // have a mark, because they could be just memsetting.) If we don't find, it we pop
+                // to the original restore mark.
 
-            edit_index := buffer.applied_edit_count - 1;
-            edit       := *buffer.edits[edit_index];
+                edit_index := buffer.applied_edit_count - 1;
+                edit       := *buffer.edits[edit_index];
 
-            while edit.text_mark.allocated == -1 && edit_index > 0 {
-                edit_index -= 1;
-                edit        = *buffer.edits[edit_index];
-            }
+                while edit.text_mark.allocated == -1 && edit_index > 0 {
+                    edit_index -= 1;
+                    edit        = *buffer.edits[edit_index];
+                }
 
-            if edit.text_mark.allocated != -1 {
-                arena_pop_to_mark(buffer.edit_text_arena, edit.text_mark);
+                if edit.text_mark.allocated == -1 {
+                    sanity_assert(edit_index == 0);
+                    if edit_index == 0 {
+                        arena_pop_to_mark(buffer.edit_text_arena, buffer.edit_text_arena_mark);
+                    }
+                } else {
+                    arena_pop_to_mark(buffer.edit_text_arena, edit.text_mark);
+                }
             }
         }
 
