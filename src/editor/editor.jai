@@ -58,6 +58,7 @@ TODO(jt): Stuff to do:
 
 TODO(jt): @Stream Small things to do:
 
+- [ ] Map-like zoom
 - [X] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
 - [X] OPEN_FILE starts in the directory of the currently open document
 - [X] OPEN_FILE, switch to buffer and close buffer get tab completions.
