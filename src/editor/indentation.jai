@@ -14,6 +14,9 @@ update_indentation_scopes :: (document: *Document) {
     }
 
     array_reset_keeping_memory(*document.indentation_scopes);
+    if document.buffer.binary_mode {
+        return; // Don't recreate indentation data if we entered binary mode.
+    }
 
     parent_index  := document.indentation_scopes.count;
     sibling_index := -1;
