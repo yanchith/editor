@@ -6,7 +6,7 @@ update_indentation_scopes :: (document: *Document) {
         return;
     }
 
-    // nocheckin @Bug Do something else if the buffer is binary.
+    // TODO(jt): @Bug Do something else if the buffer is binary.
     indentation_pairs: [] Paren_Pair;
     if #complete document.mode == {
         case .PLAIN_TEXT;  indentation_pairs = PLAIN_TEXT_INDENTATION_PAIRS;

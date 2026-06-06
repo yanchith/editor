@@ -1832,8 +1832,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         case .DELETE_BACKWARD_WORD;         // TODO(jt): text_buffer_delete_until_previous_word_boundary
 
         case .INSERT_LINE_BEFORE; {
-            // nocheckin Getting there, but still have to iron out a few kinks
-
             should_make_space_for_block := false;
             if document.buffer.cursor0.x > 0 {
                 curr_loc := document.buffer.cursor0;
