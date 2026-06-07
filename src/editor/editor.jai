@@ -689,6 +689,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     active_panel: *Panel = get_active_panel(editor);
     assert(active_panel != null);
 
+    active_panel_cursor_or_mouse_position_before_zoom := get_cursor_position(active_panel.document, editor.font);
+
     for input.events {
         handled := false;
 
@@ -748,6 +750,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if input.mouse_wheel_delta > 0 then delta = 1;
         if input.mouse_wheel_delta < 0 then delta = -1;
         editor.font_size = max(editor.font_size + delta, 1);
+
+        // nocheckin override cursor position by the mouse position.
+        active_panel_cursor_or_mouse_position_before_zoom = active_panel.scroll + input.mouse_position;
     }
 
     {
@@ -755,11 +760,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if editor.font.pixel_height != want_pixel_height {
             editor_log(editor, "Resetting font to new physical pixel height: % (subpixel: %)", want_pixel_height, FONT_SUBPIXEL);
             font_reset_for_options(*editor.font, want_pixel_height);
-
-            for * editor.panels {
-                it.flags |= .CLAMP_SCROLL_TO_CURSOR;
-            }
         }
+
+        // nocheckin adjust scroll on the active panel to keep cursor in a stable position in the
+        // viewport. We want to preserve the position in window space.
+        cell_h := editor.font.line_height_in_pixels;
     }
 
     // :FloatPrecision
