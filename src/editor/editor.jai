@@ -677,10 +677,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             it.document.old_cursor = it.document.buffer.cursor0;
             it.document.old_cursor_position = get_cursor_position(it.document, editor.font);
         }
-
-        if it.document.cursor_anim_time_start == Apollo_Time.{ 0, 0 } {
-            setup_cursor_anim_interpolation(it.document, input.time, it.document.old_cursor_position, it.document.old_cursor_position);
-        }
     }
 
     font_new_frame(*editor.font);
@@ -688,8 +684,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Currently, there must always be at least one panel. We can relax this in the future.
     active_panel: *Panel = get_active_panel(editor);
     assert(active_panel != null);
-
-    active_panel_cursor_or_mouse_position_before_zoom := get_cursor_position(active_panel.document, editor.font);
 
     for input.events {
         handled := false;
@@ -750,21 +744,46 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if input.mouse_wheel_delta > 0 then delta = 1;
         if input.mouse_wheel_delta < 0 then delta = -1;
         editor.font_size = max(editor.font_size + delta, 1);
-
-        // nocheckin override cursor position by the mouse position.
-        active_panel_cursor_or_mouse_position_before_zoom = active_panel.scroll + input.mouse_position;
     }
 
     {
+        cell_h_before_zoom := editor.font.line_height_in_pixels;
+
+        cursor_y := active_panel.document.buffer.cursor0.y;
+        mouse_y  := (input.mouse_position.y + active_panel.scroll_target.y) / cell_h_before_zoom;
+
         want_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
         if editor.font.pixel_height != want_pixel_height {
             editor_log(editor, "Resetting font to new physical pixel height: % (subpixel: %)", want_pixel_height, FONT_SUBPIXEL);
             font_reset_for_options(*editor.font, want_pixel_height);
-        }
 
-        // nocheckin adjust scroll on the active panel to keep cursor in a stable position in the
-        // viewport. We want to preserve the position in window space.
-        cell_h := editor.font.line_height_in_pixels;
+            cell_h_after_zoom := editor.font.line_height_in_pixels;
+
+            y: f64 = ifx input.mouse_wheel_delta == 0 then cast(f64, cursor_y) else mouse_y;
+
+            y_position_before_zoom := y * cell_h_before_zoom;
+            y_position_after_zoom  := y * cell_h_after_zoom;
+
+            delta := y_position_after_zoom - y_position_before_zoom;
+
+            {
+                target := active_panel.scroll_target;
+                target.y += delta;
+                target.y = max(target.y, 0);
+                setup_instant_scroll_interpolation(active_panel, target);
+            }
+
+            // If we change zoom, we need to invalidate old cursor positions in every document. We also
+            // want to fast-forward every every cursor animation, because the interpolants are about to
+            // get stale.
+            for * editor.documents {
+                cursor_position := get_cursor_position(it, editor.font);
+
+                it.old_cursor_position = cursor_position;
+                setup_instant_cursor_anim_interpolation(it, cursor_position);
+            }
+
+        }
     }
 
     // :FloatPrecision
@@ -1217,7 +1236,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             anim_t = clamp(anim_t, 0.0, 1.0);
             anim_t = smoothstep(0.0, 1.0, anim_t);
 
-            if flash_t < 1.0 || anim_t < 1.0 {
+            if flash_t <= 1.0 || anim_t <= 1.0 {
                 wants_next_frame = true;
             }
 
@@ -2433,6 +2452,16 @@ setup_cursor_anim_interpolation :: (document: *Document, time: Apollo_Time, sour
     else                      document.flags &= ~.CURSOR_ANIM_TRIGGERED_BY_MOUSE;
     if triggered_by_keyboard  document.flags |= .CURSOR_ANIM_TRIGGERED_BY_KEYBOARD;
     else                      document.flags &= ~.CURSOR_ANIM_TRIGGERED_BY_KEYBOARD;
+}
+
+setup_instant_cursor_anim_interpolation :: (document: *Document, target: DVector2) {
+    document.cursor_anim_source = target;
+    document.cursor_anim_target = target;
+    document.cursor_anim_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
+    document.cursor_anim = target;
+
+    document.flags &= ~.CURSOR_ANIM_TRIGGERED_BY_MOUSE;
+    document.flags &= ~.CURSOR_ANIM_TRIGGERED_BY_KEYBOARD;
 }
 
 setup_cursor_flash_interpolation :: (document: *Document, time: Apollo_Time, source: Vector4, target: Vector4) {
