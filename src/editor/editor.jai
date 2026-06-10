@@ -33,9 +33,7 @@ TODO(jt): Stuff to do:
 - [X] Open non-utf8 text buffers and binary files.
 
 - [X] Syntax Highlighting
-- [~] Syntax aware indentation (C-i)
-      - Move cursor if line is whitespace only, so that we indicate we indented
-      - Indent all selected lines
+- [X] Syntax aware indentation (C-i)
 - [X] Mode defined parentheses (surround, autoclose)
 - [X] Matching parentheses highlight
 - [ ] Mode defined comments
@@ -1887,7 +1885,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             if document.indentation_scopes.count {
                 // TODO(jt): This is super slow, so maybe don't do it again at the end of this routine?
                 update_indentation_scopes(document);
-                indentation_level := find_indentation_level(document);
+                indentation_level := find_indentation_level(document, document.buffer.cursor0);
                 if indentation_level {
                     buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level, undo_fuse = true);
                     cursor_moved   |= text_buffer_move_cursor_to_end_of_line(*document.buffer, false);
@@ -1905,12 +1903,25 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         // TODO(jt): Preserve tabness in tab-only documents.
         case .INDENT_OR_AUTOCOMPLETE; {
             if document.indentation_scopes.count {
-                // TODO(jt): Indent all selected lines.
-                // TODO(jt): Respect (possibly incorrect) indentation of line previous to first indented line.
-                indentation_level := find_indentation_level(document);
-                buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level);
+                panel.selecting = false;
+
+                // TODO(jt): Respect (possibly incorrect) indentation of line previous to first indented line?
+                y0 := min(document.buffer.cursor0.y, document.buffer.cursor1.y);
+                y1 := max(document.buffer.cursor0.y, document.buffer.cursor1.y);
+
+                fuse := false;
+                for y0..y1 {
+                    indent_location: Text_Location = { 0, it };
+                    indentation_level := find_indentation_level(document, indent_location);
+                    text_buffer_move_cursor_to(*document.buffer, indent_location, false);
+                    buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level, undo_fuse = fuse);
+
+                    fuse = true;
+                }
             } else {
-                buffer_changed |= text_buffer_insert(*document.buffer, "    ");
+                if document.buffer.cursor0 == document.buffer.cursor1 {
+                    buffer_changed |= text_buffer_insert(*document.buffer, "    ");
+                }
             }
         }
 
