@@ -32,10 +32,12 @@ TODO(jt): Stuff to do:
 - [X] Find/replace and modal/interactive commands.
 - [X] Open non-utf8 text buffers and binary files.
 
-- [~] Syntax Highlighting
+- [X] Syntax Highlighting
 - [~] Syntax aware indentation (C-i)
-- [~] Mode defined parentheses (surround, autoclose)
-- [~] Matching parentheses highlight
+      - Move cursor if line is whitespace only, so that we indicate we indented
+      - Indent all selected lines
+- [X] Mode defined parentheses (surround, autoclose)
+- [X] Matching parentheses highlight
 - [ ] Mode defined comments
 - [ ] Watch opened files for changes on disk
 - [ ] *compilation* buffer
@@ -58,7 +60,7 @@ TODO(jt): Stuff to do:
 
 TODO(jt): @Stream Small things to do:
 
-- [ ] Map-like zoom
+- [X] Map-like zoom
 - [X] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
 - [X] OPEN_FILE starts in the directory of the currently open document
 - [X] OPEN_FILE, switch to buffer and close buffer get tab completions.
@@ -143,16 +145,17 @@ TEXTURE_ID_GLYPH_ATLAS: Texture_ID : 1;
 USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 
 // TODO(jt): Make the colors themeable. :Config
-CURSOR_COLOR            :: #run unpack_srgb(0x50ffa0ff);
-ACTIVE_CURSOR_COLOR     :: #run unpack_srgb(0xffffffff);
-SELECTION_COLOR         :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
-HIGHLIGHT_COLOR         :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.4; return c; };
-ACTIVE_HIGHLIGHT_COLOR  :: #run unpack_srgb(0xd08080ff);
-LINE_COLOR              :: Vector4.{ 0, 0, 0, 0 };
-MINI_PANEL_LINE_COLOR   :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
-MODELINE_COLOR          :: #run unpack_srgb(0x090909ff);
-TEXT_COLOR              :: #run unpack_srgb(0xcdaa7dff);
-BACKGROUND_COLOR        :: #run unpack_srgb(0x191919ff);
+CURSOR_COLOR               :: #run unpack_srgb(0x50ffa0ff);
+ACTIVE_CURSOR_COLOR        :: #run unpack_srgb(0xffffffff);
+SELECTION_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
+HIGHLIGHT_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.4; return c; };
+ACTIVE_HIGHLIGHT_COLOR     :: #run unpack_srgb(0xd08080ff);
+MATCHING_PARENTHESIS_COLOR :: #run unpack_srgb(0x70a0f0ff);
+LINE_COLOR                 :: Vector4.{ 0, 0, 0, 0 };
+MINI_PANEL_LINE_COLOR      :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
+MODELINE_COLOR             :: #run unpack_srgb(0x090909ff);
+TEXT_COLOR                 :: #run unpack_srgb(0xcdaa7dff);
+BACKGROUND_COLOR           :: #run unpack_srgb(0x191919ff);
 
 MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable! :Config
 
@@ -1187,7 +1190,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 highlight_position := get_position_of_location(document, editor.font, highlight_loc) - panel.scroll;
                 highlight_rect := rect_from_point_and_size(cast(f32, highlight_position.x), cast(f32, highlight_position.y), cell_w, cell_h);
 
-                draw_rect(*render_rects, highlight_rect, ACTIVE_HIGHLIGHT_COLOR);
+                draw_rect(*render_rects, highlight_rect, MATCHING_PARENTHESIS_COLOR);
             }
         }
 
@@ -1310,7 +1313,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .STRING_LITERAL;          r.color = unpack_srgb(0x98c379ff);
                         case .NUMBER_LITERAL;          r.color = unpack_srgb(0x759fbfff);
 
-                        case .COMMENT;                 r.color = unpack_srgb(0xa0a0a0ff); r.variant = .ITALIC;
+                        case .COMMENT;                 r.color = unpack_srgb(0xa0a0a0ff);
 
                         case; continue;
                     }
