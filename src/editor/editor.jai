@@ -1906,6 +1906,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 panel.selecting = false;
 
                 // TODO(jt): Respect (possibly incorrect) indentation of line previous to first indented line?
+                original_y0 := document.buffer.cursor0.y;
+                original_y1 := document.buffer.cursor1.y;
                 y0 := min(document.buffer.cursor0.y, document.buffer.cursor1.y);
                 y1 := max(document.buffer.cursor0.y, document.buffer.cursor1.y);
 
@@ -1917,6 +1919,11 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level, undo_fuse = fuse);
 
                     fuse = true;
+                }
+
+                // Restore cursor's vertical position if the selection is backwards.
+                if original_y0 < original_y1 {
+                    text_buffer_move_cursor_to(*document.buffer, document.buffer.cursor0.x, original_y0, false);
                 }
             } else {
                 if document.buffer.cursor0 == document.buffer.cursor1 {
