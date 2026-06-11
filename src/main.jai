@@ -182,8 +182,6 @@ main :: () {
             return success && is_directory;
         }
         platform.read_file = (path: string) -> success: bool, [] u8 {
-            // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
-            // respecting context.allocator eventually, so we pass in temp there as well.
             success, absolute_path := get_absolute_path(path,, temp);
             if !success {
                 return false, .[];
@@ -194,22 +192,25 @@ main :: () {
             return success, cast([] u8, data);
         }
         platform.write_file = (path: string, data: [] u8) -> success: bool {
-            // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
-            // respecting context.allocator eventually, so we pass in temp there as well.
             success, absolute_path := get_absolute_path(path,, temp);
             if !success {
                 return false;
             }
 
-            return File.write_entire_file(path, cast(string, data));
+            return File.write_entire_file(absolute_path, cast(string, data));
         }
+        platform.delete_file = (path: string) -> success: bool {
+            success, absolute_path := get_absolute_path(path,, temp);
+            if !success {
+                return false;
+            }
 
-        // TODO(jt): platform.delete_file
+            return File.file_delete(absolute_path);
+        }
 
         // TODO(jt): platform.make_directory
         // TODO(jt): platform.delete_directory
-
-        platform.list_files = (path: string) -> [] Editor.File_Info /* Allocated with context.allocator */ {
+        platform.list_directory = (path: string) -> [] Editor.File_Info /* Allocated with context.allocator */ {
             file_infos: [..] Editor.File_Info; // context.allocator
 
             visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] Editor.File_Info) {
@@ -228,10 +229,10 @@ main :: () {
             return file_infos;
         }
 
-        platform.clipboard_get_text = () -> string {
+        platform.get_clipboard_text = () -> string {
             return Clipboard.os_clipboard_get_text();
         }
-        platform.clipboard_set_text = (text: string) {
+        platform.set_clipboard_text = (text: string) {
             Clipboard.os_clipboard_set_text(text);
         }
 

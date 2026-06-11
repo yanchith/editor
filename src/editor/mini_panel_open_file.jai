@@ -54,7 +54,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         filename_char_count := count_utf8_chars(filename);
 
         // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
-        file_list := platform.list_files(path_prefix,, temp);
+        file_list := platform.list_directory(path_prefix,, temp);
         for file_list {
             listed_file_path := it.name;
             listed_filename := String.path_filename(it.name);
