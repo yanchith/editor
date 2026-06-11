@@ -28,18 +28,20 @@ TODO(jt): Stuff to do:
 - [X] Syntax aware indentation (C-i)
 - [X] Mode defined parentheses (surround, autoclose)
 - [X] Matching parentheses highlight
+- [ ] Create file in new directories (mkdirp)
+- [ ] Delete file
 - [ ] Watch opened files for changes on disk
 - [ ] *compilation* buffer
 - [ ] Mode defined comments
 - [ ] Panel tiling
 - [ ] Themes
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
-- [ ] Hex mode
+- [ ] Hex mode Panel
 - [ ] Multiple Cursors
 - [ ] Projects (project settings, project compilations, project text search with jumping, project-wide find/replace)
 - [ ] Emacs-like undo? (If I find out I can't live without)
 - [ ] Emacs-like kill ring (If I find out I can't live without)
-- [ ] Lister panels (dired, etc)
+- [ ] Directory Lister panel
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] FreeType subpixel rendering
 - [ ] Font Kerning
@@ -1840,7 +1842,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             text := text_buffer_delete_line(*document.buffer);
             if text {
                 buffer_changed = true;
-                platform.clipboard_set_text(text);
+                platform.set_clipboard_text(text);
             }
         }
         case .DELETE_FORWARD;               panel.selecting = false; buffer_changed |= text_buffer_delete_forward(*document.buffer);
@@ -1945,7 +1947,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             panel.selecting = false;
             text := text_buffer_make_view_for_interval(document.buffer, document.buffer.cursor0, document.buffer.cursor1,, temp);
             if text {
-                platform.clipboard_set_text(text);
+                platform.set_clipboard_text(text);
             }
 
             text_buffer_join_cursors(*document.buffer);
@@ -1955,12 +1957,12 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             deleted := text_buffer_delete_selection(*document.buffer);
             if deleted {
                 buffer_changed = true;
-                platform.clipboard_set_text(deleted);
+                platform.set_clipboard_text(deleted);
             }
         }
         case .PASTE; {
             panel.selecting = false;
-            text := platform.clipboard_get_text(,, temp);
+            text := platform.get_clipboard_text(,, temp);
             if text {
                 buffer_changed |= text_buffer_insert(*document.buffer, text, .BARRIER);
             }
