@@ -28,9 +28,9 @@ TODO(jt): Stuff to do:
 - [X] Syntax aware indentation (C-i)
 - [X] Mode defined parentheses (surround, autoclose)
 - [X] Matching parentheses highlight
-- [ ] Mode defined comments
 - [ ] Watch opened files for changes on disk
 - [ ] *compilation* buffer
+- [ ] Mode defined comments
 - [ ] Panel tiling
 - [ ] Themes
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
