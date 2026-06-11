@@ -1867,14 +1867,14 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
             // TODO(jt): Preserve CRLF in CRLF-only documents.
             panel.selecting = false;
-            buffer_changed |= text_buffer_insert(*document.buffer, "\n", undo_barrier = true);
+            buffer_changed |= text_buffer_insert(*document.buffer, "\n", .BARRIER);
 
             // TODO(jt): @Speed @Hack We try to update indentation scopes as little as possible. We
             // could do that incrementally, so that we don't have to thin about it that much.
             updated_indentation_scopes := false;
 
             if should_make_space_for_block {
-                buffer_changed |= text_buffer_insert(*document.buffer, "\n", undo_fuse = true);
+                buffer_changed |= text_buffer_insert(*document.buffer, "\n", .FUSE);
                 if document.indentation_scopes.count {
                     if !updated_indentation_scopes {
                         update_indentation_scopes(document);
@@ -1882,7 +1882,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     }
 
                     level := find_indentation_level(document, document.buffer.cursor0);
-                    buffer_changed |= text_buffer_indent_line(*document.buffer, level, undo_fuse = true);
+                    buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
                 }
 
                 cursor_moved |= text_buffer_move_cursor_y(*document.buffer, -1, false);
@@ -1895,13 +1895,13 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 }
 
                 level := find_indentation_level(document, document.buffer.cursor0);
-                buffer_changed |= text_buffer_indent_line(*document.buffer, level, undo_fuse = true);
+                buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
             }
         }
         case .INSERT_LINE_AFTER; {
             // TODO(jt): Preserve CRLF in CRLF-only documents.
             panel.selecting = false;
-            buffer_changed |= text_buffer_insert(*document.buffer, "\n", undo_barrier = true);
+            buffer_changed |= text_buffer_insert(*document.buffer, "\n", .BARRIER);
             cursor_moved   |= text_buffer_move_cursor_y(*document.buffer, -1, false);
             cursor_moved   |= text_buffer_move_cursor_to_end_of_line(*document.buffer, false);
         }
@@ -1922,7 +1922,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     indent_location: Text_Location = { 0, it };
                     indentation_level := find_indentation_level(document, indent_location);
                     text_buffer_move_cursor_to(*document.buffer, indent_location, false);
-                    buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level, undo_fuse = fuse);
+                    buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level, ifx fuse then .FUSE else .NONE);
 
                     fuse = true;
                 }
@@ -1962,7 +1962,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             panel.selecting = false;
             text := platform.clipboard_get_text(,, temp);
             if text {
-                buffer_changed |= text_buffer_insert(*document.buffer, text, undo_barrier = true);
+                buffer_changed |= text_buffer_insert(*document.buffer, text, .BARRIER);
             }
         }
     }
@@ -1987,11 +1987,11 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         text_buffer_join_cursors(*document.buffer);
 
                         text_buffer_move_cursor_to(*document.buffer, c0, false);
-                        text_buffer_insert_char(*document.buffer, paired_char, undo_barrier = true);
+                        text_buffer_insert_char(*document.buffer, paired_char, .BARRIER);
 
                         c1.x += 1; // Because we just inserted the starting paren.
                         text_buffer_move_cursor_to(*document.buffer, c1, false);
-                        text_buffer_insert_char(*document.buffer, char, undo_fuse = true);
+                        text_buffer_insert_char(*document.buffer, char, .FUSE);
 
                         buffer_changed = true;
                         handled = true;
@@ -2001,8 +2001,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 if opens && !handled {
                     if document.buffer.cursor0 == document.buffer.cursor1 {
                         // TODO(jt): handle balancing?
-                        text_buffer_insert_char(*document.buffer, char, /*undo_barrier = true*/);
-                        text_buffer_insert_char(*document.buffer, paired_char, undo_fuse = true);
+                        text_buffer_insert_char(*document.buffer, char, /*.BARRIER*/);
+                        text_buffer_insert_char(*document.buffer, paired_char, .FUSE);
                         text_buffer_move_cursor_x(*document.buffer, -1, false);
                         buffer_changed = true;
                         handled = true;
@@ -2015,10 +2015,10 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         text_buffer_join_cursors(*document.buffer);
 
                         text_buffer_move_cursor_to(*document.buffer, c1, false);
-                        text_buffer_insert_char(*document.buffer, paired_char, undo_barrier = true);
+                        text_buffer_insert_char(*document.buffer, paired_char, .BARRIER);
 
                         text_buffer_move_cursor_to(*document.buffer, c0, false);
-                        text_buffer_insert_char(*document.buffer, char, undo_fuse = true);
+                        text_buffer_insert_char(*document.buffer, char, .FUSE);
 
                         buffer_changed = true;
                         handled = true;
@@ -2059,7 +2059,7 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
 
     assert(!mini_panel.open);
 
-    text_buffer_insert(*mini_panel.buffer, initial_text, undo = false);
+    text_buffer_insert(*mini_panel.buffer, initial_text);
 
     mini_panel.procs = procs;
     mini_panel.open = true;
@@ -2120,7 +2120,7 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, pr
     key_map_add(key_map, "C-m",         .CONFIRM);
     key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
 
-    text_buffer_insert(*modal_interaction.buffer, initial_text, undo = false);
+    text_buffer_insert(*modal_interaction.buffer, initial_text);
 
     modal_interaction.procs = procs;
     modal_interaction.open = true;
@@ -2317,7 +2317,7 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
 
     hello_arena := make_arena(platform, .LARGE);
     hello_text := make_hello_text(hello_arena, HELLO_SIZE);
-    text_buffer_insert(*document.buffer, hello_text, undo = false);
+    text_buffer_insert(*document.buffer, hello_text, .DISCARD);
 
     document.buffer.cursor0 = { 0, 0 };
     document.buffer.cursor1 = { 0, 0 };
