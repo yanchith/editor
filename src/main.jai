@@ -638,6 +638,10 @@ print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
     }
 }
 
+//
+// Text shaders
+//
+
 // This is a modified version of SHADER_SPRITE_LEFT_HANDED from Simp, so that we can pass in a
 // single-channel texture and have the colors map the way we want.
 SHADER_TEXT :: #string END
@@ -701,6 +705,10 @@ void main () {
 #endif
 END
 
+//
+// Logger
+//
+
 Context_Logger_Data :: struct {
     time_of_program_start: Apollo_Time;
 }
@@ -745,6 +753,9 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
     write_strings(time_prefix, log_level_prefix, source_prefix, message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
 }
 
+//
+// Misc helpers
+//
 // These are copypaste from src/string.jai, but it isn't worth it #load-ing all of that code just for these two.
 
 temp_left_pad :: (s: string, length: s64) -> string {

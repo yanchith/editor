@@ -183,7 +183,6 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
     if file_is_directory {
         // TODO(jt): If we ever have directory listers, rip this out and open the directory in the lister.
-        // TODO(jt): @Cleanup This is copypaste from mini_panel_autocomplete_proc
         completion_text := String.path_filename(mini_panel.items[mini_panel.item_index].text);
         buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
         buffer_path, _, _, buffer_filename := String.path_decomp(buffer_text);
