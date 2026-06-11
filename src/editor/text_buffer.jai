@@ -102,12 +102,26 @@ Edit :: struct {
     Flags :: enum_flags u32 {
         NONE :: 0;
 
-        THROUGH :: 0x1; // When undoing or redoing edits, process all directly subsequent edits with this flag.
+        // TODO(jt): @Memory Instead of tracking THROUGH, just patch previous edit. Should also
+        // remove the need for BARRIER from Edit.Flags (not necessarily from Undo_Flags).
+        THROUGH :: 0x1; // When undoing/redoing an edit (with or without THROUGH), also process subsequent edits with THROUGH.
         BARRIER :: 0x2; // Suppresses looking for THROUGH.
 
         FUSED_WITH_PREVIOUS :: 0x4; // When undoing, also apply previous edit, regardless of current edit's BARRIER.
         FUSED_WITH_NEXT     :: 0x8; // When redoing, also apply next edit, regardless of current edit's BARRIER.
     }
+}
+
+Undo_Modifier_For_Insert :: enum {
+    NONE;
+    DISCARD; // Do not generate history for this edit. This is only valid to do for the first edit.
+    FUSE;    // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
+    BARRIER; // Supress automatic fusing (either with .THROUGH or edit patching) of this edit with previous ones.
+}
+
+Undo_Modifier_For_Indent :: enum {
+    NONE;
+    FUSE; // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
 }
 
 // text_buffer_init has to be called, or someone must do its equivalent (create the first line)
@@ -164,30 +178,26 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
     assert_valid(buffer);
 }
 
-text_buffer_insert_char :: (buffer: *Text_Buffer, char: u32, undo_barrier := false, undo_fuse := false) -> changed: bool {
+text_buffer_insert_char :: (buffer: *Text_Buffer, char: u32, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
     buf: [4] u8;
     s: string;
     s.data = buf.data;
     Unicode.character_utf32_to_utf8(char, *s);
 
-    return text_buffer_insert(buffer, s, true, undo_barrier, undo_fuse);
+    return text_buffer_insert(buffer, s, undo_modifier);
 }
 
-text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo := true, undo_barrier := false, undo_fuse := false) -> changed: bool {
-    /*inline?*/ return text_buffer_insert(buffer, cast(string, bytes), undo, undo_barrier, undo_fuse);
+text_buffer_insert :: (buffer: *Text_Buffer, bytes: [] u8, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
+    /*inline?*/ return text_buffer_insert(buffer, cast(string, bytes), undo_modifier);
 }
 
 // TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
 // switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so we would
 // supply .REVERT, etc.
-text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo := true, undo_barrier := false, undo_fuse := false) -> changed: bool {
+text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
     ProfileZone("text_buffer_insert");
 
     assert_valid(buffer);
-    if !undo {
-        assert(!undo_barrier);
-        assert(!undo_fuse);
-    }
 
     if text.count == 0 {
         return false;
@@ -211,11 +221,11 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo := true, undo_ba
     discard_unapplied_edits(buffer);
 
     edit: *Edit;
-    if undo {
+    if undo_modifier != .DISCARD {
         edit = array_add(*buffer.edits);
         edit.type = .INSERT_FORWARD;
         edit.flags = .NONE;
-        if undo_barrier {
+        if undo_modifier == .BARRIER {
             edit.flags |= .BARRIER;
         } else if is_through_edit(text) {
             // TODO(jt): Also don't add through, if the edit timestamps were too far apart.
@@ -230,7 +240,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo := true, undo_ba
         edit.cursor0_for_display_before = buffer.cursor0;
         edit.cursor1_for_display_before = buffer.cursor1;
 
-        if undo_fuse || insert_caused_delete_selection {
+        if undo_modifier == .FUSE || insert_caused_delete_selection {
             edit.flags |= .FUSED_WITH_PREVIOUS;
 
             previous_edit := *buffer.edits[buffer.edits.count - 2];
@@ -242,7 +252,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo := true, undo_ba
 
     update_index_for_insert(buffer, text);
 
-    if undo {
+    if undo_modifier != .DISCARD {
         edit.cursor0_for_edit_after = buffer.cursor0;
         edit.cursor0_for_display_after = buffer.cursor0;
         edit.cursor1_for_display_after = buffer.cursor0;
@@ -623,7 +633,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     return deleted;
 }
 
-text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64, undo_fuse := false) -> changed: bool {
+text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64, undo_modifier: Undo_Modifier_For_Indent = .NONE) -> changed: bool {
     ProfileZone("text_buffer_indent_line");
 
     assert_valid(buffer);
@@ -691,7 +701,7 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64, undo_f
         edit.cursor1_for_display_before = original_cursor1;
         edit.cursor1_for_display_after = display_cursor_after;
 
-        if undo_fuse {
+        if undo_modifier == .FUSE {
             edit.flags |= .FUSED_WITH_PREVIOUS;
 
             previous_edit := *buffer.edits[buffer.edits.count - 2];
@@ -742,7 +752,7 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64, undo_f
         edit.cursor1_for_display_before = original_cursor1;
         edit.cursor1_for_display_after = display_cursor_after;
 
-        if undo_fuse {
+        if undo_modifier == .FUSE {
             edit.flags |= .FUSED_WITH_PREVIOUS;
 
             previous_edit := *buffer.edits[buffer.edits.count - 2];
