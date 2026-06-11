@@ -4,14 +4,6 @@ TODO(jt): Known serious bugs:
 
 (none currently)
 
-Expo things to show:
-
-- Not that many abstractions in the editor. It is mostly very concrete code.
-- Casey-style Glyph cache
-- Casey-style platform layer
-- Keymaps
-- Arenas (virtual memory, commit/decommit, but everyone has these)
-
 TODO(jt): Stuff to do:
 
 - [X] Implement Arena, or use Flat_Pool.
