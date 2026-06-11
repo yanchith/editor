@@ -94,6 +94,8 @@ update_indentation_scopes :: (document: *Document) {
 }
 
 find_indentation_level :: (document: Document, loc: Text_Location) -> s64 {
+    ProfileZone("find_indentation_level");
+
     // TODO(jt): @Bug This fails to indent an empty line.
     // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
 
