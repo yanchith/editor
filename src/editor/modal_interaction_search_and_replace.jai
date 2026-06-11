@@ -116,7 +116,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         // this, nothing like that exists in the editor.
                         document.buffer.cursor0 = { x0, y };
                         document.buffer.cursor1 = { x1, y };
-                        text_buffer_insert(*document.buffer, userdata.input_to_replace, undo_barrier = true);
+                        text_buffer_insert(*document.buffer, userdata.input_to_replace, .BARRIER);
 
                         // Instead of advancing the index we contract the array.
                         array_ordered_remove_by_index(*active_panel.highlights, active_panel.highlight_index);
