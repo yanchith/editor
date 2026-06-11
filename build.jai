@@ -5,18 +5,19 @@ Check    :: #import "Check";
 Profiler :: #import "Profiler"()(IMPORT_MODE = .METAPROGRAM);
 
 build :: () {
-    do_optimize := false;
-    do_profile  := false;
-    do_sanity   := true;
-    do_check    := true;
+    is_optimized_build := false;
+
+    do_profile := false;
+    do_sanity  := true;
+    do_check   := true;
 
     for get_toplevel_command_line() {
-        if it == "-o"                do_optimize = true;
-        if it == "-optimized"        do_optimize = true;
-        if it == "-od"               do_optimize = true;
-        if it == "-optimized_debug"  do_optimize = true;
-        if it == "-llvm"             do_optimize = false;
-        if it == "-x64"              do_optimize = false;
+        if it == "-o"                is_optimized_build = true;
+        if it == "-optimized"        is_optimized_build = true;
+        if it == "-od"               is_optimized_build = true;
+        if it == "-optimized_debug"  is_optimized_build = true;
+        if it == "-llvm"             is_optimized_build = false;
+        if it == "-x64"              is_optimized_build = false;
     }
 
     for get_build_options().compile_time_command_line {
@@ -37,12 +38,12 @@ build :: () {
     options.output_path            = "build";
     options.intermediate_path      = "build/.build";
 
-    if !do_optimize {
+    if !is_optimized_build {
         // The compiler doesn't enable this yet by default for debug builds. Let's try it out!
         //
         // UPDATE: There's code in jai modules (and sometimes in our own code) that can trigger
-        // this. So far it was always a bug, but it was usually a benign one, and the resulting
-        // crash was a little annoying to debug. Leaving it on for now, but man...
+        // this. So far it was always a bug on my side, and I guess it's good that we have to
+        // manually #no_aoc.
         options.arithmetic_overflow_check = .FATAL;
     }
 
@@ -79,7 +80,7 @@ build :: () {
     }
 
     // Do not output anything for this workspace.
-    set_build_options_dc(.{ do_output = false });
+    set_build_options_dc({ do_output = false });
 }
 
 #run build();
