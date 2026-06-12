@@ -228,6 +228,14 @@ main :: () {
 
             return file_infos;
         }
+        platform.watch_directory = (path: string) -> success: bool {
+            // nocheckin Decide on API here. Do we pass a callback (or, more precisely, register a
+            // callback with a separate platform function)? Do we send updates with input? The
+            // latter seems simpler.
+        }
+        platform.unwatch_directory = (path: string) {
+
+        }
 
         platform.get_clipboard_text = () -> string {
             return Clipboard.os_clipboard_get_text();
