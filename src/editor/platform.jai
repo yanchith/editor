@@ -27,6 +27,8 @@ Platform :: struct {
     make_directory:      (path: string) -> success: bool;
     delete_directory:    (path: string) -> success: bool;
     list_directory:      (path: string) -> [] File_Info;
+    watch_directory:     (path: string) -> success: bool;
+    unwatch_directory:   (path: string);
 
     get_clipboard_text:  () -> string;
     set_clipboard_text:  (text: string);
