@@ -25,6 +25,7 @@ f64 :: float64;
     WaitMessage     :: () -> BOOL #foreign user32;
 } else #if OS == .MACOS {
     #import "POSIX";
+    #import "macOS";
     #import "Objective_C";
     #import "Objective_C/AppKit";
 } else {
@@ -52,6 +53,8 @@ IRect :: Editor.IRect;
 // something smart to exclude that once we switch away from OpenGL.
 SLOW_FRAME_THRESHOLD_MILLIS :: 18;
 SLOW_INIT_THRESHOLD_MILLIS  :: 200;
+
+FS_WATCH_LATENCY: f64 = 1.0;
 
 // TODO(jt): These globals are fine for now, but maybe we want to pass userdata through the renderer API?
 renderer_textures: Table(Editor.Texture_ID, Simp.Texture);
@@ -232,6 +235,29 @@ main :: () {
             // nocheckin Decide on API here. Do we pass a callback (or, more precisely, register a
             // callback with a separate platform function)? Do we send updates with input? The
             // latter seems simpler.
+
+            #if OS == .WINDOWS {
+
+            } else #if OS == .MACOS {
+                callback: FSEventStreamCallback; // nocheckin
+                _context: FSEventStreamContext;
+                // context.info = ; nocheckin
+
+                paths_to_watch: CFArrayRef; // nocheckin
+
+                stream := FSEventStreamCreate(null, callback, *_context,
+                                              paths_to_watch, kFSEventStreamEventIdSinceNow,
+                                              FS_WATCH_LATENCY, kFSEventStreamCreateFlagFileEvents);
+
+                FSEventStreamScheduleWithRunLoop(stream, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+                FSEventStreamStart(stream);
+
+                // array_add(*event_streams, stream); nocheckin
+
+                return true;
+            }
+
+            return false;
         }
         platform.unwatch_directory = (path: string) {
 
@@ -577,6 +603,10 @@ main :: () {
     }
 }
 
+//
+// Platform helpers
+//
+
 wait_for_events :: () {
     #if OS == .WINDOWS {
         // On Windows (TM), we wait for new events with WaitMessage.
@@ -622,29 +652,6 @@ get_absolute_path :: (path: string) -> success: bool, absolute_path: string {
     }
 
     return success, absolute_path;
-}
-
-print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
-    zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
-    if zones.count {
-        frame_time := 1000.0 * time_scale * zones[0].elapsed_inclusive;
-        if frame_time >= threshold_millis {
-            print("\nFrame took more than % millis. Printing profiling info for % zones:\n\n", threshold_millis, zones.count);
-
-            print("      zone                                                               hits    inclusive millis    exclusive millis\n");
-            print("---------------------------------------------------------------------------------------------------------------------\n");
-            for zones {
-                print(
-                    "% %      %     %     %\n",
-                    temp_right_pad(tprint("[%]", it_index), 5),
-                    temp_right_pad(zone_labels[it_index], 50),
-                    formatInt(it.hits, minimum_digits = 15, padding = #char " "),
-                    formatFloat(1000 * time_scale * it.elapsed_inclusive, width = 15, trailing_width = 3),
-                    formatFloat(1000 * time_scale * it.elapsed_exclusive, width = 15, trailing_width = 3),
-                );
-            }
-        }
-    }
 }
 
 //
@@ -765,6 +772,30 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
 //
 // Misc helpers
 //
+
+print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
+    zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
+    if zones.count {
+        frame_time := 1000.0 * time_scale * zones[0].elapsed_inclusive;
+        if frame_time >= threshold_millis {
+            print("\nFrame took more than % millis. Printing profiling info for % zones:\n\n", threshold_millis, zones.count);
+
+            print("      zone                                                               hits    inclusive millis    exclusive millis\n");
+            print("---------------------------------------------------------------------------------------------------------------------\n");
+            for zones {
+                print(
+                    "% %      %     %     %\n",
+                    temp_right_pad(tprint("[%]", it_index), 5),
+                    temp_right_pad(zone_labels[it_index], 50),
+                    formatInt(it.hits, minimum_digits = 15, padding = #char " "),
+                    formatFloat(1000 * time_scale * it.elapsed_inclusive, width = 15, trailing_width = 3),
+                    formatFloat(1000 * time_scale * it.elapsed_exclusive, width = 15, trailing_width = 3),
+                );
+            }
+        }
+    }
+}
+
 // These are copypaste from src/string.jai, but it isn't worth it #load-ing all of that code just for these two.
 
 temp_left_pad :: (s: string, length: s64) -> string {
