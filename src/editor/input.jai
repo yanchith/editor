@@ -19,8 +19,9 @@ Input :: struct {
 
 Watched_Directory_Change :: struct {
     path: string;
-    time: Apollo_Time;
     flags: Flags;
+    // File_Watcher also adds time here, but the time is purely synthetic - it's when it added a
+    // particular event to the buffer. We can add it later, if we need it for some reason.
 
     Flags :: enum_flags u64 {
         NONE :: 0;
