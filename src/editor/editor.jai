@@ -664,6 +664,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions: [..] IRect;
     update_regions.allocator = temp;
 
+    if input.watched_directory_changes.count {
+        log("nocheckin watched directory changes: %", input.watched_directory_changes);
+    }
+
     input_state_update_on_frame_start(*editor.input_state, input);
 
     // We do this for every panel instead of every document, so we don't unnecessarily compute the
@@ -1796,6 +1800,10 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_that_we_do_not_allocate = true);
                 success := platform.write_file(document.backing_file_path, contents);
                 if success {
+                    if !document.backing_file_exists {
+                        platform.watch_directory(String.path_strip_filename(document.backing_file_path));
+                    }
+
                     document.backing_file_exists = true; // It might have existed before, too!
                     editor_log(editor, "Wrote file %", document.backing_file_path);
                 } else {
