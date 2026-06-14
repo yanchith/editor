@@ -422,6 +422,7 @@ main :: () {
             input.mouse_position = { cast(f32, mouse_x), cast(f32, mouse_y) };
         }
         // input.mouse_wheel_delta is zeroed.
+        // input.watched_directory_changes is zeroed.
         // input.events is zeroed.
 
         editor: Editor.Editor;
@@ -445,6 +446,9 @@ main :: () {
 
             input.time = time_since_program_start;
             input.dtime = dtime;
+
+            input_watched_directory_changes: [..] Editor.Watched_Directory_Change;
+            input_watched_directory_changes.allocator = temp;
 
             input_events: [..] Editor.Input_Event;
             input_events.allocator = temp;
@@ -578,6 +582,7 @@ main :: () {
             }
             input.mouse_wheel_delta = Input.mouse_delta_z;
 
+            input.watched_directory_changes = input_watched_directory_changes;
             input.events = input_events;
 
             Simp.clear_render_target(1, 1, 1, 1);
