@@ -72,6 +72,7 @@ TODO(jt): @Stream Small things to do:
 - [X] Flash cursor with typing (needs tuning)
 - [X] When switching-to/closing documents, sort by recency.
 - [ ] Read-only mode for documents.
+- [ ] Dark text color under bright rectangles (cursor, selection, line)
 
 */
 
@@ -139,7 +140,7 @@ USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 // TODO(jt): Make the colors themeable. :Config
 CURSOR_COLOR               :: #run unpack_srgb(0x50ffa0ff);
 ACTIVE_CURSOR_COLOR        :: #run unpack_srgb(0xffffffff);
-SELECTION_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
+SELECTION_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.2; return c; };
 HIGHLIGHT_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.4; return c; };
 ACTIVE_HIGHLIGHT_COLOR     :: #run unpack_srgb(0xd08080ff);
 MATCHING_PARENTHESIS_COLOR :: #run unpack_srgb(0x70a0f0ff);
