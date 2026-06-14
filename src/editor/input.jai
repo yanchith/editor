@@ -19,13 +19,24 @@ Input :: struct {
 
 Watched_Directory_Change :: struct {
     path: string;
+    time: Apollo_Time;
     flags: Flags;
 
-    Flags :: enum_flags {
+    Flags :: enum_flags u64 {
         NONE :: 0;
 
-        MODIFIED      :: 0x01;
-        SCAN_CHILDREN :: 0x02;
+        ADDED              :: 0x01;
+        REMOVED            :: 0x02;
+        MODIFIED           :: 0x04;
+        ATTRIBUTES_CHANGED :: 0x08;
+
+        MOVED      :: 0x10;
+        MOVED_FROM :: 0x20; // Move event is for the old path.
+        MOVED_TO   :: 0x40; // Move event is for the new path.
+
+        // A file in this directory changed without the watcher catching the change. (This is
+        // sometimes an OS limitation, and at other times the limitation of our implementation.)
+        NEED_FULL_CHILDREN_SCAN :: 0x0100;
     }
 }
 
