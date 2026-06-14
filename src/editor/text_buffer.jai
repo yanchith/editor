@@ -104,11 +104,11 @@ Edit :: struct {
 
         // TODO(jt): @Memory Instead of tracking THROUGH, just patch previous edit. Should also
         // remove the need for BARRIER from Edit.Flags (not necessarily from Undo_Flags).
-        THROUGH :: 0x1; // When undoing/redoing an edit (with or without THROUGH), also process subsequent edits with THROUGH.
-        BARRIER :: 0x2; // Suppresses looking for THROUGH.
+        THROUGH :: 0x01; // When undoing/redoing an edit (with or without THROUGH), also process subsequent edits with THROUGH.
+        BARRIER :: 0x02; // Suppresses looking for THROUGH.
 
-        FUSED_WITH_PREVIOUS :: 0x4; // When undoing, also apply previous edit, regardless of current edit's BARRIER.
-        FUSED_WITH_NEXT     :: 0x8; // When redoing, also apply next edit, regardless of current edit's BARRIER.
+        FUSED_WITH_PREVIOUS :: 0x04; // When undoing, also apply previous edit, regardless of current edit's BARRIER.
+        FUSED_WITH_NEXT     :: 0x08; // When redoing, also apply next edit, regardless of current edit's BARRIER.
     }
 }
 
