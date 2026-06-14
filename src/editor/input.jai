@@ -7,14 +7,26 @@ Input :: struct {
     window_size: IVector2;
     window_scale_factor: f32;
 
+    // Mouse position and wheel are already integrated by the OS or the input layer. Maybe we could
+    // try and get to the raw events and integrate it ourselves, so that we can know where the mouse
+    // was between keystrokes on the same frame, but it doesn't seem to be that useful.
     mouse_position:    Vector2;
     mouse_wheel_delta: s64;
 
-    // Everything above 'events' is already integrated. If the OS sent us e.g. individual mouse
-    // positions or window sizes as events (I am not sure if any actually do so), we don't have the
-    // access to that information. Hopefully this won't be super important.
-
+    watched_directory_changes: [] Watched_Directory_Change; // Call platform.watch_directory() to get these.
     events: [] Input_Event;
+}
+
+Watched_Directory_Change :: struct {
+    path: string;
+    flags: Flags;
+
+    Flags :: enum_flags {
+        NONE :: 0;
+
+        MODIFIED      :: 0x01;
+        SCAN_CHILDREN :: 0x02;
+    }
 }
 
 Input_Event :: struct  {
