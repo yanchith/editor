@@ -56,17 +56,6 @@ SLOW_INIT_THRESHOLD_MILLIS  :: 200;
 
 FS_WATCH_LATENCY: f64 = 1.0;
 
-// TODO(jt): These globals are fine for now, but maybe we want to pass userdata through the renderer API?
-renderer_textures: Table(Editor.Texture_ID, Simp.Texture);
-renderer_text_shader: Simp.Shader;
-
-// Simp does immediate_flush when we change the pipeline without checking whether the pipeline is the same. Let's save it some work.
-renderer_current_shader: Renderer_Shader = .NONE;
-Renderer_Shader :: enum {
-    NONE  :: 0;
-    TEXT  :: 1;
-    COLOR :: 2;
-}
 
 main :: () {
     time_of_program_start := current_time_monotonic();
@@ -161,7 +150,7 @@ main :: () {
         platform.get_absolute_path = (path: string) -> success: bool, string {
             // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
             // respecting context.allocator eventually, so we pass in temp there as well.
-            success, _absolute_path := get_absolute_path(path,, temp); // The temp here is future-proofing.
+            success, _absolute_path := platform_get_absolute_path(path,, temp); // The temp here is future-proofing.
 
             if !success {
                 return false, "";
@@ -185,7 +174,7 @@ main :: () {
             return success && is_directory;
         }
         platform.read_file = (path: string) -> success: bool, [] u8 {
-            success, absolute_path := get_absolute_path(path,, temp);
+            success, absolute_path := platform_get_absolute_path(path,, temp);
             if !success {
                 return false, .[];
             }
@@ -195,7 +184,7 @@ main :: () {
             return success, cast([] u8, data);
         }
         platform.write_file = (path: string, data: [] u8) -> success: bool {
-            success, absolute_path := get_absolute_path(path,, temp);
+            success, absolute_path := platform_get_absolute_path(path,, temp);
             if !success {
                 return false;
             }
@@ -203,7 +192,7 @@ main :: () {
             return File.write_entire_file(absolute_path, cast(string, data));
         }
         platform.delete_file = (path: string) -> success: bool {
-            success, absolute_path := get_absolute_path(path,, temp);
+            success, absolute_path := platform_get_absolute_path(path,, temp);
             if !success {
                 return false;
             }
@@ -252,7 +241,7 @@ main :: () {
                 FSEventStreamScheduleWithRunLoop(stream, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
                 FSEventStreamStart(stream);
 
-                // array_add(*event_streams, stream); nocheckin
+                array_add(*platform_state.event_streams, stream);
 
                 return true;
             }
@@ -260,7 +249,7 @@ main :: () {
             return false;
         }
         platform.unwatch_directory = (path: string) {
-
+            // nocheckin
         }
 
         platform.get_clipboard_text = () -> string {
@@ -271,8 +260,8 @@ main :: () {
         }
 
         shader := #ifx Editor.FONT_SUBPIXEL SHADER_TEXT_SUBPIXEL else SHADER_TEXT;
-        renderer_text_shader.gl_handle = Simp.get_shader_program(shader);
-        renderer_text_shader.alpha_blend = true;
+        renderer_state.text_shader.gl_handle = Simp.get_shader_program(shader);
+        renderer_state.text_shader.alpha_blend = true;
 
         renderer: Editor.Renderer;
         renderer.create_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, width: s32, height: s32) {
@@ -286,7 +275,7 @@ main :: () {
             texture: Simp.Texture;
             Simp.texture_load_from_bitmap(*texture, *bitmap);
 
-            table_add(*renderer_textures, texture_id, texture);
+            table_add(*renderer_state.textures, texture_id, texture);
         }
         renderer.create_texture_rgba8unorm = (texture_id: Editor.Texture_ID, data: [] u8, width: s32, height: s32) {
             bitmap: Simp.Bitmap;
@@ -299,13 +288,13 @@ main :: () {
             texture: Simp.Texture;
             Simp.texture_load_from_bitmap(*texture, *bitmap);
 
-            table_add(*renderer_textures, texture_id, texture);
+            table_add(*renderer_state.textures, texture_id, texture);
         }
 
         renderer.update_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, update_rect: IRect) {
             ProfileZone("renderer.update_texture_r8unorm");
 
-            texture := table_find_pointer(*renderer_textures, texture_id);
+            texture := table_find_pointer(*renderer_state.textures, texture_id);
             if !texture {
                 log_error("Can't update nonexistent texture: %", texture_id);
                 return;
@@ -335,7 +324,7 @@ main :: () {
         renderer.update_texture_rgba8unorm = (texture_id: Editor.Texture_ID, data: [] u8, update_rect: IRect) {
             ProfileZone("renderer.update_texture_rgba8unorm");
 
-            texture := table_find_pointer(*renderer_textures, texture_id);
+            texture := table_find_pointer(*renderer_state.textures, texture_id);
             if !texture {
                 log_error("Can't update nonexistent texture: %", texture_id);
                 return;
@@ -371,16 +360,16 @@ main :: () {
             // draw command instead of looping and binding per iteration. If they for some reason
             // don't fit into one texture, we'd flush thhe pipeline.
             for render_rects {
-                texture := table_find_pointer(*renderer_textures, it.texture_id);
+                texture := table_find_pointer(*renderer_state.textures, it.texture_id);
                 if texture {
-                    if renderer_current_shader != .TEXT {
-                        renderer_current_shader = .TEXT;
+                    if renderer_state.current_pipeline != .TEXT {
+                        renderer_state.current_pipeline = .TEXT;
                         // This is where we'd normally call Simp.set_shader_for_images(texture), but
                         // we instead pass in our modified shader, so we have to do a little bit
                         // more work.
                         Simp.immediate_flush();
 
-                        target_shader := *renderer_text_shader;
+                        target_shader := *renderer_state.text_shader;
                         if context.simp.current_shader != target_shader {
                             Simp.immediate_set_shader(target_shader);
                             Simp.set_projection();
@@ -389,8 +378,8 @@ main :: () {
                         Simp.immediate_set_texture(texture);
                     }
                 } else {
-                    if renderer_current_shader != .COLOR {
-                        renderer_current_shader = .COLOR;
+                    if renderer_state.current_pipeline != .COLOR {
+                        renderer_state.current_pipeline = .COLOR;
                         Simp.set_shader_for_color(enable_blend = true);
                     }
                 }
@@ -415,7 +404,7 @@ main :: () {
         // input.time and input.dtime are zeroed.
         // input.frame_triggered_by_animation is zeroed.
         input.window_size = { window_width, window_height };
-        input.window_scale_factor = get_window_scale_factor(window);
+        input.window_scale_factor = platform_get_window_scale_factor(window);
 
         mouse_x, mouse_y, success := Window.get_mouse_pointer_position();
         if success {
@@ -462,7 +451,7 @@ main :: () {
                 }
             }
 
-            scale_factor := get_window_scale_factor(window);
+            scale_factor := platform_get_window_scale_factor(window);
             // TODO(jt): @Cleanup The way the Windows Input module handles the .QUIT event (WM_QUIT)
             // causes the window to be destroyed before we are done with our last frame, and thus
             // the scale_factor becomes 0. This confuses the font system inside the editor. (And, in
@@ -602,17 +591,27 @@ main :: () {
             reset_temporary_storage();
 
             if should_run && !wants_next_frame {
-                wait_for_events();
+                platform_wait_for_events();
             }
         }
     }
 }
 
 //
-// Platform helpers
+// Platform
 //
 
-wait_for_events :: () {
+Platform_State :: struct {
+    #if OS == .WINDOWS {
+
+    } else #if OS == .MACOS {
+        event_streams: [..] FSEventStreamRef; // We are just allocating these from malloc, but hopefully there's not many. :Malloc
+    }
+}
+
+platform_state: Platform_State;
+
+platform_wait_for_events :: () {
     #if OS == .WINDOWS {
         // On Windows (TM), we wait for new events with WaitMessage.
         WaitMessage();
@@ -623,7 +622,7 @@ wait_for_events :: () {
     }
 }
 
-get_window_scale_factor :: (window: Window.Window_Type) -> f32 {
+platform_get_window_scale_factor :: (window: Window.Window_Type) -> f32 {
     #if OS == .WINDOWS {
         return cast(f32, GetDpiForWindow(window)) / 96.0;
     } else #if OS == .MACOS {
@@ -637,7 +636,7 @@ get_window_scale_factor :: (window: Window.Window_Type) -> f32 {
     return 1.0;
 }
 
-get_absolute_path :: (path: string) -> success: bool, absolute_path: string {
+platform_get_absolute_path :: (path: string) -> success: bool, absolute_path: string {
     absolute_path, success := File.get_absolute_path(path);
 
     #if OS_IS_UNIX {
@@ -660,8 +659,22 @@ get_absolute_path :: (path: string) -> success: bool, absolute_path: string {
 }
 
 //
-// Text shaders
+// Renderer
 //
+
+Renderer_State :: struct {
+    textures: Table(Editor.Texture_ID, Simp.Texture); // We currently aren't careful about allocating textures, but there's very few of them. :Malloc
+    text_shader: Simp.Shader;
+    current_pipeline: Pipeline = .NONE; // To prevent immediate_flush when pipeline is the same.
+
+    Pipeline :: enum {
+        NONE;
+        TEXT;
+        COLOR;
+    }
+}
+
+renderer_state: Renderer_State;
 
 // This is a modified version of SHADER_SPRITE_LEFT_HANDED from Simp, so that we can pass in a
 // single-channel texture and have the colors map the way we want.
