@@ -1542,6 +1542,18 @@ get_active_panel :: (editor: *Editor) -> *Panel {
     return active_panel;
 }
 
+// nocheckin explain: For ease of use, the editor talks about watching individual files, but afaik
+// all of Windows/macOS/Linux can only watch changes in a directory... so we do all the tree
+// management and refcounting here.
+
+watch_file :: (editor: *Editor, platform: Platform, input: Input, file_path: string) {
+    platform.watch_directory(String.path_strip_filename(file_path));
+}
+
+unwatch_file :: (editor: *Editor, platform: Platform, input: Input, file_path: string) {
+    platform.unwatch_directory(String.path_strip_filename(file_path));
+}
+
 #scope_file
 
 Mini_Panel_Action :: enum {
@@ -1803,7 +1815,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 success := platform.write_file(document.backing_file_path, contents);
                 if success {
                     if !document.backing_file_exists {
-                        platform.watch_directory(String.path_strip_filename(document.backing_file_path));
+                        watch_file(editor, platform, input, document.backing_file_path);
                     }
 
                     document.backing_file_exists = true; // It might have existed before, too!

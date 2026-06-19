@@ -142,6 +142,8 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
         document := cast(*Document, item.userdata);
         close_document(editor, document);
+
+        unwatch_file(editor, platform, input, document.backing_file_path);
     }
 
     close_mini_panel(editor, platform, input);

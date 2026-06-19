@@ -211,10 +211,9 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                 if file_exists {
                     editor_log(editor, "Opening file: %", file_absolute_path);
 
-                    // TODO(jt): Detect/Watch file changes on disk!
                     success, file_contents := platform.read_file(file_absolute_path,, temp);
                     if success {
-                        platform.watch_directory(String.path_strip_filename(file_absolute_path));
+                        watch_file(editor, platform, input, file_absolute_path);
 
                         text_buffer_insert(*document.buffer, file_contents, .DISCARD);
                         text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
