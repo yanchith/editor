@@ -227,6 +227,9 @@ main :: () {
             #if OS == .WINDOWS {
 
             } else #if OS == .MACOS {
+                log("Creating and starting event stream for path: %", path);
+                // nocheckin iterate existing event streams to see if we are already watching this directory.
+
                 paths_to_watch: CFArrayRef;
                 {
                     cfstring_path: CFStringRef = CFStringCreateWithBytes(null, path.data, path.count, .UTF8, false);
@@ -241,7 +244,7 @@ main :: () {
                 FSEventStreamScheduleWithRunLoop(stream, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
                 FSEventStreamStart(stream);
 
-                array_add(*platform_state.event_streams, stream);
+                array_add(*platform_state.event_streams, { copy_string(path), stream });
 
                 return true;
             }
@@ -249,7 +252,23 @@ main :: () {
             return false;
         }
         platform.unwatch_directory = (path: string) {
-            // nocheckin
+            #if OS == .WINDOWS {
+
+            } else #if OS == .MACOS {
+                for platform_state.event_streams {
+                    if it.path == path {
+                        log("Stopping and releasing event stream for path: %", path);
+
+                        FSEventStreamStop(it.stream);
+                        FSEventStreamInvalidate(it.stream); // Remove stream from all run loops
+                        FSEventStreamRelease(it.stream);
+
+                        free(it.path);
+                        remove it;
+                        break;
+                    }
+                }
+            }
         }
 
         platform.get_clipboard_text = () -> string {
@@ -605,7 +624,13 @@ Platform_State :: struct {
     #if OS == .WINDOWS {
 
     } else #if OS == .MACOS {
-        event_streams: [..] FSEventStreamRef; // :Malloc
+        event_streams: [..] Event_Stream; // :Malloc
+
+        Event_Stream :: struct {
+            path: string; // :Malloc
+            stream: FSEventStreamRef;
+        }
+
     }
 }
 
@@ -693,6 +718,7 @@ platform_get_absolute_path :: (path: string) -> success: bool, absolute_path: st
                 // to know when. This sucks, because we can't reset the allocation that buffers all
                 // the events. SO:
                 //
+
                 // Maybe we should ringbuffer the events? Callbacks write, main loop reads. If
                 // callbacks run out of space to write, we drop events. Strings will have to be
                 // allocated inside the ringbuffer.
