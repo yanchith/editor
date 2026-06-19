@@ -688,6 +688,14 @@ platform_get_absolute_path :: (path: string) -> success: bool, absolute_path: st
 
                 // nocheckin This gets called even if we never poll the runloop... what's the
                 // concurrency model?
+                //
+                // UPDATE: So this is called by AppKit or something. In general we are not allowed
+                // to know when. This sucks, because we can't reset the allocation that buffers all
+                // the events. SO:
+                //
+                // Maybe we should ringbuffer the events? Callbacks write, main loop reads. If
+                // callbacks run out of space to write, we drop events. Strings will have to be
+                // allocated inside the ringbuffer.
                 change := array_add(*platform_state.watched_directory_changes);
                 change.path = copy_string(event_path,, temp); // event_path will be deallocated by the kernel once the callback returns.
                 change.flags = flags;
