@@ -221,11 +221,8 @@ main :: () {
             return file_infos;
         }
         platform.watch_directory = (path: string) -> success: bool {
-            // nocheckin Decide on API here. Do we register a callback in a separate platform
-            // function? Do we send updates with input? The latter seems simpler.
-            //
-            // TODO(jt): What about subscriptions sharing the same subtree (maybe with different
-            // flags)? We could coalesce when registering and uncoalesce when watching stops?
+            // TODO(jt): What about subscriptions sharing the same subtree (possibly with different
+            // flags)? We could coalesce/uncoalesce the watch tree when watching starts or stops?
 
             #if OS == .WINDOWS {
 
@@ -429,7 +426,6 @@ main :: () {
         should_run  := true;
         while should_run {
             profiler_start_frame("frame");
-            log("nocheckin start frame");
 
             time_of_frame_start := current_time_monotonic();
             time_since_program_start := time_of_frame_start - time_of_program_start;
@@ -589,11 +585,8 @@ main :: () {
 
             Simp.swap_buffers(window);
 
-            log("nocheckin reset 0");
             array_reset_keeping_memory(*platform_state.watched_directory_changes);
-            log("nocheckin reset 1");
             reset_temporary_storage();
-            log("nocheckin reset 2");
 
             if should_run && !wants_next_frame {
                 platform_wait_for_events();
@@ -669,14 +662,12 @@ platform_get_absolute_path :: (path: string) -> success: bool, absolute_path: st
     event_stream_callback :: (streamRef: FSEventStreamRef, clientCallBackInfo: *void, numEvents: u64, eventPaths: *void, eventFlags: *FSEventStreamEventFlags, eventIds: *FSEventStreamEventId) #c_call {
         FS_ATTRIBUTE_CHANGES :: kFSEventStreamEventFlagChangeOwner | kFSEventStreamEventFlagItemInodeMetaMod | kFSEventStreamEventFlagItemFinderInfoMod;
 
-        push_context { // nocheckin do we need to push_context?
+        push_context { // nocheckin eplain why we need push_context (or remove push_context)
             event_paths := cast(**u8, eventPaths);
             for 0..numEvents - 1 {
                 event_flags := eventFlags[it];
                 event_id    := eventIds[it];
-                event_path  := to_string(event_paths[it],, temp);
-
-                log("nocheckin Received event for path %, id %, flags 0x%", event_path, event_id, formatInt(event_flags, base=16));
+                event_path  := to_string(event_paths[it]);
 
                 flags: Editor.Watched_Directory_Change.Flags;
                 if event_flags & kFSEventStreamEventFlagItemCreated      flags |= .ADDED;
@@ -688,7 +679,6 @@ platform_get_absolute_path :: (path: string) -> success: bool, absolute_path: st
                 if event_flags & kFSEventStreamEventFlagMustScanSubDirs  flags |= .NEED_FULL_CHILDREN_SCAN;
 
                 if !flags {
-                    log("nocheckin Discarding events % for %", event_flags, event_path);
                     continue;
                 }
 
@@ -697,26 +687,9 @@ platform_get_absolute_path :: (path: string) -> success: bool, absolute_path: st
                 }
 
                 // nocheckin This gets called even if we never poll the runloop... what's the
-                // concurrency model? Also:
-                //
-                // Program Exception: SEGV_ACCERR
-                // The program crashed because it tried to write to read only memory.
-                // Segmentation fault. The faulty address is 0x1207f4014, from 0x1837752c0.
-                // 0   editor                              0x0000000100b1c11c handle_signal_9000003a5 + 4396
-                // 1   libsystem_platform.dylib            0x00000001837756a4 _sigtramp + 56
-                // 2   editor                              0x0000000100a58754 print_item_to_builder_50000022b + 816
-                // 3   editor                              0x0000000100aaec3c append_struct_info_500000228 + 4540
-                // 4   editor                              0x0000000100a59de4 print_item_to_builder_50000022b + 6592
-                // 5   editor                              0x0000000100a22194 print_array_500000232 + 1228
-                // 6   editor                              0x0000000100a59ec0 print_item_to_builder_50000022b + 6812
-                // 7   editor                              0x0000000100affb74 print_to_builder_50000022e + 4112
-                // 8   editor                              0x0000000100a565ac log_500000223 + 256
-                // 9   editor                              0x0000000100ae5800 update_and_render_3000005e8 + 836
-                // 10  editor                              0x0000000100a89240 __program_main + 13748
-                // 11  editor                              0x0000000100b06864 main + 192
-                // 12  dyld                                0x000000018339ab98 start + 6076
+                // concurrency model?
                 change := array_add(*platform_state.watched_directory_changes);
-                change.path = event_path;
+                change.path = copy_string(event_path,, temp); // event_path will be deallocated by the kernel once the callback returns.
                 change.flags = flags;
             }
         }

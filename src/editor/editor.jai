@@ -665,7 +665,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions.allocator = temp;
 
     if input.watched_directory_changes.count {
-        log("nocheckin watched directory changes: %", input.watched_directory_changes);
+        for input.watched_directory_changes {
+            log("nocheckin change [%] flags: %, path: %", it_index, it.flags, it.path);
+        }
     }
 
     input_state_update_on_frame_start(*editor.input_state, input);
