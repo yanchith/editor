@@ -221,14 +221,17 @@ main :: () {
             return file_infos;
         }
         platform.watch_directory = (path: string) -> success: bool {
-            // TODO(jt): What about subscriptions sharing the same subtree (possibly with different
-            // flags)? We could coalesce/uncoalesce the watch tree when watching starts or stops?
-
             #if OS == .WINDOWS {
 
             } else #if OS == .MACOS {
+                for platform_state.event_streams {
+                    if it.path == path {
+                        log("Reusing event stream for path: %", path);
+                        return true;
+                    }
+                }
+
                 log("Creating and starting event stream for path: %", path);
-                // nocheckin iterate existing event streams to see if we are already watching this directory.
 
                 paths_to_watch: CFArrayRef;
                 {
@@ -244,6 +247,8 @@ main :: () {
                 FSEventStreamScheduleWithRunLoop(stream, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
                 FSEventStreamStart(stream);
 
+                // nocheckin copy_string here needs to use malloc... maybe we should document that
+                // overriding context.allocator is not recommended for this?
                 array_add(*platform_state.event_streams, { copy_string(path), stream });
 
                 return true;
@@ -265,7 +270,6 @@ main :: () {
 
                         free(it.path);
                         remove it;
-                        break;
                     }
                 }
             }
