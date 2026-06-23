@@ -159,8 +159,8 @@ Editor :: struct {
     font_size: s32; // Scaled!
 
     input_state: Input_State;
-
     key_map: Key_Map(Editor_Action);
+    watched_files: [..] string;
 
     // Documents are referenced by panels (one document, many panels). When we close a panel or
     // switch a panel to a different document, the original document remains. When we close/unload a
@@ -539,9 +539,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         log("Document keymap:\n%", key_map_sprint(key_map,, temp));
     }
 
-
-    editor.documents.allocator = arena_allocator(editor.perm_arena);
-    editor.panels.allocator    = arena_allocator(editor.perm_arena);
+    editor.watched_files.allocator = arena_allocator(editor.perm_arena);
+    editor.documents.allocator     = arena_allocator(editor.perm_arena);
+    editor.panels.allocator        = arena_allocator(editor.perm_arena);
 
     panel := array_add(*editor.panels);
 
@@ -1542,16 +1542,48 @@ get_active_panel :: (editor: *Editor) -> *Panel {
     return active_panel;
 }
 
-// nocheckin explain: For ease of use, the editor talks about watching individual files, but afaik
-// all of Windows/macOS/Linux can only watch changes in a directory... so we do all the tree
-// management and refcounting here.
+// For ease of use, the editor talks about watching individual files, but it merely means it is
+// interested in those files. The OS APIs can only watch for changes in a directory, so we do simple
+// refcounting here before calling out to the platform layer. Additionally, the OS APIs can miss
+// events, so we rescan the files we are interested in periodically anyway.
 
 watch_file :: (editor: *Editor, platform: Platform, input: Input, file_path: string) {
-    platform.watch_directory(String.path_strip_filename(file_path));
+    watched_directories: Table(string, void);
+    watched_directories.allocator = temp;
+
+    for editor.watched_files {
+        table_add(*watched_directories, String.path_strip_filename(it), null.*);
+    }
+
+    directory_path := String.path_strip_filename(file_path);
+    if !table_contains(*watched_directories, directory_path) {
+        // Start watching directory, if this is the first file in that directory.
+        platform.watch_directory(directory_path);
+    }
+
+    // TODO(jt): if_unique, so that people can call watch_file multiple times on the same file. Maybe we don't
+    // need the slop we should sanity_assert instead.
+    array_add_if_unique(*editor.watched_files, file_path);
 }
 
 unwatch_file :: (editor: *Editor, platform: Platform, input: Input, file_path: string) {
-    platform.unwatch_directory(String.path_strip_filename(file_path));
+    // TODO(jt): remove_by_value removes all occurences by default. We do this, so that people can call
+    // unwatch_file multiple times on the same file. Maybe we don't need the slop and should
+    // sanity_assert instead.
+    array_unordered_remove_by_value(*editor.watched_files, file_path);
+
+    watched_directories: Table(string, void);
+    watched_directories.allocator = temp;
+
+    for editor.watched_files {
+        table_add(*watched_directories, String.path_strip_filename(it), null.*);
+    }
+
+    directory_path := String.path_strip_filename(file_path);
+    if !table_contains(*watched_directories, directory_path) {
+        // Stop watching directory, if this was the last file in that directory.
+        platform.unwatch_directory(directory_path);
+    }
 }
 
 #scope_file
