@@ -73,7 +73,7 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
                 is_profiler_import = true;
             }
 
-            // Support #import,file "module.jai" of the profiler example that's inside the module.
+            // Support #import,file "module.jai" for examples inside the profiler module.
             if import_message.module_name == "module.jai" && ends_with(import_message.fully_pathed_filename, "Profiler/module.jai") {
                 is_profiler_import = true;
             }
@@ -96,9 +96,10 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
             message_typechecked := cast(*Message_Typechecked, message);
 
             for tc: message_typechecked.procedure_bodies {
-                // TODO(jt): We currently instrument each instantiation of the polymorphic/autobaked
-                // procedure. This is sort of okay, but even if we wanted to instrument the original
-                // procedure, we can't, because the compiler does not send a message with its body.
+                // TODO(jt): @CompilerBug We currently instrument each instantiation of the
+                // polymorphic/autobaked procedure. This is sort of okay, but even if we wanted to
+                // instrument the original procedure, we can't, because the compiler does not send a
+                // message with its body.
 
                 body := tc.expression;
 
@@ -107,7 +108,7 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
                 // multiple times.
 
                 new_statements: [..] *Code_Node;
-                new_statements.allocator = temp; // Is it okay to temp this? Will the compiler copy it to its own memory?
+                new_statements.allocator = temp;
 
                 do_modify := maybe_instrument_statements(*new_statements, body.block.statements);
                 if do_modify {
@@ -123,7 +124,7 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
     instrumented := false;
 
     for statement: statements {
-        // We can either recurse into a block, or search for a procedure call statement.
+        // We can either recurse into a block, or search for a procedure call statement to modify.
 
         blocks_to_recurse: [..] *Code_Block;
         blocks_to_recurse.allocator = temp;
@@ -187,7 +188,6 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
         }
         call := cast(*Code_Procedure_Call, statement);
 
-        // TODO(jt): Check resolved_procedure_expression instead?
         if call.procedure_expression.kind != .IDENT {
             array_add(new_statements, statement);
             continue;
