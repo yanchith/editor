@@ -1,20 +1,20 @@
 //
 // This file is not the complete profiling source code. When compiling a profiling build, the
-// metaprogram inserts a few missing pieces of code:
+// metaprogram inserts a few missing pieces:
 //
 // The __profiler global variable is inserted when this module is imported. It is used inside this
 // module to detect whether this is a profiling build with #exists.
 //
-// The __init_zone_labels procedure and __PROFILER_ZONE_COUNT constant are inserted when we get a
-// TYPECHECKED_ALL_WE_CAN message. The values of these depend on what the metaprogram saw during
-// compilation.
+// The __init_zone_labels procedure and __PROFILER_ZONE_COUNT constant are inserted when the
+// metaprogram gets a TYPECHECKED_ALL_WE_CAN message. The values of these depend on what it saw
+// during compilation.
 //
-// WARNING: The profiler is not thread-safe. Don't call it from multiple threads.
+// WARNING: The profiler is not thread-safe. Don't profile the same profiling zone from multiple threads.
 //
 
-// The programmer invokes the ProfileZone macro in the code. It is replaced by the metaprogram to
-// invocations of the actual macro: __ProfileZone.
-ProfileZone  :: ($label: string) #expand {}
+// Call this at the top of each block of code you want to profile. It is replaced by the metaprogram
+// to invocations of the actual macro: __ProfileZone.
+ProfileZone :: ($label: string) #expand {}
 
 // The zone is 32 bytes and is also aligned to 32 bytes to not straddle cache lines. You always get
 // two per cache line.
@@ -54,17 +54,20 @@ profiler_end_frame :: () -> cpu_counter_scale: float64 {
 
         elapsed_time := Basic.to_float64_seconds(end_time) - Basic.to_float64_seconds(__profiler.frame_start_time);
 
-        // TODO(jt): @Cleanup System.read_cpu_counter() goes to clock_gettime on UNIX. On macOS, the
-        // following subtraction underflows. This probably wouldn't happen if we used cntvcr_el0.
         elapsed_tsc: u64 = ---;
         #no_aoc {
+            // #no_aoc, because currently System.read_cpu_counter() goes to clock_gettime on
+            // UNIX (which can go back in time?). The following subtraction can underflow
+            // because of that.
+            //
+            // Perhaps we could remove the #no_aoc once we are sure about our time measuring
+            // methods, but maybe it's fine.
             elapsed_tsc = end_tsc - __profiler.frame_start_tsc;
         }
 
         zone := *__profiler.zones[0];
-        // TODO(jt): @Audit We had to add #no_aoc here, but I am not sure it makes sense. It might
-        // be related to the elapsed #no_aoc above?
         #no_aoc {
+            // #no_aoc, because if elapsed underflows, it can cause overflows here.
             zone.elapsed_inclusive += elapsed_tsc;
             zone.elapsed_exclusive += elapsed_tsc;
             zone.hits += 1;
@@ -82,16 +85,16 @@ Sort_Mode :: enum {
     HITS;
 }
 
-// Get profiling data. You'll have to sort it and scale it by the time scale obtained from
+// Get sorted profiling data. You'll have to scale it by the time scale obtained from
 // profiler_end_frame. The resulting arrays are allocated with context.allocator if in profiling
 // builds and in static storage otherwise. Pass in temporary allocator if you don't want to care.
 profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
     #if #exists(__profiler) {
         get :: (zone: Profiler_Zone, sort_mode: Sort_Mode) -> u64 {
-            if sort_mode == {
-                case .INCLUSIVE_TIME; return zone.elapsed_inclusive;
-                case .EXCLUSIVE_TIME; return zone.elapsed_exclusive;
-                case .HITS;           return zone.hits;
+            if #complete sort_mode == {
+                case .INCLUSIVE_TIME;  return zone.elapsed_inclusive;
+                case .EXCLUSIVE_TIME;  return zone.elapsed_exclusive;
+                case .HITS;            return zone.hits;
             }
 
             return zone.elapsed_inclusive;
@@ -151,17 +154,19 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
         `defer {
             end := System.read_cpu_counter();
 
-            // TODO(jt): @Cleanup System.read_cpu_counter() goes to clock_gettime on UNIX. On macOS,
-            // the following subtraction underflows. This probably wouldn't happen if we used
-            // cntvcr_el0.
             elapsed: u64 = ---;
             #no_aoc {
+                // #no_aoc, because currently System.read_cpu_counter() goes to clock_gettime on
+                // UNIX (which can go back in time?). The following subtraction can underflow
+                // because of that.
+                //
+                // Perhaps we could remove the #no_aoc once we are sure about our time measuring
+                // methods, but maybe it's fine.
                 elapsed = end - start;
             }
 
-            // TODO(jt): @Audit We had to add #no_aoc here, but I am not sure it makes sense. It
-            // might be related to the elapsed #no_aoc above?
             #no_aoc {
+                // #no_aoc, because if elapsed underflows, it can cause overflows here.
                 current_zone.elapsed_inclusive = current_zone_elapsed_inclusive + elapsed;
                 current_zone.elapsed_exclusive += elapsed;
                 current_zone.hits += 1;
@@ -180,8 +185,12 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
 
 #scope_module
 
-Basic  :: #import "Basic";
-
-// TODO(jt): modules/System is imported only for read_cpu_counter. Copy it in here? We also need a
+// TODO(jt): Both of these imports could get removed:
+//
+// modules/Basic imports a few helpers for which we could have our own version here. It also
+// includes time retrieval and conversion to float64.
+//
+// modules/System is imported only for read_cpu_counter. Copy it in here? We also need a
 // better timer for arm macOS: "mrs {t}, cntvct_el0". Can we do it with #bytes?
+Basic  :: #import "Basic";
 System :: #import "System";
