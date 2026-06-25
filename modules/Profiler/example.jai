@@ -7,23 +7,33 @@
 #import,file "module.jai"()(IMPORT_MODE = .RUNTIME);
 
 main :: () {
+    // Call profiler_init at the start of your program
     profiler_init();
 
     for 1..5 {
+        // Start each profiling cycle (like a frame in a video game) with profiler_start_frame
         profiler_start_frame();
-        one_frame();
+
+        // Call your stuff
+        frame();
+
+        // Call profiler_end_frame at the end of the repetitive code you want to profile. This gives
+        // you the scale with which to multiply the timing data in the profiling zones.
         time_scale := profiler_end_frame();
 
+        // Get the zones from the profiler and display them however you like. Here, we just print
+        // them to the console, but you can do graphical stuff.
         zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
-        if zones.count {
+
+        if zones.count { // If we hadn't passed +Profiler, there would be zero zones, and we wouldn't print anything.
             print("\n\n");
-            print("Printing profiling info for % zones:\n", zones.count);
+            print("Printing profiling info for frame %:\n", it);
 
             for zones {
                 print(
-                    "[%] % hits: %, inclusive: % seconds, exclusive % seconds \n",
+                    "[%] % hits: %, inclusive: % seconds, exclusive % seconds\n",
                     it_index,
-                    temp_right_pad(zone_labels[it_index], 20),
+                    right_pad(zone_labels[it_index], 20),
                     formatInt(it.hits, minimum_digits = 6, padding = #char " "),
                     formatFloat(time_scale * it.elapsed_inclusive, width = 10, trailing_width = 6),
                     formatFloat(time_scale * it.elapsed_exclusive, width = 10, trailing_width = 6),
@@ -35,56 +45,71 @@ main :: () {
     }
 }
 
-one_frame :: () {
-    // ProfileZone("one_frame");
+frame :: () {
+    x := part_1();
+    part_2(x);
 
-    inner1 :: () {
-        ProfileZone("inner1");
-        print("printing from inner\n");
+    {
+        ProfileZone("part_3");
+        sum := 0;
+        for x {
+            sum += it;
+        }
     }
-
-    // ProfileZone("one_frame part(a)");
-    result := f(1, 5);
-    for 1..100 {
-        result += f(result, 5);
-    }
-
-    result += MacroOperation(5, 5);
-
-    // ProfileZone("one_frame part(a1)");
-    print("result is %\n", result);
 }
 
-MacroOperation :: (a: s32, b: s32) -> s32 #expand {
-    ProfileZone("MacroOperation");
-    return a + b;
-}
+part_1 :: () -> [..] s64 {
+    ProfileZone("part_1");
+    x: [..] s64;
+    x.allocator = temp;
 
-f :: (a: float32, b: float32) -> float32 {
-    ProfileZone("f");
-    result := a;
-    for 1..10000 {
-        a += b;
-        a *= a + b * b * a;
+    for 0..9999 {
+        array_add(*x, it);
     }
 
-    return result;
+    return x;
 }
 
+part_2 :: (x: [] s64) {
+    ProfileZone("part_2");
 
-g :: () {
-    ProfileZone("g");
-    inner2 :: () {
-        ProfileZone("inner2");
-        print("printing from inner\n");
+    {
+        ProfileZone("part_2 section_a");
+        for * x {
+            it.* = fib(it.*);
+        }
     }
 
-    result := f(1, 5);
-    ProfileZone("g part(a)");
-    print("result is %\n", result);
+    {
+        ProfileZone("part_2 section_b");
+        for * x {
+            it.* = it.* * it.*;
+        }
+    }
 }
 
-temp_right_pad :: (s: string, length: s64) -> string {
+fib :: (n: s64) -> s64 {
+    ProfileZone("fib");
+
+    if n <= 0  return 0;
+    if n == 1  return 1;
+
+    n -= 2;
+    a := 0;
+    b := 1;
+
+    while n > 0 {
+        t := b;
+        b = a + b;
+        a = t;
+
+        n -= 1;
+    }
+
+    return b;
+}
+
+right_pad :: (s: string, length: s64) -> string {
     builder: String_Builder;
     builder.allocator = temp;
 
