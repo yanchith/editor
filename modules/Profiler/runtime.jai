@@ -1,5 +1,5 @@
 //
-// This file is not the complete profiling source code. When compiling a profiling build, the
+// This file is almost the complete profiling runtime code. When compiling a profiling build, the
 // metaprogram inserts a few missing pieces:
 //
 // The __profiler global variable is inserted when this module is imported. It is used inside this
@@ -16,8 +16,8 @@
 // to invocations of the actual macro: __ProfileZone.
 ProfileZone :: ($label: string) #expand {}
 
-// The zone is 32 bytes and is also aligned to 32 bytes to not straddle cache lines. You always get
-// two per cache line.
+// The zone is 32 bytes and is also aligned to 32 bytes to not straddle cache lines. You get two per
+// cache line (on x64).
 #assert size_of(Profiler_Zone) == 32;
 Profiler_Zone :: struct {
     elapsed_inclusive: u64 #align 32;
@@ -103,8 +103,8 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
         zones := Basic.array_copy(__profiler.zones);
         zone_labels := Basic.array_copy(__profiler.zone_labels);
 
-        // @Speed Yes, this is bubble sort. We use it to sort two arrays arrays at once. We could do
-        // a modified version of quicksort to do that, but let's see if it becomes a problem first.
+        // @Speed Yes, this is bubble sort. We use it to sort two arrays at once. We could do a
+        // modified version of quicksort to do that, but let's see if it becomes a problem first.
         swapped := true;
         while swapped {
             swapped = false;
