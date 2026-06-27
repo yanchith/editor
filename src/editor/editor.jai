@@ -25,12 +25,12 @@ TODO(jt): Stuff to do:
 - [X] Open non-utf8 text buffers and binary files.
 
 - [X] Syntax Highlighting
-- [X] Syntax aware indentation (C-i)
 - [X] Mode defined parentheses (surround, autoclose)
 - [X] Matching parentheses highlight
+- [~] Syntax aware indentation (C-i)
+- [~] Watch opened files for changes on disk
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
-- [ ] Watch opened files for changes on disk
 - [ ] *compilation* buffer
 - [ ] Mode defined comments
 - [ ] Panel tiling
@@ -1965,7 +1965,35 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             if document.indentation_scopes.count {
                 panel.selecting = false;
 
-                // TODO(jt): Respect (possibly incorrect) indentation of line previous to first indented line?
+                // nocheckin Let's address these!
+                //
+                // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
+                //
+                // TODO(jt): @Bug Do not increase indentation level for multiple opening parentheses on the same line:
+                //
+                // ((
+                //     x; // should have indent 4, not 8.
+                // ))
+                //
+                //
+                // TODO(jt): Casey style indentation of function parameters, arguments, list items:
+                //
+                // hwnd = CreateWindowEx(dwExStyle, ClassName(), lpWindowName, dwStyle, x, y,
+                //                       nWidth, nHeight, hWndParent, hMenu, GetModuleHandle(NULL), this);
+                //
+                // a ( b c d
+                //     asdf f g )
+                //     ^
+                //     aligned the first item after last unclosed parenthesis
+                //
+                // a ( b c ( d e ( f g )
+                //           x, y, z ))
+                //
+                // f :: (a: s64, b: s64,
+                //       c: s64);
+                //
+                // We need to reconcile this with indentation scopes.
+
                 original_y0 := document.buffer.cursor0.y;
                 original_y1 := document.buffer.cursor1.y;
                 y0 := min(document.buffer.cursor0.y, document.buffer.cursor1.y);
