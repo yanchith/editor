@@ -645,7 +645,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     }
 }
 
-update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_next_frame: bool {
+update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_next_frame: bool {
     ProfileZone("Editor.update_and_render");
 
     dt: f64;
@@ -656,7 +656,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         dt = USUAL_DELTA_TIME;
     }
 
-    wants_quit       := false;
     wants_next_frame := false;
 
     render_rects: [..] Render_Rect;
@@ -1519,7 +1518,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     renderer.draw_rects(render_rects);
     renderer.submit_frame();
 
-    return wants_quit, wants_next_frame;
+    return wants_next_frame;
 }
 
 editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #caller_location) {

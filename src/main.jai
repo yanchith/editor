@@ -604,10 +604,7 @@ main :: () {
             input.watched_directory_changes = platform_state.watched_directory_changes;
             input.events = input_events;
 
-            wants_quit, wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
-            if wants_quit {
-                should_run = false;
-            }
+            wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
 
             input.frame_triggered_by_animation = wants_next_frame;
 
