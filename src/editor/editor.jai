@@ -1238,7 +1238,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             anim_t = clamp(anim_t, 0.0, 1.0);
             anim_t = smoothstep(0.0, 1.0, anim_t);
 
-            if flash_t <= 1.0 || anim_t <= 1.0 {
+            if flash_t < 1.0 || anim_t < 1.0 {
                 wants_next_frame = true;
             }
 
