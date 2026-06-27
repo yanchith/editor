@@ -47,7 +47,8 @@ Clipboard      :: #import "Clipboard";
 Simp           :: #import "Simp";
 Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY);
 
-IRect :: Editor.IRect;
+Vector4 :: Editor.Vector4;
+IRect   :: Editor.IRect;
 
 // The slow frame is more than 16.66, because it includes waiting for V-sync. Maybe we can do
 // something smart to exclude that once we switch away from OpenGL.
@@ -282,6 +283,8 @@ main :: () {
             Clipboard.os_clipboard_set_text(text);
         }
 
+        renderer_state.window = window;
+
         shader := #ifx Editor.FONT_SUBPIXEL SHADER_TEXT_SUBPIXEL else SHADER_TEXT;
         renderer_state.text_shader.gl_handle = Simp.get_shader_program(shader);
         renderer_state.text_shader.alpha_blend = true;
@@ -313,7 +316,6 @@ main :: () {
 
             table_add(*renderer_state.textures, texture_id, texture);
         }
-
         renderer.update_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, update_rect: IRect) {
             ProfileZone("renderer.update_texture_r8unorm");
 
@@ -373,6 +375,14 @@ main :: () {
                          cast(u32, texture.width), cast(u32, texture.height), 0,
                          GL_RGBA, GL_UNSIGNED_BYTE,
                          data.data);
+        }
+
+        renderer.begin_frame = (clear_color: Vector4) {
+            ProfileZone("renderer.begin_frame");
+            Simp.clear_render_target(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
+        }
+        renderer.submit_frame = () {
+            Simp.swap_buffers(renderer_state.window);
         }
 
         renderer.draw_rects = (render_rects: [] Editor.Render_Rect) {
@@ -594,8 +604,6 @@ main :: () {
             input.watched_directory_changes = platform_state.watched_directory_changes;
             input.events = input_events;
 
-            Simp.clear_render_target(1, 1, 1, 1);
-
             wants_quit, wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
             if wants_quit {
                 should_run = false;
@@ -605,8 +613,6 @@ main :: () {
 
             time_scale := profiler_end_frame();
             print_profile_for_slow_frames(SLOW_FRAME_THRESHOLD_MILLIS, time_scale);
-
-            Simp.swap_buffers(window);
 
             array_reset_keeping_memory(*platform_state.watched_directory_changes);
             reset_temporary_storage();
@@ -739,7 +745,9 @@ platform_get_absolute_path :: (path: string) -> success: bool, absolute_path: st
 //
 
 Renderer_State :: struct {
-    textures: Table(Editor.Texture_ID, Simp.Texture); // We currently aren't careful about allocating textures, but there's very few of them. :Malloc
+    window: *void;
+
+    textures: Table(Editor.Texture_ID, Simp.Texture); // We currently aren't careful about allocating textures, but there aren't many. :Malloc
     text_shader: Simp.Shader;
     current_pipeline: Pipeline = .NONE; // To prevent immediate_flush when pipeline is the same.
 

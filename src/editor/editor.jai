@@ -1049,11 +1049,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         viewport_line1 := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_bytes.count - 1);
 
         //
-        // Clear background
-        //
-        draw_rect(*render_rects, 0, 0, window_w, window_h, BACKGROUND_COLOR);
-
-        //
         // Draw Highlights
         //
         for panel.highlights {
@@ -1519,7 +1514,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     } else {
         renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, update_region);
     }
+
+    renderer.begin_frame(BACKGROUND_COLOR);
     renderer.draw_rects(render_rects);
+    renderer.submit_frame();
 
     return wants_quit, wants_next_frame;
 }
