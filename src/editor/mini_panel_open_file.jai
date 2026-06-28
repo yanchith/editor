@@ -205,7 +205,9 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
             String.path_overwrite_separators(file_absolute_path, "/");
 
             document, document_newly_created := find_or_add_document(editor, platform, .FILE, file_absolute_path);
-            document.backing_file_exists = file_exists;
+            if file_exists {
+                document.backing_file_time_of_last_sync_or_zero = input.time;
+            }
 
             if document_newly_created {
                 if file_exists {
@@ -213,8 +215,6 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
                     success, file_contents := platform.read_file(file_absolute_path,, temp);
                     if success {
-                        watch_file(editor, platform, input, file_absolute_path);
-
                         text_buffer_insert(*document.buffer, file_contents, .DISCARD);
                         text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
@@ -225,6 +225,8 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
                         update_indentation_scopes(document);
                         update_syntax_highlights(editor, document, platform, input);
+
+                        watch_file(editor, platform, input, document.backing_file_path);
                     }
                 } else {
                     editor_log(editor, "Opening new file with path: %", file_absolute_path);
