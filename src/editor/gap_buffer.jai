@@ -166,13 +166,13 @@ gap_buffer_delete_backward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* 
 // making a large view, you are negating the copy-avoidance benefits of the gap buffer, so this
 // should be used to get screen-sized chunks of text, not the entire buffer.
 //
-// The assert_that_we_don_not_allocate is here if you first made sure that the section of data you
-// are requesting does not cross the gap. You can move the gap to the beginning, if you want to be
-// sure you don't cross it.
-gap_buffer_make_view :: (gb: Gap_Buffer, index: s64, count: s64, force_allocate := false, assert_that_we_do_not_allocate := false) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
+// The assert_no_allocations is here if you first made sure that the section of data you are
+// requesting does not cross the gap. You can move the gap to the beginning, if you want to be sure
+// you don't cross it.
+gap_buffer_make_view :: (gb: Gap_Buffer, index: s64, count: s64, force_allocate := false, assert_no_allocations := false) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
     ProfileZone("gap_buffer_make_view");
 
-    assert(!(force_allocate && assert_that_we_do_not_allocate), "You can't have both, duh!");
+    assert(!(force_allocate && assert_no_allocations), "You can't have both, duh!");
 
     assert_valid(gb);
 
@@ -206,7 +206,7 @@ gap_buffer_make_view :: (gb: Gap_Buffer, index: s64, count: s64, force_allocate 
         }
     }
 
-    assert(!assert_that_we_do_not_allocate);
+    assert(!assert_no_allocations);
 
     // General case: copy the before/after parts into a new array and return that.
     result := NewArray(count, u8);

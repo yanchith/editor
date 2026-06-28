@@ -137,6 +137,8 @@ TEXTURE_ID_GLYPH_ATLAS: Texture_ID : 1;
 // TODO(jt): Get the monitor refresh rate from platform instead!
 USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 
+FILE_WATCH_POLL_PERIOD: Apollo_Time : #run milliseconds_to_apollo(1000);
+
 // TODO(jt): Make the colors themeable. :Config
 CURSOR_COLOR               :: #run unpack_srgb(0x50ffa0ff);
 ACTIVE_CURSOR_COLOR        :: #run unpack_srgb(0xffffffff);
@@ -210,9 +212,9 @@ Document :: struct {
     // Newly created documents (and scratch documents) do not have a backing file until saved, at
     // which point a backing file path is assigned and file created. A document with a
     // backing_file_path can also be created without the file already existing, in which case
-    // backing_file_exists gets set only after the file is first written to.
+    // backing_file_time_of_last_sync_or_zero gets set only after the file is first written to.
     backing_file_path: string;
-    backing_file_exists: bool;
+    backing_file_time_of_last_sync_or_zero: Apollo_Time; // nocheckin Maybe we should more explicitly signalize whether the backing file actually exists.
 
     indentation_scopes:      [..] Indentation_Scope;
     syntax_highlight_tokens: [..] Syntax_Highlight_Token;
@@ -677,6 +679,26 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if it.document.old_cursor != it.document.buffer.cursor0 {
             it.document.old_cursor = it.document.buffer.cursor0;
             it.document.old_cursor_position = get_cursor_position(it.document, editor.font);
+        }
+    }
+
+
+    // :FileWatch
+    //
+    // Go through watched_directory_changes, as well as timestamps on our documents to check what we
+    // possible want to reload from disk.
+
+    for input.watched_directory_changes {
+        // nochecking HERE
+    }
+
+    for * editor.documents {
+        if it.backing_file_time_of_last_sync_or_zero {
+            time_since_sync := input.time - it.backing_file_time_of_last_sync_or_zero;
+
+            if time_since_sync > FILE_WATCH_POLL_PERIOD {
+                // nocheckin HERE
+            }
         }
     }
 
@@ -1558,15 +1580,15 @@ watch_file :: (editor: *Editor, platform: Platform, input: Input, file_path: str
         platform.watch_directory(directory_path);
     }
 
-    // TODO(jt): if_unique, so that people can call watch_file multiple times on the same file. Maybe we don't
-    // need the slop we should sanity_assert instead.
+    // TODO(jt): if_unique, so that people can call watch_document multiple times on the same
+    // file. Maybe we don't need the slop we should sanity_assert instead.
     array_add_if_unique(*editor.watched_files, file_path);
 }
 
 unwatch_file :: (editor: *Editor, platform: Platform, input: Input, file_path: string) {
-    // TODO(jt): remove_by_value removes all occurences by default. We do this, so that people can call
-    // unwatch_file multiple times on the same file. Maybe we don't need the slop and should
-    // sanity_assert instead.
+    // TODO(jt): remove_by_value removes all occurences by default. We do this, so that people can
+    // call unwatch_document multiple times on the same file. Maybe we don't need the slop and
+    // should sanity_assert instead.
     array_unordered_remove_by_value(*editor.watched_files, file_path);
 
     watched_directories: Table(string, void);
@@ -1840,14 +1862,14 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 buffer := *document.buffer;
 
                 gap_buffer_move_gap_to(*buffer.gb, 0);
-                contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_that_we_do_not_allocate = true);
+                contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
                 success := platform.write_file(document.backing_file_path, contents);
                 if success {
-                    if !document.backing_file_exists {
+                    if !document.backing_file_time_of_last_sync_or_zero {
                         watch_file(editor, platform, input, document.backing_file_path);
                     }
 
-                    document.backing_file_exists = true; // It might have existed before, too!
+                    document.backing_file_time_of_last_sync_or_zero = input.time;
                     editor_log(editor, "Wrote file %", document.backing_file_path);
                 } else {
                     editor_log(editor, "Failed to write file %", document.backing_file_path);
