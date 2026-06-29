@@ -21,6 +21,7 @@ Platform :: struct {
     file_exists:         (path: string) -> bool;
     file_is_directory:   (path: string) -> bool;
     read_file:           (path: string) -> success: bool, [] u8;
+    // nocheckin we maybe want the timestamp and file size after the successful write, so that we can safely ignore file watcher messages?
     write_file:          (path: string, data: [] u8) -> success: bool;
     delete_file:         (path: string) -> success: bool;
 
