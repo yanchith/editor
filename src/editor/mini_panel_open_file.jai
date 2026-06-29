@@ -206,7 +206,16 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
             document, document_newly_created := find_or_add_document(editor, platform, .FILE, file_absolute_path);
             if file_exists {
-                document.backing_file_time_of_last_sync_or_zero = input.time;
+                document.backing_file_exists = true;
+                document.backing_file_time_of_last_sync = input.time;
+
+                // Unlike when we save a file, we assume the modification time here is mostly
+                // stabilized. We still may be wrong, in which case we should also save the hash of
+                // the file for later comparisons.
+                _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+                document.backing_file_last_synced_modification_time = modification_time;
+                document.backing_file_last_synced_size = size;
+                // nocheckin update hash!
             }
 
             if document_newly_created {
