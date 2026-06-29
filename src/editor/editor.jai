@@ -245,6 +245,10 @@ Document :: struct {
         // These get set and unset in setup_cursor_anim_interpolation.
         CURSOR_ANIM_TRIGGERED_BY_MOUSE    :: 0x1000;
         CURSOR_ANIM_TRIGGERED_BY_KEYBOARD :: 0x2000;
+
+        // nocheckin
+        MAYBE_CHANGED_ON_DISK         :: 0x100000; // Set by file watching. Unset by checking the file for modifications.
+        CONFLICT_WITH_CHANGES_ON_DISK :: 0x200000; // Set by checking the file for modifications.
     }
 
     Indentation_Scope :: struct {

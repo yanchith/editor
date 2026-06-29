@@ -20,8 +20,6 @@ Input :: struct {
 Watched_Directory_Change :: struct {
     path: string;
     flags: Flags;
-    // File_Watcher also adds time here, but the time is purely synthetic - it's when it added a
-    // particular event to the buffer. We can add it later, if we need it for some reason.
 
     Flags :: enum_flags u64 {
         NONE :: 0;
@@ -35,8 +33,8 @@ Watched_Directory_Change :: struct {
         MOVED_FROM :: 0x20; // Move event is for the old path.
         MOVED_TO   :: 0x40; // Move event is for the new path.
 
-        // A file in this directory changed without the watcher catching the change. (This is
-        // sometimes an OS limitation, and at other times the limitation of our implementation.)
+        // A file in this directory changed without the watcher catching the change. This can be an
+        // OS limitation, or because the buffer with our watched events overflowed.
         NEED_FULL_CHILDREN_SCAN :: 0x0100;
     }
 }
