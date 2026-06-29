@@ -174,6 +174,10 @@ main :: () {
             is_directory, success := File_Utilities.is_directory(path);
             return success && is_directory;
         }
+        platform.file_modification_time_and_size = (path: string) -> bool, Apollo_Time, s64 {
+            modtime, size, exists := File_Utilities.file_modtime_and_size(path);
+            return exists, modtime, size;
+        }
         platform.read_file = (path: string) -> success: bool, [] u8 {
             success, absolute_path := platform_get_absolute_path(path,, temp);
             if !success {

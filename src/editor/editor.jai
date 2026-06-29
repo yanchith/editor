@@ -87,6 +87,7 @@ f64 :: float64;
 #import "Hash_Table";
 #import "Profiler";
 
+XXH     :: #import "xxHash";
 String  :: #import "String";
 Math    :: #import "Math";
 Unicode :: #import "Unicode";
@@ -214,7 +215,16 @@ Document :: struct {
     // backing_file_path can also be created without the file already existing, in which case
     // backing_file_time_of_last_sync_or_zero gets set only after the file is first written to.
     backing_file_path: string;
-    backing_file_time_of_last_sync_or_zero: Apollo_Time; // nocheckin Maybe we should more explicitly signalize whether the backing file actually exists.
+    backing_file_exists: bool;
+    backing_file_time_of_last_sync: Apollo_Time;
+    // The modification time and size are used to detect changes on filesystem since we last read
+    // from or wrote to the file.
+    //
+    // TODO(jt): modtime and size are not sufficient to detect all file changes, and we may need to
+    // resort to actually reading that and comparing the contents hash to a previously stored hash,
+    backing_file_last_synced_modification_time: Apollo_Time;
+    backing_file_last_synced_size: s64;
+    backing_file_last_synced_hash: u64;
 
     indentation_scopes:      [..] Indentation_Scope;
     syntax_highlight_tokens: [..] Syntax_Highlight_Token;
@@ -245,10 +255,6 @@ Document :: struct {
         // These get set and unset in setup_cursor_anim_interpolation.
         CURSOR_ANIM_TRIGGERED_BY_MOUSE    :: 0x1000;
         CURSOR_ANIM_TRIGGERED_BY_KEYBOARD :: 0x2000;
-
-        // nocheckin
-        MAYBE_CHANGED_ON_DISK         :: 0x100000; // Set by file watching. Unset by checking the file for modifications.
-        CONFLICT_WITH_CHANGES_ON_DISK :: 0x200000; // Set by checking the file for modifications.
     }
 
     Indentation_Scope :: struct {
@@ -686,22 +692,57 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-
-    // :FileWatch
-    //
-    // Go through watched_directory_changes, as well as timestamps on our documents to check what we
-    // possible want to reload from disk.
-
     for input.watched_directory_changes {
         // nochecking HERE
     }
 
     for * editor.documents {
-        if it.backing_file_time_of_last_sync_or_zero {
-            time_since_sync := input.time - it.backing_file_time_of_last_sync_or_zero;
+        if it.backing_file_exists {
+            // nocheckin extract to sync_document_with_filesystem(), so that we can share the same code path.
+            if (input.time - it.backing_file_time_of_last_sync) > FILE_WATCH_POLL_PERIOD {
+                exists, modification_time, size := platform.file_modification_time_and_size(it.backing_file_path);
 
-            if time_since_sync > FILE_WATCH_POLL_PERIOD {
-                // nocheckin HERE
+                // We are okay with the file not existing anymore, because this means we don't have
+                // to sync with anyone. Let's just reset the things.
+                if !exists {
+                    it.backing_file_last_synced_modification_time = {};
+                    it.backing_file_last_synced_size = 0;
+                    it.backing_file_last_synced_hash = 0;
+
+                    continue;
+                }
+
+                metadata_changed := false;
+
+                if modification_time > it.backing_file_last_synced_modification_time {
+                    metadata_changed = true;
+                }
+
+                if size != it.backing_file_last_synced_size {
+                    metadata_changed = true;
+                }
+
+                it.backing_file_last_synced_modification_time = modification_time;
+                it.backing_file_last_synced_size = size;
+
+                if metadata_changed {
+                    success, contents := platform.read_file(path,, temp);
+                    if success {
+                        hash := XXH.native_XXH64(contents.data, contents.count, 0x100000001b3 /* FNV_64_PRIME from modules/Hash */)
+                        if hash != it.backing_file_last_synced_hash {
+                            // nocheckin HERE reload file or something?
+
+                            it.backing_file_last_synced_hash = hash;
+                        }
+                    } else {
+                        // TODO(jt): This can only happen as a race condition. What exactly should
+                        // we be doing here? (We currently just reset the things as though the file
+                        // didn't exist.)
+                        it.backing_file_last_synced_modification_time = {};
+                        it.backing_file_last_synced_size = 0;
+                        it.backing_file_last_synced_hash = 0;
+                    }
+                }
             }
         }
     }
@@ -1869,11 +1910,22 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
                 success := platform.write_file(document.backing_file_path, contents);
                 if success {
-                    if !document.backing_file_time_of_last_sync_or_zero {
+                    if !document.backing_file_exists {
                         watch_file(editor, platform, input, document.backing_file_path);
                     }
 
-                    document.backing_file_time_of_last_sync_or_zero = input.time;
+                    document.backing_file_exists = true;
+                    document.backing_file_time_of_last_sync = input.time;
+                    // nocheckin update hash!
+
+                    // We sync the modification time and size here, but the filesystem may give us
+                    // stale data and our write is not yet visible. This will cause the polling
+                    // fallback of the file watcher to reload the file... we could fix that by also
+                    // doing a file hash, so that we don't give the user a bad experience.
+                    _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+                    document.backing_file_last_synced_modification_time = modification_time;
+                    document.backing_file_last_synced_size = size;
+
                     editor_log(editor, "Wrote file %", document.backing_file_path);
                 } else {
                     editor_log(editor, "Failed to write file %", document.backing_file_path);
