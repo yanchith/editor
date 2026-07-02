@@ -20,3 +20,17 @@ fnv1a_hash :: (bytes: [] u8, seed := FNV1A_SEED) -> u64 {
 
     return h;
 }
+
+//
+// For more complicated hash functions, we will also want a more involved "streaming" API:
+//
+// My_Hash_State state;
+// my_hash_init(*state, seed);
+// my_hash_update(*state, bytes1);
+// my_hash_update(*state, bytes2);
+// my_hash_update(*state, bytes3);
+// hash := my_hash_finalize(*state);
+//
+// We can also retrofit this API for FNV-1a once we do that, but for now that seems
+// overkill, as FNV-1a can be easily chained manually.
+//
