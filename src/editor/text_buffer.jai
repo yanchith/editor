@@ -265,11 +265,18 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_modifier := Undo
     return true;
 }
 
-text_buffer_delete_selection :: (buffer: *Text_Buffer) -> string /* Pointing to the internal gap buffer */ {
+text_buffer_delete_all :: (buffer: *Text_Buffer) -> /* Pointing to the internal gap buffer */ string {
+    start := text_buffer_get_start(buffer);
+    end   := text_buffer_get_end(buffer);
+
+    return /*inline?*/ text_buffer_delete_selection(buffer, start, end);
+}
+
+text_buffer_delete_selection :: (buffer: *Text_Buffer) -> /* Pointing to the internal gap buffer */ string {
     return /*inline?*/ text_buffer_delete_selection(buffer, buffer.cursor0, buffer.cursor1);
 }
 
-text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, __end: Text_Location) -> string /* Pointing to the internal gap buffer */ {
+text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, __end: Text_Location) -> /* Pointing to the internal gap buffer */ string {
     ProfileZone("text_buffer_delete_selection");
 
     // Force copy to avoid "maybe by reference" aliasing. We use all of _start, _end, start and end,

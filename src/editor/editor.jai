@@ -87,7 +87,6 @@ f64 :: float64;
 #import "Hash_Table";
 #import "Profiler";
 
-XXH     :: #import "xxHash";
 String  :: #import "String";
 Math    :: #import "Math";
 Unicode :: #import "Unicode";
@@ -110,6 +109,7 @@ operator==     :: Math.operator==;
 
 #load "assert.jai";
 #load "bits.jai";
+#load "hash.jai";
 #load "string.jai";
 #load "math.jai";
 #load "platform.jai";
@@ -726,13 +726,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 it.backing_file_last_synced_size = size;
 
                 if metadata_changed {
-                    success, contents := platform.read_file(path,, temp);
+                    success, contents := platform.read_file(it.backing_file_path,, temp);
                     if success {
-                        hash := XXH.native_XXH64(contents.data, contents.count, 0x100000001b3 /* FNV_64_PRIME from modules/Hash */)
+                        // TODO(jt): @Speed FNV-1a is very slow for large inputs. We want to some
+                        // fast (but for simplicity ideally still portable) hash here, like
+                        // xxHash64. Needs research.
+                        hash := fnv1a_hash(contents);
                         if hash != it.backing_file_last_synced_hash {
-                            // nocheckin HERE reload file or something?
-
                             it.backing_file_last_synced_hash = hash;
+
+                            // nocheckin HERE anything else we need to do?
+
+                            // TODO(jt)
+                            text_buffer_delete_all(*it.buffer);
+                            text_buffer_insert(*it.buffer, contents, .FUSE);
                         }
                     } else {
                         // TODO(jt): This can only happen as a race condition. What exactly should
