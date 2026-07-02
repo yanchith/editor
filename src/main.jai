@@ -55,9 +55,6 @@ IRect   :: Editor.IRect;
 SLOW_FRAME_THRESHOLD_MILLIS :: 18;
 SLOW_INIT_THRESHOLD_MILLIS  :: 200;
 
-FS_WATCH_LATENCY: f64 = 1.0;
-
-
 main :: () {
     time_of_program_start := current_time_monotonic();
 
@@ -247,7 +244,7 @@ main :: () {
                 }
 
                 stream := FSEventStreamCreate(null, event_stream_callback, null, paths_to_watch, kFSEventStreamEventIdSinceNow,
-                                              FS_WATCH_LATENCY, kFSEventStreamCreateFlagFileEvents);
+                                              Editor.FILE_WATCH_MERGE_WINDOW, kFSEventStreamCreateFlagFileEvents);
 
                 FSEventStreamScheduleWithRunLoop(stream, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
                 FSEventStreamStart(stream);

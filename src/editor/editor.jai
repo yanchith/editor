@@ -138,7 +138,8 @@ TEXTURE_ID_GLYPH_ATLAS: Texture_ID : 1;
 // TODO(jt): Get the monitor refresh rate from platform instead!
 USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 
-FILE_WATCH_POLL_PERIOD: Apollo_Time : #run milliseconds_to_apollo(1000);
+FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(1000);
+FILE_WATCH_MERGE_WINDOW: Apollo_Time : #run milliseconds_to_apollo(500);
 
 // TODO(jt): Make the colors themeable. :Config
 CURSOR_COLOR               :: #run unpack_srgb(0x50ffa0ff);
@@ -212,10 +213,10 @@ Document :: struct {
 
     // Newly created documents (and scratch documents) do not have a backing file until saved, at
     // which point a backing file path is assigned and file created. A document with a
-    // backing_file_path can also be created without the file already existing, in which case
-    // backing_file_time_of_last_sync_or_zero gets set only after the file is first written to.
+    // backing_file_path can also be created without the file already existing.
     backing_file_path: string;
     backing_file_exists: bool;
+    backing_file_time_of_last_save: Apollo_Time;
     backing_file_time_of_last_sync: Apollo_Time;
     // The modification time and size are used to detect changes on filesystem since we last read
     // from or wrote to the file.
@@ -248,9 +249,13 @@ Document :: struct {
         // These get set during event processing and unset after update for this document's panel is done.
         CHANGED_THIS_FRAME :: 0x01;
 
-        // READ_ONLY
-        // CONSISTENT_INDENTATION
-        // CONSISTENT_NEWLINES
+        // INCONSISTENT_INDENTATION  0x02;
+        // INCONSISTENT_NEWLINES     0x04;
+
+        READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT :: 0x10;
+        READONLY_BECAUSE_OF_MANUAL_LOCK         :: 0x20;
+
+        READONLY :: READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT | READONLY_BECAUSE_OF_MANUAL_LOCK;
 
         // These get set and unset in setup_cursor_anim_interpolation.
         CURSOR_ANIM_TRIGGERED_BY_MOUSE    :: 0x1000;
@@ -694,6 +699,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     for input.watched_directory_changes {
         // nochecking HERE
+        //
+        // Make sure to supress changes for documents we recently changed ourselves. We need to
+        // know the coalescing period of the file watcher to reliably do this.
     }
 
     for * editor.documents {
@@ -726,25 +734,30 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 it.backing_file_last_synced_size = size;
 
                 if metadata_changed {
+                    // TODO(jt): @Memory To keep memory usage down, load the file in chunks and hash
+                    // it chunk by chunk, re-using the same memory.
                     success, contents := platform.read_file(it.backing_file_path,, temp);
                     if success {
-                        // TODO(jt): @Speed FNV-1a is very slow for large inputs. We want to some
-                        // fast (but for simplicity ideally still portable) hash here, like
-                        // xxHash64. Needs research.
+                        // TODO(jt): @Speed FNV-1a is very slow for large inputs, because it only
+                        // has one stream and operates on bytes. Change this to a faster (but for
+                        // simplicity still portable) hash here, like xxHash64. Needs research.
                         hash := fnv1a_hash(contents);
                         if hash != it.backing_file_last_synced_hash {
                             it.backing_file_last_synced_hash = hash;
+                            it.flags |= .READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
 
-                            // nocheckin HERE anything else we need to do?
-
-                            // TODO(jt)
+                            // nocheckin HERE Actually do the reload as a separate action
+                            /*
+                            // TODO(jt): @Speed @Memory Figure out a diff instead of making the
+                            // whole file the diff?
                             text_buffer_delete_all(*it.buffer);
                             text_buffer_insert(*it.buffer, contents, .FUSE);
+                            */
                         }
                     } else {
-                        // TODO(jt): This can only happen as a race condition. What exactly should
-                        // we be doing here? (We currently just reset the things as though the file
-                        // didn't exist.)
+                        // This can only happen as a race condition. We reset everything as though
+                        // this file only ever existed in our memory.
+                        it.backing_file_exists = false;
                         it.backing_file_last_synced_modification_time = {};
                         it.backing_file_last_synced_size = 0;
                         it.backing_file_last_synced_hash = 0;
@@ -1917,23 +1930,31 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
                 success := platform.write_file(document.backing_file_path, contents);
                 if success {
+                    editor_log(editor, "Wrote file %", document.backing_file_path);
+
                     if !document.backing_file_exists {
                         watch_file(editor, platform, input, document.backing_file_path);
                     }
 
                     document.backing_file_exists = true;
+                    document.backing_file_time_of_last_save = input.time;
                     document.backing_file_time_of_last_sync = input.time;
-                    // nocheckin update hash!
 
                     // We sync the modification time and size here, but the filesystem may give us
-                    // stale data and our write is not yet visible. This will cause the polling
-                    // fallback of the file watcher to reload the file... we could fix that by also
-                    // doing a file hash, so that we don't give the user a bad experience.
+                    // stale data and our write is not yet visible. If this happens, it will cause
+                    // the polling fallback of the file watcher to reload the and rehash the file.
                     _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
                     document.backing_file_last_synced_modification_time = modification_time;
                     document.backing_file_last_synced_size = size;
 
-                    editor_log(editor, "Wrote file %", document.backing_file_path);
+                    // Update the content hash:
+                    bytes_before_gap := gap_buffer_get_bytes_before_gap(document.buffer.gb);
+                    bytes_after_gap  := gap_buffer_get_bytes_after_gap(document.buffer.gb);
+
+                    hash := fnv1a_hash(bytes_before_gap);
+                    hash = fnv1a_hash(bytes_after_gap, seed = hash);
+
+                    document.backing_file_last_synced_hash = hash;
                 } else {
                     editor_log(editor, "Failed to write file %", document.backing_file_path);
                 }
