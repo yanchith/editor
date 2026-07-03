@@ -1667,18 +1667,19 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
 
                             save_shortcut := shortcut_sprint(key_map_find_shortcut(editor.key_map, .SAVE_DOCUMENT),, temp);
                             reload_shortcut := shortcut_sprint(key_map_find_shortcut(editor.key_map, .RELOAD_DOCUMENT),, temp);
-
-                            // nochecking there's extra space in the shortcut print
-                            editor_log(editor, "Document % modified, but backing file changed on filesystem. Save (%) or reload (%) explicitly to exit read only mode", String.path_filename(document.backing_file_path), save_shortcut, reload_shortcut);
+                            editor_log(editor, "% modified, but file changed on filesystem. % or % to exit read only mode", String.path_filename(document.backing_file_path), save_shortcut, reload_shortcut);
                         } else {
                             // TODO(jt): @Speed @Memory Figure out a diff instead of changing the whole file?
+
+                            cursor_before_reload := document.buffer.cursor0;
+
                             text_buffer_delete_all(*document.buffer);
                             text_buffer_insert(*document.buffer, contents, .FUSE);
-                            // nocheckin try to preserve cursor as much as possible
+                            text_buffer_move_cursor_to(*document.buffer, cursor_before_reload, false);
 
                             update_syntax_highlights(editor, document, platform, input);
                             update_indentation_scopes(document);
-                            editor_log(editor, "Updated document % from filesystem", String.path_filename(document.backing_file_path));
+                            editor_log(editor, "Updated % from filesystem", String.path_filename(document.backing_file_path));
                         }
                     }
                 } else {
