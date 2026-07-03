@@ -123,6 +123,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     item_index := mini_panel.items.count;
                     item := array_add(*mini_panel.items);
                     item.text = s;
+                    item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
                     if document.buffer.binary_mode {
                         item.flags |= .BINARY;
                     }

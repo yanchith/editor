@@ -70,6 +70,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
                 item := array_add(*mini_panel.items);
                 item.text = s;
+                item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
                 item.highlight_x0 = x0;
                 item.highlight_x1 = x0 + filename_char_count;
                 item.userdata = null;
