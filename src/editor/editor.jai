@@ -227,7 +227,7 @@ Document :: struct {
     // backing_file_path can also be created without the file already existing.
     backing_file_path: string;
     backing_file_exists: bool;
-    backing_file_time_of_last_save: Apollo_Time; // nocheckin we are still not using this!
+    backing_file_time_of_last_save: Apollo_Time; // Used to filter out modifications from the filesystem done by us.
     backing_file_time_of_last_sync: Apollo_Time;
     // The modification time and size are used to detect changes on filesystem since we last read
     // from or wrote to the file.
@@ -708,11 +708,31 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    for input.watched_directory_changes {
-        // nocheckin HERE
-        //
-        // Make sure to supress changes for documents we recently changed ourselves. We need to
-        // know the coalescing period of the file watcher to reliably do this.
+    for change: input.watched_directory_changes {
+        if change.flags & .MODIFIED {
+            // Make sure to supress changes for documents we recently changed ourselves. We need to
+            // know the coalescing period of the file watcher to reliably do this.
+            path, _, _, filename := String.path_decomp(change.path);
+            do_full_scan := cast(bool, change.flags & .NEED_FULL_CHILDREN_SCAN); // This should imply the directory is MODIFIED.
+
+            for * editor.documents {
+                // Possibly the file was modified by us. Ignore. If this indeed is a valid
+                // modification done by someone else, we'll discover it int the fallback.
+                if input.time - it.backing_file_time_of_last_save < FILE_WATCH_MERGE_WINDOW {
+                    continue;
+                }
+
+                if it.backing_file_path == change.path {
+                    sync_document_with_filesystem(editor, platform, input, it);
+                    continue;
+                }
+
+                if do_full_scan && String.begins_with(String.path_strip_filename(it.backing_file_path), change.path) {
+                    sync_document_with_filesystem(editor, platform, input, it);
+                    continue;
+                }
+            }
+        }
     }
 
     for * editor.documents {
@@ -1542,9 +1562,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_region := irect_union_or_zero(update_regions);
 
     // TODO(jt): @Speed OpenGL is doing some kind of synchronization here. Depending on whether
-    // update_texture_r8unorm does early return (because the update region is empty), either it or
-    // draw_rects blocks for about 10ms, but at least one of them does. We should probably just
-    // switch to our own rendering backend (raw Vulkan/Metal or SGPU) and tune it for latency.
+    // update_texture does early return (because the update region is empty), either it or
+    // draw_rects blocks for about 10-15ms, but at least one of them does. We should probably just
+    // switch to our own rendering backend (raw Vulkan/Metal, WGPU or SGPU) and tune it for latency.
     #if FONT_SUBPIXEL {
         atlas: [] u8;
         atlas.count = editor.font.glyph_atlas.count * 4;
@@ -1953,34 +1973,39 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         }
         case .SAVE_DOCUMENT; {
             if document.backing_file_path.count {
-                buffer := *document.buffer;
+                if document.flags & .MODIFIED {
+                    buffer := *document.buffer;
 
-                gap_buffer_move_gap_to(*buffer.gb, 0);
-                contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
-                success := platform.write_file(document.backing_file_path, contents);
-                if success {
-                    editor_log(editor, "Wrote file %", document.backing_file_path);
+                    gap_buffer_move_gap_to(*buffer.gb, 0);
+                    contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
+                    success := platform.write_file(document.backing_file_path, contents);
+                    if success {
+                        editor_log(editor, "Wrote file %", document.backing_file_path);
 
-                    document.flags &= ~.MODIFIED;
-                    document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT; // TODO(jt): Ask for confirmation, if we have a conflict.
+                        document.flags &= ~.MODIFIED;
+                        document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
 
-                    if !document.backing_file_exists {
-                        watch_file(editor, platform, input, document.backing_file_path);
+                        if !document.backing_file_exists {
+                            watch_file(editor, platform, input, document.backing_file_path);
+                        }
+
+                        document.backing_file_exists = true;
+                        document.backing_file_time_of_last_save = input.time;
+                        document.backing_file_time_of_last_sync = input.time;
+
+                        // We sync the modification time and size here, but the filesystem may give us
+                        // stale data and our write is not yet visible. If this happens, it will cause
+                        // the polling fallback of the file watcher to reload the and rehash the file.
+                        _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+                        document.backing_file_last_synced_modification_time = modification_time;
+                        document.backing_file_last_synced_size = size;
+                        document.backing_file_last_synced_hash = hash_text_buffer_contents(document.buffer);
+                    } else {
+                        editor_log(editor, "Failed to write file %", document.backing_file_path);
                     }
 
-                    document.backing_file_exists = true;
-                    document.backing_file_time_of_last_save = input.time;
-                    document.backing_file_time_of_last_sync = input.time;
-
-                    // We sync the modification time and size here, but the filesystem may give us
-                    // stale data and our write is not yet visible. If this happens, it will cause
-                    // the polling fallback of the file watcher to reload the and rehash the file.
-                    _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
-                    document.backing_file_last_synced_modification_time = modification_time;
-                    document.backing_file_last_synced_size = size;
-                    document.backing_file_last_synced_hash = hash_text_buffer_contents(document.buffer);
                 } else {
-                    editor_log(editor, "Failed to write file %", document.backing_file_path);
+                    editor_log(editor, "No need to save unmodified file %", document.backing_file_path);
                 }
             }
         }
