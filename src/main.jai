@@ -10,11 +10,15 @@ f64 :: float64;
 
 #if OS == .WINDOWS {
     #import "Windows";
+    #import "Windows_Utf8";
 
     // TODO(jt): @Cleanup We define a few functions that are either not present in modules/Windows,
     // or are commented out there. Eventually remove our version? Or eventually have just our
     // version of modules/Windows?
     user32 :: #library,system "user32";
+
+    TRUE:  s32 : 1;
+    FALSE: s32 : 0;
 
     UINT :: u32;
 
@@ -39,6 +43,7 @@ f64 :: float64;
 #import "Profiler"()(IMPORT_MODE = .RUNTIME);
 
 String         :: #import "String";
+System         :: #import "System";
 File           :: #import "File";
 File_Utilities :: #import "File_Utilities";
 Window         :: #import "Window_Creation";
@@ -85,8 +90,6 @@ main :: () {
             //
             // We detect this situation by looking for asset files that should be distributed with
             // the executable. If we can't find them, we are most likely not running from console.
-            System :: #import "System";
-
             see_data := File_Utilities.is_directory("data/fonts");
             if !see_data {
                 exe_file := System.get_path_of_running_executable();
@@ -222,11 +225,40 @@ main :: () {
 
             return file_infos;
         }
+        // nocheckin watch_directory and unwatch_directory relies on the general purpose allocator a lot. Don't let people override it!
         platform.watch_directory = (path: string) -> success: bool {
             #if OS == .WINDOWS {
+                event_handle := CreateEventW(null, FALSE, FALSE, null);
+                if event_handle == null {
+                    return false;
+                }
 
+                directory_handle := CreateFileW(utf8_to_wide(path,, temp), FILE_LIST_DIRECTORY,
+                                                FILE_SHARE_READ | FILE_SHARE_DELETE | FILE_SHARE_WRITE,
+                                                null,
+                                                OPEN_EXISTING,
+                                                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+                                                null);
+
+                if directory_handle == INVALID_HANDLE_VALUE {
+                    error_code, description := System.get_error_value_and_string();
+                    log_error("watch_directory encountered an error in CreateFileW: %, %", error_code, description);
+
+                    CloseHandle(event_handle);
+                    return false;
+                }
+
+                watched_directory := array_add(*platform_state.watched_directories);
+                watched_directory.path = copy_string(path); // :Malloc
+                watched_directory.handle = directory_handle;
+                watched_directory.overlapped.hEvent = event_handle;
+                watched_directory.overlapped.Offset = 0;
+
+                String.path_overwrite_separators(watched_directory.path, #char "/");
+
+                issue_one_read(watched_directory);
             } else #if OS == .MACOS {
-                for platform_state.event_streams {
+                for platform_state.watched_directories {
                     if it.path == path {
                         log("Reusing event stream for path: %", path);
                         return true;
@@ -244,14 +276,14 @@ main :: () {
                 }
 
                 stream := FSEventStreamCreate(null, event_stream_callback, null, paths_to_watch, kFSEventStreamEventIdSinceNow,
-                                              Editor.FILE_WATCH_MERGE_WINDOW, kFSEventStreamCreateFlagFileEvents);
+                                              Editor.FILE_WATCH_BLIND_WINDOW, kFSEventStreamCreateFlagFileEvents);
 
                 FSEventStreamScheduleWithRunLoop(stream, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
                 FSEventStreamStart(stream);
 
-                // nocheckin copy_string here needs to use malloc... maybe we should document that
-                // overriding context.allocator is not recommended for this?
-                array_add(*platform_state.event_streams, { copy_string(path), stream });
+                watched_directory := array_add(*platform_state.watched_directories);
+                watched_directory.path = copy_string(path); // :Malloc
+                watched_directory.event_stream = stream;
 
                 return true;
             }
@@ -602,6 +634,8 @@ main :: () {
             }
             input.mouse_wheel_delta = Input.mouse_delta_z;
 
+            platform_process_watched_directory_changes();
+
             input.watched_directory_changes = platform_state.watched_directory_changes;
             input.events = input_events;
 
@@ -628,17 +662,25 @@ main :: () {
 
 Platform_State :: struct {
     watched_directory_changes: [..] Editor.Watched_Directory_Change; // :Malloc
+    watched_directories:       [..] Watched_Directory;               // :Malloc
 
     #if OS == .WINDOWS {
+        Watched_Directory :: struct {
+            path: string; // :Malloc
+            handle: HANDLE;
+            overlapped: OVERLAPPED;
 
+            read_issue_failed: bool;
+
+            notify_buffer: [NOTIFY_BUFFER_SIZE] u8;
+
+            NOTIFY_BUFFER_SIZE :: 4096;
+        }
     } else #if OS == .MACOS {
-        event_streams: [..] Event_Stream; // :Malloc
-
-        Event_Stream :: struct {
+        Watched_Directory :: struct {
             path: string; // :Malloc
             stream: FSEventStreamRef;
         }
-
     }
 }
 
@@ -647,6 +689,7 @@ platform_state: Platform_State;
 platform_wait_for_events :: () {
     #if OS == .WINDOWS {
         // On Windows (TM), we wait for new events with WaitMessage.
+        // nocheckin does completed IO (watched directory changes) wake us up?
         WaitMessage();
     } else #if OS == .MACOS {
         // On macOS, we wait for events by checking the queue with nextEventMatchingMask
@@ -691,7 +734,117 @@ platform_get_absolute_path :: (path: string) -> success: bool, absolute_path: st
     return success, absolute_path;
 }
 
-#if OS == .MACOS {
+platform_process_watched_directory_changes :: () {
+    #if OS == .WINDOWS {
+        advance_notify_info :: (info: *FILE_NOTIFY_INFORMATION) -> *FILE_NOTIFY_INFORMATION {
+            if info.NextEntryOffset == 0 {
+                return null;
+            }
+
+            return cast(*FILE_NOTIFY_INFORMATION, cast(*u8, info) + info.NextEntryOffset);
+        }
+
+        for * platform_state.watched_directories {
+            if it.read_issue_failed {
+                it.read_issue_failed = false;
+                issue_one_read(it);
+
+                // If the read failed again immediately, we'll try again next time.
+                if it.read_issue_failed {
+                    continue;
+                }
+            }
+
+            assert(it.handle != INVALID_HANDLE_VALUE);
+
+            if !HasOverlappedIoCompleted(it.overlapped) {
+                continue;
+            }
+
+            bytes_transferred: s32;
+            success := GetOverlappedResult(it.handle, *it.overlapped, *bytes_transferred, FALSE);
+            if success {
+                log("nocheckin %: bytes_transferred == % (struct size %)\n", it.path, bytes_transferred, size_of(FILE_NOTIFY_INFORMATION));
+            }
+
+            defer issue_one_read(it);
+
+            if !success {
+                continue;
+            }
+
+            if bytes_transferred == 0 {
+                // The changes buffer overflowed. Add full rescan event for the whole directory.
+                change := array_add(*platform_state.watched_directory_changes);
+                change.path = copy_string(it.path,, temp);
+                change.flags |= .MODIFIED | .NEED_FULL_CHILDREN_SCAN;
+
+                continue;
+            }
+
+            notify_info := cast(*FILE_NOTIFY_INFORMATION, it.notify_buffer.data);
+            while notify_info != null {
+                defer notify_info = advance_notify_info(notify_info);
+
+                flags: Editor.Watched_Directory_Change.Flags;
+                if notify_info.Action == {
+                    case FILE_ACTION_ADDED;             flags = .ADDED;
+                    case FILE_ACTION_REMOVED;           flags = .REMOVED;
+                    case FILE_ACTION_MODIFIED;          flags = .MODIFIED;
+                    case FILE_ACTION_RENAMED_OLD_NAME;  flags = .MOVED | .MOVED_FROM;
+                    case FILE_ACTION_RENAMED_NEW_NAME;  flags = .MOVED | .MOVED_TO;
+                    case;                               continue;
+                }
+
+                path, success := wide_to_utf8(cast(*u16, notify_info.FileName.data), notify_info.FileName.count,, temp);
+                if !success {
+                    continue;
+                }
+
+                String.path_overwrite_separators(path, #char "/");
+                full_path := tprint("%/%", it.path, path);
+
+                if flags & .MODIFIED && File_Utilities.is_directory(full_path) {
+                    // TODO(jt): @Audit From modules/File_Watcher:
+                    //
+                    // Window's doesn't seem to issue the right events when things are renamed or moved.
+                    // Instead it issues a "MODIFIED" event for the parent directory that the change occurred in.
+                    flags |= .NEED_FULL_CHILDREN_SCAN;
+                }
+
+                change := array_add(*platform_state.watched_directory_changes);
+                change.path = full_path;
+                change.flags |= flags;
+            }
+        }
+    } else #if OS == .MACOS {
+        // nocheckin We actually don't need to call this, because AppKit calls this for us? Verify!
+        // CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, false);
+    }
+}
+
+#if OS == .WINDOWS {
+    issue_one_read :: (watched_directory: *Platform_State.Watched_Directory) {
+        NOTIFY_FILTER: s32 : FILE_NOTIFY_CHANGE_FILE_NAME
+            | FILE_NOTIFY_CHANGE_DIR_NAME
+            | FILE_NOTIFY_CHANGE_CREATION
+            | FILE_NOTIFY_CHANGE_SIZE
+            | FILE_NOTIFY_CHANGE_LAST_WRITE
+            | FILE_NOTIFY_CHANGE_SECURITY
+            | FILE_NOTIFY_CHANGE_ATTRIBUTES;
+
+        success := ReadDirectoryChangesW(watched_directory.handle,
+                                         watched_directory.notify_buffer.data, watched_directory.notify_buffer.count,
+                                         TRUE, NOTIFY_FILTER, null, *watched_directory.overlapped, null);
+
+        if !success {
+            watched_directory.read_issue_failed = true;
+
+            error_code, description := System.get_error_value_and_string();
+            log_error("ReadDirectoryChangesW failed for directory %: %, %", watched_directory.path, error_code, description);
+        }
+    }
+} else #if OS == .MACOS {
     event_stream_callback :: (streamRef: FSEventStreamRef, clientCallBackInfo: *void, numEvents: u64, eventPaths: *void, eventFlags: *FSEventStreamEventFlags, eventIds: *FSEventStreamEventId) #c_call {
         FS_ATTRIBUTE_CHANGES :: kFSEventStreamEventFlagChangeOwner | kFSEventStreamEventFlagItemInodeMetaMod | kFSEventStreamEventFlagItemFinderInfoMod;
 

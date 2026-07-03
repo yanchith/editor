@@ -1,0 +1,3 @@
+modules/File_Watcher
+  Directory_info.bytes_returned is unused.
+  process_changes_windows doesn't iterate by pointer but thinks it does... unless using does some magic.
