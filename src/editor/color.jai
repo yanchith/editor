@@ -1,24 +1,24 @@
-// Decodes SRGB color packed in an uint to linear-space, zero-to-one RGBA. The decoding only happens
-// for the RGB channels, while alpha is remapped to zero-to-one range.
-decode_srgb :: (srgb: u32) -> Vector4 {
+// Decodes SRGB+alpha color packed in an uint to linear-space, zero-to-one RGBA. The decoding only
+// happens for the RGB channels, while alpha is remapped to zero-to-one range.
+decode_srgba :: (srgba: u32) -> Vector4 {
     R255: f32 : 1.0 / 255;
 
-    r_index := cast,trunc(u8, srgb >> 24);
-    g_index := cast,trunc(u8, srgb >> 16);
-    b_index := cast,trunc(u8, srgb >>  8);
+    r_index := cast,trunc(u8, srgba >> 24);
+    g_index := cast,trunc(u8, srgba >> 16);
+    b_index := cast,trunc(u8, srgba >>  8);
 
     r := cast(*f32, *D3DX_SRGBTable[r_index]).*;
     g := cast(*f32, *D3DX_SRGBTable[g_index]).*;
     b := cast(*f32, *D3DX_SRGBTable[b_index]).*;
 
-    a := cast(f32, cast,trunc(u8, srgb)) * R255;
+    a := cast(f32, cast,trunc(u8, srgba)) * R255;
 
     return { r, g, b, a };
 }
 
-// Like decode_srgb, but doesn't decode. It exists to support sRGB-space rendering pipelines
+// Like decode_srgba, but doesn't decode. It exists to support sRGB-space rendering pipelines
 // (like Simp). Maybe we can remove this eventually?
-unpack_srgb :: (packed: u32) -> Vector4 {
+unpack_srgba :: (packed: u32) -> Vector4 {
     R255: f32 : 1.0 / 255;
 
     r := cast(f32, cast,trunc(u8, packed >> 24)) * R255;

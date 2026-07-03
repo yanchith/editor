@@ -142,17 +142,18 @@ FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(1000);
 FILE_WATCH_MERGE_WINDOW: Apollo_Time : #run milliseconds_to_apollo(500);
 
 // TODO(jt): Make the colors themeable. :Config
-CURSOR_COLOR               :: #run unpack_srgb(0x50ffa0ff);
-ACTIVE_CURSOR_COLOR        :: #run unpack_srgb(0xffffffff);
+CURSOR_COLOR               :: #run unpack_srgba(0x50ffa0ff);
+ACTIVE_CURSOR_COLOR        :: #run unpack_srgba(0xffffffff);
+READONLY_CURSOR_COLOR      :: #run unpack_srgba(0xff0000ff);
 SELECTION_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.2; return c; };
 HIGHLIGHT_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.4; return c; };
-ACTIVE_HIGHLIGHT_COLOR     :: #run unpack_srgb(0xd08080ff);
-MATCHING_PARENTHESIS_COLOR :: #run unpack_srgb(0x70a0f0ff);
+ACTIVE_HIGHLIGHT_COLOR     :: #run unpack_srgba(0xd08080ff);
+MATCHING_PARENTHESIS_COLOR :: #run unpack_srgba(0x70a0f0ff);
 LINE_COLOR                 :: Vector4.{ 0, 0, 0, 0 };
 MINI_PANEL_LINE_COLOR      :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
-MODELINE_COLOR             :: #run unpack_srgb(0x090909ff);
-TEXT_COLOR                 :: #run unpack_srgb(0xcdaa7dff);
-BACKGROUND_COLOR           :: #run unpack_srgb(0x191919ff);
+MODELINE_COLOR             :: #run unpack_srgba(0x090909ff);
+TEXT_COLOR                 :: #run unpack_srgba(0xcdaa7dff);
+BACKGROUND_COLOR           :: #run unpack_srgba(0x191919ff);
 
 MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable! :Config
 
@@ -1277,7 +1278,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             };
 
             draw_rect(*render_rects, line_rect, LINE_COLOR);
-            draw_rect(*render_rects, drect_to_rect(cursor_rect), document.cursor_flash);
+            draw_rect(*render_rects, drect_to_rect(cursor_rect), ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else document.cursor_flash);
         }
 
         //
@@ -1322,13 +1323,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     r.y1 = it.loc1.y - viewport_line0;
 
                     if it.type == {
-                        case .KEYWORD;                 r.color = unpack_srgb(0xe95410ff);
-                        case .ATTRIBUTE;               r.color = unpack_srgb(0xe95410ff); r.variant = .BOLD;
-                        case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgb(0xe95410ff); r.variant = .BOLD;
-                        case .STRING_LITERAL;          r.color = unpack_srgb(0x98c379ff);
-                        case .NUMBER_LITERAL;          r.color = unpack_srgb(0x759fbfff);
+                        case .KEYWORD;                 r.color = unpack_srgba(0xe95410ff);
+                        case .ATTRIBUTE;               r.color = unpack_srgba(0xe95410ff); r.variant = .BOLD;
+                        case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgba(0xe95410ff); r.variant = .BOLD;
+                        case .STRING_LITERAL;          r.color = unpack_srgba(0x98c379ff);
+                        case .NUMBER_LITERAL;          r.color = unpack_srgba(0x759fbfff);
 
-                        case .COMMENT;                 r.color = unpack_srgb(0xa0a0a0ff);
+                        case .COMMENT;                 r.color = unpack_srgba(0xa0a0a0ff);
 
                         case; continue;
                     }
