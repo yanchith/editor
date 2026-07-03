@@ -228,6 +228,15 @@ main :: () {
         // nocheckin watch_directory and unwatch_directory relies on the general purpose allocator a lot. Don't let people override it!
         platform.watch_directory = (path: string) -> success: bool {
             #if OS == .WINDOWS {
+                for platform_state.watched_directories {
+                    if it.info.path == path {
+                        log("Reusing handles for watching path: %", path);
+                        return true;
+                    }
+                }
+
+                log("Creating resources for watching path: %", path);
+
                 event_handle := CreateEventW(null, FALSE, FALSE, null);
                 if event_handle == null {
                     return false;
@@ -248,15 +257,19 @@ main :: () {
                     return false;
                 }
 
+
+                info := New(Platform_State.Watched_Directory_Info); // :Malloc
+                info.path = copy_string(path);                      // :Malloc
+                info.handle = directory_handle;
+                info.overlapped.hEvent = event_handle;
+                info.overlapped.Offset = 0;
+
                 watched_directory := array_add(*platform_state.watched_directories);
-                watched_directory.path = copy_string(path); // :Malloc
-                watched_directory.handle = directory_handle;
-                watched_directory.overlapped.hEvent = event_handle;
-                watched_directory.overlapped.Offset = 0;
+                watched_directory.info = info;
 
-                String.path_overwrite_separators(watched_directory.path, #char "/");
+                String.path_overwrite_separators(watched_directory.info.path, #char "/");
 
-                issue_one_read(watched_directory);
+                issue_one_read(watched_directory.info);
             } else #if OS == .MACOS {
                 for platform_state.watched_directories {
                     if it.path == path {
@@ -292,11 +305,22 @@ main :: () {
         }
         platform.unwatch_directory = (path: string) {
             #if OS == .WINDOWS {
+                for platform_state.watched_directories {
+                    log("Cancelling overlapped IO and releasing resources for watching path: %", path);
 
+                    CancelIo(it.info.handle);
+                    CloseHandle(it.info.overlapped.hEvent);
+                    CloseHandle(it.info.handle);
+
+                    free(it.info.path);
+                    free(it.info);
+
+                    remove it;
+                }
             } else #if OS == .MACOS {
-                for platform_state.event_streams {
+                for platform_state.watched_directories {
                     if it.path == path {
-                        log("Stopping and releasing event stream for path: %", path);
+                        log("Stopping and releasing event stream for watching path: %", path);
 
                         FSEventStreamStop(it.stream);
                         FSEventStreamInvalidate(it.stream); // Remove stream from all run loops
@@ -666,15 +690,21 @@ Platform_State :: struct {
 
     #if OS == .WINDOWS {
         Watched_Directory :: struct {
+            // The actual data is behind a pointer so that the overlapped structure and the notify
+            // buffer are pointer stable and safe against resizes of the watched_directories array.
+            info: *Watched_Directory_Info; // :Malloc
+        }
+
+        Watched_Directory_Info :: struct {
             path: string; // :Malloc
             handle: HANDLE;
             overlapped: OVERLAPPED;
 
             read_issue_failed: bool;
 
-            notify_buffer: [NOTIFY_BUFFER_SIZE] u8;
+            notify_buffer: [NOTIFY_BUFFER_SIZE] u8; // Note that unlike modules/File_Watcher this is inline, so we must be careful about it having a stable pointer!
 
-            NOTIFY_BUFFER_SIZE :: 4096;
+            NOTIFY_BUFFER_SIZE :: 2048;
         }
     } else #if OS == .MACOS {
         Watched_Directory :: struct {
@@ -745,29 +775,29 @@ platform_process_watched_directory_changes :: () {
         }
 
         for * platform_state.watched_directories {
-            if it.read_issue_failed {
-                it.read_issue_failed = false;
-                issue_one_read(it);
+            if it.info.read_issue_failed {
+                it.info.read_issue_failed = false;
+                issue_one_read(it.info);
 
                 // If the read failed again immediately, we'll try again next time.
-                if it.read_issue_failed {
+                if it.info.read_issue_failed {
                     continue;
                 }
             }
 
-            assert(it.handle != INVALID_HANDLE_VALUE);
+            assert(it.info.handle != INVALID_HANDLE_VALUE);
 
-            if !HasOverlappedIoCompleted(it.overlapped) {
+            if !HasOverlappedIoCompleted(it.info.overlapped) {
                 continue;
             }
 
             bytes_transferred: s32;
-            success := GetOverlappedResult(it.handle, *it.overlapped, *bytes_transferred, FALSE);
+            success := GetOverlappedResult(it.info.handle, *it.info.overlapped, *bytes_transferred, FALSE);
             if success {
-                log("nocheckin %: bytes_transferred == % (struct size %)\n", it.path, bytes_transferred, size_of(FILE_NOTIFY_INFORMATION));
+                log("nocheckin %: bytes_transferred == % (struct size %)\n", it.info.path, bytes_transferred, size_of(FILE_NOTIFY_INFORMATION));
             }
 
-            defer issue_one_read(it);
+            defer issue_one_read(it.info);
 
             if !success {
                 continue;
@@ -776,13 +806,13 @@ platform_process_watched_directory_changes :: () {
             if bytes_transferred == 0 {
                 // The changes buffer overflowed. Add full rescan event for the whole directory.
                 change := array_add(*platform_state.watched_directory_changes);
-                change.path = copy_string(it.path,, temp);
+                change.path = copy_string(it.info.path,, temp);
                 change.flags |= .MODIFIED | .NEED_FULL_CHILDREN_SCAN;
 
                 continue;
             }
 
-            notify_info := cast(*FILE_NOTIFY_INFORMATION, it.notify_buffer.data);
+            notify_info := cast(*FILE_NOTIFY_INFORMATION, it.info.notify_buffer.data);
             while notify_info != null {
                 defer notify_info = advance_notify_info(notify_info);
 
@@ -802,7 +832,7 @@ platform_process_watched_directory_changes :: () {
                 }
 
                 String.path_overwrite_separators(path, #char "/");
-                full_path := tprint("%/%", it.path, path);
+                full_path := tprint("%/%", it.info.path, path);
 
                 if flags & .MODIFIED && File_Utilities.is_directory(full_path) {
                     // TODO(jt): @Audit From modules/File_Watcher:
@@ -824,7 +854,7 @@ platform_process_watched_directory_changes :: () {
 }
 
 #if OS == .WINDOWS {
-    issue_one_read :: (watched_directory: *Platform_State.Watched_Directory) {
+    issue_one_read :: (info: *Platform_State.Watched_Directory_Info) {
         NOTIFY_FILTER: s32 : FILE_NOTIFY_CHANGE_FILE_NAME
             | FILE_NOTIFY_CHANGE_DIR_NAME
             | FILE_NOTIFY_CHANGE_CREATION
@@ -833,15 +863,15 @@ platform_process_watched_directory_changes :: () {
             | FILE_NOTIFY_CHANGE_SECURITY
             | FILE_NOTIFY_CHANGE_ATTRIBUTES;
 
-        success := ReadDirectoryChangesW(watched_directory.handle,
-                                         watched_directory.notify_buffer.data, watched_directory.notify_buffer.count,
-                                         TRUE, NOTIFY_FILTER, null, *watched_directory.overlapped, null);
+        success := ReadDirectoryChangesW(info.handle,
+                                         info.notify_buffer.data, info.notify_buffer.count,
+                                         TRUE, NOTIFY_FILTER, null, *info.overlapped, null);
 
         if !success {
-            watched_directory.read_issue_failed = true;
+            info.read_issue_failed = true;
 
             error_code, description := System.get_error_value_and_string();
-            log_error("ReadDirectoryChangesW failed for directory %: %, %", watched_directory.path, error_code, description);
+            log_error("ReadDirectoryChangesW failed for directory %: %, %", info.path, error_code, description);
         }
     }
 } else #if OS == .MACOS {
