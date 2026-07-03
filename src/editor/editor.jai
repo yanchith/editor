@@ -138,8 +138,8 @@ TEXTURE_ID_GLYPH_ATLAS: Texture_ID : 1;
 // TODO(jt): Get the monitor refresh rate from platform instead!
 USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 
-FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(1000);
-FILE_WATCH_MERGE_WINDOW: Apollo_Time : #run milliseconds_to_apollo(500);
+FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(5000);
+FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(500);
 
 // TODO(jt): Make the colors themeable. :Config
 CURSOR_COLOR               :: #run unpack_srgba(0x50ffa0ff);
@@ -718,7 +718,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             for * editor.documents {
                 // Possibly the file was modified by us. Ignore. If this indeed is a valid
                 // modification done by someone else, we'll discover it int the fallback.
-                if input.time - it.backing_file_time_of_last_save < FILE_WATCH_MERGE_WINDOW {
+                if input.time - it.backing_file_time_of_last_save < FILE_WATCH_BLIND_WINDOW {
                     continue;
                 }
 
