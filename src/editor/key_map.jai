@@ -278,6 +278,16 @@ key_map_reset_keeping_memory :: (key_map: *Key_Map) {
     key_map_flush(key_map);
 }
 
+key_map_find_shortcut :: (key_map: Key_Map($T), action: T) -> Shortcut {
+    for key_map.registered_actions {
+        if it == action {
+            return key_map.registered_shortcuts[it_index];
+        }
+    }
+
+    return default_of(Shortcut);
+}
+
 key_map_add :: (key_map: *Key_Map($T), shortcut_string: string, action: T) {
     success, shortcut := shortcut_parse(shortcut_string);
     if success {
