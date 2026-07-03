@@ -205,25 +205,28 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
             String.path_overwrite_separators(file_absolute_path, "/");
 
             document, document_newly_created := find_or_add_document(editor, platform, .FILE, file_absolute_path);
-            if file_exists {
-                document.backing_file_exists = true;
-                document.backing_file_time_of_last_sync = input.time;
-
-                // Unlike when we save a file, we assume the modification time here is mostly
-                // stabilized. We still may be wrong, in which case we should also save the hash of
-                // the file for later comparisons.
-                _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
-                document.backing_file_last_synced_modification_time = modification_time;
-                document.backing_file_last_synced_size = size;
-                // nocheckin update hash!
-            }
-
             if document_newly_created {
                 if file_exists {
                     editor_log(editor, "Opening file: %", file_absolute_path);
 
+                    document.backing_file_exists = true;
+                    document.backing_file_time_of_last_sync = input.time;
+
+                    // Unlike when we save a file, we assume the modification time here is mostly
+                    // stabilized. We still may be wrong, in which case we should also save the hash
+                    // of the file for later comparisons.
+                    _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+                    document.backing_file_last_synced_modification_time = modification_time;
+                    document.backing_file_last_synced_size = size;
+
                     success, file_contents := platform.read_file(file_absolute_path,, temp);
                     if success {
+                        // TODO(jt): @Speed This is slow, because we are going over the data
+                        // twice. Once to make the hash, and the second time to insert into the text
+                        // buffer. We should probably do it in a single pass, or in a chunked
+                        // manner, so we can read from L1.
+                        document.backing_file_last_synced_hash = hash_file_contents(file_contents);
+
                         text_buffer_insert(*document.buffer, file_contents, .DISCARD);
                         text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
