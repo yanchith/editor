@@ -150,10 +150,20 @@ HIGHLIGHT_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value
 ACTIVE_HIGHLIGHT_COLOR     :: #run unpack_srgba(0xd08080ff);
 MATCHING_PARENTHESIS_COLOR :: #run unpack_srgba(0x70a0f0ff);
 LINE_COLOR                 :: Vector4.{ 0, 0, 0, 0 };
-MINI_PANEL_LINE_COLOR      :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
 MODELINE_COLOR             :: #run unpack_srgba(0x090909ff);
-TEXT_COLOR                 :: #run unpack_srgba(0xcdaa7dff);
 BACKGROUND_COLOR           :: #run unpack_srgba(0x191919ff);
+
+TEXT_COLOR                   :: #run unpack_srgba(0xcdaa7dff);
+KEYWORD_COLOR                :: #run unpack_srgba(0xe95410ff);
+ATTRIBUTE_COLOR              :: KEYWORD_COLOR;
+PREPROCESSOR_DIRECTIVE_COLOR :: KEYWORD_COLOR;
+STRING_LITERAL_COLOR         :: #run unpack_srgba(0x98c379ff);
+NUMBER_LITERAL_COLOR         :: #run unpack_srgba(0x759fbfff);
+COMMENT_COLOR                :: #run unpack_srgba(0xa0a0a0ff);
+
+MINI_PANEL_LINE_COLOR      :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.1; return c; };
+MINI_PANEL_ITEM_TEXT_COLOR :: TEXT_COLOR;
+MINI_PANEL_ITEM_WARNING_TEXT_COLOR :: #run unpack_srgba(0xe95410ff);
 
 MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable! :Config
 
@@ -245,13 +255,11 @@ Document :: struct {
     Flags :: enum_flags u32 {
         NONE :: 0;
 
-        // :ClearTransientDocumentFlags
-        //
-        // These get set during event processing and unset after update for this document's panel is done.
-        CHANGED_THIS_FRAME :: 0x01;
+        MODIFIED_THIS_FRAME :: 0x01;
+        MODIFIED            :: 0x02; // Also see backing_file_exists
 
-        // INCONSISTENT_INDENTATION  0x02;
-        // INCONSISTENT_NEWLINES     0x04;
+        // INCONSISTENT_INDENTATION  0x04;
+        // INCONSISTENT_NEWLINES     0x08;
 
         READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT :: 0x10;
         READONLY_BECAUSE_OF_MANUAL_LOCK         :: 0x20;
@@ -261,6 +269,11 @@ Document :: struct {
         // These get set and unset in setup_cursor_anim_interpolation.
         CURSOR_ANIM_TRIGGERED_BY_MOUSE    :: 0x1000;
         CURSOR_ANIM_TRIGGERED_BY_KEYBOARD :: 0x2000;
+
+        // :ClearTransientDocumentFlags
+        //
+        // These get set during event processing and unset after update for this document's panel is done.
+        TRANSIENT :: MODIFIED_THIS_FRAME;
     }
 
     Indentation_Scope :: struct {
@@ -385,6 +398,7 @@ Mini_Panel :: struct {
 
     Item :: struct {
         text: string;
+        text_color: Vector4;
         flags: Flags;
         highlight_x0: s64;
         highlight_x1: s64;
@@ -946,7 +960,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             continue;
         }
 
-        if document.flags & .CHANGED_THIS_FRAME {
+        if document.flags & .MODIFIED_THIS_FRAME {
             update_syntax_highlights(editor, document, platform, input);
         }
 
@@ -1229,7 +1243,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 setup_cursor_anim_interpolation(document, input.time, document.old_cursor_position, new_cursor_position, triggered_by_mouse, triggered_by_keyboard);
             }
 
-            if document.flags & .CHANGED_THIS_FRAME {
+            if document.flags & .MODIFIED_THIS_FRAME {
                 setup_cursor_flash_interpolation(document, input.time, ACTIVE_CURSOR_COLOR, CURSOR_COLOR);
             }
 
@@ -1323,13 +1337,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     r.y1 = it.loc1.y - viewport_line0;
 
                     if it.type == {
-                        case .KEYWORD;                 r.color = unpack_srgba(0xe95410ff);
-                        case .ATTRIBUTE;               r.color = unpack_srgba(0xe95410ff); r.variant = .BOLD;
-                        case .PREPROCESSOR_DIRECTIVE;  r.color = unpack_srgba(0xe95410ff); r.variant = .BOLD;
-                        case .STRING_LITERAL;          r.color = unpack_srgba(0x98c379ff);
-                        case .NUMBER_LITERAL;          r.color = unpack_srgba(0x759fbfff);
-
-                        case .COMMENT;                 r.color = unpack_srgba(0xa0a0a0ff);
+                        // TODO(jt): @Cleanup While we sort of define color constants for things, we
+                        // also can modify bold/italic, for which we have no way of customization
+                        // yet. :Config
+                        case .KEYWORD;                 r.color = KEYWORD_COLOR;
+                        case .ATTRIBUTE;               r.color = ATTRIBUTE_COLOR; r.variant = .BOLD;
+                        case .PREPROCESSOR_DIRECTIVE;  r.color = PREPROCESSOR_DIRECTIVE_COLOR; r.variant = .BOLD;
+                        case .STRING_LITERAL;          r.color = STRING_LITERAL_COLOR;
+                        case .NUMBER_LITERAL;          r.color = NUMBER_LITERAL_COLOR;
+                        case .COMMENT;                 r.color = COMMENT_COLOR;
 
                         case; continue;
                     }
@@ -1416,7 +1432,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, TEXT_COLOR, .[], binary = cast(bool, item.flags & .BINARY));
+            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, item.text_color, .[], binary = cast(bool, item.flags & .BINARY));
 
             it_index += 1;
         }
@@ -1643,15 +1659,18 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                     hash := hash_file_contents(contents);
                     if hash != document.backing_file_last_synced_hash {
                         document.backing_file_last_synced_hash = hash;
-                        document.flags |= .READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
 
-                        // nocheckin HERE Actually do the reload as a separate action
-                        /*
-                            // TODO(jt): @Speed @Memory Figure out a diff instead of making the
-                            // whole file the diff?
+                        if document.flags & .MODIFIED {
+                            document.flags |= .READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
+                        } else {
+                            // nocheckin audit
+                            // TODO(jt): @Speed @Memory Figure out a diff instead of changing the whole file?
                             text_buffer_delete_all(*document.buffer);
                             text_buffer_insert(*document.buffer, contents, .FUSE);
-                            */
+
+                            update_syntax_highlights(editor, document, platform, input);
+                            update_indentation_scopes(document);
+                        }
                     }
                 } else {
                     // This can only happen as a race condition. We reset everything as though
@@ -1930,6 +1949,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 success := platform.write_file(document.backing_file_path, contents);
                 if success {
                     editor_log(editor, "Wrote file %", document.backing_file_path);
+
+                    document.flags &= ~.MODIFIED;
 
                     if !document.backing_file_exists {
                         watch_file(editor, platform, input, document.backing_file_path);
@@ -2224,7 +2245,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 
     if buffer_changed {
-        document.flags |= .CHANGED_THIS_FRAME;
+        document.flags |= .MODIFIED_THIS_FRAME;
+        document.flags |= .MODIFIED;
 
         // We have to update these after every change, because the very next edit could be needing
         // this. Doesn't matter much as long as we hit our frame budgets. Also, we could start being
@@ -2681,7 +2703,7 @@ setup_cursor_flash_interpolation :: (document: *Document, time: Apollo_Time, sou
 
 clear_transient_document_flags :: (flags: *Document.Flags) {
     // :ClearTransientDocumentFlags
-    flags.* &= ~.CHANGED_THIS_FRAME;
+    flags.* &= ~.MODIFIED_THIS_FRAME;
 }
 
 clear_transient_panel_flags :: (flags: *Panel.Flags) {
