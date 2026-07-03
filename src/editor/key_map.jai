@@ -238,7 +238,9 @@ shortcut_print_to_builder :: (shortcut: Shortcut, b: *String_Builder) {
             }
         }
 
-        print(b, " ");
+        if it < shortcut.count - 1 {
+            print(b, " ");
+        }
     }
 }
 
