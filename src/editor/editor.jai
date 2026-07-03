@@ -227,7 +227,7 @@ Document :: struct {
     // backing_file_path can also be created without the file already existing.
     backing_file_path: string;
     backing_file_exists: bool;
-    backing_file_time_of_last_save: Apollo_Time;
+    backing_file_time_of_last_save: Apollo_Time; // nocheckin we are still not using this!
     backing_file_time_of_last_sync: Apollo_Time;
     // The modification time and size are used to detect changes on filesystem since we last read
     // from or wrote to the file.
@@ -513,7 +513,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-r",     .SEARCH_AND_REPLACE);
 
         key_map_add(key_map, "C-x C-f", .OPEN_FILE);
-        key_map_add(key_map, "C-x C-s", .SAVE_FILE);
+        key_map_add(key_map, "C-x C-s", .SAVE_DOCUMENT);
+        key_map_add(key_map, "C-x C-r", .RELOAD_DOCUMENT);
+
         key_map_add(key_map, "C-x b",   .SWITCH_TO_DOCUMENT);
         key_map_add(key_map, "C-x k",   .CLOSE_DOCUMENT);
 
@@ -1662,14 +1664,21 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
 
                         if document.flags & .MODIFIED {
                             document.flags |= .READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
+
+                            save_shortcut := shortcut_sprint(key_map_find_shortcut(editor.key_map, .SAVE_DOCUMENT),, temp);
+                            reload_shortcut := shortcut_sprint(key_map_find_shortcut(editor.key_map, .RELOAD_DOCUMENT),, temp);
+
+                            // nochecking there's extra space in the shortcut print
+                            editor_log(editor, "Document % modified, but backing file changed on filesystem. Save (%) or reload (%) explicitly to exit read only mode", String.path_filename(document.backing_file_path), save_shortcut, reload_shortcut);
                         } else {
-                            // nocheckin audit
                             // TODO(jt): @Speed @Memory Figure out a diff instead of changing the whole file?
                             text_buffer_delete_all(*document.buffer);
                             text_buffer_insert(*document.buffer, contents, .FUSE);
+                            // nocheckin try to preserve cursor as much as possible
 
                             update_syntax_highlights(editor, document, platform, input);
                             update_indentation_scopes(document);
+                            editor_log(editor, "Updated document % from filesystem", String.path_filename(document.backing_file_path));
                         }
                     }
                 } else {
@@ -1858,7 +1867,8 @@ Editor_Action :: enum {
     SEARCH_AND_REPLACE;
 
     OPEN_FILE;
-    SAVE_FILE;
+    SAVE_DOCUMENT;
+    RELOAD_DOCUMENT;
 
     SWITCH_TO_DOCUMENT;
     CLOSE_DOCUMENT;
@@ -1940,7 +1950,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
             open_mini_panel(editor, platform, input, mini_panel_open_file_procs, path);
         }
-        case .SAVE_FILE; {
+        case .SAVE_DOCUMENT; {
             if document.backing_file_path.count {
                 buffer := *document.buffer;
 
@@ -1951,6 +1961,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     editor_log(editor, "Wrote file %", document.backing_file_path);
 
                     document.flags &= ~.MODIFIED;
+                    document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT; // TODO(jt): Ask for confirmation, if we have a conflict.
 
                     if !document.backing_file_exists {
                         watch_file(editor, platform, input, document.backing_file_path);
@@ -1972,6 +1983,31 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 }
             }
         }
+        case .RELOAD_DOCUMENT; {
+            if document.backing_file_path {
+                success, file_contents := platform.read_file(document.backing_file_path,, temp);
+                if success {
+                    document.backing_file_exists = true;
+                    document.backing_file_time_of_last_save = input.time;
+                    document.backing_file_time_of_last_sync = input.time;
+
+                    _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+                    document.backing_file_last_synced_modification_time = modification_time;
+                    document.backing_file_last_synced_size = size;
+                    document.backing_file_last_synced_hash = hash_file_contents(file_contents);
+
+                    text_buffer_reset(*document.buffer);
+                    text_buffer_insert(*document.buffer, file_contents, .DISCARD);
+                    text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
+
+                    update_indentation_scopes(document);
+                    update_syntax_highlights(editor, document, platform, input);
+
+                    editor_log(editor, "Reloaded file: %", document.backing_file_path);
+                }
+            }
+        }
+
         case .SWITCH_TO_DOCUMENT;           open_mini_panel(editor, platform, input, mini_panel_switch_to_document_procs);
         case .CLOSE_DOCUMENT;               open_mini_panel(editor, platform, input, mini_panel_close_document_procs);
 
