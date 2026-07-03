@@ -142,9 +142,9 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         item := *mini_panel.items[mini_panel.item_index];
 
         document := cast(*Document, item.userdata);
-        close_document(editor, document);
 
         unwatch_file(editor, platform, input, document.backing_file_path);
+        close_document(editor, document);
     }
 
     close_mini_panel(editor, platform, input);
