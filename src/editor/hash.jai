@@ -1,3 +1,23 @@
+// TODO(jt): @Speed FNV-1a is very slow for large inputs, because it only has one stream and
+// operates on bytes. Change this to a faster (but still portable!) hash here, like xxHash64.
+
+hash_file_contents :: (bytes: [] u8) -> u64 {
+    ProfileZone("hash_file_contents");
+    return fnv1a_hash(bytes);
+}
+
+hash_text_buffer_contents :: (buffer: Text_Buffer) -> u64 {
+    ProfileZone("hash_text_buffer_contents");
+
+    bytes_before_gap := gap_buffer_get_bytes_before_gap(buffer.gb);
+    bytes_after_gap  := gap_buffer_get_bytes_after_gap(buffer.gb);
+
+    hash := fnv1a_hash(bytes_before_gap);
+    hash = fnv1a_hash(bytes_after_gap, seed = hash);
+
+    return hash;
+}
+
 //
 // The FNV-1a hash.
 //
@@ -31,6 +51,6 @@ fnv1a_hash :: (bytes: [] u8, seed := FNV1A_SEED) -> u64 {
 // my_hash_update(*state, bytes3);
 // hash := my_hash_finalize(*state);
 //
-// We can also retrofit this API for FNV-1a once we do that, but for now that seems
-// overkill, as FNV-1a can be easily chained manually.
+// We can also retrofit this API for FNV-1a once we do that, but for now that seems overkill, as
+// FNV-1a can be easily chained manually and requires almost no setup, and no finalization.
 //

@@ -680,12 +680,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     update_regions: [..] IRect;
     update_regions.allocator = temp;
 
-    if input.watched_directory_changes.count {
-        for input.watched_directory_changes {
-            log("nocheckin change [%] flags: %, path: %", it_index, it.flags, it.path);
-        }
-    }
-
     input_state_update_on_frame_start(*editor.input_state, input);
 
     // We do this for every panel instead of every document, so we don't unnecessarily compute the
@@ -698,73 +692,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     for input.watched_directory_changes {
-        // nochecking HERE
+        // nocheckin HERE
         //
         // Make sure to supress changes for documents we recently changed ourselves. We need to
         // know the coalescing period of the file watcher to reliably do this.
     }
 
     for * editor.documents {
-        if it.backing_file_exists {
-            // nocheckin extract to sync_document_with_filesystem(), so that we can share the same code path.
-            if (input.time - it.backing_file_time_of_last_sync) > FILE_WATCH_POLL_PERIOD {
-                exists, modification_time, size := platform.file_modification_time_and_size(it.backing_file_path);
-
-                // We are okay with the file not existing anymore, because this means we don't have
-                // to sync with anyone. Let's just reset the things.
-                if !exists {
-                    it.backing_file_last_synced_modification_time = {};
-                    it.backing_file_last_synced_size = 0;
-                    it.backing_file_last_synced_hash = 0;
-
-                    continue;
-                }
-
-                metadata_changed := false;
-
-                if modification_time > it.backing_file_last_synced_modification_time {
-                    metadata_changed = true;
-                }
-
-                if size != it.backing_file_last_synced_size {
-                    metadata_changed = true;
-                }
-
-                it.backing_file_last_synced_modification_time = modification_time;
-                it.backing_file_last_synced_size = size;
-
-                if metadata_changed {
-                    // TODO(jt): @Memory To keep memory usage down, load the file in chunks and hash
-                    // it chunk by chunk, re-using the same memory.
-                    success, contents := platform.read_file(it.backing_file_path,, temp);
-                    if success {
-                        // TODO(jt): @Speed FNV-1a is very slow for large inputs, because it only
-                        // has one stream and operates on bytes. Change this to a faster (but for
-                        // simplicity still portable) hash here, like xxHash64. Needs research.
-                        hash := fnv1a_hash(contents);
-                        if hash != it.backing_file_last_synced_hash {
-                            it.backing_file_last_synced_hash = hash;
-                            it.flags |= .READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
-
-                            // nocheckin HERE Actually do the reload as a separate action
-                            /*
-                            // TODO(jt): @Speed @Memory Figure out a diff instead of making the
-                            // whole file the diff?
-                            text_buffer_delete_all(*it.buffer);
-                            text_buffer_insert(*it.buffer, contents, .FUSE);
-                            */
-                        }
-                    } else {
-                        // This can only happen as a race condition. We reset everything as though
-                        // this file only ever existed in our memory.
-                        it.backing_file_exists = false;
-                        it.backing_file_last_synced_modification_time = {};
-                        it.backing_file_last_synced_size = 0;
-                        it.backing_file_last_synced_hash = 0;
-                    }
-                }
-            }
-        }
+        sync_document_with_filesystem(editor, platform, input, it);
     }
 
     font_new_frame(*editor.font);
@@ -1670,6 +1605,69 @@ unwatch_file :: (editor: *Editor, platform: Platform, input: Input, file_path: s
     }
 }
 
+sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: Input, document: *Document) {
+    if document.backing_file_exists {
+        // If we need to, we could add a FORCE parameter here to do it right now.
+        if (input.time - document.backing_file_time_of_last_sync) > FILE_WATCH_POLL_PERIOD {
+            exists, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+
+            // We are okay with the file not existing anymore, because this means we don't have
+            // to sync with anyone. Let's just reset the things.
+            if !exists {
+                document.backing_file_exists = false;
+                document.backing_file_time_of_last_sync = {};
+                document.backing_file_time_of_last_save = {};
+
+                document.backing_file_last_synced_modification_time = {};
+                document.backing_file_last_synced_size = 0;
+                document.backing_file_last_synced_hash = 0;
+
+                return;
+            }
+
+            metadata_changed := false;
+            if modification_time > document.backing_file_last_synced_modification_time  metadata_changed = true;
+            if size != document.backing_file_last_synced_size                           metadata_changed = true;
+
+            document.backing_file_time_of_last_sync = input.time;
+
+            document.backing_file_last_synced_modification_time = modification_time;
+            document.backing_file_last_synced_size = size;
+
+            if metadata_changed {
+                // TODO(jt): @Memory To keep memory usage down, load the file in chunks and hash
+                // it chunk by chunk, re-using the same memory.
+                success, contents := platform.read_file(document.backing_file_path,, temp);
+                if success {
+                    hash := hash_file_contents(contents);
+                    if hash != document.backing_file_last_synced_hash {
+                        document.backing_file_last_synced_hash = hash;
+                        document.flags |= .READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
+
+                        // nocheckin HERE Actually do the reload as a separate action
+                        /*
+                            // TODO(jt): @Speed @Memory Figure out a diff instead of making the
+                            // whole file the diff?
+                            text_buffer_delete_all(*document.buffer);
+                            text_buffer_insert(*document.buffer, contents, .FUSE);
+                            */
+                    }
+                } else {
+                    // This can only happen as a race condition. We reset everything as though
+                    // this file only ever existed in our memory.
+                    document.backing_file_exists = false;
+                    document.backing_file_time_of_last_sync = {};
+                    document.backing_file_time_of_last_save = {};
+
+                    document.backing_file_last_synced_modification_time = {};
+                    document.backing_file_last_synced_size = 0;
+                    document.backing_file_last_synced_hash = 0;
+                }
+            }
+        }
+    }
+}
+
 #scope_file
 
 Mini_Panel_Action :: enum {
@@ -1946,15 +1944,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
                     document.backing_file_last_synced_modification_time = modification_time;
                     document.backing_file_last_synced_size = size;
-
-                    // Update the content hash:
-                    bytes_before_gap := gap_buffer_get_bytes_before_gap(document.buffer.gb);
-                    bytes_after_gap  := gap_buffer_get_bytes_after_gap(document.buffer.gb);
-
-                    hash := fnv1a_hash(bytes_before_gap);
-                    hash = fnv1a_hash(bytes_after_gap, seed = hash);
-
-                    document.backing_file_last_synced_hash = hash;
+                    document.backing_file_last_synced_hash = hash_text_buffer_contents(document.buffer);
                 } else {
                     editor_log(editor, "Failed to write file %", document.backing_file_path);
                 }
