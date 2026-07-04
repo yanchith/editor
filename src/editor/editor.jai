@@ -138,7 +138,7 @@ TEXTURE_ID_GLYPH_ATLAS: Texture_ID : 1;
 // TODO(jt): Get the monitor refresh rate from platform instead!
 USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 
-FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(5000);
+FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(60000); // nocheckin
 FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(500);
 
 // TODO(jt): Make the colors themeable. :Config

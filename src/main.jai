@@ -257,17 +257,16 @@ main :: () {
                     return false;
                 }
 
-
                 info := New(Platform_State.Watched_Directory_Info); // :Malloc
                 info.path = copy_string(path);                      // :Malloc
                 info.handle = directory_handle;
                 info.overlapped.hEvent = event_handle;
                 info.overlapped.Offset = 0;
 
+                String.path_overwrite_separators(info.path, #char "/");
+
                 watched_directory := array_add(*platform_state.watched_directories);
                 watched_directory.info = info;
-
-                String.path_overwrite_separators(watched_directory.info.path, #char "/");
 
                 issue_one_read(watched_directory.info);
             } else #if OS == .MACOS {
@@ -776,11 +775,13 @@ platform_process_watched_directory_changes :: () {
 
         for * platform_state.watched_directories {
             if it.info.read_issue_failed {
+                log("nocheckin resetting read for %", it.info.path);
                 it.info.read_issue_failed = false;
                 issue_one_read(it.info);
 
                 // If the read failed again immediately, we'll try again next time.
                 if it.info.read_issue_failed {
+                    log("nocheckin read immediately failed for %", it.info.path);
                     continue;
                 }
             }
@@ -791,13 +792,15 @@ platform_process_watched_directory_changes :: () {
                 continue;
             }
 
+            log("nocheckin read finished for %", it.info.path);
+
             bytes_transferred: s32;
             success := GetOverlappedResult(it.info.handle, *it.info.overlapped, *bytes_transferred, FALSE);
             if success {
                 log("nocheckin %: bytes_transferred == % (struct size %)\n", it.info.path, bytes_transferred, size_of(FILE_NOTIFY_INFORMATION));
             }
 
-            defer issue_one_read(it.info);
+            defer issue_one_read(it.info); // Note that we can miss events until the overlapped read gets set up again. It is fine.
 
             if !success {
                 continue;
@@ -855,6 +858,8 @@ platform_process_watched_directory_changes :: () {
 
 #if OS == .WINDOWS {
     issue_one_read :: (info: *Platform_State.Watched_Directory_Info) {
+        log("nocheckin issue_one_read");
+
         NOTIFY_FILTER: s32 : FILE_NOTIFY_CHANGE_FILE_NAME
             | FILE_NOTIFY_CHANGE_DIR_NAME
             | FILE_NOTIFY_CHANGE_CREATION
@@ -865,7 +870,8 @@ platform_process_watched_directory_changes :: () {
 
         success := ReadDirectoryChangesW(info.handle,
                                          info.notify_buffer.data, info.notify_buffer.count,
-                                         TRUE, NOTIFY_FILTER, null, *info.overlapped, null);
+                                         /* bWatchSubtree could also be FALSE */ TRUE, NOTIFY_FILTER,
+                                         null, *info.overlapped, null);
 
         if !success {
             info.read_issue_failed = true;
