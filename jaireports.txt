@@ -1,3 +1,5 @@
+modules/File
+  get_absolute_path (both Windows and UNIX) doesn't respect context allocator and always returns the result in temp. This is inconsistent and surprising, even if most of the time callers want this.
+
 modules/File_Watcher
-  Directory_info.bytes_returned is unused.
-  process_changes_windows doesn't iterate by pointer but thinks it does... unless using does some magic.
+  Directory_info.bytes_returned is unused and can be safely removed.

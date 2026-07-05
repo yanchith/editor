@@ -149,12 +149,29 @@ main :: () {
         }
 
         platform.get_absolute_path = (path: string) -> success: bool, string {
-            // get_absolute_path goes to Temporary_Storage all the time, but I suspect it will start
-            // respecting context.allocator eventually, so we pass in temp there as well.
-            success, _absolute_path := platform_get_absolute_path(path,, temp); // The temp here is future-proofing.
+            // TODO(jt): @Cleanup File.get_absolute_path allocates in temp regardless of context allocator,
+            // but I suspect it will start respecting context eventually, so we pass in temp for future
+            // proofing. We should probably submit a fix for that.
+            //
+            // If the caller really wanted temp, we just return the thing. Otherwise, we copy the stuff to
+            // context allocator - see postamble.
+            //
+            _absolute_path, success := File.get_absolute_path(path,, temp);
 
-            if !success {
-                return false, "";
+            #if OS_IS_UNIX {
+                // realpath on unix doesn't work for non-existing files, so we go one step further and
+                // try it on the directory, appending the file name back.
+                //
+                // TODO(jt): Eventually we'll need to do this for arbitrarily deep nonexistent suffixes, because
+                // we'll want to create files in nonexistent directories.
+                if !success {
+                    dir_path, _, _, filename := String.path_decomp(path);
+                    dir_absolute_path:, success = File.get_absolute_path(dir_path,, temp);
+
+                    if success {
+                        _absolute_path = String.join(dir_absolute_path, filename, separator = "/");
+                    }
+                }
             }
 
             absolute_path: string;
@@ -164,7 +181,7 @@ main :: () {
                 absolute_path = copy_string(_absolute_path);
             }
 
-            return true, absolute_path;
+            return success, absolute_path;
         }
 
         platform.file_exists = (path: string) -> bool {
@@ -179,30 +196,14 @@ main :: () {
             return exists, modtime, size;
         }
         platform.read_file = (path: string) -> success: bool, [] u8 {
-            success, absolute_path := platform_get_absolute_path(path,, temp);
-            if !success {
-                return false, .[];
-            }
-
-            data:, success = File.read_entire_file(absolute_path);
-
+            data, success := File.read_entire_file(path);
             return success, cast([] u8, data);
         }
         platform.write_file = (path: string, data: [] u8) -> success: bool {
-            success, absolute_path := platform_get_absolute_path(path,, temp);
-            if !success {
-                return false;
-            }
-
-            return File.write_entire_file(absolute_path, cast(string, data));
+            return File.write_entire_file(path, cast(string, data));
         }
         platform.delete_file = (path: string) -> success: bool {
-            success, absolute_path := platform_get_absolute_path(path,, temp);
-            if !success {
-                return false;
-            }
-
-            return File.file_delete(absolute_path);
+            return File.file_delete(path);
         }
 
         // TODO(jt): platform.make_directory
@@ -739,28 +740,6 @@ platform_get_window_scale_factor :: (window: Window.Window_Type) -> f32 {
     }
 
     return 1.0;
-}
-
-platform_get_absolute_path :: (path: string) -> success: bool, absolute_path: string {
-    absolute_path, success := File.get_absolute_path(path);
-
-    #if OS_IS_UNIX {
-        // realpath on unix doesn't work for non-existing files, so we go one step further and
-        // try it on the directory, appending the file name back.
-        //
-        // TODO(jt): Eventually we'll need to do this for arbitrarily deep nonexistent suffixes, because
-        // we'll want to create files in nonexistent directories.
-        if !success {
-            dir_path, _, _, filename := String.path_decomp(path);
-            dir_absolute_path:, success = File.get_absolute_path(dir_path);
-
-            if success {
-                absolute_path = String.join(dir_absolute_path, filename, separator = "/");
-            }
-        }
-    }
-
-    return success, absolute_path;
 }
 
 platform_process_watched_directory_changes :: () {
