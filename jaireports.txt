@@ -3,3 +3,15 @@ modules/File
 
 modules/File_Watcher
   Directory_info.bytes_returned is unused and can be safely removed.
+
+modules/Hash_Table
+  outdated comment:
+  // You need to pay attention to 'success' because if it's false,
+  // the return value will be uninitialized.
+  Not uninitialized anymore, just default.
+
+  outdated comment:
+  //
+  // End of deprecated routines.
+  //
+  There is no deprecated routine anymore.
