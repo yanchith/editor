@@ -60,6 +60,15 @@ IRect   :: Editor.IRect;
 SLOW_FRAME_THRESHOLD_MILLIS :: 18;
 SLOW_INIT_THRESHOLD_MILLIS  :: 200;
 
+// :OperatingSystemSpecificHacks
+//
+// TODO(jt): @Cleanup @Hack For file watching, we have a #c_call callback, but we know it is called
+// from the main thread, and we want it to use the main thread's temporary storage. Maybe we should
+// just have an arena for that?
+#if OS == .MACOS {
+    main_thread_temporary_storage: *Temporary_Storage;
+}
+
 main :: () {
     time_of_program_start := current_time_monotonic();
 
@@ -81,6 +90,12 @@ main :: () {
             // per-monitor awareness: SetProcessDpiAwarenessContext.
             SetProcessDPIAware();
         } else #if OS == .MACOS {
+            // :OperatingSystemSpecificHacks
+            //
+            // Save main thread's temporary storage, so we can set it for event_stream_callback
+            // later. We know the callback runs on the main thread.
+            main_thread_temporary_storage = context.temporary_storage;
+
             // :OperatingSystemSpecificHacks
             //
             // Working directory on macOS is weird. If you start from console, it respects the
@@ -841,7 +856,10 @@ platform_process_watched_directory_changes :: () {
             }
         }
     } else #if OS == .MACOS {
-        // nocheckin We actually don't need to call this, because AppKit calls this for us? Verify!
+        // TODO(jt): @Audit Unlike modules/File_Watcher, we actually don't need to call this,
+        // because (presumably) AppKit calls this for us, which in turn calls event_stream_callback.
+        // I wish I understood the Apple ecosystem more.
+        //
         // CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, false);
     }
 }
@@ -872,7 +890,13 @@ platform_process_watched_directory_changes :: () {
     event_stream_callback :: (streamRef: FSEventStreamRef, clientCallBackInfo: *void, numEvents: u64, eventPaths: *void, eventFlags: *FSEventStreamEventFlags, eventIds: *FSEventStreamEventId) #c_call {
         FS_ATTRIBUTE_CHANGES :: kFSEventStreamEventFlagChangeOwner | kFSEventStreamEventFlagItemInodeMetaMod | kFSEventStreamEventFlagItemFinderInfoMod;
 
-        push_context { // nocheckin eplain why we need push_context (or remove push_context)
+        // push_context and set temporary storage, because we copy_string with temp below.
+        // This callback *should* run on the main thread. You can verify this with:
+        //
+        // assert(main_thread == pthread_self()); // Get main_thread at the start of the program.
+        push_context {
+            context.temporary_storage = main_thread_temporary_storage;
+
             event_paths := cast(**u8, eventPaths);
             for 0..numEvents - 1 {
                 event_flags := eventFlags[it];
@@ -896,19 +920,8 @@ platform_process_watched_directory_changes :: () {
                     flags |= .NEED_FULL_CHILDREN_SCAN;
                 }
 
-                // nocheckin This gets called even if we never poll the runloop... what's the
-                // concurrency model?
-                //
-                // UPDATE: So this is called by AppKit or something. In general we are not allowed
-                // to know when. This sucks, because we can't reset the allocation that buffers all
-                // the events. SO:
-                //
-
-                // Maybe we should ringbuffer the events? Callbacks write, main loop reads. If
-                // callbacks run out of space to write, we drop events. Strings will have to be
-                // allocated inside the ringbuffer.
                 change := array_add(*platform_state.watched_directory_changes);
-                change.path = copy_string(event_path,, temp); // event_path will be deallocated by the kernel once the callback returns.
+                change.path = copy_string(event_path,, temp); // event_path will be deallocated by the kernel once the callback returns, so we want our own copy.
                 change.flags = flags;
             }
         }
