@@ -138,8 +138,8 @@ TEXTURE_ID_GLYPH_ATLAS: Texture_ID : 1;
 // TODO(jt): Get the monitor refresh rate from platform instead!
 USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 
-FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(60000); // nocheckin
-FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(500);
+FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(5000); // The maximum amount of time after which the polling fallback for file detection happens.
+FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(250);  // The amount of time we for which we disregard reported changes for a directory after a write.
 
 // TODO(jt): Make the colors themeable. :Config
 CURSOR_COLOR               :: #run unpack_srgba(0x50ffa0ff);
@@ -709,8 +709,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     for change: input.watched_directory_changes {
-        log("nocheckin change: %", change);
-
         if change.flags & .MODIFIED {
             // Make sure to supress changes for documents we recently changed ourselves. We need to
             // know the coalescing period of the file watcher to reliably do this.
