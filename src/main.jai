@@ -293,15 +293,17 @@ main :: () {
                     paths_to_watch = cfarray_paths;
                 }
 
-                stream := FSEventStreamCreate(null, event_stream_callback, null, paths_to_watch, kFSEventStreamEventIdSinceNow,
-                                              Editor.FILE_WATCH_BLIND_WINDOW, kFSEventStreamCreateFlagFileEvents);
+                event_stream := FSEventStreamCreate(null, event_stream_callback, null, paths_to_watch,
+                                                    kFSEventStreamEventIdSinceNow,
+                                                    to_float64_seconds(Editor.FILE_WATCH_BLIND_WINDOW),
+                                                    kFSEventStreamCreateFlagFileEvents);
 
-                FSEventStreamScheduleWithRunLoop(stream, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
-                FSEventStreamStart(stream);
+                FSEventStreamScheduleWithRunLoop(event_stream, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);
+                FSEventStreamStart(event_stream);
 
                 watched_directory := array_add(*platform_state.watched_directories);
                 watched_directory.path = copy_string(path); // :Malloc
-                watched_directory.event_stream = stream;
+                watched_directory.event_stream = event_stream;
 
                 return true;
             }
@@ -329,9 +331,9 @@ main :: () {
                     if it.path == path {
                         log("Stopping and releasing event stream for watching path: %", path);
 
-                        FSEventStreamStop(it.stream);
-                        FSEventStreamInvalidate(it.stream); // Remove stream from all run loops
-                        FSEventStreamRelease(it.stream);
+                        FSEventStreamStop(it.event_stream);
+                        FSEventStreamInvalidate(it.event_stream); // Remove stream from all run loops
+                        FSEventStreamRelease(it.event_stream);
 
                         free(it.path);
                         remove it;
@@ -718,7 +720,7 @@ Platform_State :: struct {
     } else #if OS == .MACOS {
         Watched_Directory :: struct {
             path: string; // :Malloc
-            stream: FSEventStreamRef;
+            event_stream: FSEventStreamRef;
         }
     }
 }
