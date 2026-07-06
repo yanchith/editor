@@ -709,6 +709,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     for change: input.watched_directory_changes {
+        log("nocheckin change: %", change);
+
         if change.flags & .MODIFIED {
             // Make sure to supress changes for documents we recently changed ourselves. We need to
             // know the coalescing period of the file watcher to reliably do this.
@@ -736,7 +738,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     for * editor.documents {
-        sync_document_with_filesystem(editor, platform, input, it);
+        // Only check after FILE_WATCH_POLL_PERIOD has passed.
+        if input.time - it.backing_file_time_of_last_sync > FILE_WATCH_POLL_PERIOD {
+            sync_document_with_filesystem(editor, platform, input, it);
+        }
     }
 
     font_new_frame(*editor.font);
@@ -1646,13 +1651,63 @@ unwatch_file :: (editor: *Editor, platform: Platform, input: Input, file_path: s
 
 sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: Input, document: *Document) {
     if document.backing_file_exists {
-        // If we need to, we could add a FORCE parameter here to do it right now.
-        if (input.time - document.backing_file_time_of_last_sync) > FILE_WATCH_POLL_PERIOD {
-            exists, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+        exists, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
 
-            // We are okay with the file not existing anymore, because this means we don't have
-            // to sync with anyone. Let's just reset the things.
-            if !exists {
+        // We are okay with the file not existing anymore, because this means we don't have
+        // to sync with anyone. Let's just reset the things.
+        if !exists {
+            document.backing_file_exists = false;
+            document.backing_file_time_of_last_sync = {};
+            document.backing_file_time_of_last_save = {};
+
+            document.backing_file_last_synced_modification_time = {};
+            document.backing_file_last_synced_size = 0;
+            document.backing_file_last_synced_hash = 0;
+
+            return;
+        }
+
+        metadata_changed := false;
+        if modification_time > document.backing_file_last_synced_modification_time  metadata_changed = true;
+        if size != document.backing_file_last_synced_size                           metadata_changed = true;
+
+        document.backing_file_time_of_last_sync = input.time;
+
+        document.backing_file_last_synced_modification_time = modification_time;
+        document.backing_file_last_synced_size = size;
+
+        if metadata_changed {
+            // TODO(jt): @Memory To keep memory usage down, load the file in chunks and hash
+            // it chunk by chunk, re-using the same memory.
+            success, contents := platform.read_file(document.backing_file_path,, temp);
+            if success {
+                hash := hash_file_contents(contents);
+                if hash != document.backing_file_last_synced_hash {
+                    document.backing_file_last_synced_hash = hash;
+
+                    if document.flags & .MODIFIED {
+                        document.flags |= .READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
+
+                        save_shortcut := shortcut_sprint(key_map_find_shortcut(editor.key_map, .SAVE_DOCUMENT),, temp);
+                        reload_shortcut := shortcut_sprint(key_map_find_shortcut(editor.key_map, .RELOAD_DOCUMENT),, temp);
+                        editor_log(editor, "% modified, but file changed on filesystem. % or % to exit read only mode", String.path_filename(document.backing_file_path), save_shortcut, reload_shortcut);
+                    } else {
+                        // TODO(jt): @Speed @Memory Figure out a diff instead of changing the whole file?
+
+                        cursor_before_reload := document.buffer.cursor0;
+
+                        text_buffer_delete_all(*document.buffer);
+                        text_buffer_insert(*document.buffer, contents, .FUSE);
+                        text_buffer_move_cursor_to(*document.buffer, cursor_before_reload, false);
+
+                        update_syntax_highlights(editor, document, platform, input);
+                        update_indentation_scopes(document);
+                        editor_log(editor, "Updated % from filesystem", String.path_filename(document.backing_file_path));
+                    }
+                }
+            } else {
+                // This can only happen as a race condition. We reset everything as though
+                // this file only ever existed in our memory.
                 document.backing_file_exists = false;
                 document.backing_file_time_of_last_sync = {};
                 document.backing_file_time_of_last_save = {};
@@ -1660,59 +1715,6 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                 document.backing_file_last_synced_modification_time = {};
                 document.backing_file_last_synced_size = 0;
                 document.backing_file_last_synced_hash = 0;
-
-                return;
-            }
-
-            metadata_changed := false;
-            if modification_time > document.backing_file_last_synced_modification_time  metadata_changed = true;
-            if size != document.backing_file_last_synced_size                           metadata_changed = true;
-
-            document.backing_file_time_of_last_sync = input.time;
-
-            document.backing_file_last_synced_modification_time = modification_time;
-            document.backing_file_last_synced_size = size;
-
-            if metadata_changed {
-                // TODO(jt): @Memory To keep memory usage down, load the file in chunks and hash
-                // it chunk by chunk, re-using the same memory.
-                success, contents := platform.read_file(document.backing_file_path,, temp);
-                if success {
-                    hash := hash_file_contents(contents);
-                    if hash != document.backing_file_last_synced_hash {
-                        document.backing_file_last_synced_hash = hash;
-
-                        if document.flags & .MODIFIED {
-                            document.flags |= .READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
-
-                            save_shortcut := shortcut_sprint(key_map_find_shortcut(editor.key_map, .SAVE_DOCUMENT),, temp);
-                            reload_shortcut := shortcut_sprint(key_map_find_shortcut(editor.key_map, .RELOAD_DOCUMENT),, temp);
-                            editor_log(editor, "% modified, but file changed on filesystem. % or % to exit read only mode", String.path_filename(document.backing_file_path), save_shortcut, reload_shortcut);
-                        } else {
-                            // TODO(jt): @Speed @Memory Figure out a diff instead of changing the whole file?
-
-                            cursor_before_reload := document.buffer.cursor0;
-
-                            text_buffer_delete_all(*document.buffer);
-                            text_buffer_insert(*document.buffer, contents, .FUSE);
-                            text_buffer_move_cursor_to(*document.buffer, cursor_before_reload, false);
-
-                            update_syntax_highlights(editor, document, platform, input);
-                            update_indentation_scopes(document);
-                            editor_log(editor, "Updated % from filesystem", String.path_filename(document.backing_file_path));
-                        }
-                    }
-                } else {
-                    // This can only happen as a race condition. We reset everything as though
-                    // this file only ever existed in our memory.
-                    document.backing_file_exists = false;
-                    document.backing_file_time_of_last_sync = {};
-                    document.backing_file_time_of_last_save = {};
-
-                    document.backing_file_last_synced_modification_time = {};
-                    document.backing_file_last_synced_size = 0;
-                    document.backing_file_last_synced_hash = 0;
-                }
             }
         }
     }

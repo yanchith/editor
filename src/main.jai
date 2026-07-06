@@ -226,8 +226,13 @@ main :: () {
 
             return file_infos;
         }
-        // nocheckin watch_directory and unwatch_directory relies on the general purpose allocator a lot. Don't let people override it!
-        platform.watch_directory = (path: string) -> success: bool {
+        // WARNING: Do not override context allocator here when calling. Resources for watching are
+        // allocated with a general-purpose allocator here for now.
+        //
+        // TODO(jt): @Cleanup It would be better if we had a arena/pool for these so that we would be resistant to changes to context?
+        platform.watch_directory = (_path: string) -> success: bool {
+            path := String.trim_right(_path, "/");
+
             #if OS == .WINDOWS {
                 for platform_state.watched_directories {
                     if it.info.path == path {
@@ -260,7 +265,7 @@ main :: () {
 
                 info := New(Platform_State.Watched_Directory_Info); // :Malloc
                 info.path = copy_string(path);                      // :Malloc
-                info.handle = directory_handle;
+                info.directory_handle = directory_handle;
                 info.overlapped.hEvent = event_handle;
                 info.overlapped.Offset = 0;
 
@@ -303,14 +308,16 @@ main :: () {
 
             return false;
         }
+        // WARNING: Do not override context allocator here when calling. Resources for watching are
+        // allocated with a general-purpose allocator here for now.
         platform.unwatch_directory = (path: string) {
             #if OS == .WINDOWS {
                 for platform_state.watched_directories {
                     log("Cancelling overlapped IO and releasing resources for watching path: %", path);
 
-                    CancelIo(it.info.handle);
+                    CancelIo(it.info.directory_handle);
                     CloseHandle(it.info.overlapped.hEvent);
-                    CloseHandle(it.info.handle);
+                    CloseHandle(it.info.directory_handle);
 
                     free(it.info.path);
                     free(it.info);
@@ -697,14 +704,16 @@ Platform_State :: struct {
 
         Watched_Directory_Info :: struct {
             path: string; // :Malloc
-            handle: HANDLE;
+            directory_handle: HANDLE;
             overlapped: OVERLAPPED;
 
             read_issue_failed: bool;
 
-            notify_buffer: [NOTIFY_BUFFER_SIZE] u8; // Note that unlike modules/File_Watcher this is inline, so we must be careful about it having a stable pointer!
+            // Unlike modules/File_Watcher, the buffer is inline, so we must be careful about it being pointer-stable!
+            // Additionally, we must make sure to align it manually, otherwise ReadDirectoryChangesW fails silently.
+            notify_buffer: [NOTIFY_BUFFER_SIZE] u8  #align 16;
 
-            NOTIFY_BUFFER_SIZE :: 2048;
+            NOTIFY_BUFFER_SIZE :: 4096;
         }
     } else #if OS == .MACOS {
         Watched_Directory :: struct {
@@ -719,7 +728,10 @@ platform_state: Platform_State;
 platform_wait_for_events :: () {
     #if OS == .WINDOWS {
         // On Windows (TM), we wait for new events with WaitMessage.
-        // nocheckin does completed IO (watched directory changes) wake us up?
+        //
+        // TODO(jt): WaitMessage does not wake us for overlapped IO completion. We could signal
+        // ourselves by posting onto our message queue from a callback, but we can also use
+        // MsgWaitForMultipleObjectsEx().
         WaitMessage();
     } else #if OS == .MACOS {
         // On macOS, we wait for events by checking the queue with nextEventMatchingMask
@@ -754,29 +766,23 @@ platform_process_watched_directory_changes :: () {
 
         for * platform_state.watched_directories {
             if it.info.read_issue_failed {
-                log("nocheckin resetting read for %", it.info.path);
                 it.info.read_issue_failed = false;
                 issue_one_read(it.info);
 
                 // If the read failed again immediately, we'll try again next time.
                 if it.info.read_issue_failed {
-                    log("nocheckin read immediately failed for %", it.info.path);
                     continue;
                 }
             }
-
-            assert(it.info.handle != INVALID_HANDLE_VALUE);
 
             if !HasOverlappedIoCompleted(it.info.overlapped) {
                 continue;
             }
 
-            log("nocheckin read finished for %", it.info.path);
-
             bytes_transferred: s32;
-            success := GetOverlappedResult(it.info.handle, *it.info.overlapped, *bytes_transferred, FALSE);
+            success := GetOverlappedResult(it.info.directory_handle, *it.info.overlapped, *bytes_transferred, FALSE);
             if success {
-                log("nocheckin %: bytes_transferred == % (struct size %)\n", it.info.path, bytes_transferred, size_of(FILE_NOTIFY_INFORMATION));
+                log("% bytes transferred into notify buffer for watching directory %", bytes_transferred, it.info.path);
             }
 
             defer issue_one_read(it.info); // Note that we can miss events until the overlapped read gets set up again. It is fine.
@@ -808,7 +814,10 @@ platform_process_watched_directory_changes :: () {
                     case;                               continue;
                 }
 
-                path, success := wide_to_utf8(cast(*u16, notify_info.FileName.data), notify_info.FileName.count,, temp);
+                filename_data  := cast(*u16, notify_info.FileName.data);
+                filename_count := notify_info.FileNameLength / 2; // FileNameLength is in bytes.
+
+                path, success := wide_to_utf8(filename_data, filename_count,, temp);
                 if !success {
                     continue;
                 }
@@ -837,8 +846,6 @@ platform_process_watched_directory_changes :: () {
 
 #if OS == .WINDOWS {
     issue_one_read :: (info: *Platform_State.Watched_Directory_Info) {
-        log("nocheckin issue_one_read");
-
         NOTIFY_FILTER: s32 : FILE_NOTIFY_CHANGE_FILE_NAME
             | FILE_NOTIFY_CHANGE_DIR_NAME
             | FILE_NOTIFY_CHANGE_CREATION
@@ -847,7 +854,7 @@ platform_process_watched_directory_changes :: () {
             | FILE_NOTIFY_CHANGE_SECURITY
             | FILE_NOTIFY_CHANGE_ATTRIBUTES;
 
-        success := ReadDirectoryChangesW(info.handle,
+        success := ReadDirectoryChangesW(info.directory_handle,
                                          info.notify_buffer.data, info.notify_buffer.count,
                                          /* bWatchSubtree could also be FALSE */ TRUE, NOTIFY_FILTER,
                                          null, *info.overlapped, null);
