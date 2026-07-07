@@ -68,6 +68,24 @@ find_index_from_left_nocase :: (s: string, substring: string) -> s64 {
     return found_index;
 }
 
+
+count_leading_whitespace_chars :: (bytes: [] u8) -> s64 {
+    return inline count_leading_whitespace_chars(cast(string, bytes));
+}
+
+count_leading_whitespace_chars :: (s: string) -> s64 {
+    count := 0;
+    for s {
+        if !String.is_any(it, String.DEFAULT_SPACES) {
+            break;
+        }
+
+        count += 1;
+    }
+
+    return count;
+}
+
 count_utf8_chars :: (bytes: [] u8) -> s64 {
     return inline count_utf8_chars(cast(string, bytes));
 }
