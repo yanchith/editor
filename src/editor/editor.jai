@@ -280,9 +280,10 @@ Document :: struct {
         loc0: Text_Location;
         loc1: Text_Location;
 
-        open_paren: u32;
-        close_paren: u32;
-        nesting_depth: u32;
+        open_paren_char:  u32;
+        close_paren_char: u32;
+
+        nesting_depth: s64;
 
         parent_index:       s64 = -1;
         first_child_index:  s64 = -1;
