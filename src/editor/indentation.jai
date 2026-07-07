@@ -1,3 +1,4 @@
+// nocheckin maybe this is only going to be for parentheses highlight, so rename accordingly
 update_indentation_scopes :: (document: *Document) {
     ProfileZone("update_indentation_scopes");
 
@@ -50,6 +51,7 @@ update_indentation_scopes :: (document: *Document) {
                     scope.loc1 = text_buffer_get_end(document.buffer);
 
                     scope.open_paren = byte;
+                    // close_paren is set when we find the closing paren
                     scope.nesting_depth = parent.nesting_depth + 1;
                     scope.parent_index = parent_index;
 
@@ -75,6 +77,8 @@ update_indentation_scopes :: (document: *Document) {
                         scope.loc1.x = count_utf8_chars(String.slice(cast(string, line), 0, byte_index));
                         scope.loc1.y = line_index;
 
+                        scope.close_paren = byte;
+
                         parent_index = scope.parent_index;
                         parent := *document.indentation_scopes[parent_index];
 
@@ -93,19 +97,22 @@ update_indentation_scopes :: (document: *Document) {
     }
 }
 
-find_indentation_level :: (document: Document, loc: Text_Location) -> s64 {
-    ProfileZone("find_indentation_level");
+// nocheckin explain and maybe just return an index, also maybe we need to fix this
+find_indentation_scope_for_location :: (document: Document, loc: Text_Location) -> *Document.Indentation_Scope {
+    ProfileZone("find_indentation_scope_for_location");
 
-    // TODO(jt): Make indent amount configurable, or maybe detect it fron content :Config.
-    INDENT :: 4;
+    log("nocheckin find scope for %", loc);
 
-    indentation_level := 0;
-    current_index     := 0;
+    if !document.indentation_scopes.count {
+        return null;
+    }
+
+    current_index := 0;
+    current := *document.indentation_scopes[current_index];
     while current_index != -1 {
-        current := *document.indentation_scopes[current_index];
-        indentation_level = current.nesting_depth * INDENT;
-
+        current = *document.indentation_scopes[current_index];
         current_index = -1;
+
         if current.first_child_index != -1 {
             child := *document.indentation_scopes[current.first_child_index];
 
@@ -124,5 +131,145 @@ find_indentation_level :: (document: Document, loc: Text_Location) -> s64 {
         }
     }
 
-    return indentation_level;
+    return current;
+}
+
+// Very basic parenthesis based indentation. Emulates Emacs. Supports these:
+//
+// procedure_call(a);
+// procedure_call( a );
+//
+// procedure_call(
+//     a, b,
+//     c, d,
+// );
+// procedure_call(
+//     a,
+//     b,
+// )
+//
+// procedure_call(a, b
+//                c);
+// procedure_call(a,
+//                b, c, d)
+// procedure_call(a b c
+//                d e f)
+// procedure_call( a b c
+//                 d );
+//
+// procedure_call( a b another_procedure_call (
+//     a
+//     b
+// ) );
+// procedure_call ( a b another( a,
+//                               b ) );
+//
+// {
+//     ({
+//         thing
+//     })
+// }
+//
+// call(a, b, {
+//     c;
+// })
+// call({( asdfasdf,
+//         asfdasdf )})
+//
+// block({
+//  if a { // Intentionally possible to misalign
+//      a;
+//      b;
+//  }
+// })
+//
+determine_line_indentation_level :: (document: Document, line_index: s64) -> s64 {
+    INDENT_STEP :: 4; // TODO(jt): Make this configurable. :Config
+
+    if line_index == 0 {
+        return 0;
+    }
+
+    indentation_pairs: [] Paren_Pair;
+    if #complete document.mode == {
+        case .PLAIN_TEXT;  indentation_pairs = PLAIN_TEXT_INDENTATION_PAIRS;
+        case .JAI;         indentation_pairs = LANG_JAI_INDENTATION_PAIRS;
+    }
+
+    previous_line_view         := text_buffer_make_view_for_line(document.buffer, line_index - 1,, temp);
+    previous_line_view_trimmed := String.trim_right(previous_line_view);
+
+    current_line_view         := text_buffer_make_view_for_line(document.buffer, line_index,, temp);
+    current_line_view_trimmed := String.trim_left(current_line_view);
+
+    // Not calling this on the trimmed version, because the line could be all whitespace!
+    previous_line_indent := count_leading_whitespace_chars(previous_line_view); // TODO(jt): Handle tabs!
+
+    previous_line_ends_with_open_paren := false;
+    previous_line_contains_open_paren  := false;
+    previous_line_open_paren_index     := -1;
+
+    previous_line_contains_close_paren := false;
+    previous_line_close_paren_index    := -1;
+
+    if previous_line_view_trimmed.count {
+        // TODO(jt): @Incomplete Decode ascii instead of of looking at the first byte.
+        for byte, byte_index: previous_line_view_trimmed {
+            for indentation_pairs {
+                if it.open == byte  {
+                    previous_line_contains_open_paren = true;
+                    previous_line_open_paren_index = byte_index;
+                }
+
+                if it.close == byte {
+                    previous_line_contains_close_paren = true;
+                    previous_line_close_paren_index = byte_index;
+                }
+            }
+        }
+
+        if previous_line_open_paren_index == previous_line_view_trimmed.count - 1 {
+            previous_line_ends_with_open_paren = true;
+        }
+    }
+
+    if previous_line_contains_close_paren {
+        indentation_level := 0;
+        if document.indentation_scopes.count {
+            scope := find_indentation_scope_for_location(document, { 0, line_index - 1 });
+            if scope {
+                // TODO(jt): Do explicit stack recursion instead!
+                indentation_level := determine_line_indentation_level(document, scope.loc0.y);
+            }
+        }
+
+        log("nocheckin Recursion branch returning %!", indentation_level);
+        return indentation_level;
+    } else if previous_line_contains_open_paren && !previous_line_ends_with_open_paren {
+        indentation_level := previous_line_open_paren_index + 1;
+        while indentation_level < previous_line_view_trimmed.count && String.is_any(previous_line_view_trimmed[indentation_level], String.DEFAULT_SPACES) {
+            indentation_level += 1;
+        }
+
+        log("nocheckin Microsoft branch returning %!", indentation_level);
+        return indentation_level;
+    } else {
+        current_line_starts_with_close_paren := false;
+        if current_line_view_trimmed.count {
+            // TODO(jt): @Incomplete Decode ascii instead of of looking at the first byte.
+            first_byte := current_line_view_trimmed[0];
+            for indentation_pairs {
+                if it.close == first_byte {
+                    current_line_starts_with_close_paren = true;
+                }
+            }
+        }
+
+        indentation_level := previous_line_indent;
+        if previous_line_ends_with_open_paren    indentation_level += INDENT_STEP;
+        if current_line_starts_with_close_paren  indentation_level -= INDENT_STEP;
+
+        log("nocheckin Regular branch returning %!", indentation_level);
+        return indentation_level;
+    }
 }

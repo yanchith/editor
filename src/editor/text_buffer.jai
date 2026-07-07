@@ -816,6 +816,8 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
                         // sequence. Write a fuzzer?
                         //
                         // UPDATE: Strike 2. Still happens. Still can't reproduce.
+                        // UPDATE: Strike 3.
+                        // UPDATE: Strike 4!!!
                         sanity_assert(it == edit.memset_value);
                     }
                 }
