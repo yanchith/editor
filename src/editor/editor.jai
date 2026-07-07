@@ -285,9 +285,23 @@ Document :: struct {
 
         nesting_depth: s64;
 
+        indentation_kind: Indentation_Kind;
+        indentation_level: s64;
+
         parent_index:       s64 = -1;
         first_child_index:  s64 = -1;
         next_sibling_index: s64 = -1;
+
+        Indentation_Kind :: enum u32 {
+            // {
+            //   1
+            //   2
+            // }
+            REGULAR;
+            // Procedure(a b
+            //           c d)
+            HANGING;
+        }
     }
 
     Syntax_Highlight_Token :: struct {
@@ -2101,50 +2115,44 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 }
             }
 
-            should_make_space_for_block = false; // nocheckin
-
-
             // TODO(jt): Preserve CRLF in CRLF-only documents.
             panel.selecting = false;
             buffer_changed |= text_buffer_insert(*document.buffer, "\n", .BARRIER);
 
-            // nocheckin
-            // // TODO(jt): @Speed @Hack We try to update indentation scopes as little as possible. We
-            // // could do that incrementally, so that we don't have to thin about it that much.
-            // updated_indentation_scopes := false;
+            // TODO(jt): @Speed @Hack We try to update indentation scopes as little as possible. We
+            // could do that incrementally, so that we don't have to thin about it that much.
+            updated_indentation_scopes := false;
 
-            // if should_make_space_for_block {
-            //     buffer_changed |= text_buffer_insert(*document.buffer, "\n", .FUSE);
+            if should_make_space_for_block {
+                buffer_changed |= text_buffer_insert(*document.buffer, "\n", .FUSE);
 
-            //     cursor_moved |= text_buffer_move_cursor_y(*document.buffer, -1, false);
-            //     if document.indentation_scopes.count {
-            //         if !updated_indentation_scopes {
-            //             update_indentation_scopes(document);
-            //             updated_indentation_scopes = true;
-            //         }
+                cursor_moved |= text_buffer_move_cursor_y(*document.buffer, -1, false);
+                if document.indentation_scopes.count {
+                    if !updated_indentation_scopes {
+                        update_indentation_scopes(document);
+                        updated_indentation_scopes = true;
+                    }
 
-            //         level := determine_line_indentation_level(document, document.buffer.cursor0.y);
-            //         buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
-            //     }
-            //     cursor_moved |= text_buffer_move_cursor_y(*document.buffer, 1, false);
-            // }
+                    level := find_indentation_level(document, document.buffer.cursor0);
+                    buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
+                }
+                cursor_moved |= text_buffer_move_cursor_y(*document.buffer, 1, false);
+            }
 
-            // if document.indentation_scopes.count {
-            //     if !updated_indentation_scopes {
-            //         update_indentation_scopes(document);
-            //         updated_indentation_scopes = true;
-            //     }
+            if document.indentation_scopes.count {
+                if !updated_indentation_scopes {
+                    update_indentation_scopes(document);
+                    updated_indentation_scopes = true;
+                }
 
-            //     level := determine_line_indentation_level(document, document.buffer.cursor0.y);
-            //     log("nocheckin level is %", level);
+                level := find_indentation_level(document, document.buffer.cursor0);
+                buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
+            }
 
-            //     buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
-            // }
-
-            // if should_make_space_for_block {
-            //     cursor_moved |= text_buffer_move_cursor_y(*document.buffer, -1, false);
-            //     cursor_moved |= text_buffer_move_cursor_to_end_of_line(*document.buffer, false);
-            // }
+            if should_make_space_for_block {
+                cursor_moved |= text_buffer_move_cursor_y(*document.buffer, -1, false);
+                cursor_moved |= text_buffer_move_cursor_to_end_of_line(*document.buffer, false);
+            }
         }
         case .INSERT_LINE_AFTER; {
             // TODO(jt): Preserve CRLF in CRLF-only documents.
@@ -2159,14 +2167,18 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             if document.indentation_scopes.count {
                 panel.selecting = false;
 
+                // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
+                //
                 // nocheckin Let's address these!
                 //
-                // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
+                // UPDATE: After fucking around on stream with heuristics, I came back to the paren
+                // parser version and I think I managed to make it do all the stuff below. Needs
+                // heavy testing but it looks like it could work!
                 //
                 // TODO(jt): @Bug Do not increase indentation level for multiple opening parentheses on the same line:
                 //
                 // ((
-                //     x; // should have indent 4, not 8.
+                //     x; // should have indent 4, not 8. UPDATE: Actually 5, because it is a hanging indent.
                 // ))
                 //
                 //
@@ -2195,7 +2207,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                 fuse := false;
                 for y0..y1 {
-                    indentation_level := determine_line_indentation_level(document, it);
+                    indentation_level := find_indentation_level(document, { 0, it });
                     text_buffer_move_cursor_to(*document.buffer, { 0, it }, false);
                     buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level, ifx fuse then .FUSE else .NONE);
 
