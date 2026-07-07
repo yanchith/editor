@@ -7,7 +7,6 @@ update_indentation_scopes :: (document: *Document) {
         return;
     }
 
-    // TODO(jt): @Bug Do something else if the buffer is binary.
     indentation_pairs: [] Paren_Pair;
     if #complete document.mode == {
         case .PLAIN_TEXT;  indentation_pairs = PLAIN_TEXT_INDENTATION_PAIRS;
@@ -50,11 +49,11 @@ update_indentation_scopes :: (document: *Document) {
                     // found when someone searches the tree.
                     scope.loc1 = text_buffer_get_end(document.buffer);
 
-                    scope.open_paren = byte;
+                    scope.open_paren_char = byte;
                     // close_paren is set when we find the closing paren
                     scope.nesting_depth = parent.nesting_depth + 1;
-                    scope.parent_index = parent_index;
 
+                    scope.parent_index = parent_index;
                     if sibling_index == -1 {
                         assert(parent.first_child_index == -1);
                         parent.first_child_index = index;
@@ -72,15 +71,12 @@ update_indentation_scopes :: (document: *Document) {
                 } else if byte == paren_pair.close {
                     scope_index := parent_index;
                     scope := *document.indentation_scopes[scope_index];
-                    if paren_pair.open == scope.open_paren {
+                    if paren_pair.open == scope.open_paren_char {
                         // TODO(jt): @Speed Maintain count so we don't have to rescan the line?
                         scope.loc1.x = count_utf8_chars(String.slice(cast(string, line), 0, byte_index));
                         scope.loc1.y = line_index;
 
-                        scope.close_paren = byte;
-
-                        parent_index = scope.parent_index;
-                        parent := *document.indentation_scopes[parent_index];
+                        scope.close_paren_char = byte;
 
                         sibling_index = scope_index;
                     }
