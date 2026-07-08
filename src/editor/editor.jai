@@ -2119,19 +2119,12 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             panel.selecting = false;
             buffer_changed |= text_buffer_insert(*document.buffer, "\n", .BARRIER);
 
-            // TODO(jt): @Speed @Hack We try to update indentation scopes as little as possible. We
-            // could do that incrementally, so that we don't have to thin about it that much.
-            updated_indentation_scopes := false;
-
             if should_make_space_for_block {
                 buffer_changed |= text_buffer_insert(*document.buffer, "\n", .FUSE);
 
                 cursor_moved |= text_buffer_move_cursor_y(*document.buffer, -1, false);
                 if document.indentation_scopes.count {
-                    if !updated_indentation_scopes {
-                        update_indentation_scopes(document);
-                        updated_indentation_scopes = true;
-                    }
+                    update_indentation_scopes(document);
 
                     level := find_indentation_level(document, document.buffer.cursor0);
                     buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
@@ -2140,10 +2133,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             }
 
             if document.indentation_scopes.count {
-                if !updated_indentation_scopes {
-                    update_indentation_scopes(document);
-                    updated_indentation_scopes = true;
-                }
+                update_indentation_scopes(document);
 
                 level := find_indentation_level(document, document.buffer.cursor0);
                 buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
