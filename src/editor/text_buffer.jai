@@ -2025,6 +2025,8 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, _text: string) {
     while text.count {
         newline_advance := string_ends_with_newline(text, binary = buffer.binary_mode);
         if newline_advance {
+            // TOOD(jt): @Bug This triggers when we open file_examples/version2.jai, indent the
+            // first struct, undo, indent it again and undo.
             assert(buffer.cursor0.x == 0);
             assert(buffer.cursor0.y > 0);
 

@@ -25,7 +25,6 @@ update_indentation_scopes :: (document: *Document) {
         scope := array_add(*document.indentation_scopes);
         scope.loc0 = text_buffer_get_start(document.buffer);
         scope.loc1 = text_buffer_get_end(document.buffer);
-        scope.indentation_kind = .REGULAR;
         scope.indentation_level = 0;
     }
 
@@ -60,13 +59,21 @@ update_indentation_scopes :: (document: *Document) {
                     // character after the opening paren.
                     //
 
-                    scope.indentation_kind  = .REGULAR;
                     scope.indentation_level = scope.loc0.x + DEFAULT_INDENTATION_STEP;
+
+                    // nocheckin explain
+                    for 0..byte_index - 1 {
+                        if !String.is_any(line[it], String.DEFAULT_SPACES) {
+                            scope.flags |= .PREFIXED;
+                            scope.indentation_level = it + DEFAULT_INDENTATION_STEP; // DEFAULT_SPACES are all single-byte.
+                            break;
+                        }
+                    }
 
                     for byte_index + 1..line.count - 1 {
                         if !String.is_any(line[it], String.DEFAULT_SPACES) {
                             // HANGING scopes are indented Casey-style (or is it Microsoft-style?)
-                            scope.indentation_kind  = .HANGING;
+                            scope.flags |= .HANGING;
                             scope.indentation_level = scope.loc0.x + it - byte_index; // DEFAULT_SPACES are all single-byte.
                             break;
                         }
@@ -122,8 +129,9 @@ find_indentation_level :: (document: Document, loc: Text_Location) -> s64 {
         current := *document.indentation_scopes[current_index];
         indentation_level = current.indentation_level;
 
-        if current.loc1.y == loc.y && current.indentation_kind == .REGULAR {
-            indentation_level = current.loc0.x; // Indent to match opening paren.
+        // Indent to match opening paren.
+        if current.loc1.y == loc.y && !(current.flags & .HANGING) {
+            indentation_level = current.indentation_level - DEFAULT_INDENTATION_STEP;
         }
 
         // In the loop below, we the range check is start-exclusive and end-inclusive by design: we

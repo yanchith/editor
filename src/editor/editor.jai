@@ -283,22 +283,18 @@ Document :: struct {
         open_paren_char:  u32;
         close_paren_char: u32;
 
-        indentation_kind: Indentation_Kind;
+        flags: Flags;
         indentation_level: s64;
 
         parent_index:       s64 = -1;
         first_child_index:  s64 = -1;
         next_sibling_index: s64 = -1;
 
-        Indentation_Kind :: enum u32 {
-            // {
-            //   1
-            //   2
-            // }
-            REGULAR;
-            // Procedure(a b
-            //           c d)
-            HANGING;
+        Flags :: enum_flags u32 {
+            NONE :: 0;
+
+            HANGING  :: 0x01; // Casey-style scope, e.g. 'hwnd = CreateWindowExW(0,' (continues on the next line).
+            PREFIXED :: 0x02; // The scope opening paren has text before it, e.g. 'for {'. Not actually read, but maybe it will be useful later?
         }
     }
 
