@@ -25,7 +25,6 @@ update_indentation_scopes :: (document: *Document) {
         scope := array_add(*document.indentation_scopes);
         scope.loc0 = text_buffer_get_start(document.buffer);
         scope.loc1 = text_buffer_get_end(document.buffer);
-        scope.nesting_depth = 0;
         scope.indentation_kind = .REGULAR;
         scope.indentation_level = 0;
     }
@@ -54,8 +53,6 @@ update_indentation_scopes :: (document: *Document) {
 
                     scope.open_paren_char = byte;
                     // close_paren is set when we find the closing paren
-
-                    scope.nesting_depth = parent.nesting_depth + 1;
 
                     //
                     // indentation_level is set based on whether this is REGULAR or HANGING
@@ -100,8 +97,7 @@ update_indentation_scopes :: (document: *Document) {
 
                         scope.close_paren_char = byte;
 
-                        parent_index = scope.parent_index;
-
+                        parent_index  = scope.parent_index;
                         sibling_index = scope_index;
                     }
 
