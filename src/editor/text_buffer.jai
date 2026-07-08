@@ -240,7 +240,13 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_modifier := Undo
         edit.cursor0_for_display_before = buffer.cursor0;
         edit.cursor1_for_display_before = buffer.cursor1;
 
-        if undo_modifier == .FUSE || insert_caused_delete_selection {
+        // The caller does not know whether we already have something in our undo buffer, so let's
+        // only do the fusing if there already is something present there.
+        if buffer.edits.count > 1 && undo_modifier == .FUSE || insert_caused_delete_selection {
+            // insert_caused_delete_selection *should* always mean the there is already something in
+            // the undo buffer, hence the assert.
+            assert(buffer.edits.count > 1);
+
             edit.flags |= .FUSED_WITH_PREVIOUS;
 
             previous_edit := *buffer.edits[buffer.edits.count - 2];
@@ -710,7 +716,9 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64, undo_m
         edit.cursor1_for_display_before = original_cursor1;
         edit.cursor1_for_display_after = display_cursor_after;
 
-        if undo_modifier == .FUSE {
+        // The caller does not know whether we already have something in our undo buffer, so let's
+        // only do the fusing if there already is something present there.
+        if buffer.edits.count > 1 && undo_modifier == .FUSE {
             edit.flags |= .FUSED_WITH_PREVIOUS;
 
             previous_edit := *buffer.edits[buffer.edits.count - 2];
@@ -761,7 +769,9 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64, undo_m
         edit.cursor1_for_display_before = original_cursor1;
         edit.cursor1_for_display_after = display_cursor_after;
 
-        if undo_modifier == .FUSE {
+        // The caller does not know whether we already have something in our undo buffer, so let's
+        // only do the fusing if there already is something present there.
+        if buffer.edits.count > 1 && undo_modifier == .FUSE {
             edit.flags |= .FUSED_WITH_PREVIOUS;
 
             previous_edit := *buffer.edits[buffer.edits.count - 2];
