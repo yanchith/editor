@@ -32,8 +32,8 @@ TODO(jt): Stuff to do:
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
 - [ ] *compilation* buffer
-- [ ] Mode defined comments
 - [ ] Panel tiling
+- [ ] Mode defined comments
 - [ ] Themes
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode Panel
@@ -61,6 +61,7 @@ TODO(jt): @Stream Small things to do:
 - [ ] Selection in modal interaction text buffer.
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
+- [ ] C-j join-next-line
 - [ ] M-d, C-<backspace> (delete forward/backward word)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [ ] M-x
@@ -2152,41 +2153,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 panel.selecting = false;
 
                 // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
-                //
-                // nocheckin After fucking around on stream with heuristics, I came back to the
-                // paren parser version and I think I managed to make it do some of the stuff
-                // below. It still needs to handle the example right below. Maybe we can just
-                // correctly detect the situation when updating the scopes?
-                //
-                // Thing(
-                //          ActuallyIndentedHere
-                //     ^-- should be indented here
-                // )
-                //
-                // TODO(jt): @Bug Do not increase indentation level for multiple opening parentheses on the same line:
-                //
-                // ((
-                //     x; // should have indent 4, not 8. UPDATE: Actually 5, because it is a hanging indent.
-                // ))
-                //
-                //
-                // TODO(jt): Casey style indentation of function parameters, arguments, list items:
-                //
-                // hwnd = CreateWindowEx(dwExStyle, ClassName(), lpWindowName, dwStyle, x, y,
-                //                       nWidth, nHeight, hWndParent, hMenu, GetModuleHandle(NULL), this);
-                //
-                // a ( b c d
-                //     asdf f g )
-                //     ^
-                //     aligned the first item after last unclosed parenthesis
-                //
-                // a ( b c ( d e ( f g )
-                //           x, y, z ))
-                //
-                // f :: (a: s64, b: s64,
-                //       c: s64);
-                //
-                // We need to reconcile this with indentation scopes.
 
                 original_y0 := document.buffer.cursor0.y;
                 original_y1 := document.buffer.cursor1.y;

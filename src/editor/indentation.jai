@@ -54,15 +54,15 @@ update_indentation_scopes :: (document: *Document) {
                     // close_paren is set when we find the closing paren
 
                     //
-                    // indentation_level is set based on whether this is REGULAR or HANGING
-                    // indentation scope. We detect that here by looking for first nonwhitespace
-                    // character after the opening paren.
+                    // indentation_level is set based on kind of indentation scope this is. We
+                    // detect that here by looking for nonwhitespace character before and after the
+                    // opening paren.
                     //
 
                     scope.indentation_level = scope.loc0.x + DEFAULT_INDENTATION_STEP;
 
-                    // nocheckin explain
                     for 0..byte_index - 1 {
+                        // TODO(jt): @Speed We could SIMD this.
                         if !String.is_any(line[it], String.DEFAULT_SPACES) {
                             scope.flags |= .PREFIXED;
                             scope.indentation_level = it + DEFAULT_INDENTATION_STEP; // DEFAULT_SPACES are all single-byte.
@@ -71,6 +71,7 @@ update_indentation_scopes :: (document: *Document) {
                     }
 
                     for byte_index + 1..line.count - 1 {
+                        // TODO(jt): @Speed We could SIMD this.
                         if !String.is_any(line[it], String.DEFAULT_SPACES) {
                             // HANGING scopes are indented Casey-style (or is it Microsoft-style?)
                             scope.flags |= .HANGING;
