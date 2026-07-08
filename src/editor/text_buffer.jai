@@ -645,6 +645,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64, undo_m
 
     assert_valid(buffer);
 
+    indentation_level = max(indentation_level, 0);
+
     // This routine assumes this is a ascii. Actually, it assumes it is exactly space,
     // but that part could be improved.
     INDENTATION_VALUE: u8 : #char " ";
