@@ -2195,13 +2195,17 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 y0 := min(document.buffer.cursor0.y, document.buffer.cursor1.y);
                 y1 := max(document.buffer.cursor0.y, document.buffer.cursor1.y);
 
-                fuse := false;
+                first := true;
                 for y0..y1 {
+                    if !first {
+                        update_indentation_scopes(document);
+                    }
+
                     indentation_level := find_indentation_level(document, { 0, it });
                     text_buffer_move_cursor_to(*document.buffer, { 0, it }, false);
-                    buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level, ifx fuse then .FUSE else .NONE);
+                    buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level, ifx first then .NONE else .FUSE);
 
-                    fuse = true;
+                    first = false;
                 }
 
                 // Restore cursor's vertical position if the selection is backwards.
