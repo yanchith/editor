@@ -283,8 +283,6 @@ Document :: struct {
         open_paren_char:  u32;
         close_paren_char: u32;
 
-        nesting_depth: s64;
-
         indentation_kind: Indentation_Kind;
         indentation_level: s64;
 
@@ -2159,11 +2157,15 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                 // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
                 //
-                // nocheckin Let's address these!
+                // nocheckin After fucking around on stream with heuristics, I came back to the
+                // paren parser version and I think I managed to make it do some of the stuff
+                // below. It still needs to handle the example right below. Maybe we can just
+                // correctly detect the situation when updating the scopes?
                 //
-                // UPDATE: After fucking around on stream with heuristics, I came back to the paren
-                // parser version and I think I managed to make it do all the stuff below. Needs
-                // heavy testing but it looks like it could work!
+                // Thing(
+                //          ActuallyIndentedHere
+                //     ^-- should be indented here
+                // )
                 //
                 // TODO(jt): @Bug Do not increase indentation level for multiple opening parentheses on the same line:
                 //
