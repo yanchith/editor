@@ -1,5 +1,8 @@
 DEFAULT_INDENTATION_STEP :: 4;
 
+// TODO(jt): @Speed When we indent 10000 lines, this takes ~8 seconds. Even if we SIMD this, it will
+// traverse the whole document contents too many times. We need an incremental version, or perhaps
+// some cooperative version that can work well with indenting large regions.
 update_indentation_scopes :: (document: *Document) {
     ProfileZone("update_indentation_scopes");
 
