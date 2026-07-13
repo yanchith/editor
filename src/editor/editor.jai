@@ -56,7 +56,7 @@ TODO(jt): @Stream Small things to do:
 - [X] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
 - [X] OPEN_FILE starts in the directory of the currently open document
 - [X] OPEN_FILE, switch to buffer and close buffer get tab completions.
-- [ ] OPEN_FILE completion also completes, if we are on the text line but there is only one item in the list.
+- [X] OPEN_FILE completion also completes, if we are on the text line but there is only one item in the list.
 - [X] Selection in mini panel text buffer.
 - [ ] Selection in modal interaction text buffer.
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.

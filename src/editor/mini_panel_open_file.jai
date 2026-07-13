@@ -128,10 +128,19 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
         return false;
     }
 
-    if mini_panel.items.count && mini_panel.item_index >= 0 {
-        userdata: *Open_File_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
+    item_index := -1;
+    if mini_panel.items.count {
+        if mini_panel.item_index >= 0 {
+            item_index = mini_panel.item_index;
+        } else if mini_panel.items.count == 1 { // If we have the editable text line selected, and there is only one item.
+            item_index = 0;
+        }
+    }
+
+    if item_index >= 0 {
+        userdata: *Open_File_Item_Userdata = mini_panel.items[item_index].userdata;
         if userdata && userdata.full_file_path.count {
-            completion_text := String.path_filename(mini_panel.items[mini_panel.item_index].text);
+            completion_text := String.path_filename(mini_panel.items[item_index].text);
             buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
             buffer_path, _, _, buffer_filename := String.path_decomp(buffer_text);
 
