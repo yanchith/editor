@@ -1,13 +1,13 @@
 JL :: #import "Jai_Lexer";
 
-LANG_JAI_SURROUND_PAIRS: [] Paren_Pair = .[
+LANG_JAI_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
     { #char "[", #char "]" },
     { #char "\"", #char "\"" },
 ];
 
-LANG_JAI_INDENTATION_PAIRS: [] Paren_Pair = .[
+LANG_JAI_INDENTATION_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
     { #char "[", #char "]" },
