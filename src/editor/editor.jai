@@ -120,7 +120,7 @@ operator==     :: Math.operator==;
 #load "font.jai";
 #load "gap_buffer.jai";
 #load "text_buffer.jai";
-#load "indentation.jai";
+#load "parentheses.jai";
 #load "color.jai";
 #load "mini_panel_search.jai";
 #load "mini_panel_open_file.jai";
@@ -239,7 +239,7 @@ Document :: struct {
     backing_file_last_synced_size: s64;
     backing_file_last_synced_hash: u64;
 
-    indentation_scopes:      [..] Indentation_Scope;
+    parenthesized_scopes:    [..] Parenthesized_Scope;
     syntax_highlight_tokens: [..] Syntax_Highlight_Token;
 
     Kind :: enum u32 {
@@ -277,14 +277,14 @@ Document :: struct {
         TRANSIENT :: MODIFIED_THIS_FRAME;
     }
 
-    Indentation_Scope :: struct {
+    Parenthesized_Scope :: struct {
         loc0: Text_Location;
         loc1: Text_Location;
 
         open_paren_char:  u32;
         close_paren_char: u32;
 
-        flags: Flags;
+        indentation_flags: Flags;
         indentation_level: s64;
 
         parent_index:       s64 = -1;
@@ -1231,24 +1231,22 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
         }
 
-        //
-        // Draw matching parenthesis highlight
-        //
         {
+            ProfileZone(":DrawMatchingParenthesisHighlight");
+
             found := false;
             highlight_loc: Text_Location;
 
-            for document.indentation_scopes {
-                if it.loc0 == document.buffer.cursor0 {
+            scope := find_parenthesized_scope_for_location(document, document.buffer.cursor0);
+            if scope && scope.parent_index != -1 {
+                if scope.loc0 == document.buffer.cursor0 {
                     found = true;
-                    highlight_loc = it.loc1;
-                    break;
+                    highlight_loc = scope.loc1;
                 }
 
-                if it.loc1 == document.buffer.cursor0 {
+                if scope.loc1 == document.buffer.cursor0 {
                     found = true;
-                    highlight_loc = it.loc0;
-                    break;
+                    highlight_loc = scope.loc0;
                 }
             }
 
@@ -1709,7 +1707,7 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                         text_buffer_insert(*document.buffer, contents, .FUSE);
                         text_buffer_move_cursor_to(*document.buffer, cursor_before_reload, false);
 
-                        update_indentation_scopes(document);
+                        update_parenthesized_scopes(document);
                         update_syntax_highlights(editor, document, platform, input);
 
                         editor_log(editor, "Updated % from filesystem", String.path_filename(document.backing_file_path));
@@ -2038,7 +2036,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     text_buffer_insert(*document.buffer, file_contents, .DISCARD);
                     text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
-                    update_indentation_scopes(document);
+                    update_parenthesized_scopes(document);
                     update_syntax_highlights(editor, document, platform, input);
 
                     editor_log(editor, "Reloaded file: %", document.backing_file_path);
@@ -2102,6 +2100,16 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 prev_loc := curr_loc;
                 prev_loc.x -= 1;
 
+                // TODO(jt): @Bug We got a crash here when playing with indentation. Let's audit.
+                //
+                // Stack trace:
+                // C:/Users/yanchith/workspace/jai/modules/Runtime_Support.jai:103: runtime_support_assertion_failed
+                // C:/Users/yanchith/workspace/jai/modules/Basic/module.jai:86: assert_helper
+                // c:/Users/yanchith/workspace/editor/src/editor/gap_buffer.jai:249: *[]
+                // c:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:997: text_buffer_get_byte_at_location
+                // c:/Users/yanchith/workspace/editor/src/editor/editor.jai:2104: route_event_to_panel
+                // c:/Users/yanchith/workspace/editor/src/editor/editor.jai:811: update_and_render
+                // c:/Users/yanchith/workspace/editor/src/main.jai:690: main
                 prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
                 curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
 
@@ -2119,8 +2127,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 buffer_changed |= text_buffer_insert(*document.buffer, "\n", .FUSE);
 
                 cursor_moved |= text_buffer_move_cursor_y(*document.buffer, -1, false);
-                if document.indentation_scopes.count {
-                    update_indentation_scopes(document);
+                if document.parenthesized_scopes.count {
+                    update_parenthesized_scopes(document);
 
                     level := find_indentation_level(document, document.buffer.cursor0);
                     buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
@@ -2128,8 +2136,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 cursor_moved |= text_buffer_move_cursor_y(*document.buffer, 1, false);
             }
 
-            if document.indentation_scopes.count {
-                update_indentation_scopes(document);
+            if document.parenthesized_scopes.count {
+                update_parenthesized_scopes(document);
 
                 level := find_indentation_level(document, document.buffer.cursor0);
                 buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
@@ -2150,7 +2158,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
         // TODO(jt): Preserve tabness in tab-only documents.
         case .INDENT_OR_AUTOCOMPLETE; {
-            if document.indentation_scopes.count {
+            if document.parenthesized_scopes.count {
                 panel.selecting = false;
 
                 // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
@@ -2163,7 +2171,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 first := true;
                 for y0..y1 {
                     if !first {
-                        update_indentation_scopes(document);
+                        update_parenthesized_scopes(document);
                     }
 
                     indentation_level := find_indentation_level(document, { 0, it });
@@ -2297,7 +2305,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         // We have to update these after every change, because the very next edit could be needing
         // this. Doesn't matter much as long as we hit our frame budgets. Also, we could start being
         // smart about this, becuase not every subsequent action needs these up to date.
-        update_indentation_scopes(document);
+        update_parenthesized_scopes(document);
     }
 }
 
@@ -2398,13 +2406,13 @@ Paren_Pair :: struct {
     close: u32;
 }
 
-PLAIN_TEXT_INDENTATION_PAIRS: [] Paren_Pair = .[
+PLAIN_TEXT_INDENTATION_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
     { #char "[", #char "]" },
 ];
 
-PLAIN_TEXT_SURROUND_PAIRS: [] Paren_Pair = .[
+PLAIN_TEXT_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
     { #char "[", #char "]" },
@@ -2413,8 +2421,8 @@ PLAIN_TEXT_SURROUND_PAIRS: [] Paren_Pair = .[
 
 get_surround_pairs :: (document: Document) -> /* Static */ [] Paren_Pair {
     if #complete document.mode == {
-        case .PLAIN_TEXT;  return PLAIN_TEXT_SURROUND_PAIRS;
-        case .JAI;         return LANG_JAI_SURROUND_PAIRS;
+        case .PLAIN_TEXT;  return PLAIN_TEXT_SURROUND_PAREN_PAIRS;
+        case .JAI;         return LANG_JAI_SURROUND_PAREN_PAIRS;
     }
 }
 
@@ -2479,7 +2487,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         document.backing_file_path = arena_push_string(document_arena, backing_file_path);
     }
 
-    document.indentation_scopes.allocator      = arena_allocator(document_arena);
+    document.parenthesized_scopes.allocator    = arena_allocator(document_arena);
     document.syntax_highlight_tokens.allocator = arena_allocator(document_arena);
 
     document.cursor_flash_source = CURSOR_COLOR;

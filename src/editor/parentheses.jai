@@ -3,8 +3,8 @@ DEFAULT_INDENTATION_STEP :: 4;
 // TODO(jt): @Speed When we indent 10000 lines, this takes ~8 seconds. Even if we SIMD this, it will
 // traverse the whole document contents too many times. We need an incremental version, or perhaps
 // some cooperative version that can work well with indenting large regions.
-update_indentation_scopes :: (document: *Document) {
-    ProfileZone("update_indentation_scopes");
+update_parenthesized_scopes :: (document: *Document) {
+    ProfileZone("update_parenthesized_scopes");
 
     sanity_assert(document != null);
     if document == null {
@@ -13,19 +13,19 @@ update_indentation_scopes :: (document: *Document) {
 
     indentation_pairs: [] Paren_Pair;
     if #complete document.mode == {
-        case .PLAIN_TEXT;  indentation_pairs = PLAIN_TEXT_INDENTATION_PAIRS;
-        case .JAI;         indentation_pairs = LANG_JAI_INDENTATION_PAIRS;
+        case .PLAIN_TEXT;  indentation_pairs = PLAIN_TEXT_INDENTATION_PAREN_PAIRS;
+        case .JAI;         indentation_pairs = LANG_JAI_INDENTATION_PAREN_PAIRS;
     }
 
-    array_reset_keeping_memory(*document.indentation_scopes);
+    array_reset_keeping_memory(*document.parenthesized_scopes);
     if document.buffer.binary_mode {
         return; // Don't recreate indentation data if we entered binary mode.
     }
 
-    parent_index  := document.indentation_scopes.count;
+    parent_index  := document.parenthesized_scopes.count;
     sibling_index := -1;
     {
-        scope := array_add(*document.indentation_scopes);
+        scope := array_add(*document.parenthesized_scopes);
         scope.loc0 = text_buffer_get_start(document.buffer);
         scope.loc1 = text_buffer_get_end(document.buffer);
         scope.indentation_level = 0;
@@ -41,10 +41,10 @@ update_indentation_scopes :: (document: *Document) {
         for byte, byte_index: line {
             for paren_pair: indentation_pairs {
                 if byte == paren_pair.open {
-                    index := document.indentation_scopes.count;
-                    parent := *document.indentation_scopes[parent_index];
+                    index := document.parenthesized_scopes.count;
+                    parent := *document.parenthesized_scopes[parent_index];
 
-                    scope: Document.Indentation_Scope;
+                    scope: Document.Parenthesized_Scope;
                     scope.loc0.x = count_utf8_chars(String.slice(cast(string, line), 0, byte_index));
                     scope.loc0.y = line_index;
 
@@ -67,7 +67,7 @@ update_indentation_scopes :: (document: *Document) {
                     for 0..byte_index - 1 {
                         // TODO(jt): @Speed We could SIMD this.
                         if !String.is_any(line[it], String.DEFAULT_SPACES) {
-                            scope.flags |= .PREFIXED;
+                            scope.indentation_flags |= .PREFIXED;
                             scope.indentation_level = it + DEFAULT_INDENTATION_STEP; // DEFAULT_SPACES are all single-byte.
                             break;
                         }
@@ -77,7 +77,7 @@ update_indentation_scopes :: (document: *Document) {
                         // TODO(jt): @Speed We could SIMD this.
                         if !String.is_any(line[it], String.DEFAULT_SPACES) {
                             // HANGING scopes are indented Casey-style (or is it Microsoft-style?)
-                            scope.flags |= .HANGING;
+                            scope.indentation_flags |= .HANGING;
                             scope.indentation_level = scope.loc0.x + it - byte_index; // DEFAULT_SPACES are all single-byte.
                             break;
                         }
@@ -88,11 +88,11 @@ update_indentation_scopes :: (document: *Document) {
                         assert(parent.first_child_index == -1);
                         parent.first_child_index = index;
                     } else {
-                        sibling := *document.indentation_scopes[sibling_index];
+                        sibling := *document.parenthesized_scopes[sibling_index];
                         sibling.next_sibling_index = index;
                     }
 
-                    array_add(*document.indentation_scopes, scope); // We potentially invalidate pointers here, careful!
+                    array_add(*document.parenthesized_scopes, scope); // We potentially invalidate pointers here, careful!
 
                     parent_index = index;
                     sibling_index = -1;
@@ -100,7 +100,7 @@ update_indentation_scopes :: (document: *Document) {
                     continue byte;
                 } else if byte == paren_pair.close {
                     scope_index := parent_index;
-                    scope := *document.indentation_scopes[scope_index];
+                    scope := *document.parenthesized_scopes[scope_index];
                     if paren_pair.open == scope.open_paren_char {
                         // TODO(jt): @Speed Maintain count so we don't have to rescan the line?
                         scope.loc1.x = count_utf8_chars(String.slice(cast(string, line), 0, byte_index));
@@ -124,17 +124,62 @@ update_indentation_scopes :: (document: *Document) {
     }
 }
 
+find_parenthesized_scope_for_location :: (document: Document, loc: Text_Location, start_x_inclusive := true, end_x_inclusive := true, start_y_inclusive := true, end_y_inclusive := true) -> *Document.Parenthesized_Scope {
+    ProfileZone("find_parenthesized_scope");
+
+    if !document.parenthesized_scopes.count {
+        return null;
+    }
+
+    current := *document.parenthesized_scopes[0];
+
+    while true {
+        child_index := current.first_child_index;
+        if child_index != -1 {
+            child := *document.parenthesized_scopes[child_index];
+
+            if contains(child, loc, start_x_inclusive, end_x_inclusive, start_y_inclusive, end_y_inclusive) {
+                current = child;
+                continue;
+            }
+        }
+
+        // If we get here, we did not find a child we can nest into.
+
+        sibling_index := current.next_sibling_index;
+        sibling_found := false;
+        while sibling_index != -1 {
+            sibling := *document.parenthesized_scopes[sibling_index];
+
+            if contains(sibling, loc, start_x_inclusive, end_x_inclusive, start_y_inclusive, end_y_inclusive) {
+                current = sibling;
+                sibling_found = true;
+                break;
+            }
+
+            sibling_index = sibling.next_sibling_index;
+        }
+
+        if !sibling_found {
+            break;
+        }
+    }
+
+    return current;
+}
+
+// TODO(jt): @Cleanup Can we reasonably reuse find_parenthesized_scope instead of doing our own traversal?
 find_indentation_level :: (document: Document, loc: Text_Location) -> s64 {
     ProfileZone("find_indentation_level");
 
     indentation_level := 0;
     current_index     := 0;
     while current_index != -1 {
-        current := *document.indentation_scopes[current_index];
+        current := *document.parenthesized_scopes[current_index];
         indentation_level = current.indentation_level;
 
         // Indent to match opening paren.
-        if current.loc1.y == loc.y && !(current.flags & .HANGING) {
+        if current.loc1.y == loc.y && !(current.indentation_flags & .HANGING) {
             indentation_level = current.indentation_level - DEFAULT_INDENTATION_STEP;
         }
 
@@ -144,7 +189,7 @@ find_indentation_level :: (document: Document, loc: Text_Location) -> s64 {
         // to exclude it.
         current_index = -1;
         if current.first_child_index != -1 {
-            child := *document.indentation_scopes[current.first_child_index];
+            child := *document.parenthesized_scopes[current.first_child_index];
 
             if loc.y > child.loc0.y && loc.y <= child.loc1.y {
                 current_index = current.first_child_index;
@@ -152,7 +197,7 @@ find_indentation_level :: (document: Document, loc: Text_Location) -> s64 {
 
             while current_index == -1 && child.next_sibling_index != -1 {
                 index := child.next_sibling_index;
-                child = *document.indentation_scopes[index];
+                child = *document.parenthesized_scopes[index];
 
                 if loc.y > child.loc0.y && loc.y <= child.loc1.y {
                     current_index = index;
@@ -162,4 +207,27 @@ find_indentation_level :: (document: Document, loc: Text_Location) -> s64 {
     }
 
     return indentation_level;
+}
+
+#scope_file
+
+contains :: (scope: Document.Parenthesized_Scope, loc: Text_Location, start_x_inclusive: bool, end_x_inclusive: bool, start_y_inclusive: bool, end_y_inclusive: bool) -> bool {
+    test_top    := start_y_inclusive && loc.y >= scope.loc0.y || loc.y > scope.loc0.y;
+    test_bottom := end_y_inclusive   && loc.y <= scope.loc1.y || loc.y < scope.loc1.y;
+    test_left   := start_x_inclusive && loc.x >= scope.loc0.x || loc.x > scope.loc0.x;
+    test_right  := end_x_inclusive   && loc.x <= scope.loc1.x || loc.x < scope.loc1.x;
+
+    if test_top && test_bottom {
+        if scope.loc0.y == scope.loc1.y { // Can only happen if it is y-inclusive.
+            return test_left && test_right;
+        } else if scope.loc0.y == loc.y { // Can only happen if it is y-inclusive.
+            return test_left;
+        } else if scope.loc1.y == loc.y { // Can only happen if it is y-inclusive.
+            return test_right;
+        } else {
+            return true;
+        }
+    }
+
+    return false;
 }
