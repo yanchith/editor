@@ -240,15 +240,15 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                         text_buffer_insert(*document.buffer, file_contents, .DISCARD);
                         text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
-                        if active_panel {
-                            set_panel_document(editor, active_panel, document);
-                            recenter_active_panel(editor, input, true);
-                        }
-
                         update_indentation_scopes(document);
                         update_syntax_highlights(editor, document, platform, input);
 
                         watch_file(editor, platform, input, document.backing_file_path);
+
+                        if active_panel {
+                            set_panel_document(editor, active_panel, document);
+                            recenter_active_panel(editor, input, true);
+                        }
                     }
                 } else {
                     editor_log(editor, "Opening new file with path: %", file_absolute_path);
