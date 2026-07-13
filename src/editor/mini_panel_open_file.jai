@@ -240,7 +240,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                         text_buffer_insert(*document.buffer, file_contents, .DISCARD);
                         text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
-                        update_indentation_scopes(document);
+                        update_parenthesized_scopes(document);
                         update_syntax_highlights(editor, document, platform, input);
 
                         watch_file(editor, platform, input, document.backing_file_path);
