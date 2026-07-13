@@ -1709,8 +1709,9 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                         text_buffer_insert(*document.buffer, contents, .FUSE);
                         text_buffer_move_cursor_to(*document.buffer, cursor_before_reload, false);
 
-                        update_syntax_highlights(editor, document, platform, input);
                         update_indentation_scopes(document);
+                        update_syntax_highlights(editor, document, platform, input);
+
                         editor_log(editor, "Updated % from filesystem", String.path_filename(document.backing_file_path));
                     }
                 }
@@ -2033,7 +2034,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     document.backing_file_last_synced_size = size;
                     document.backing_file_last_synced_hash = hash_file_contents(file_contents);
 
-                    text_buffer_reset(*document.buffer);
+                    text_buffer_delete_all(*document.buffer);
                     text_buffer_insert(*document.buffer, file_contents, .DISCARD);
                     text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
