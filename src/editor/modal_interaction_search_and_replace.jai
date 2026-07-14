@@ -85,7 +85,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
         return false;
     }
 
-    active_panel := get_active_panel(editor);
+    active_panel := get_panel_for_active_view(editor);
     sanity_assert(active_panel != null);
     if !active_panel {
         return false;
@@ -189,7 +189,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    active_panel := get_active_panel(editor);
+    active_panel := get_panel_for_active_view(editor);
     sanity_assert(active_panel != null);
     if !active_panel {
         return;
@@ -304,7 +304,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
 }
 
 cancel :: (editor: *Editor, platform: Platform, input: Input) {
-    active_panel := get_active_panel(editor);
+    active_panel := get_panel_for_active_view(editor);
     sanity_assert(active_panel != null);
     if !active_panel {
         return;
