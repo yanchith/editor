@@ -194,7 +194,11 @@ Editor :: struct {
     // TODO(jt): Do panel splitting and fix all places in code that rely on the panel covering the
     // entire window.
     panels: [..] Panel;
-    active_panel_index: s64;
+
+    active_view: Active_View;
+    full_view_panel_index: s64;
+    left_view_panel_index: s64;
+    right_view_panel_index: s64;
 
     mini_panel: Mini_Panel;
     modal_interaction: Modal_Interaction;
@@ -203,6 +207,12 @@ Editor :: struct {
     last_message_seen: bool;
 
     dev_view: Dev_View;
+
+    Active_View :: enum u8 {
+        FULL;   // The screen is not split into multiple views.
+        LEFT;   // The screen is split horizontally, and the left view is active.
+        RIGHT;  // The screen is split horizontally, and the right view is active.
+    }
 
     Dev_View :: enum u8 {
         NONE;
@@ -581,6 +591,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-w",     .CUT);
         key_map_add(key_map, "C-y",     .PASTE);
 
+        key_map_add(key_map, "C-x 3",   .SPLIT_VIEW_HORIZONTALLY);
+        key_map_add(key_map, "C-x 0",   .JOIN_VIEW);
+        key_map_add(key_map, "C-x o",   .GO_TO_NEXT_VIEW);
+
         log("Document keymap:\n%", key_map_sprint(key_map,, temp));
     }
 
@@ -588,16 +602,32 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.documents.allocator     = arena_allocator(editor.perm_arena);
     editor.panels.allocator        = arena_allocator(editor.perm_arena);
 
-    panel := array_add(*editor.panels);
-
-    // :PanelInit (this will evantually be a procedure)
+    // Create *scratch* document
+    scratch_document := find_or_add_document(editor, platform, .SCRATCH, "");
     {
-        panel.highlights_arena = make_arena(platform, .LARGE);
-        panel.highlights.allocator = arena_allocator(panel.highlights_arena);
-        panel.highlight_index = -1;
+        // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
+        // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
+        HELLO_SIZE: s64 : 128 << 10;
+
+        hello_arena := make_arena(platform, .LARGE);
+        hello_text := make_hello_text(hello_arena, HELLO_SIZE);
+        text_buffer_insert(*scratch_document.buffer, hello_text, .DISCARD);
+
+        scratch_document.buffer.cursor0 = { 0, 0 };
+        scratch_document.buffer.cursor1 = { 0, 0 };
+
+        // For when you want to materialize The Year of Glad.
+        //
+        // {
+        //     #import "File";
+        //     write_entire_file("hello.txt", hello_text);
+        // }
+
+        arena_release(hello_arena);
     }
 
-    set_panel_document_to_newly_created_scratch(editor, panel, platform);
+    panel := array_add(*editor.panels);
+    panel_init(panel, editor, platform, scratch_document);
 
     //
     // Init mini panel
@@ -755,10 +785,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     font_new_frame(*editor.font);
 
-    // Currently, there must always be at least one panel. We can relax this in the future.
-    active_panel: *Panel = get_active_panel(editor);
-    assert(active_panel != null);
-
     for input.events {
         handled := false;
 
@@ -813,6 +839,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
+    // Currently, there must always be at least one panel. We can relax this in the future.
+    hovered_panel := get_panel_for_mouse_cursor(editor, input);
+    assert(hovered_panel != null);
+
     if editor.input_state.modifiers & .CTRL {
         delta: s32;
         if input.mouse_wheel_delta > 0 then delta = 1;
@@ -823,8 +853,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     {
         cell_h_before_zoom := editor.font.line_height_in_pixels;
 
-        cursor_y := active_panel.document.buffer.cursor0.y;
-        mouse_y  := (input.mouse_position.y + active_panel.scroll_target.y) / cell_h_before_zoom;
+        cursor_y := hovered_panel.document.buffer.cursor0.y;
+        mouse_y  := (input.mouse_position.y + hovered_panel.scroll_target.y) / cell_h_before_zoom;
 
         want_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
         if editor.font.pixel_height != want_pixel_height {
@@ -841,10 +871,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             delta := y_position_after_zoom - y_position_before_zoom;
 
             {
-                target := active_panel.scroll_target;
+                target := hovered_panel.scroll_target;
                 target.y += delta;
                 target.y = max(target.y, 0);
-                setup_instant_scroll_interpolation(active_panel, target);
+                setup_instant_scroll_interpolation(hovered_panel, target);
             }
 
             // If we change zoom, we need to invalidate old cursor positions in every document. We also
@@ -885,13 +915,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // Mouse wheel scrolling
         //
         if input.mouse_wheel_delta != 0 && !(editor.input_state.modifiers & .CTRL) {
-            target := active_panel.scroll_target;
+            target := hovered_panel.scroll_target;
             target.y -= cast(f64, input.mouse_wheel_delta);
-            target.y = clamp(target.y, 0, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
-            setup_instant_scroll_interpolation(active_panel, target);
+            target.y = clamp(target.y, 0, cell_h * cast(f64, hovered_panel.document.buffer.line_bytes.count - 1));
+            setup_instant_scroll_interpolation(hovered_panel, target);
 
-            active_panel.flags |= .CLAMP_CURSOR_TO_SCROLL;
-            active_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
+            hovered_panel.flags |= .CLAMP_CURSOR_TO_SCROLL;
+            hovered_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
         }
 
         //
@@ -914,10 +944,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 if mouse.x < SCROLL_APRON {
                     boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
 
-                    target := active_panel.scroll_target;
+                    target := hovered_panel.scroll_target;
                     target.x -= SCROLL_SPEED * boost * dt;
                     target.x = max(target.x, 0);
-                    setup_instant_scroll_interpolation(active_panel, target);
+                    setup_instant_scroll_interpolation(hovered_panel, target);
 
                     wants_next_frame = true;
                 } else if mouse.x > window_w - SCROLL_APRON {
@@ -926,17 +956,17 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     // Apron contains the newline (if present) and one additional horizontal cell.
                     apron := 2 * cell_w;
 
-                    line_view := text_buffer_make_view_for_line(active_panel.document.buffer, active_panel.document.buffer.cursor0.y,, temp);
+                    line_view := text_buffer_make_view_for_line(hovered_panel.document.buffer, hovered_panel.document.buffer.cursor0.y,, temp);
 
                     // Clamp to zero, so we don't end up scrolling the other way if the line is
                     // short. (Happens if you start scrolling on a long line, but then vertically
                     // scroll to a short line.)
-                    max_x := max(font_compute_position_on_line(editor.font, line_view, active_panel.document.buffer.cursor0.x, binary = active_panel.document.buffer.binary_mode) - window_w + apron, 0);
+                    max_x := max(font_compute_position_on_line(editor.font, line_view, hovered_panel.document.buffer.cursor0.x, binary = hovered_panel.document.buffer.binary_mode) - window_w + apron, 0);
 
-                    target := active_panel.scroll_target;
+                    target := hovered_panel.scroll_target;
                     target.x += SCROLL_SPEED * boost * dt;
                     target.x = min(target.x, max_x);
-                    setup_instant_scroll_interpolation(active_panel, target);
+                    setup_instant_scroll_interpolation(hovered_panel, target);
 
                     wants_next_frame = true;
                 }
@@ -945,45 +975,45 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 if mouse.y < SCROLL_APRON {
                     boost := (SCROLL_APRON - mouse.y) * SCROLL_BOOST;
 
-                    target := active_panel.scroll_target;
+                    target := hovered_panel.scroll_target;
                     target.y -= SCROLL_SPEED * boost * dt;
                     target.y = max(target.y, 0);
-                    setup_instant_scroll_interpolation(active_panel, target);
+                    setup_instant_scroll_interpolation(hovered_panel, target);
 
                     wants_next_frame = true;
                 } else if mouse.y > panel_h - SCROLL_APRON {
                     boost := (mouse.y - (panel_h - SCROLL_APRON)) * SCROLL_BOOST;
 
-                    target := active_panel.scroll_target;
+                    target := hovered_panel.scroll_target;
                     target.y += SCROLL_SPEED * boost * dt;
-                    target.y = min(target.y, cell_h * cast(f64, active_panel.document.buffer.line_bytes.count - 1));
-                    setup_instant_scroll_interpolation(active_panel, target);
+                    target.y = min(target.y, cell_h * cast(f64, hovered_panel.document.buffer.line_bytes.count - 1));
+                    setup_instant_scroll_interpolation(hovered_panel, target);
 
                     wants_next_frame = true;
                 }
             }
 
-            row := cast(s64, floor((mouse.y + active_panel.scroll.y) / cell_h));
+            row := cast(s64, floor((mouse.y + hovered_panel.scroll.y) / cell_h));
             col := 0;
 
             if row < 0 {
                 row = 0;
                 col = 0;
-            } else if row > active_panel.document.buffer.line_bytes.count - 1 {
-                row = active_panel.document.buffer.line_bytes.count - 1;
+            } else if row > hovered_panel.document.buffer.line_bytes.count - 1 {
+                row = hovered_panel.document.buffer.line_bytes.count - 1;
 
                 // Include newline, so that the cursor can go there.
-                line_view := text_buffer_make_view_for_line(active_panel.document.buffer, row, include_newline = true,, temp);
-                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x, binary = active_panel.document.buffer.binary_mode);
+                line_view := text_buffer_make_view_for_line(hovered_panel.document.buffer, row, include_newline = true,, temp);
+                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + hovered_panel.scroll.x, binary = hovered_panel.document.buffer.binary_mode);
             } else {
                 // Include newline, so that the cursor can go there.
-                line_view := text_buffer_make_view_for_line(active_panel.document.buffer, row, include_newline = true,, temp);
-                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + active_panel.scroll.x, binary = active_panel.document.buffer.binary_mode);
+                line_view := text_buffer_make_view_for_line(hovered_panel.document.buffer, row, include_newline = true,, temp);
+                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + hovered_panel.scroll.x, binary = hovered_panel.document.buffer.binary_mode);
             }
 
-            text_buffer_move_cursor_to(*active_panel.document.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
+            text_buffer_move_cursor_to(*hovered_panel.document.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
 
-            active_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
+            hovered_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
         }
     }
 
@@ -1000,7 +1030,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             update_syntax_highlights(editor, document, platform, input);
         }
 
-        panel_w := window_w;
+        panel_x: f32 = 0.0;
+        if editor.active_view != .FULL && editor.right_view_panel_index == it_index {
+            panel_x = input.window_size.x * 0.5;
+        }
+
+        panel_w := ifx editor.active_view == .FULL then window_w else window_w * 0.5;
         panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
         if editor.mini_panel.open {
             // Currently, this only affects culling.
@@ -1130,8 +1165,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // TODO(jt): @Speed Compute gap buffer indices incrementally as we go through the loop.
             line_view := text_buffer_make_view_for_line(document.buffer, it.y,, temp);
 
-            x0 := font_compute_position_on_line(editor.font, line_view, it.x0, binary = document.buffer.binary_mode);
-            x1 := font_compute_position_on_line(editor.font, line_view, it.x1, binary = document.buffer.binary_mode);
+            x0 := panel_x + font_compute_position_on_line(editor.font, line_view, it.x0, binary = document.buffer.binary_mode);
+            x1 := panel_x + font_compute_position_on_line(editor.font, line_view, it.x1, binary = document.buffer.binary_mode);
             y0 := cast(f64, it.y) * cell_h;
             y1 := y0 + cell_h;
 
@@ -1159,8 +1194,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 view_before_cursor   := text_buffer_make_view_for_interval(document.buffer, line_start, cursor_start,, temp);
                 view_between_cursors := text_buffer_make_view_for_interval(document.buffer, cursor_start, cursor_end,, temp);
 
-                selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
-                selection_x1 := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0;
+                selection_x0 := panel_x + font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
+                selection_x1 := panel_x + font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0;
                 selection_y0 := cast(f64, cursor_start.y) * cell_h;
                 selection_y1 := selection_y0 + cell_h;
                 selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
@@ -1187,8 +1222,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     view_before_cursor := text_buffer_make_view_for_interval(document.buffer, line_start, cursor_start,, temp);
                     view_after_cursor  := text_buffer_make_view_for_interval(document.buffer, cursor_start, line_end,, temp);
 
-                    selection_x0 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
-                    selection_x1 := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0;
+                    selection_x0 := panel_x + font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
+                    selection_x1 := panel_x + font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0;
                     selection_y0 := cast(f64, cursor_start.y) * cell_h;
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
@@ -1205,8 +1240,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     line_end  := text_buffer_get_end_of_line(document.buffer, it);
                     line_view := text_buffer_make_view_for_line(document.buffer, it,, temp);
-                    selection_x0 := 0.0;
-                    selection_x1 := font_compute_position_on_line(editor.font, line_view, line_end.x, binary = document.buffer.binary_mode);
+                    selection_x0 := panel_x;
+                    selection_x1 := panel_x + font_compute_position_on_line(editor.font, line_view, line_end.x, binary = document.buffer.binary_mode);
                     selection_y0 := cast(f64, it) * cell_h;
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
@@ -1220,8 +1255,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     view_before_cursor := text_buffer_make_view_for_interval(document.buffer, line_start, cursor_end,, temp);
 
-                    selection_x0 := 0.0;
-                    selection_x1 := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x, binary = document.buffer.binary_mode);
+                    selection_x0 := panel_x;
+                    selection_x1 := panel_x + font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x, binary = document.buffer.binary_mode);
                     selection_y0 := cast(f64, cursor_end.y) * cell_h;
                     selection_y1 := selection_y0 + cell_h;
                     selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
@@ -1252,7 +1287,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             if found {
                 highlight_position := get_position_of_location(document, editor.font, highlight_loc) - panel.scroll;
-                highlight_rect := rect_from_point_and_size(cast(f32, highlight_position.x), cast(f32, highlight_position.y), cell_w, cell_h);
+                highlight_rect := rect_from_point_and_size(panel_x + cast(f32, highlight_position.x), cast(f32, highlight_position.y), cell_w, cell_h);
 
                 draw_rect(*render_rects, highlight_rect, MATCHING_PARENTHESIS_COLOR);
             }
@@ -1313,15 +1348,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             cursor_rect: DRect;
             if anim_time == 0 {
                 // Straight to the new position to avoid one frame of lag (and results of division by zero).
-                cursor_rect = drect_from_point_and_size(new_cursor_position.x, new_cursor_position.y, cell_w, cell_h) - panel.scroll;
+                cursor_rect = drect_from_point_and_size(panel_x + new_cursor_position.x, new_cursor_position.y, cell_w, cell_h) - panel.scroll;
             } else {
-                cursor_rect = drect_from_point_and_size(document.cursor_anim.x, document.cursor_anim.y, cell_w, cell_h) - panel.scroll;
+                cursor_rect = drect_from_point_and_size(panel_x + document.cursor_anim.x, document.cursor_anim.y, cell_w, cell_h) - panel.scroll;
             }
 
             line_rect: Rect = {
-                0,
+                panel_x,
                 cast(f32, new_cursor_position.y - panel.scroll.y),
-                window_w,
+                panel_w,
                 cast(f32, new_cursor_position.y + cell_h - panel.scroll.y),
             };
 
@@ -1348,7 +1383,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // big (although I'd wager we have serious performance problems before that starts to
             // matter), so we go f64 to be future proof.
             offset: DVector2;
-            offset.x = -panel.scroll.x;
+            offset.x = panel_x + -panel.scroll.x;
             offset.y = -viewport_y0 + cell_h * cast(f64, viewport_line0);
 
             style_ranges: [..] Font_Style_Range;
@@ -1388,9 +1423,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
             }
 
-            // TODO(jt): @Speed Cull render rects that are not on the screen. We still have to layout the text
-            // to the left of the screen, but we don't have to emit render rects for it.
-            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, TEXT_COLOR, style_ranges, binary = document.buffer.binary_mode);
+            scissor_rect := rect_from_point_and_size(panel_x, 0.0, panel_w, panel_h);
+            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, scissor_rect, TEXT_COLOR, style_ranges, binary = document.buffer.binary_mode);
         }
 
         clear_transient_document_flags(*document.flags);
@@ -1398,6 +1432,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     {
+        active_panel := get_panel_for_active_view(editor);
+
         modeline_y := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
 
         draw_rect(*render_rects, 0, modeline_y, window_w, modeline_y + cell_h, MODELINE_COLOR);
@@ -1414,7 +1450,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         percent_string := temp_right_pad(tprint("%\%", percent), 5);
 
         s := tprint("  % % (%,%)", temp_right_pad(document_name, 20), percent_string, cursor.y + 1, cursor.x);
-        _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, TEXT_COLOR, .[], binary = false);
+        _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
     }
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
@@ -1442,7 +1478,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         main_line := tprint("%%", action_text, line_view);
 
-        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, TEXT_COLOR, .[], binary = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
 
         index0 := max(mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
         index1 := min(index0 + MINI_PANEL_LINES, mini_panel.items.count - 1);
@@ -1466,7 +1502,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, item.text_color, .[], binary = cast(bool, item.flags & .BINARY));
+            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, { 0, 0, window_w, window_h }, item.text_color, .[], binary = cast(bool, item.flags & .BINARY));
 
             it_index += 1;
         }
@@ -1487,14 +1523,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         main_line := tprint("%%", action_text, line_view);
 
-        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, modal_interaction_line_y }, TEXT_COLOR, .[], binary = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, modal_interaction_line_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
     } else {
         message_line_y := window_h - cell_h;
         draw_rect(*render_rects, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
 
         if editor.messages.count && !editor.last_message_seen {
             message := editor.messages[editor.messages.count - 1];
-            _font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, TEXT_COLOR, .[], binary = false);
+            _font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
         }
     }
 
@@ -1602,14 +1638,40 @@ editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #call
     log(format_string, ..args, loc);
 }
 
-get_active_panel :: (editor: *Editor) -> *Panel {
-    active_panel: *Panel = null;
-    if editor.panels.count {
-        index := clamp(editor.active_panel_index, 0, editor.panels.count - 1);
-        active_panel = *editor.panels[index];
+get_panel_for_active_view :: (editor: Editor) -> *Panel {
+    index: s64;
+    if #complete editor.active_view == {
+        case .FULL;   index = editor.full_view_panel_index;
+        case .LEFT;   index = editor.left_view_panel_index;
+        case .RIGHT;  index = editor.right_view_panel_index;
     }
 
-    return active_panel;
+    panel: *Panel = null;
+    if editor.panels.count {
+        panel = *editor.panels[index];
+    }
+
+    return panel;
+}
+
+get_panel_for_mouse_cursor :: (editor: Editor, input: Input) -> *Panel {
+    index: s64;
+    if editor.active_view == .FULL {
+        index = editor.full_view_panel_index;
+    } else {
+        if input.mouse_position.x < 0.5 * input.window_size.x {
+            index = editor.left_view_panel_index;
+        } else {
+            index = editor.right_view_panel_index;
+        }
+    }
+
+    panel: *Panel = null;
+    if editor.panels.count {
+        panel = *editor.panels[index];
+    }
+
+    return panel;
 }
 
 // For ease of use, the editor talks about watching individual files, but it merely means it is
@@ -1760,7 +1822,7 @@ Mini_Panel_Action :: enum {
 
 route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
     mini_panel := *editor.mini_panel;
-    active_panel := get_active_panel(editor);
+    active_panel := get_panel_for_active_view(editor);
 
     min_item_index := ifx mini_panel.procs.can_select_text_line(editor, platform, input) then -1 else 0;
 
@@ -1846,7 +1908,7 @@ Modal_Interaction_Action :: enum {
 
 route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
     modal_interaction := *editor.modal_interaction;
-    active_panel := get_active_panel(editor);
+    active_panel := get_panel_for_active_view(editor);
 
     if modal_interaction.procs.handle_event(editor, event, platform, input) {
         return;
@@ -1944,10 +2006,14 @@ Editor_Action :: enum {
     COPY;
     CUT;
     PASTE;
+
+    SPLIT_VIEW_HORIZONTALLY;
+    JOIN_VIEW;
+    GO_TO_NEXT_VIEW;
 }
 
 route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
-    panel := get_active_panel(editor);
+    panel := get_panel_for_active_view(editor);
     if !panel {
         return;
     }
@@ -2217,6 +2283,62 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             text := platform.get_clipboard_text(,, temp);
             if text {
                 buffer_changed |= text_buffer_insert(*document.buffer, text, .BARRIER);
+            }
+        }
+
+        case .SPLIT_VIEW_HORIZONTALLY; {
+            if editor.active_view == .FULL {
+                assert(editor.panels.count == 1);
+
+                right_panel := array_add(*editor.panels);
+                panel_init(right_panel, editor, platform, editor.panels[0].document);
+
+                editor.left_view_panel_index  = 0;
+                editor.right_view_panel_index = 1;
+
+                editor.active_view = .LEFT;
+
+                editor_log(editor, "Splitting view");
+            }
+        }
+        case .JOIN_VIEW; {
+            if #complete editor.active_view == {
+                case .FULL; // No-op
+                case .LEFT; {
+                    assert(editor.panels.count == 2);
+
+                    panel_deinit(*editor.panels[editor.right_view_panel_index]);
+                    array_unordered_remove_by_index(*editor.panels, editor.right_view_panel_index);
+
+                    editor.full_view_panel_index = 0;
+                    editor.active_view = .FULL;
+
+                    editor_log(editor, "Joining view (active left)");
+                }
+                case .RIGHT; {
+                    assert(editor.panels.count == 2);
+
+                    panel_deinit(*editor.panels[editor.left_view_panel_index]);
+                    array_unordered_remove_by_index(*editor.panels, editor.left_view_panel_index);
+
+                    editor.full_view_panel_index = 0;
+                    editor.active_view = .FULL;
+
+                    editor_log(editor, "Joining view (active right)");
+                }
+            }
+        }
+        case .GO_TO_NEXT_VIEW; {
+            if #complete editor.active_view == {
+                case .FULL; // No-op
+                case .LEFT; {
+                    editor.active_view = .RIGHT;
+                    editor_log(editor, "Switching active view from left to right");
+                }
+                case .RIGHT; {
+                    editor.active_view = .LEFT;
+                    editor_log(editor, "Switching active view from right to left");
+                }
             }
         }
     }
@@ -2539,7 +2661,24 @@ close_document :: (editor: *Editor, document: *Document) {
     bucket_array_remove(*editor.documents, locator);
 }
 
-set_panel_document :: (editor: Editor, panel: *Panel, document: *Document) {
+panel_init :: (panel: *Panel, editor: Editor, platform: Platform, document: *Document) {
+    panel.highlights_arena = make_arena(platform, .LARGE);
+    panel.highlights.allocator = arena_allocator(panel.highlights_arena);
+    panel.highlight_index = -1;
+
+    panel_set_document(panel, editor, document);
+}
+
+// Don't use the panel after calling this!
+panel_deinit :: (panel: *Panel) {
+    arena_release(panel.highlights_arena);
+}
+
+panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
+    // For now, each panel must have a document. We may later relax this and show some default
+    // background, or something.
+    assert(document != null);
+
     panel.scroll_source = { 0, 0 };
     panel.scroll_target = { 0, 0 };
     panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes for e.g. to_float64_seconds.
@@ -2566,25 +2705,7 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
     panel.selecting = false;
     panel.document = document;
 
-    // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
-    // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
-    HELLO_SIZE: s64 : 128 << 10;
 
-    hello_arena := make_arena(platform, .LARGE);
-    hello_text := make_hello_text(hello_arena, HELLO_SIZE);
-    text_buffer_insert(*document.buffer, hello_text, .DISCARD);
-
-    document.buffer.cursor0 = { 0, 0 };
-    document.buffer.cursor1 = { 0, 0 };
-
-    // For when you want to materialize The Year of Glad.
-    //
-    // {
-    //     #import "File";
-    //     write_entire_file("hello.txt", hello_text);
-    // }
-
-    arena_release(hello_arena);
 }
 
 #scope_module
@@ -2592,7 +2713,7 @@ set_panel_document_to_newly_created_scratch :: (editor: *Editor, panel: *Panel, 
 // TODO(jt): The user experience of this kind of sucks. The first C-l should always recenter. But
 // then we need to remember if it is the first press.
 recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, skip_interpolation := false) {
-    panel := get_active_panel(editor);
+    panel := get_panel_for_active_view(editor);
     if !panel {
         return;
     }
