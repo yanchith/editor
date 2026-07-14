@@ -286,15 +286,15 @@ Font_Style_Range :: struct {
     variant: Font_Variant;
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, style_ranges: [] Font_Style_Range, binary: bool) {
+font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, scissor_rect: Rect, default_color: Vector4, style_ranges: [] Font_Style_Range, binary: bool) {
     if binary {
-        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, default_color, style_ranges, true);
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, scissor_rect, default_color, style_ranges, true);
     } else {
-        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, default_color, style_ranges, false);
+        _font_layout_and_draw_text(font, text, render_rects, update_regions, offset, scissor_rect, default_color, style_ranges, false);
     }
 }
 
-_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, default_color: Vector4, style_ranges: [] Font_Style_Range, $binary: bool) {
+_font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Render_Rect, update_regions: *[..] IRect, offset: DVector2, scissor_rect: Rect, default_color: Vector4, style_ranges: [] Font_Style_Range, $binary: bool) {
     ProfileZone("font_layout_and_draw_text");
 
     style_range_index: s64 = -1;
@@ -506,21 +506,28 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
         rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
         ry := cast(f64, cursor_y) * R64 + offset.y + glyph_offset_y;
 
-        rr := array_add(render_rects);
-        rr.rect = rect_from_point_and_size(
+        r := rect_from_point_and_size(
             cast(f32, rx),
             cast(f32, ry),
             cast(f32, glyph_bitmap_width),
             cast(f32, glyph_bitmap_height),
         );
-        rr.texture_rect = rect_from_point_and_size(
-            cast(f32, glyph_cell_x * font.glyph_atlas_cell_width_in_pixels) / font.glyph_atlas_width_in_pixels,
-            cast(f32, glyph_cell_y * font.glyph_atlas_cell_height_in_pixels) / font.glyph_atlas_height_in_pixels,
-            cast(f32, glyph_bitmap_width) / font.glyph_atlas_width_in_pixels,
-            cast(f32, glyph_bitmap_height) / font.glyph_atlas_height_in_pixels,
-        );
-        rr.texture_id = font.texture_id;
-        rr.color = glyph_color;
+
+        // TODO(jt): @Speed We do horizontal culling here, but we could have saved more work, had we
+        // done it sooner. We do need to load the glyph, but we definitely don't need to rasterize
+        // it if ends up being discarded anyway.
+        if rect_intersects_rect(scissor_rect, r) {
+            rr := array_add(render_rects);
+            rr.rect = r;
+            rr.texture_rect = rect_from_point_and_size(
+                cast(f32, glyph_cell_x * font.glyph_atlas_cell_width_in_pixels) / font.glyph_atlas_width_in_pixels,
+                cast(f32, glyph_cell_y * font.glyph_atlas_cell_height_in_pixels) / font.glyph_atlas_height_in_pixels,
+                cast(f32, glyph_bitmap_width) / font.glyph_atlas_width_in_pixels,
+                cast(f32, glyph_bitmap_height) / font.glyph_atlas_height_in_pixels,
+            );
+            rr.texture_id = font.texture_id;
+            rr.color = glyph_color;
+        }
 
         cursor_x += glyph_advance;
         current_char_index += 1;

@@ -187,11 +187,20 @@ rect_height :: inline (r: Rect) -> f32 {
     }
 }
 
-rect_contains :: inline (r: Rect, v: Vector2) -> bool {
+rect_contains_vector :: inline (r: Rect, v: Vector2) -> bool {
+    // TODO(jt): This actually requires a fixup.
     contains_x := v.x >= r.x0 && v.x < r.x1;
     contains_y := v.y >= r.y0 && v.y < r.y1;
 
     return contains_x && contains_y;
+}
+
+rect_intersects_rect :: inline (r: Rect, other: Rect) -> bool {
+    // TODO(jt): This actually requires a fixup.
+    intersects_x := r.x0 <= other.x1 && r.x1 >= other.x0;
+    intersects_y := r.y0 <= other.y1 && r.y1 >= other.y0;
+
+    return intersects_x && intersects_y;
 }
 
 rect_fixup :: (r: Rect) -> Rect {
