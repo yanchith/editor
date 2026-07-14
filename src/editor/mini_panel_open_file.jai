@@ -35,7 +35,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         return;
     }
 
-    active_panel := get_active_panel(editor);
+    active_panel := get_panel_for_active_view(editor);
     sanity_assert(active_panel != null);
     if !active_panel {
         return;
@@ -169,7 +169,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         return false;
     }
 
-    active_panel := get_active_panel(editor);
+    active_panel := get_panel_for_active_view(editor);
     sanity_assert(active_panel != null);
     if !active_panel {
         return false;
@@ -246,19 +246,19 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                         watch_file(editor, platform, input, document.backing_file_path);
 
                         if active_panel {
-                            set_panel_document(editor, active_panel, document);
+                            panel_set_document(active_panel, editor, document);
                             recenter_active_panel(editor, input, true);
                         }
                     }
                 } else {
                     editor_log(editor, "Opening new file with path: %", file_absolute_path);
                     if active_panel {
-                        set_panel_document(editor, active_panel, document);
+                        panel_set_document(active_panel, editor, document);
                     }
                 }
             } else {
                 if active_panel {
-                    set_panel_document(editor, active_panel, document);
+                    panel_set_document(active_panel, editor, document);
                 }
             }
         } else {

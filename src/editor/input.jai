@@ -156,7 +156,7 @@ input_state_update_on_frame_start :: (input_state: *Input_State, input: Input) {
     input_state.time = input.time;
 
     window_rect := rect_from_point_and_size(0, 0, cast(f32, input.window_size.x), cast(f32, input.window_size.y));
-    input_state.mouse_inside_window = rect_contains(window_rect, input.mouse_position);
+    input_state.mouse_inside_window = rect_contains_vector(window_rect, input.mouse_position);
 
     for * input_state.keys {
         it.* &= ~(.PRESSED | .RELEASED);
