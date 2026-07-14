@@ -28,7 +28,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         return;
     }
 
-    active_panel := get_active_panel(editor);
+    active_panel := get_panel_for_active_view(editor);
     sanity_assert(active_panel != null);
     if !active_panel {
         return;
@@ -131,7 +131,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         return false;
     }
 
-    active_panel := get_active_panel(editor);
+    active_panel := get_panel_for_active_view(editor);
     sanity_assert(active_panel != null);
     if !active_panel {
         return false;
