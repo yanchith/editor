@@ -1129,7 +1129,7 @@ text_buffer_move_cursor_x :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
         buffer.cursor1 = buffer.cursor0;
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 
     return original_cursor != buffer.cursor0;
 }
@@ -1155,7 +1155,7 @@ text_buffer_move_cursor_y :: (buffer: *Text_Buffer, delta: s64, selecting: bool)
         buffer.cursor1 = buffer.cursor0;
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 
     return original_cursor != buffer.cursor0;
 }
@@ -1178,7 +1178,7 @@ text_buffer_move_cursor_to :: (buffer: *Text_Buffer, loc: Text_Location, selecti
         buffer.cursor1 = buffer.cursor0;
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 }
 
 text_buffer_move_cursor_to_start :: (buffer: *Text_Buffer, selecting: bool) -> cursor_moved: bool {
@@ -1194,7 +1194,7 @@ text_buffer_move_cursor_to_start :: (buffer: *Text_Buffer, selecting: bool) -> c
         buffer.cursor1 = buffer.cursor0;
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 
     return original_cursor != buffer.cursor0;
 }
@@ -1214,7 +1214,7 @@ text_buffer_move_cursor_to_end :: (buffer: *Text_Buffer, selecting: bool) -> cur
         buffer.cursor1 = buffer.cursor0;
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 
     return original_cursor != buffer.cursor0;
 }
@@ -1248,7 +1248,7 @@ text_buffer_move_cursor_to_start_of_line :: (buffer: *Text_Buffer, selecting: bo
         buffer.cursor1 = buffer.cursor0;
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 
     return original_cursor != buffer.cursor0;
 }
@@ -1266,7 +1266,7 @@ text_buffer_move_cursor_to_end_of_line :: (buffer: *Text_Buffer, selecting: bool
         buffer.cursor1 = buffer.cursor0;
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 
     return original_cursor != buffer.cursor0;
 }
@@ -1354,7 +1354,7 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: *Text_Buffer, sele
         buffer.cursor1 = buffer.cursor0;
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 
     return original_cursor != buffer.cursor0, original_cursor.y != buffer.cursor0.y;
 }
@@ -1442,7 +1442,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: *Text_Buffer, selectin
         buffer.cursor1 = buffer.cursor0;
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 
     return original_cursor != buffer.cursor0, original_cursor.y != buffer.cursor0.y;
 }
@@ -1488,7 +1488,7 @@ text_buffer_move_cursor_to_previous_blank_line :: (buffer: *Text_Buffer, selecti
         text_buffer_move_cursor_y(buffer, -1, selecting);
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 
     return original_cursor != buffer.cursor0;
 }
@@ -1534,7 +1534,7 @@ text_buffer_move_cursor_to_next_blank_line :: (buffer: *Text_Buffer, selecting: 
         text_buffer_move_cursor_y(buffer, +1, selecting);
     }
 
-    assert_valid(buffer);
+    assert_valid_cursors(buffer);
 
     return original_cursor != buffer.cursor0;
 }
@@ -1706,13 +1706,18 @@ text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, loc: Text
 
 #scope_file
 
+assert_valid_cursors :: (buffer: Text_Buffer) {
+    assert_location_valid_for_writes(buffer, buffer.cursor0);
+    assert_location_valid_for_writes(buffer, buffer.cursor1);
+}
+
 assert_valid :: (buffer: Text_Buffer) {
     ProfileZone("assert_valid");
 
     assert(buffer.line_bytes.count > 0, "Text_Buffer not initialized (has to have at least one line). Call text_buffer_init().");
     assert(buffer.line_bytes.count == buffer.line_chars.count, "Line arrays desync");
-    assert_location_valid_for_writes(buffer, buffer.cursor0);
-    assert_location_valid_for_writes(buffer, buffer.cursor1);
+
+    assert_valid_cursors(buffer);
 
     // This is too expensive to do in shipping builds. We completely recreate the line index from
     // the buffer contents and compare.
