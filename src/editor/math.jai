@@ -188,7 +188,7 @@ rect_height :: inline (r: Rect) -> f32 {
 }
 
 rect_contains_vector :: inline (r: Rect, v: Vector2) -> bool {
-    // TODO(jt): This actually requires a fixup.
+    // TODO(jt): This may require a fixup.
     contains_x := v.x >= r.x0 && v.x < r.x1;
     contains_y := v.y >= r.y0 && v.y < r.y1;
 
@@ -196,11 +196,21 @@ rect_contains_vector :: inline (r: Rect, v: Vector2) -> bool {
 }
 
 rect_intersects_rect :: inline (r: Rect, other: Rect) -> bool {
-    // TODO(jt): This actually requires a fixup.
+    // TODO(jt): This may require a fixup.
     intersects_x := r.x0 <= other.x1 && r.x1 >= other.x0;
     intersects_y := r.y0 <= other.y1 && r.y1 >= other.y0;
 
     return intersects_x && intersects_y;
+}
+
+rect_clamp :: (r: Rect, bounds: Rect) -> Rect {
+    // TODO(jt): This may require a fixup.
+    result: Rect = ---;
+    result.x0 = max(r.x0, bounds.x0);
+    result.y0 = max(r.y0, bounds.y0);
+    result.x1 = min(r.x1, bounds.x1);
+    result.y1 = min(r.y1, bounds.y1);
+    return result;
 }
 
 rect_fixup :: (r: Rect) -> Rect {
@@ -214,7 +224,7 @@ rect_fixup :: (r: Rect) -> Rect {
     return result;
 }
 
-operator + :: (r: Rect, v: Vector2) -> Rect {
+operator + :: (r: Rect, v: Vector2) -> Rect #symmetric {
     result: Rect = ---;
     result.p0 = r.p0 + v;
     result.p1 = r.p1 + v;
@@ -294,7 +304,7 @@ drect_fixup :: (r: DRect) -> DRect {
     return result;
 }
 
-operator + :: (r: DRect, v: DVector2) -> DRect {
+operator + :: (r: DRect, v: DVector2) -> DRect #symmetric {
     result: DRect = ---;
     result.p0 = r.p0 + v;
     result.p1 = r.p1 + v;
