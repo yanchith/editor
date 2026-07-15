@@ -1646,6 +1646,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
+    if editor.font.glyph_cache_overrun {
+        log_error("Glyph cache was overrun this frame. Rendering is going to be incorrect. Increase the size of the glyph cache, if this happens.");
+    }
+
     update_region := irect_union_or_zero(update_regions);
 
     // TODO(jt): @Speed OpenGL is doing some kind of synchronization here. Depending on whether
