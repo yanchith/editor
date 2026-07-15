@@ -2166,22 +2166,14 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 prev_loc := curr_loc;
                 prev_loc.x -= 1;
 
-                // TODO(jt): @Bug We got a crash here when playing with indentation. Let's audit.
-                //
-                // Stack trace:
-                // C:/Users/yanchith/workspace/jai/modules/Runtime_Support.jai:103: runtime_support_assertion_failed
-                // C:/Users/yanchith/workspace/jai/modules/Basic/module.jai:86: assert_helper
-                // c:/Users/yanchith/workspace/editor/src/editor/gap_buffer.jai:249: *[]
-                // c:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:997: text_buffer_get_byte_at_location
-                // c:/Users/yanchith/workspace/editor/src/editor/editor.jai:2104: route_event_to_panel
-                // c:/Users/yanchith/workspace/editor/src/editor/editor.jai:811: update_and_render
-                // c:/Users/yanchith/workspace/editor/src/main.jai:690: main
-                prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
-                curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
+                if text_buffer_can_read_at_location(document.buffer, curr_loc) {
+                    prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
+                    curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
 
-                opens, _, paired_char := is_part_of_surround_pair(document, prev_byte);
-                if opens && paired_char == curr_byte {
-                    should_make_space_for_block = true;
+                    opens, _, paired_char := is_part_of_surround_pair(document, prev_byte);
+                    if opens && paired_char == curr_byte {
+                        should_make_space_for_block = true;
+                    }
                 }
             }
 

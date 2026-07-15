@@ -291,8 +291,8 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, _
     _end := __end;
 
     assert_valid(buffer);
-    assert_location_valid(buffer, _start);
-    assert_location_valid(buffer, _end);
+    assert_location_valid_for_writes(buffer, _start);
+    assert_location_valid_for_writes(buffer, _end);
 
     if _start == _end {
         return "";
@@ -984,14 +984,14 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer) -> changed: bool {
     return true;
 }
 
-// Returns 0 if locations is at the end of the last line
+text_buffer_can_read_at_location :: (buffer: Text_Buffer, loc: Text_Location) -> bool {
+    return is_location_valid_for_reads(buffer, loc);
+}
+
+// Unwinds for OOB accesses.
 // TODO(jt): Also do a text_buffer_get_char_at_cursor that would decode the byte.
 text_buffer_get_byte_at_location :: (buffer: Text_Buffer, loc: Text_Location) -> u8 {
-    assert_location_valid(buffer, loc);
-
-    if loc.y == buffer.line_count && loc.x >= buffer.line_chars.count {
-        return 0;
-    }
+    assert_location_valid_for_reads(buffer, loc);
 
     gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, loc);
     byte := buffer.gb[gb_index];
@@ -1055,8 +1055,9 @@ text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include
 text_buffer_get_byte_count_for_interval :: (buffer: Text_Buffer, _start: Text_Location, _end: Text_Location) -> s64 {
     ProfileZone("text_buffer_get_byte_count_for_interval");
 
-    assert_location_valid(buffer, _start);
-    assert_location_valid(buffer, _end);
+    // For writes, because the interval can be totally empty and we are about to insert to it.
+    assert_location_valid_for_writes(buffer, _start);
+    assert_location_valid_for_writes(buffer, _end);
 
     start := _start;
     end   := _end;
@@ -1071,8 +1072,9 @@ text_buffer_get_byte_count_for_interval :: (buffer: Text_Buffer, _start: Text_Lo
 text_buffer_make_view_for_interval :: (buffer: Text_Buffer, _start: Text_Location, _end: Text_Location, force_allocate := false) -> string /* Pointing to the internal gap buffer, or allocated with context.allocator */ {
     ProfileZone("text_buffer_make_view_for_interval");
 
-    assert_location_valid(buffer, _start);
-    assert_location_valid(buffer, _end);
+    // For writes, because the interval can be totally empty and we are about to insert to it.
+    assert_location_valid_for_writes(buffer, _start);
+    assert_location_valid_for_writes(buffer, _end);
 
     start := _start;
     end   := _end;
@@ -1658,7 +1660,7 @@ text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s
 text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, loc: Text_Location) -> s64 {
     ProfileZone("text_buffer_get_gap_buffer_index_for_location");
 
-    assert_location_valid(buffer, loc);
+    assert_location_valid_for_writes(buffer, loc);
 
     line_index := loc.y;
     if line_index >= buffer.line_bytes.count {
@@ -1709,8 +1711,8 @@ assert_valid :: (buffer: Text_Buffer) {
 
     assert(buffer.line_bytes.count > 0, "Text_Buffer not initialized (has to have at least one line). Call text_buffer_init().");
     assert(buffer.line_bytes.count == buffer.line_chars.count, "Line arrays desync");
-    assert_location_valid(buffer, buffer.cursor0);
-    assert_location_valid(buffer, buffer.cursor1);
+    assert_location_valid_for_writes(buffer, buffer.cursor0);
+    assert_location_valid_for_writes(buffer, buffer.cursor1);
 
     // This is too expensive to do in shipping builds. We completely recreate the line index from
     // the buffer contents and compare.
@@ -1802,14 +1804,31 @@ assert_valid :: (buffer: Text_Buffer) {
 }
 
 assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
-    assert(line_index < buffer.line_bytes.count);
+    assert(is_line_valid(buffer, line_index));
 }
 
-assert_location_valid :: (buffer: Text_Buffer, loc: Text_Location) {
-    assert(loc.y >= 0 && loc.y < buffer.line_bytes.count);
-    // The location/cursor can go past the last non-newline character, or past the last character on
-    // the last line, where there is no newline at the end.
-    assert(loc.x >= 0 && loc.x <= buffer.line_chars[loc.y]);
+assert_location_valid_for_reads :: (buffer: Text_Buffer, loc: Text_Location) {
+    assert(is_location_valid_for_reads(buffer, loc));
+}
+
+assert_location_valid_for_writes :: (buffer: Text_Buffer, loc: Text_Location) {
+    assert(is_location_valid_for_writes(buffer, loc));
+}
+
+is_line_valid :: (buffer: Text_Buffer, line_index: s64) -> bool {
+    return line_index < buffer.line_bytes.count;
+}
+
+is_location_valid_for_reads :: (buffer: Text_Buffer, loc: Text_Location) -> bool {
+    // For reading, the location must not go past the last non-newline character, or past the last
+    // character on the last line, where there is no newline at the end.
+    return loc.y >= 0 && loc.y < buffer.line_bytes.count && loc.x >= 0 && loc.x < buffer.line_chars[loc.y];
+}
+
+is_location_valid_for_writes :: (buffer: Text_Buffer, loc: Text_Location) -> bool {
+    // For writing, the location can go past the last non-newline character, or past the last
+    // character on the last line, where there is no newline at the end.
+    return loc.y >= 0 && loc.y < buffer.line_bytes.count && loc.x >= 0 && loc.x <= buffer.line_chars[loc.y];
 }
 
 discard_unapplied_edits :: (buffer: *Text_Buffer) {
