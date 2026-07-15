@@ -75,6 +75,7 @@ Font :: struct {
     glyph_cache_stamp: u32; // This can overflow, but we only ever compare it for equality to detect same-frame evictions.
     glyph_cache_hits: s64;
     glyph_cache_misses: s64;
+    glyph_cache_overrun: bool;
 }
 
 Glyph_Entry :: struct {
@@ -268,6 +269,7 @@ font_new_frame :: (font: *Font) {
 
     font.glyph_cache_hits = 0;
     font.glyph_cache_misses = 0;
+    font.glyph_cache_overrun = false;
 }
 
 Font_Variant :: enum u32 {
@@ -426,12 +428,12 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_rects: *[..] Re
             entry_index := font.glyph_entries_head;
             entry := *font.glyph_entries[entry_index];
 
-            // We can't overwrite an entry we wrote to this frame, as we would be evicting something
-            // else we also wrote this frame that we need. If we want to handle this case, we could
-            // flush our rendering here and continue where we left of, but better to just have a
-            // larger cache, especially now that we call this routine from multiple places.
+            // We shouldn't overwrite an entry we wrote to this frame, as we would be evicting
+            // something else we also wrote this frame that we need. For now, we just flag this, but
+            // if we wanted to, we could flush the pipeline and continue from there, but maybe it's
+            // just easier to have a larger cache.
             if entry.stamp == font.glyph_cache_stamp {
-                log_error("Overwriting glyph cache slot % during same frame. Rendering will be incorrect.", entry_index);
+                font.glyph_cache_overrun = true;
             }
 
             table_remove(*font.glyph_table, compose_key(entry.glyph_index, entry.glyph_variant));
