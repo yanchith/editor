@@ -1034,6 +1034,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if editor.active_view != .FULL && editor.right_view_panel_index == it_index {
             panel_x = input.window_size.x * 0.5;
         }
+        panel_y: f32 = 0.0;
 
         panel_w := ifx editor.active_view == .FULL then window_w else window_w * 0.5;
         panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
@@ -1044,6 +1045,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // occluded by the newly visible mini panel. Should we do that?
             panel_h = window_h - (2 + MINI_PANEL_LINES) * cell_h;
         }
+
+        panel_rect := rect_from_point_and_size(panel_x, panel_y, panel_w, panel_h);
+        panel_is_active := panel == get_panel_for_active_view(editor);
 
         //
         // Compute cursor position.
@@ -1194,13 +1198,21 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 view_before_cursor   := text_buffer_make_view_for_interval(document.buffer, line_start, cursor_start,, temp);
                 view_between_cursors := text_buffer_make_view_for_interval(document.buffer, cursor_start, cursor_end,, temp);
 
-                selection_x0 := panel_x + font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
-                selection_x1 := panel_x + font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0;
-                selection_y0 := cast(f64, cursor_start.y) * cell_h;
-                selection_y1 := selection_y0 + cell_h;
-                selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
+                selection_x0_world := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
+                selection_x1_world := font_compute_position_on_line(editor.font, view_between_cursors, cursor_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0_world;
+                selection_y0_world := cast(f64, cursor_start.y) * cell_h;
+                selection_y1_world := selection_y0_world + cell_h;
+                selection_rect_world: DRect = {
+                    selection_x0_world,
+                    selection_y0_world,
+                    selection_x1_world,
+                    selection_y1_world,
+                };
 
-                draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), SELECTION_COLOR);
+                selection_rect_screen := panel_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                selection_rect_screen = rect_clamp(selection_rect_screen, panel_rect);
+
+                draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
             } else {
                 ProfileZone(":DrawSelectionMultiLine");
 
@@ -1222,13 +1234,21 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     view_before_cursor := text_buffer_make_view_for_interval(document.buffer, line_start, cursor_start,, temp);
                     view_after_cursor  := text_buffer_make_view_for_interval(document.buffer, cursor_start, line_end,, temp);
 
-                    selection_x0 := panel_x + font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
-                    selection_x1 := panel_x + font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0;
-                    selection_y0 := cast(f64, cursor_start.y) * cell_h;
-                    selection_y1 := selection_y0 + cell_h;
-                    selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
+                    selection_x0_world := font_compute_position_on_line(editor.font, view_before_cursor, cursor_start.x, binary = document.buffer.binary_mode);
+                    selection_x1_world := font_compute_position_on_line(editor.font, view_after_cursor, line_end.x - cursor_start.x, binary = document.buffer.binary_mode) + selection_x0_world;
+                    selection_y0_world := cast(f64, cursor_start.y) * cell_h;
+                    selection_y1_world := selection_y0_world + cell_h;
+                    selection_rect_world: DRect = {
+                        selection_x0_world,
+                        selection_y0_world,
+                        selection_x1_world,
+                        selection_y1_world,
+                    };
 
-                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), SELECTION_COLOR);
+                    selection_rect_screen := panel_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                    selection_rect_screen = rect_clamp(selection_rect_screen, panel_rect);
+
+                    draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
                 }
 
                 // Center lines, if in viewport
@@ -1240,13 +1260,21 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     line_end  := text_buffer_get_end_of_line(document.buffer, it);
                     line_view := text_buffer_make_view_for_line(document.buffer, it,, temp);
-                    selection_x0 := panel_x;
-                    selection_x1 := panel_x + font_compute_position_on_line(editor.font, line_view, line_end.x, binary = document.buffer.binary_mode);
-                    selection_y0 := cast(f64, it) * cell_h;
-                    selection_y1 := selection_y0 + cell_h;
-                    selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
+                    selection_x0_world := 0.0;
+                    selection_x1_world := font_compute_position_on_line(editor.font, line_view, line_end.x, binary = document.buffer.binary_mode);
+                    selection_y0_world := cast(f64, it) * cell_h;
+                    selection_y1_world := selection_y0_world + cell_h;
+                    selection_rect_world: DRect = {
+                        selection_x0_world,
+                        selection_y0_world,
+                        selection_x1_world,
+                        selection_y1_world,
+                    };
 
-                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), SELECTION_COLOR);
+                    selection_rect_screen := panel_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                    selection_rect_screen = rect_clamp(selection_rect_screen, panel_rect);
+
+                    draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
                 }
 
                 // Last line, if in viewport
@@ -1255,13 +1283,21 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     view_before_cursor := text_buffer_make_view_for_interval(document.buffer, line_start, cursor_end,, temp);
 
-                    selection_x0 := panel_x;
-                    selection_x1 := panel_x + font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x, binary = document.buffer.binary_mode);
-                    selection_y0 := cast(f64, cursor_end.y) * cell_h;
-                    selection_y1 := selection_y0 + cell_h;
-                    selection_rect: DRect = { selection_x0, selection_y0, selection_x1, selection_y1 };
+                    selection_x0_world := 0.0;
+                    selection_x1_world := font_compute_position_on_line(editor.font, view_before_cursor, cursor_end.x, binary = document.buffer.binary_mode);
+                    selection_y0_world := cast(f64, cursor_end.y) * cell_h;
+                    selection_y1_world := selection_y0_world + cell_h;
+                    selection_rect_world: DRect = {
+                        selection_x0_world,
+                        selection_y0_world,
+                        selection_x1_world,
+                        selection_y1_world,
+                    };
 
-                    draw_rect(*render_rects, drect_to_rect(selection_rect - panel.scroll), SELECTION_COLOR);
+                    selection_rect_screen := panel_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                    selection_rect_screen = rect_clamp(selection_rect_screen, panel_rect);
+
+                    draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
                 }
             }
         }
@@ -1345,23 +1381,26 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             document.cursor_flash = lerp(document.cursor_flash_source, document.cursor_flash_target, flash_t);
             document.cursor_anim = lerp(document.cursor_anim_source, document.cursor_anim_target, anim_t);
 
-            cursor_rect: DRect;
-            if anim_time == 0 {
-                // Straight to the new position to avoid one frame of lag (and results of division by zero).
-                cursor_rect = drect_from_point_and_size(panel_x + new_cursor_position.x, new_cursor_position.y, cell_w, cell_h) - panel.scroll;
-            } else {
-                cursor_rect = drect_from_point_and_size(panel_x + document.cursor_anim.x, document.cursor_anim.y, cell_w, cell_h) - panel.scroll;
+            if panel_is_active {
+                line_rect := rect_from_point_and_size(
+                    panel_x,
+                    cast(f32, new_cursor_position.y - panel.scroll.y),
+                    panel_w,
+                    cell_h,
+                );
+
+                draw_rect(*render_rects, line_rect, LINE_COLOR);
+
+                cursor_rect: DRect;
+                if anim_time == 0 {
+                    // Straight to the new position to avoid one frame of lag (and results of division by zero).
+                    cursor_rect = drect_from_point_and_size(panel_x + new_cursor_position.x, new_cursor_position.y, cell_w, cell_h) - panel.scroll;
+                } else {
+                    cursor_rect = drect_from_point_and_size(panel_x + document.cursor_anim.x, document.cursor_anim.y, cell_w, cell_h) - panel.scroll;
+                }
+
+                draw_rect(*render_rects, drect_to_rect(cursor_rect), ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else document.cursor_flash);
             }
-
-            line_rect: Rect = {
-                panel_x,
-                cast(f32, new_cursor_position.y - panel.scroll.y),
-                panel_w,
-                cast(f32, new_cursor_position.y + cell_h - panel.scroll.y),
-            };
-
-            draw_rect(*render_rects, line_rect, LINE_COLOR);
-            draw_rect(*render_rects, drect_to_rect(cursor_rect), ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else document.cursor_flash);
         }
 
         //
