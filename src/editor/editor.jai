@@ -365,6 +365,9 @@ Panel :: struct {
     scroll_target: DVector2;
     scroll_time_start: Apollo_Time;
 
+    // TODO(jt): Consider rethinking the coordinate system here. Currently scroll is screen-centric,
+    // but maybe we want to represent it as translation in world space (which would basically mean
+    // negating it).
     scroll: DVector2;
 
     flags: Flags;
@@ -840,7 +843,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     // Currently, there must always be at least one panel. We can relax this in the future.
-    hovered_panel := get_panel_for_mouse_cursor(editor, input);
+    hovered_panel, hovered_panel_index := get_panel_for_mouse_cursor(editor, input);
     assert(hovered_panel != null);
 
     if editor.input_state.modifiers & .CTRL {
@@ -922,6 +925,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             hovered_panel.flags |= .CLAMP_CURSOR_TO_SCROLL;
             hovered_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
+            log("nocheckin panel % received mouse interaction (scroll)", hovered_panel_index);
         }
 
         //
@@ -993,6 +997,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
             }
 
+            hovered_panel_x := ifx editor.active_view != .FULL && hovered_panel_index == editor.right_view_panel_index then window_w * 0.5 else 0.0;
+
             row := cast(s64, floor((mouse.y + hovered_panel.scroll.y) / cell_h));
             col := 0;
 
@@ -1004,16 +1010,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 // Include newline, so that the cursor can go there.
                 line_view := text_buffer_make_view_for_line(hovered_panel.document.buffer, row, include_newline = true,, temp);
-                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + hovered_panel.scroll.x, binary = hovered_panel.document.buffer.binary_mode);
+                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - hovered_panel_x + hovered_panel.scroll.x, binary = hovered_panel.document.buffer.binary_mode);
             } else {
                 // Include newline, so that the cursor can go there.
                 line_view := text_buffer_make_view_for_line(hovered_panel.document.buffer, row, include_newline = true,, temp);
-                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x + hovered_panel.scroll.x, binary = hovered_panel.document.buffer.binary_mode);
+                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - hovered_panel_x + hovered_panel.scroll.x, binary = hovered_panel.document.buffer.binary_mode);
             }
 
             text_buffer_move_cursor_to(*hovered_panel.document.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
 
             hovered_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
+            log("nocheckin panel % received mouse interaction (selection)", hovered_panel_index);
+
+            if #complete editor.active_view == {
+                case .FULL; // No-op
+                case .LEFT;   if hovered_panel_index == editor.right_view_panel_index  editor.active_view = .RIGHT;
+                case .RIGHT;  if hovered_panel_index == editor.left_view_panel_index   editor.active_view = .LEFT;
+            }
         }
     }
 
@@ -1032,7 +1045,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         panel_x: f32 = 0.0;
         if editor.active_view != .FULL && editor.right_view_panel_index == it_index {
-            panel_x = input.window_size.x * 0.5;
+            panel_x = window_w * 0.5;
         }
         panel_y: f32 = 0.0;
 
@@ -1186,7 +1199,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Layout and draw selection
         //
-        if document.buffer.cursor0 != document.buffer.cursor1 {
+        if panel_is_active && document.buffer.cursor0 != document.buffer.cursor1 {
             cursor_start := text_buffer_get_min_cursor(document.buffer);
             cursor_end   := text_buffer_get_max_cursor(document.buffer);
 
@@ -1345,6 +1358,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if document.old_cursor != document.buffer.cursor0 {
                 triggered_by_mouse    := cast(bool, panel.flags & .RECEIVED_MOUSE_INTERACTION);
                 triggered_by_keyboard := cast(bool, panel.flags & .RECEIVED_KEYBOARD_INTERACTION);
+
+                // nocheckin Where should the animation state be stored? Currently, it is stored on
+                // the document, but because multiple panels can (and do) point to the same
+                // document, we stomp over our interpolation data. We should probably move all of
+                // this to panels?
+
+                log("nocheckin cursor anim for panel % triggered_by_mouse: %", it_index, triggered_by_mouse);
                 setup_cursor_anim_interpolation(document, input.time, document.old_cursor_position, new_cursor_position, triggered_by_mouse, triggered_by_keyboard);
             }
 
@@ -1681,7 +1701,7 @@ editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #call
     log(format_string, ..args, loc);
 }
 
-get_panel_for_active_view :: (editor: Editor) -> *Panel {
+get_panel_for_active_view :: (editor: Editor) -> *Panel, panel_index: s64 {
     index: s64;
     if #complete editor.active_view == {
         case .FULL;   index = editor.full_view_panel_index;
@@ -1694,10 +1714,10 @@ get_panel_for_active_view :: (editor: Editor) -> *Panel {
         panel = *editor.panels[index];
     }
 
-    return panel;
+    return panel, index;
 }
 
-get_panel_for_mouse_cursor :: (editor: Editor, input: Input) -> *Panel {
+get_panel_for_mouse_cursor :: (editor: Editor, input: Input) -> *Panel, panel_index: s64 {
     index: s64;
     if editor.active_view == .FULL {
         index = editor.full_view_panel_index;
@@ -1714,7 +1734,7 @@ get_panel_for_mouse_cursor :: (editor: Editor, input: Input) -> *Panel {
         panel = *editor.panels[index];
     }
 
-    return panel;
+    return panel, index;
 }
 
 // For ease of use, the editor talks about watching individual files, but it merely means it is
