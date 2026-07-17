@@ -925,7 +925,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             hovered_panel.flags |= .CLAMP_CURSOR_TO_SCROLL;
             hovered_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
-            log("nocheckin panel % received mouse interaction (scroll)", hovered_panel_index);
         }
 
         //
@@ -1020,7 +1019,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             text_buffer_move_cursor_to(*hovered_panel.document.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
 
             hovered_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
-            log("nocheckin panel % received mouse interaction (selection)", hovered_panel_index);
 
             if #complete editor.active_view == {
                 case .FULL; // No-op
@@ -1359,12 +1357,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 triggered_by_mouse    := cast(bool, panel.flags & .RECEIVED_MOUSE_INTERACTION);
                 triggered_by_keyboard := cast(bool, panel.flags & .RECEIVED_KEYBOARD_INTERACTION);
 
-                // nocheckin Where should the animation state be stored? Currently, it is stored on
-                // the document, but because multiple panels can (and do) point to the same
-                // document, we stomp over our interpolation data. We should probably move all of
-                // this to panels?
+                // nocheckin Where should the (cursor) animation state be stored? Currently, it is
+                // stored on the document, but because multiple panels can (and do) point to the
+                // same document, we stomp over our interpolation data. We should probably move all
+                // of this to panels?
 
-                log("nocheckin cursor anim for panel % triggered_by_mouse: %", it_index, triggered_by_mouse);
                 setup_cursor_anim_interpolation(document, input.time, document.old_cursor_position, new_cursor_position, triggered_by_mouse, triggered_by_keyboard);
             }
 
