@@ -204,12 +204,22 @@ rect_intersects_rect :: inline (r: Rect, other: Rect) -> bool {
 }
 
 rect_clamp :: (r: Rect, bounds: Rect) -> Rect {
+    r_min := rect_min(r);
+    r_max := rect_max(r);
+    b_min := rect_min(bounds);
+    b_max := rect_max(bounds);
+
     // TODO(jt): This may require a fixup.
     result: Rect = ---;
-    result.x0 = max(r.x0, bounds.x0);
-    result.y0 = max(r.y0, bounds.y0);
-    result.x1 = min(r.x1, bounds.x1);
-    result.y1 = min(r.y1, bounds.y1);
+    result.x0 = max(r_min.x, b_min.x);
+    result.y0 = max(r_min.y, b_min.y);
+    result.x1 = min(r_max.x, b_max.x);
+    result.y1 = min(r_max.y, b_max.y);
+
+    // Don't flip. Collapse to singularity instead.
+    result.x0 = min(result.x0, result.x1);
+    result.y0 = min(result.y0, result.y1);
+
     return result;
 }
 
