@@ -116,7 +116,7 @@ main :: () {
             }
         }
 
-        window := Window.create_window(1600, 1200, "editor");
+        window := Window.create_window(1600, 1000, "editor");
         Simp.set_render_target(window, .LEFT_HANDED);
 
         platform: Editor.Platform;
