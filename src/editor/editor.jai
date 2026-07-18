@@ -1499,9 +1499,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .FILE;    document_name = String.path_filename(panel.document.backing_file_path);
             }
 
-            percent_string := temp_right_pad(tprint("%\%", percent), 5);
+            percent_string := temp_right_pad(tprint("%\%", percent), 4);
 
-            s := tprint("  % % (%,%)", temp_right_pad(document_name, 20), percent_string, cursor.y + 1, cursor.x);
+            s := tprint(" % % (%,%)", temp_right_pad(document_name, 15), percent_string, cursor.y + 1, cursor.x);
             _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, modeline_offset, modeline_rect, TEXT_COLOR, .[], binary = false);
         }
 
