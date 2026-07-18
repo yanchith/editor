@@ -1483,30 +1483,30 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, scissor_rect, TEXT_COLOR, style_ranges, binary = document.buffer.binary_mode);
         }
 
-        clear_transient_document_flags(*document.flags);
-        clear_transient_panel_flags(*panel.flags);
-    }
+        {
+            modeline_y      := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
+            modeline_rect   := rect_from_point_and_size(panel_x, modeline_y, panel_w, cell_h);
+            modeline_offset := DVector2.{ panel_x, modeline_y };
 
-    {
-        active_panel := get_panel_for_active_view(editor);
+            draw_rect(*render_rects, modeline_rect, MODELINE_COLOR);
 
-        modeline_y := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
+            cursor  := panel.document.buffer.cursor0;
+            percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, panel.document.buffer.line_bytes.count));
 
-        draw_rect(*render_rects, 0, modeline_y, window_w, modeline_y + cell_h, MODELINE_COLOR);
+            document_name: string;
+            if #complete panel.document.kind == {
+                case .SCRATCH; document_name = "*scratch*";
+                case .FILE;    document_name = String.path_filename(panel.document.backing_file_path);
+            }
 
-        cursor  := active_panel.document.buffer.cursor0;
-        percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, active_panel.document.buffer.line_bytes.count));
+            percent_string := temp_right_pad(tprint("%\%", percent), 5);
 
-        document_name: string;
-        if #complete active_panel.document.kind == {
-            case .SCRATCH; document_name = "*scratch*";
-            case .FILE;    document_name = String.path_filename(active_panel.document.backing_file_path);
+            s := tprint("  % % (%,%)", temp_right_pad(document_name, 20), percent_string, cursor.y + 1, cursor.x);
+            _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, modeline_offset, modeline_rect, TEXT_COLOR, .[], binary = false);
         }
 
-        percent_string := temp_right_pad(tprint("%\%", percent), 5);
-
-        s := tprint("  % % (%,%)", temp_right_pad(document_name, 20), percent_string, cursor.y + 1, cursor.x);
-        _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, { 0, modeline_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
+        clear_transient_document_flags(*document.flags);
+        clear_transient_panel_flags(*panel.flags);
     }
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
