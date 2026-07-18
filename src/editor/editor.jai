@@ -74,6 +74,7 @@ TODO(jt): @Stream Small things to do:
 - [X] When switching-to/closing documents, sort by recency.
 - [ ] Read-only mode for documents.
 - [ ] Dark text color under bright rectangles (cursor, selection, line)
+- [ ] Animate current line highlight the same way we animate cursor.
 
 */
 
@@ -1384,8 +1385,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             // TODO(jt): For visuals, it would be nice, if the interpolated cursor left a trail
             // behind it as it moves, because currently, when it moves very fast, you can spot the
-            // individual positions it occupies. Fred does this with a CRT persistence effect.
-            // Maybe we jsut want to do that?
+            // individual positions it occupies. Fred does this with a CRT persistence effect. Let's
+            // also do that!
+            //
+            // UPDATE: I accidentatlly had something like this with a rect_clamp bug, and it really
+            // does look cool. Let's do this!
 
             anim_t := cast(f32, (to_float64_seconds(input.time) + USUAL_DELTA_TIME - to_float64_seconds(document.cursor_anim_time_start)) / anim_time);
             anim_t = clamp(anim_t, 0.0, 1.0);
@@ -1408,15 +1412,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 draw_rect(*render_rects, line_rect, LINE_COLOR);
 
-                cursor_rect: DRect;
+                cursor_rect: Rect;
                 if anim_time == 0 {
                     // Straight to the new position to avoid one frame of lag (and results of division by zero).
-                    cursor_rect = drect_from_point_and_size(panel_x + new_cursor_position.x, new_cursor_position.y, cell_w, cell_h) - panel.scroll;
+                    r :=  drect_from_point_and_size(panel_x + new_cursor_position.x, new_cursor_position.y, cell_w, cell_h) - panel.scroll;
+                    cursor_rect = drect_to_rect(r);
                 } else {
-                    cursor_rect = drect_from_point_and_size(panel_x + document.cursor_anim.x, document.cursor_anim.y, cell_w, cell_h) - panel.scroll;
+                    r := drect_from_point_and_size(panel_x + document.cursor_anim.x, document.cursor_anim.y, cell_w, cell_h) - panel.scroll;
+                    cursor_rect = drect_to_rect(r);
                 }
 
-                draw_rect(*render_rects, drect_to_rect(cursor_rect), ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else document.cursor_flash);
+                cursor_rect = rect_clamp(cursor_rect, panel_rect);
+
+                draw_rect(*render_rects, cursor_rect, ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else document.cursor_flash);
             }
         }
 
