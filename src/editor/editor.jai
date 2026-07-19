@@ -615,7 +615,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         hello_arena := make_arena(platform, .LARGE);
         hello_text := make_hello_text(hello_arena, HELLO_SIZE);
-        text_buffer_insert(*scratch_document.buffer, hello_text, .DISCARD);
+        text_buffer_insert(*scratch_document.buffer, hello_text, .OMIT);
 
         scratch_document.buffer.cursor0 = { 0, 0 };
         scratch_document.buffer.cursor1 = { 0, 0 };
@@ -2167,7 +2167,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     document.backing_file_last_synced_hash = hash_file_contents(file_contents);
 
                     text_buffer_delete_all(*document.buffer);
-                    text_buffer_insert(*document.buffer, file_contents, .DISCARD);
+                    text_buffer_insert(*document.buffer, file_contents, .OMIT);
                     text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
                     update_parenthesized_scopes(document);
@@ -2296,14 +2296,12 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                 first := true;
                 for y0..y1 {
-                    if !first {
-                        update_parenthesized_scopes(document);
-                    }
-
                     indentation_level := find_indentation_level(document, { 0, it });
                     text_buffer_move_cursor_to(*document.buffer, { 0, it }, false);
                     changed := text_buffer_indent_line(*document.buffer, indentation_level, ifx first then .NONE else .FUSE);
+
                     if changed {
+                        update_parenthesized_scopes(document);
                         first = false;
                     }
 
