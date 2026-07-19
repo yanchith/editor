@@ -823,6 +823,7 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
             case .INSERT_FORWARD_MEMSET; {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.memset_count);
                 #if SANITY {
+                    log("nochechin line: %, memset_value: %, deleted_bytes: %", buffer.cursor0.y, edit.memset_value, deleted_bytes);
                     for deleted_bytes {
                         // TODO(jt): @Bug This sometimes asserts, but I can't figure out the repro
                         // sequence. Write a fuzzer?
@@ -830,6 +831,11 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
                         // UPDATE: Strike 2. Still happens. Still can't reproduce.
                         // UPDATE: Strike 3.
                         // UPDATE: Strike 4!!!
+                        //
+                        // UPDATE: To repro, open file_examples/version2.jai, modify first struct to
+                        // make sure indentation does something, indent it, undo, indent it again,
+                        // and undo again, but only before we fixed the indent undo fusing... The
+                        // question is, why did incorrect indent undo fuse cause this to assert?
                         sanity_assert(it == edit.memset_value);
                     }
                 }
