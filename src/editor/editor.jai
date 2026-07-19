@@ -504,7 +504,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         success=, ttf_bold_italic := platform.read_file("./data/fonts/LiberationMono/LiberationMono-BoldItalic.ttf",, arena_allocator(font_arena));
         assert(success);
 
-        FONT_SIZE :: 20;
+        FONT_SIZE :: 18;
 
         want_pixel_height := cast(s32, ceil(FONT_SIZE * input.window_scale_factor));
 
@@ -2302,9 +2302,12 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                     indentation_level := find_indentation_level(document, { 0, it });
                     text_buffer_move_cursor_to(*document.buffer, { 0, it }, false);
-                    buffer_changed |= text_buffer_indent_line(*document.buffer, indentation_level, ifx first then .NONE else .FUSE);
+                    changed := text_buffer_indent_line(*document.buffer, indentation_level, ifx first then .NONE else .FUSE);
+                    if changed {
+                        first = false;
+                    }
 
-                    first = false;
+                    buffer_changed |= changed;
                 }
 
                 // Restore cursor's vertical position if the selection is backwards.
