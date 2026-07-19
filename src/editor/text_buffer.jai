@@ -114,7 +114,7 @@ Edit :: struct {
 
 Undo_Modifier_For_Insert :: enum {
     NONE;
-    DISCARD; // Do not generate history for this edit. This is only valid to do for the first edit.
+    OMIT;    // Do not record history for this edit. This is only valid before there are any recorded edits.
     FUSE;    // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
     BARRIER; // Supress automatic fusing (either with .THROUGH or edit patching) of this edit with previous ones.
 }
@@ -218,10 +218,14 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_modifier := Undo
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     gap_buffer_insert(*buffer.gb, text);
 
-    discard_unapplied_edits(buffer);
+    if undo_modifier == .OMIT {
+        assert(buffer.edits.count == 0, "Omitting edits from history is only allowed before any edits are recorded.");
+    }
 
     edit: *Edit;
-    if undo_modifier != .DISCARD {
+    if undo_modifier != .OMIT {
+        discard_unapplied_edits(buffer);
+
         edit = array_add(*buffer.edits);
         edit.type = .INSERT_FORWARD;
         edit.flags = .NONE;
@@ -258,7 +262,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, text: string, undo_modifier := Undo
 
     update_index_for_insert(buffer, text);
 
-    if undo_modifier != .DISCARD {
+    if undo_modifier != .OMIT {
         edit.cursor0_for_edit_after = buffer.cursor0;
         edit.cursor0_for_display_after = buffer.cursor0;
         edit.cursor1_for_display_after = buffer.cursor0;
@@ -317,6 +321,7 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, __start: Text_Location, _
     buffer.cursor1 = start;
 
     discard_unapplied_edits(buffer);
+
     edit := array_add(*buffer.edits);
     edit.type = .DELETE_FORWARD;
     edit.flags = .BARRIER;
@@ -381,6 +386,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
         assert(newline_advance == deleted.count);
 
         discard_unapplied_edits(buffer);
+
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_FORWARD;
         edit.flags = .NONE;
@@ -413,6 +419,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer) -> changed: bool {
             assert(codepoint_advance == deleted.count);
 
             discard_unapplied_edits(buffer);
+
             edit := array_add(*buffer.edits);
             edit.type = .DELETE_FORWARD;
             edit.flags = .NONE;
@@ -487,6 +494,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) -> changed: bool {
         assert(newline_advance == deleted.count);
 
         discard_unapplied_edits(buffer);
+
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_BACKWARD;
         edit.flags = .NONE;
@@ -523,6 +531,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer) -> changed: bool {
             assert(codepoint_advance == deleted.count);
 
             discard_unapplied_edits(buffer);
+
             edit := array_add(*buffer.edits);
             edit.type = .DELETE_BACKWARD;
             edit.flags = .NONE;
@@ -621,6 +630,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     }
 
     discard_unapplied_edits(buffer);
+
     edit := array_add(*buffer.edits);
     edit.type = .DELETE_FORWARD;
     edit.flags = .BARRIER;
@@ -702,6 +712,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64, undo_m
             display_cursor_after.x = max(display_cursor_after.x, 0);
         }
 
+        discard_unapplied_edits(buffer);
+
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_BACKWARD_MEMSET;
         edit.flags = .BARRIER;
@@ -754,6 +766,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, indentation_level: s64, undo_m
         } else {
             display_cursor_after.x += insert_count;
         }
+
+        discard_unapplied_edits(buffer);
 
         edit := array_add(*buffer.edits);
         edit.type = .INSERT_FORWARD_MEMSET;
@@ -823,19 +837,7 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer) -> changed: bool {
             case .INSERT_FORWARD_MEMSET; {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.memset_count);
                 #if SANITY {
-                    log("nochechin line: %, memset_value: %, deleted_bytes: %", buffer.cursor0.y, edit.memset_value, deleted_bytes);
                     for deleted_bytes {
-                        // TODO(jt): @Bug This sometimes asserts, but I can't figure out the repro
-                        // sequence. Write a fuzzer?
-                        //
-                        // UPDATE: Strike 2. Still happens. Still can't reproduce.
-                        // UPDATE: Strike 3.
-                        // UPDATE: Strike 4!!!
-                        //
-                        // UPDATE: To repro, open file_examples/version2.jai, modify first struct to
-                        // make sure indentation does something, indent it, undo, indent it again,
-                        // and undo again, but only before we fixed the indent undo fusing... The
-                        // question is, why did incorrect indent undo fuse cause this to assert?
                         sanity_assert(it == edit.memset_value);
                     }
                 }
@@ -1842,6 +1844,9 @@ is_location_valid_for_writes :: (buffer: Text_Buffer, loc: Text_Location) -> boo
     return loc.y >= 0 && loc.y < buffer.line_bytes.count && loc.x >= 0 && loc.x <= buffer.line_chars[loc.y];
 }
 
+// discard_unapplied_edits should be called each time add a new edit, otherwise you get inconsistent
+// undo log. We could change this into a push_edit procedure, but some callsites want to see through
+// this abstraction, so for now this is how it is.  -jt, 19 July 2026.
 discard_unapplied_edits :: (buffer: *Text_Buffer) {
     if buffer.edits.count && buffer.applied_edit_count < buffer.edits.count {
 
@@ -2055,8 +2060,6 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, _text: string) {
     while text.count {
         newline_advance := string_ends_with_newline(text, binary = buffer.binary_mode);
         if newline_advance {
-            // TOOD(jt): @Bug This triggers when we open file_examples/version2.jai, indent the
-            // first struct, undo, indent it again and undo.
             assert(buffer.cursor0.x == 0);
             assert(buffer.cursor0.y > 0);
 

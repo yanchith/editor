@@ -237,7 +237,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                         // manner, so we can read from L1.
                         document.backing_file_last_synced_hash = hash_file_contents(file_contents);
 
-                        text_buffer_insert(*document.buffer, file_contents, .DISCARD);
+                        text_buffer_insert(*document.buffer, file_contents, .OMIT);
                         text_buffer_move_cursor_to(*document.buffer, 0, 0, false);
 
                         update_parenthesized_scopes(document);
