@@ -1,10 +1,16 @@
 Texture_ID :: #type,isa u32;
 
-Render_Rect :: struct {
+Render_Command :: struct {
+    type: Render_Command_Type;
     rect: Rect;
-    texture_rect: Rect;
-    texture_id: Texture_ID;
-    color := Vector4.{ 0, 0, 0, 1 };
+    texture_rect: Rect;              // Unused for SET_SCISSOR
+    texture_id: Texture_ID;          // Unused for SET_SCISSOR
+    color := Vector4.{ 0, 0, 0, 1 }; // Unused for SET_SCISSOR
+}
+
+Render_Command_Type :: enum u32 {
+    DRAW_RECT   :: 0;
+    SET_SCISSOR :: 1;
 }
 
 Renderer :: struct {
@@ -16,8 +22,10 @@ Renderer :: struct {
     begin_frame:  (clear_color: Vector4);
     submit_frame: ();
 
-    // Things that should be called in between begin frame and submit_frame. (Not necessarilly true
-    // for the Simp/OpenGL backend, but it will be true for most others.)
+    //
+    // Things that should be called in between begin_frame and submit_frame.
+    // (This is less strict for Simp/OpenGL/D3D11, but probably still a good idea.)
+    //
 
-    draw_rects: (render_rects: [] Render_Rect);
+    draw: (render_commands: [] Render_Command);
 }
