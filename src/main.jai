@@ -466,49 +466,57 @@ main :: () {
             Simp.swap_buffers(renderer_state.window);
         }
 
-        renderer.draw_rects = (render_rects: [] Editor.Render_Rect) {
-            ProfileZone("renderer.draw_rects");
+        renderer.draw = (render_commands: [] Editor.Render_Command) {
+            ProfileZone("renderer.draw");
 
             // TODO(jt): @Speed Realistically, they all point to the same texture, so maybe we want
             // to shape the API such that there is only one texture binding followed by an instanced
             // draw command instead of looping and binding per iteration. If they for some reason
             // don't fit into one texture, we'd flush thhe pipeline.
-            for render_rects {
-                texture := table_find_pointer(*renderer_state.textures, it.texture_id);
-                if texture {
-                    if renderer_state.current_pipeline != .TEXT {
-                        renderer_state.current_pipeline = .TEXT;
-                        // This is where we'd normally call Simp.set_shader_for_images(texture), but
-                        // we instead pass in our modified shader, so we have to do a little bit
-                        // more work.
-                        Simp.immediate_flush();
+            for render_commands {
+                if #complete it.type == {
+                    case .DRAW_RECT; {
+                        texture := table_find_pointer(*renderer_state.textures, it.texture_id);
+                        if texture {
+                            if renderer_state.current_pipeline != .TEXT {
+                                renderer_state.current_pipeline = .TEXT;
+                                // This is where we'd normally call Simp.set_shader_for_images(texture), but
+                                // we instead pass in our modified shader, so we have to do a little bit
+                                // more work.
+                                Simp.immediate_flush();
 
-                        target_shader := *renderer_state.text_shader;
-                        if context.simp.current_shader != target_shader {
-                            Simp.immediate_set_shader(target_shader);
-                            Simp.set_projection();
+                                target_shader := *renderer_state.text_shader;
+                                if context.simp.current_shader != target_shader {
+                                    Simp.immediate_set_shader(target_shader);
+                                    Simp.set_projection();
+                                }
+
+                                Simp.immediate_set_texture(texture);
+                            }
+                        } else {
+                            if renderer_state.current_pipeline != .COLOR {
+                                renderer_state.current_pipeline = .COLOR;
+                                Simp.set_shader_for_color(enable_blend = true);
+                            }
                         }
 
-                        Simp.immediate_set_texture(texture);
+                        Simp.immediate_quad(
+                            { it.rect.x0, it.rect.y0 },
+                            { it.rect.x0, it.rect.y1 },
+                            { it.rect.x1, it.rect.y1 },
+                            { it.rect.x1, it.rect.y0 },
+                            it.color,
+                            { it.texture_rect.x0, it.texture_rect.y0 },
+                            { it.texture_rect.x0, it.texture_rect.y1 },
+                            { it.texture_rect.x1, it.texture_rect.y1 },
+                            { it.texture_rect.x1, it.texture_rect.y0 },
+                        );
                     }
-                } else {
-                    if renderer_state.current_pipeline != .COLOR {
-                        renderer_state.current_pipeline = .COLOR;
-                        Simp.set_shader_for_color(enable_blend = true);
+                    case .SET_SCISSOR; {
+                        Simp.immediate_flush();
+                        Simp.set_scissor(it.rect.p0, it.rect.p1);
                     }
                 }
-
-                Simp.immediate_quad(
-                    { it.rect.x0, it.rect.y0 },
-                    { it.rect.x0, it.rect.y1 },
-                    { it.rect.x1, it.rect.y1 },
-                    { it.rect.x1, it.rect.y0 },
-                    it.color,
-                    { it.texture_rect.x0, it.texture_rect.y0 },
-                    { it.texture_rect.x0, it.texture_rect.y1 },
-                    { it.texture_rect.x1, it.texture_rect.y1 },
-                    { it.texture_rect.x1, it.texture_rect.y0 },
-                );
             }
         }
 

@@ -155,6 +155,7 @@ MATCHING_PARENTHESIS_COLOR :: #run unpack_srgba(0x70a0f0ff);
 LINE_COLOR                 :: Vector4.{ 0, 0, 0, 0 };
 MODELINE_COLOR             :: #run unpack_srgba(0x090909ff);
 GUTTER_COLOR               :: BACKGROUND_COLOR;
+SEPARATOR_COLOR            :: MODELINE_COLOR;
 BACKGROUND_COLOR           :: #run unpack_srgba(0x191919ff);
 
 TEXT_COLOR                   :: #run unpack_srgba(0xcdaa7dff);
@@ -740,8 +741,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     wants_next_frame := false;
 
-    render_rects: [..] Render_Rect;
-    render_rects.allocator = temp;
+    render_commands: [..] Render_Command;
+    render_commands.allocator = temp;
     update_regions: [..] IRect;
     update_regions.allocator = temp;
 
@@ -1181,6 +1182,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         viewport_line0 := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.line_bytes.count - 1);
         viewport_line1 := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_bytes.count - 1);
 
+        // We'll be drawing from here on until the end of the loop, so better set that scissor.
+        set_scissor(*render_commands, panel_rect);
+
         //
         // Draw Highlights
         //
@@ -1201,9 +1205,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             highlight_rect_screen = rect_clamp(highlight_rect_screen, panel_content_rect);
 
             if it_index == panel.highlight_index {
-                draw_rect(*render_rects, highlight_rect_screen, ACTIVE_HIGHLIGHT_COLOR);
+                draw_rect(*render_commands, highlight_rect_screen, ACTIVE_HIGHLIGHT_COLOR);
             } else {
-                draw_rect(*render_rects, highlight_rect_screen, HIGHLIGHT_COLOR);
+                draw_rect(*render_commands, highlight_rect_screen, HIGHLIGHT_COLOR);
             }
         }
 
@@ -1236,7 +1240,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
                 selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
-                draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
+                draw_rect(*render_commands, selection_rect_screen, SELECTION_COLOR);
             } else {
                 ProfileZone(":DrawSelectionMultiLine");
 
@@ -1272,7 +1276,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
                     selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
-                    draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
+                    draw_rect(*render_commands, selection_rect_screen, SELECTION_COLOR);
                 }
 
                 // Center lines, if in viewport
@@ -1298,7 +1302,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
                     selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
-                    draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
+                    draw_rect(*render_commands, selection_rect_screen, SELECTION_COLOR);
                 }
 
                 // Last line, if in viewport
@@ -1321,7 +1325,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
                     selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
-                    draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
+                    draw_rect(*render_commands, selection_rect_screen, SELECTION_COLOR);
                 }
             }
         }
@@ -1349,7 +1353,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 highlight_position := get_position_of_location(document, editor.font, highlight_loc) - panel.scroll;
                 highlight_rect := rect_from_point_and_size(panel_content_x + cast(f32, highlight_position.x), cast(f32, highlight_position.y), cell_w, cell_h);
 
-                draw_rect(*render_rects, highlight_rect, MATCHING_PARENTHESIS_COLOR);
+                draw_rect(*render_commands, highlight_rect, MATCHING_PARENTHESIS_COLOR);
             }
         }
 
@@ -1422,7 +1426,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     cell_h,
                 );
 
-                draw_rect(*render_rects, line_rect, LINE_COLOR);
+                draw_rect(*render_commands, line_rect, LINE_COLOR);
 
                 cursor_rect: Rect;
                 if anim_time == 0 {
@@ -1436,7 +1440,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 cursor_rect = rect_clamp(cursor_rect, panel_content_rect);
 
-                draw_rect(*render_rects, cursor_rect, ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else document.cursor_flash);
+                draw_rect(*render_commands, cursor_rect, ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else document.cursor_flash);
             }
         }
 
@@ -1500,21 +1504,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             scissor_rect := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
-            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, scissor_rect, TEXT_COLOR, style_ranges, binary = document.buffer.binary_mode);
+            font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_commands, *update_regions, offset, scissor_rect, TEXT_COLOR, style_ranges, binary = document.buffer.binary_mode);
         }
 
         //
         // Draw gutters
         //
-        draw_rect(*render_rects, rect_from_point_and_size(panel_x, panel_y, GUTTER, panel_h), GUTTER_COLOR);
-        draw_rect(*render_rects, rect_from_point_and_size(panel_x + GUTTER + panel_content_w, panel_y, GUTTER, panel_h), GUTTER_COLOR);
+        draw_rect(*render_commands, rect_from_point_and_size(panel_x, panel_y, GUTTER, panel_h), GUTTER_COLOR);
+        draw_rect(*render_commands, rect_from_point_and_size(panel_x + GUTTER + panel_content_w, panel_y, GUTTER, panel_h), GUTTER_COLOR);
 
         {
+            // TODO(jt): @Cleanup Reformulate the modeline rect as cutting into the current panel instead of using absolute coordinates.
             modeline_y      := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
             modeline_rect   := rect_from_point_and_size(panel_x, modeline_y, panel_w, cell_h);
             modeline_offset := DVector2.{ panel_x, modeline_y };
 
-            draw_rect(*render_rects, modeline_rect, MODELINE_COLOR);
+            set_scissor(*render_commands, modeline_rect);
+            draw_rect(*render_commands, modeline_rect, MODELINE_COLOR);
 
             cursor  := panel.document.buffer.cursor0;
             percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, panel.document.buffer.line_bytes.count));
@@ -1528,11 +1534,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             percent_string := temp_right_pad(tprint("%\%", percent), 4);
 
             s := tprint(" % % (%,%)", temp_right_pad(document_name, 15), percent_string, cursor.y + 1, cursor.x);
-            _font_layout_and_draw_text(*editor.font, s, *render_rects, *update_regions, modeline_offset, modeline_rect, TEXT_COLOR, .[], binary = false);
+            _font_layout_and_draw_text(*editor.font, s, *render_commands, *update_regions, modeline_offset, modeline_rect, TEXT_COLOR, .[], binary = false);
         }
 
         clear_transient_document_flags(*document.flags);
         clear_transient_panel_flags(*panel.flags);
+    }
+
+    // Reset scissor for the rest of the drawing.
+    set_scissor(*render_commands, { 0, 0, window_w, window_h });
+
+    // Draw view separator
+    if editor.active_view != .FULL {
+        draw_rect(*render_commands, rect_from_point_and_size(window_w * 0.5 - 1.0, 0.0, 2.0, window_h), SEPARATOR_COLOR);
     }
 
     // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
@@ -1541,10 +1555,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         background_h := (MINI_PANEL_LINES + 1) * cell_h;
         background_y := max(window_h - background_h, 0);
-        draw_rect(*render_rects, 0, background_y, window_w, window_h, BACKGROUND_COLOR);
+        draw_rect(*render_commands, 0, background_y, window_w, window_h, BACKGROUND_COLOR);
 
         if mini_panel.item_index == -1 {
-            draw_rect(*render_rects, 0, background_y, window_w, background_y + cell_h, MINI_PANEL_LINE_COLOR);
+            draw_rect(*render_commands, 0, background_y, window_w, background_y + cell_h, MINI_PANEL_LINE_COLOR);
         }
 
         action_text := mini_panel.procs.get_action_text(editor, platform, input);
@@ -1555,12 +1569,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         cursor0_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, mini_panel.buffer.cursor0.x, binary = false));
         cursor1_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, mini_panel.buffer.cursor1.x, binary = false));
 
-        draw_rect(*render_rects, cursor0_x, background_y, cursor1_x, background_y + cell_h, SELECTION_COLOR);
-        draw_rect(*render_rects, cursor0_x, background_y, cursor0_x + cell_w, background_y + cell_h, CURSOR_COLOR);
+        draw_rect(*render_commands, cursor0_x, background_y, cursor1_x, background_y + cell_h, SELECTION_COLOR);
+        draw_rect(*render_commands, cursor0_x, background_y, cursor0_x + cell_w, background_y + cell_h, CURSOR_COLOR);
 
         main_line := tprint("%%", action_text, line_view);
 
-        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, background_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_commands, *update_regions, { 0, background_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
 
         index0 := max(mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
         index1 := min(index0 + MINI_PANEL_LINES, mini_panel.items.count - 1);
@@ -1572,7 +1586,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it == mini_panel.item_index {
                 y0 := background_y + (it_index + 1) * cell_h;
                 y1 := background_y + (it_index + 2) * cell_h;
-                draw_rect(*render_rects, 0, y0, window_w, y1, MINI_PANEL_LINE_COLOR);
+                draw_rect(*render_commands, 0, y0, window_w, y1, MINI_PANEL_LINE_COLOR);
 
                 // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
                 // that can resume where it left of last time. In can see multiple places in this
@@ -1580,11 +1594,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 x0 := font_compute_position_on_line(editor.font, item.text, item.highlight_x0, binary = cast(bool, item.flags & .BINARY));
                 x1 := font_compute_position_on_line(editor.font, item.text, item.highlight_x1, binary = cast(bool, item.flags & .BINARY));
 
-                draw_rect(*render_rects, cast(f32, x0), y0, cast(f32, x1), y1, HIGHLIGHT_COLOR);
+                draw_rect(*render_commands, cast(f32, x0), y0, cast(f32, x1), y1, HIGHLIGHT_COLOR);
             }
 
             offset_y: f64 = background_y + (it_index + 1) * cell_h;
-            font_layout_and_draw_text(*editor.font, item.text, *render_rects, *update_regions, { 0, offset_y }, { 0, 0, window_w, window_h }, item.text_color, .[], binary = cast(bool, item.flags & .BINARY));
+            font_layout_and_draw_text(*editor.font, item.text, *render_commands, *update_regions, { 0, offset_y }, { 0, 0, window_w, window_h }, item.text_color, .[], binary = cast(bool, item.flags & .BINARY));
 
             it_index += 1;
         }
@@ -1592,7 +1606,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         modal_interaction := *editor.modal_interaction;
 
         modal_interaction_line_y := window_h - cell_h;
-        draw_rect(*render_rects, 0, modal_interaction_line_y, window_w, window_h, BACKGROUND_COLOR);
+        draw_rect(*render_commands, 0, modal_interaction_line_y, window_w, window_h, BACKGROUND_COLOR);
 
         action_text := modal_interaction.procs.get_action_text(editor, platform, input);
 
@@ -1601,33 +1615,33 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         line_x   := cast(f32, _font_compute_position_on_line(editor.font, action_text, action_text.count, binary = false));
         cursor_x := line_x + _font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.buffer.cursor0.x, binary = false);
 
-        draw_rect(*render_rects, rect_from_point_and_size(cast(f32, cursor_x), modal_interaction_line_y, cell_w, cell_h), CURSOR_COLOR);
+        draw_rect(*render_commands, rect_from_point_and_size(cast(f32, cursor_x), modal_interaction_line_y, cell_w, cell_h), CURSOR_COLOR);
 
         main_line := tprint("%%", action_text, line_view);
 
-        _font_layout_and_draw_text(*editor.font, main_line, *render_rects, *update_regions, { 0, modal_interaction_line_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
+        _font_layout_and_draw_text(*editor.font, main_line, *render_commands, *update_regions, { 0, modal_interaction_line_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
     } else {
         message_line_y := window_h - cell_h;
-        draw_rect(*render_rects, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
+        draw_rect(*render_commands, 0, message_line_y, window_w, window_h, BACKGROUND_COLOR);
 
         if editor.messages.count && !editor.last_message_seen {
             message := editor.messages[editor.messages.count - 1];
-            _font_layout_and_draw_text(*editor.font, message, *render_rects, *update_regions, { 0, message_line_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
+            _font_layout_and_draw_text(*editor.font, message, *render_commands, *update_regions, { 0, message_line_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
         }
     }
 
     if editor.dev_view == {
         case .NONE; // Nothing
         case .ATLAS_TEXTURE; {
-            array_reset_keeping_memory(*render_rects);
+            array_reset_keeping_memory(*render_commands);
 
             w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
             h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
-            draw_rect(*render_rects, 0, 0, w, h, { 0.89, 0.89, 0.95, 1 });
-            draw_rect(*render_rects, 0, 0, w, h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
+            draw_rect(*render_commands, 0, 0, w, h, { 0.89, 0.89, 0.95, 1 });
+            draw_rect(*render_commands, 0, 0, w, h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
         }
         case .PALETTE; {
-            array_reset_keeping_memory(*render_rects);
+            array_reset_keeping_memory(*render_commands);
 
             for 0..255 {
                 WIDTH  :: 100.0;
@@ -1638,52 +1652,52 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 {
                     r := rect_from_point_and_size(0, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_value(color, 1.0 / 1.50));
+                    draw_rect(*render_commands, r, adjust_value(color, 1.0 / 1.50));
                 }
 
                 {
                     r := rect_from_point_and_size(100, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_value(color, 1.0 / 1.25));
+                    draw_rect(*render_commands, r, adjust_value(color, 1.0 / 1.25));
                 }
 
                 {
                     r := rect_from_point_and_size(200, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, color);
+                    draw_rect(*render_commands, r, color);
                 }
 
                 {
                     r := rect_from_point_and_size(300, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_value(color, 1.25));
+                    draw_rect(*render_commands, r, adjust_value(color, 1.25));
                 }
 
                 {
                     r := rect_from_point_and_size(400, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_value(color, 1.50));
+                    draw_rect(*render_commands, r, adjust_value(color, 1.50));
                 }
 
                 {
                     r := rect_from_point_and_size(700, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_saturation(color, 1.0 / 1.50));
+                    draw_rect(*render_commands, r, adjust_saturation(color, 1.0 / 1.50));
                 }
 
                 {
                     r := rect_from_point_and_size(800, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_saturation(color, 1.0 / 1.25));
+                    draw_rect(*render_commands, r, adjust_saturation(color, 1.0 / 1.25));
                 }
 
                 {
                     r := rect_from_point_and_size(900, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, color);
+                    draw_rect(*render_commands, r, color);
                 }
 
                 {
                     r := rect_from_point_and_size(1000, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_saturation(color, 1.25));
+                    draw_rect(*render_commands, r, adjust_saturation(color, 1.25));
                 }
 
                 {
                     r := rect_from_point_and_size(1100, y, WIDTH, HEIGHT);
-                    draw_rect(*render_rects, r, adjust_saturation(color, 1.50));
+                    draw_rect(*render_commands, r, adjust_saturation(color, 1.50));
                 }
             }
         }
@@ -1710,7 +1724,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     renderer.begin_frame(BACKGROUND_COLOR);
-    renderer.draw_rects(render_rects);
+    renderer.draw(render_commands);
     renderer.submit_frame();
 
     return wants_next_frame;
@@ -2988,30 +3002,37 @@ clear_transient_panel_flags :: (flags: *Panel.Flags) {
     flags.* &= ~.RECEIVED_MOUSE_INTERACTION;
 }
 
-draw_rect :: (render_rects: *[..] Render_Rect, x0: f32, y0: f32, x1: f32, y1: f32, _color: Vector3 = { 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
+draw_rect :: (render_commands: *[..] Render_Command, x0: f32, y0: f32, x1: f32, y1: f32, _color: Vector3 = { 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
     color: Vector4;
     color.xyz = _color;
     color.w   = 1.0;
-    inline draw_rect(render_rects, { x0, y0, x1, y1 }, color, texture);
+    inline draw_rect(render_commands, { x0, y0, x1, y1 }, color, texture);
 }
 
-draw_rect :: (render_rects: *[..] Render_Rect, x0: f32, y0: f32, x1: f32, y1: f32, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
-    inline draw_rect(render_rects, { x0, y0, x1, y1 }, color, texture);
+draw_rect :: (render_commands: *[..] Render_Command, x0: f32, y0: f32, x1: f32, y1: f32, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
+    inline draw_rect(render_commands, { x0, y0, x1, y1 }, color, texture);
 }
 
-draw_rect :: (render_rects: *[..] Render_Rect, rect: Rect, _color: Vector3 = { 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
+draw_rect :: (render_commands: *[..] Render_Command, rect: Rect, _color: Vector3 = { 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
     color: Vector4;
     color.xyz = _color;
     color.w   = 1.0;
-    inline draw_rect(render_rects, rect, color, texture);
+    inline draw_rect(render_commands, rect, color, texture);
 }
 
-draw_rect :: (render_rects: *[..] Render_Rect, rect: Rect, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
-    rr := array_add(render_rects);
-    rr.rect = rect;
-    rr.texture_rect = { 0, 0, 1, 1 };
-    rr.texture_id = texture;
-    rr.color = color;
+draw_rect :: (render_commands: *[..] Render_Command, rect: Rect, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
+    command := array_add(render_commands);
+    command.type = .DRAW_RECT;
+    command.rect = rect;
+    command.texture_rect = { 0, 0, 1, 1 };
+    command.texture_id = texture;
+    command.color = color;
+}
+
+set_scissor :: (render_commands: *[..] Render_Command, scissor_rect: Rect) {
+    command := array_add(render_commands);
+    command.type = .SET_SCISSOR;
+    command.rect = scissor_rect;
 }
 
 Arena_Size :: enum s64 {
