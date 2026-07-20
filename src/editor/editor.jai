@@ -59,6 +59,7 @@ TODO(jt): @Stream Small things to do:
 - [X] OPEN_FILE completion also completes, if we are on the text line but there is only one item in the list.
 - [X] Selection in mini panel text buffer.
 - [ ] Selection in modal interaction text buffer.
+- [ ] SEARCH should allow words separated by spaces
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
 - [ ] C-j join-next-line
@@ -596,7 +597,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-y",     .PASTE);
 
         key_map_add(key_map, "C-x 3",   .SPLIT_VIEW_HORIZONTALLY);
-        key_map_add(key_map, "C-x 0",   .JOIN_VIEW);
+        key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_VIEW);
+        key_map_add(key_map, "C-x 1",   .CLOSE_OTHER_VIEWS);
         key_map_add(key_map, "C-x o",   .GO_TO_NEXT_VIEW);
 
         log("Document keymap:\n%", key_map_sprint(key_map,, temp));
@@ -2076,7 +2078,8 @@ Editor_Action :: enum {
     PASTE;
 
     SPLIT_VIEW_HORIZONTALLY;
-    JOIN_VIEW;
+    CLOSE_CURRENT_VIEW;
+    CLOSE_OTHER_VIEWS;
     GO_TO_NEXT_VIEW;
 }
 
@@ -2358,11 +2361,32 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 editor.right_view_panel_index = 1;
 
                 editor.active_view = .LEFT;
-
-                editor_log(editor, "Splitting view");
             }
         }
-        case .JOIN_VIEW; {
+        case .CLOSE_CURRENT_VIEW; {
+            if #complete editor.active_view == {
+                case .FULL; // No-op
+                case .LEFT; {
+                    assert(editor.panels.count == 2);
+
+                    panel_deinit(*editor.panels[editor.left_view_panel_index]);
+                    array_unordered_remove_by_index(*editor.panels, editor.left_view_panel_index);
+
+                    editor.full_view_panel_index = 0;
+                    editor.active_view = .FULL;
+                }
+                case .RIGHT; {
+                    assert(editor.panels.count == 2);
+
+                    panel_deinit(*editor.panels[editor.right_view_panel_index]);
+                    array_unordered_remove_by_index(*editor.panels, editor.right_view_panel_index);
+
+                    editor.full_view_panel_index = 0;
+                    editor.active_view = .FULL;
+                }
+            }
+        }
+        case .CLOSE_OTHER_VIEWS; {
             if #complete editor.active_view == {
                 case .FULL; // No-op
                 case .LEFT; {
@@ -2373,8 +2397,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                     editor.full_view_panel_index = 0;
                     editor.active_view = .FULL;
-
-                    editor_log(editor, "Joining view (active left)");
                 }
                 case .RIGHT; {
                     assert(editor.panels.count == 2);
@@ -2384,8 +2406,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                     editor.full_view_panel_index = 0;
                     editor.active_view = .FULL;
-
-                    editor_log(editor, "Joining view (active right)");
                 }
             }
         }
