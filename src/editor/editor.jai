@@ -154,6 +154,7 @@ ACTIVE_HIGHLIGHT_COLOR     :: #run unpack_srgba(0xd08080ff);
 MATCHING_PARENTHESIS_COLOR :: #run unpack_srgba(0x70a0f0ff);
 LINE_COLOR                 :: Vector4.{ 0, 0, 0, 0 };
 MODELINE_COLOR             :: #run unpack_srgba(0x090909ff);
+GUTTER_COLOR               :: BACKGROUND_COLOR;
 BACKGROUND_COLOR           :: #run unpack_srgba(0x191919ff);
 
 TEXT_COLOR                   :: #run unpack_srgba(0xcdaa7dff);
@@ -1044,13 +1045,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             update_syntax_highlights(editor, document, platform, input);
         }
 
+        GUTTER :: 10.0; // TODO(jt): Make this configurable. :Config
+
         panel_x: f32 = 0.0;
+        panel_content_x: f32 = GUTTER;
         if editor.active_view != .FULL && editor.right_view_panel_index == it_index {
             panel_x = window_w * 0.5;
+            panel_content_x = window_w * 0.5 + GUTTER;
         }
         panel_y: f32 = 0.0;
 
-        panel_w := ifx editor.active_view == .FULL then window_w else window_w * 0.5;
+        panel_w         := ifx editor.active_view == .FULL then window_w else window_w * 0.5;
+        panel_content_w := ifx editor.active_view == .FULL then window_w - 2 * GUTTER else window_w * 0.5 - 2 * GUTTER;
+
         panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
         if editor.mini_panel.open {
             // Currently, this only affects culling.
@@ -1060,8 +1067,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             panel_h = window_h - (2 + MINI_PANEL_LINES) * cell_h;
         }
 
-        panel_rect := rect_from_point_and_size(panel_x, panel_y, panel_w, panel_h);
-        panel_is_active := panel == get_panel_for_active_view(editor);
+        panel_rect         := rect_from_point_and_size(panel_x, panel_y, panel_w, panel_h);
+        panel_content_rect := rect_from_point_and_size(panel_content_x, panel_y, panel_content_w, panel_h);
+        panel_is_active    := panel == get_panel_for_active_view(editor);
 
         //
         // Compute cursor position.
@@ -1183,8 +1191,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // TODO(jt): @Speed Compute gap buffer indices incrementally as we go through the loop.
             line_view := text_buffer_make_view_for_line(document.buffer, it.y,, temp);
 
-            x0 := panel_x + font_compute_position_on_line(editor.font, line_view, it.x0, binary = document.buffer.binary_mode);
-            x1 := panel_x + font_compute_position_on_line(editor.font, line_view, it.x1, binary = document.buffer.binary_mode);
+            x0 := panel_content_x + font_compute_position_on_line(editor.font, line_view, it.x0, binary = document.buffer.binary_mode);
+            x1 := panel_content_x + font_compute_position_on_line(editor.font, line_view, it.x1, binary = document.buffer.binary_mode);
             y0 := cast(f64, it.y) * cell_h;
             y1 := y0 + cell_h;
 
@@ -1223,8 +1231,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     selection_y1_world,
                 };
 
-                selection_rect_screen := panel_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
-                selection_rect_screen = rect_clamp(selection_rect_screen, panel_rect);
+                selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
                 draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
             } else {
@@ -1259,8 +1267,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         selection_y1_world,
                     };
 
-                    selection_rect_screen := panel_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
-                    selection_rect_screen = rect_clamp(selection_rect_screen, panel_rect);
+                    selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                    selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
                     draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
                 }
@@ -1285,8 +1293,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         selection_y1_world,
                     };
 
-                    selection_rect_screen := panel_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
-                    selection_rect_screen = rect_clamp(selection_rect_screen, panel_rect);
+                    selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                    selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
                     draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
                 }
@@ -1308,8 +1316,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         selection_y1_world,
                     };
 
-                    selection_rect_screen := panel_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
-                    selection_rect_screen = rect_clamp(selection_rect_screen, panel_rect);
+                    selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                    selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
                     draw_rect(*render_rects, selection_rect_screen, SELECTION_COLOR);
                 }
@@ -1337,7 +1345,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             if found {
                 highlight_position := get_position_of_location(document, editor.font, highlight_loc) - panel.scroll;
-                highlight_rect := rect_from_point_and_size(panel_x + cast(f32, highlight_position.x), cast(f32, highlight_position.y), cell_w, cell_h);
+                highlight_rect := rect_from_point_and_size(panel_content_x + cast(f32, highlight_position.x), cast(f32, highlight_position.y), cell_w, cell_h);
 
                 draw_rect(*render_rects, highlight_rect, MATCHING_PARENTHESIS_COLOR);
             }
@@ -1406,7 +1414,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             if panel_is_active {
                 line_rect := rect_from_point_and_size(
-                    panel_x,
+                    panel_content_x,
                     cast(f32, new_cursor_position.y - panel.scroll.y),
                     panel_w,
                     cell_h,
@@ -1417,14 +1425,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 cursor_rect: Rect;
                 if anim_time == 0 {
                     // Straight to the new position to avoid one frame of lag (and results of division by zero).
-                    r :=  drect_from_point_and_size(panel_x + new_cursor_position.x, new_cursor_position.y, cell_w, cell_h) - panel.scroll;
+                    r :=  drect_from_point_and_size(panel_content_x + new_cursor_position.x, new_cursor_position.y, cell_w, cell_h) - panel.scroll;
                     cursor_rect = drect_to_rect(r);
                 } else {
-                    r := drect_from_point_and_size(panel_x + document.cursor_anim.x, document.cursor_anim.y, cell_w, cell_h) - panel.scroll;
+                    r := drect_from_point_and_size(panel_content_x + document.cursor_anim.x, document.cursor_anim.y, cell_w, cell_h) - panel.scroll;
                     cursor_rect = drect_to_rect(r);
                 }
 
-                cursor_rect = rect_clamp(cursor_rect, panel_rect);
+                cursor_rect = rect_clamp(cursor_rect, panel_content_rect);
 
                 draw_rect(*render_rects, cursor_rect, ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else document.cursor_flash);
             }
@@ -1449,7 +1457,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // big (although I'd wager we have serious performance problems before that starts to
             // matter), so we go f64 to be future proof.
             offset: DVector2;
-            offset.x = panel_x + -panel.scroll.x;
+            offset.x = panel_content_x + -panel.scroll.x;
             offset.y = -viewport_y0 + cell_h * cast(f64, viewport_line0);
 
             style_ranges: [..] Font_Style_Range;
@@ -1489,9 +1497,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
             }
 
-            scissor_rect := rect_from_point_and_size(panel_x, 0.0, panel_w, panel_h);
+            scissor_rect := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
             font_layout_and_draw_text(*editor.font, cast(string, viewport_view), *render_rects, *update_regions, offset, scissor_rect, TEXT_COLOR, style_ranges, binary = document.buffer.binary_mode);
         }
+
+        //
+        // Draw gutters
+        //
+        draw_rect(*render_rects, rect_from_point_and_size(panel_x, panel_y, GUTTER, panel_h), GUTTER_COLOR);
+        draw_rect(*render_rects, rect_from_point_and_size(panel_x + GUTTER + panel_content_w, panel_y, GUTTER, panel_h), GUTTER_COLOR);
 
         {
             modeline_y      := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
