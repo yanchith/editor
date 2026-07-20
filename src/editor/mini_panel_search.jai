@@ -170,10 +170,9 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             x := userdata.cursor.x;
             y := userdata.cursor.y;
 
-            document := active_panel.document;
+            text_buffer_move_cursor_to(*active_panel.document.buffer, x, y, false);
 
-            text_buffer_move_cursor_to(*document.buffer, x, y, false);
-            recenter_active_panel(editor, input, true);
+            active_panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }
     }
 }
@@ -221,7 +220,8 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
             y := userdata.cursor.y;
 
             text_buffer_move_cursor_to(*active_panel.document.buffer, x, y, false);
-            recenter_active_panel(editor, input, true);
+
+            active_panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }
     }
 
