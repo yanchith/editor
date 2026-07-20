@@ -1191,17 +1191,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             // TODO(jt): @Speed Compute gap buffer indices incrementally as we go through the loop.
             line_view := text_buffer_make_view_for_line(document.buffer, it.y,, temp);
 
-            x0 := panel_content_x + font_compute_position_on_line(editor.font, line_view, it.x0, binary = document.buffer.binary_mode);
-            x1 := panel_content_x + font_compute_position_on_line(editor.font, line_view, it.x1, binary = document.buffer.binary_mode);
+            x0 := font_compute_position_on_line(editor.font, line_view, it.x0, binary = document.buffer.binary_mode);
+            x1 := font_compute_position_on_line(editor.font, line_view, it.x1, binary = document.buffer.binary_mode);
             y0 := cast(f64, it.y) * cell_h;
             y1 := y0 + cell_h;
 
-            highlight_rect: DRect = { x0, y0, x1, y1 };
+            highlight_rect_world: DRect = { x0, y0, x1, y1 };
+            highlight_rect_screen := panel_content_rect.p0 + drect_to_rect(highlight_rect_world - panel.scroll);
+            highlight_rect_screen = rect_clamp(highlight_rect_screen, panel_content_rect);
 
             if it_index == panel.highlight_index {
-                draw_rect(*render_rects, drect_to_rect(highlight_rect - panel.scroll), ACTIVE_HIGHLIGHT_COLOR);
+                draw_rect(*render_rects, highlight_rect_screen, ACTIVE_HIGHLIGHT_COLOR);
             } else {
-                draw_rect(*render_rects, drect_to_rect(highlight_rect - panel.scroll), HIGHLIGHT_COLOR);
+                draw_rect(*render_rects, highlight_rect_screen, HIGHLIGHT_COLOR);
             }
         }
 
