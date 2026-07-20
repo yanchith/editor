@@ -2697,7 +2697,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         return it, false;
     }
 
-    document_arena         := make_arena(platform, .SMALL);
+    document_arena         := make_arena(platform, .MEDIUM);
     buffer_arena           := make_arena(platform, .LARGE);
     buffer_edit_text_arena := make_arena(platform, .LARGE);
 
@@ -3035,8 +3035,13 @@ set_scissor :: (render_commands: *[..] Render_Command, scissor_rect: Rect) {
     command.rect = scissor_rect;
 }
 
+// These arena sizes are upper bounds for each category, so that we don't throw a 16GB reservation for everything.
+//
+// TODO(jt): @Memory We should probably port our block-chaining arena to JAI, so that we don't have
+// to guess these upper bounds and don't run out of address space.
 Arena_Size :: enum s64 {
     SMALL  ::   2 << 20;
+    MEDIUM :: 256 << 20;
     LARGE  ::  16 << 30;
 }
 
