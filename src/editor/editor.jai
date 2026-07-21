@@ -60,6 +60,7 @@ TODO(jt): @Stream Small things to do:
 - [X] Selection in mini panel text buffer.
 - [ ] Selection in modal interaction text buffer.
 - [ ] SEARCH should allow words separated by spaces
+- [ ] SEARCH items render with syntax highlighting
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
 - [ ] C-j join-next-line

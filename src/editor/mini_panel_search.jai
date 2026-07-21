@@ -20,7 +20,7 @@ Search_Item_Userdata :: struct {
 }
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
-    return tprint("% Search: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
+    return tprint("%  Search: ", temp_right_pad(tprint("%", editor.mini_panel.items.count), 4));
 }
 
 can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> bool {
@@ -103,7 +103,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     line_number_prefix_length := 0;
 
                     if line_text.count {
-                        line_number_prefix := temp_right_pad(tprint("[%]", it + 1), 10);
+                        line_number_prefix := temp_right_pad(tprint("%  ", it + 1), 4);
 
                         s = sprint("%%", line_number_prefix, line_text,, arena_allocator(mini_panel.items_arena));
                         line_number_prefix_length = line_number_prefix.count;
