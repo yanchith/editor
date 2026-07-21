@@ -524,7 +524,7 @@ main :: () {
 
         input: Editor.Input;
         // input.time and input.dtime are zeroed.
-        // input.frame_triggered_by_animation is zeroed.
+        // input.frame_requested_by_editor is zeroed.
         input.window_size = { window_width, window_height };
         input.window_scale_factor = platform_get_window_scale_factor(window);
 
@@ -697,7 +697,7 @@ main :: () {
 
             wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
 
-            input.frame_triggered_by_animation = wants_next_frame;
+            input.frame_requested_by_editor = wants_next_frame;
 
             time_scale := profiler_end_frame();
             print_profile_for_slow_frames(SLOW_FRAME_THRESHOLD_MILLIS, time_scale);

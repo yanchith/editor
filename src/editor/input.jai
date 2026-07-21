@@ -2,7 +2,7 @@ Input :: struct {
     time:  Apollo_Time;
     dtime: Apollo_Time;
 
-    frame_triggered_by_animation: bool;
+    frame_requested_by_editor: bool;
 
     window_size: IVector2;
     window_scale_factor: f32;
