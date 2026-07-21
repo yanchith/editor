@@ -945,7 +945,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             //
             // Mouse selection scrolling
             //
-            if editor.input_state.keys[Key.MB_LEFT] & .LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW {
+            // nocheckin horizontal scrolling does not work for split views
+            {
                 SCROLL_APRON: f32 :  20.0;
                 SCROLL_SPEED: f64 :  10.0;
                 SCROLL_BOOST: f64 :   5.0;
