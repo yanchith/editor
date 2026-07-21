@@ -127,8 +127,6 @@ Input_State :: struct {
     // this frame's input, and we don't have to pass it manually.
     time: Apollo_Time;
 
-    mouse_inside_window: bool;
-
     keys: [KEY_COUNT] Key_State;
     modifiers: Modifier_Flags;
 }
@@ -139,8 +137,6 @@ Key_State :: enum_flags u8 {
     DOWN     :: 0x01;
     PRESSED  :: 0x02;
     RELEASED :: 0x04;
-
-    LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW :: 0x10; // This stays set after the key has been released, until it is pressed again.
 }
 
 Modifier_Flags :: enum_flags u8 {
@@ -155,9 +151,6 @@ Modifier_Flags :: enum_flags u8 {
 input_state_update_on_frame_start :: (input_state: *Input_State, input: Input) {
     input_state.time = input.time;
 
-    window_rect := rect_from_point_and_size(0, 0, cast(f32, input.window_size.x), cast(f32, input.window_size.y));
-    input_state.mouse_inside_window = rect_contains_vector(window_rect, input.mouse_position);
-
     for * input_state.keys {
         it.* &= ~(.PRESSED | .RELEASED);
     }
@@ -169,11 +162,6 @@ input_state_update_with_event :: (input_state: *Input_State, event: Input_Event)
 
         if event.flags & .PRESSED {
             input_state.keys[key] |= .DOWN | .PRESSED;
-            if input_state.mouse_inside_window {
-                input_state.keys[key] |= .LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW;
-            } else {
-                input_state.keys[key] &= ~.LAST_PRESS_WAS_WITH_MOUSE_INSIDE_WINDOW;
-            }
         } else {
             // Do not clear PRESSED. So that we can detect single-frame press and release.
             input_state.keys[key] &= ~.DOWN;
