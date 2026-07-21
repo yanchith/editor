@@ -17,7 +17,7 @@ Open_File_Item_Userdata :: struct {
 }
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
-    return tprint("% Open file: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
+    return tprint("%  Open file: ", temp_right_pad(tprint("%", editor.mini_panel.items.count), 4));
 }
 
 can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> bool {

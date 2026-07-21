@@ -12,7 +12,7 @@ mini_panel_close_document_procs: Mini_Panel_Procs = {
 #scope_file
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
-    return tprint("% Close document: ", temp_right_pad(tprint("(%)", editor.mini_panel.items.count), 9));
+    return tprint("%  Close document: ", temp_right_pad(tprint("%", editor.mini_panel.items.count), 4));
 }
 
 can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> bool {
