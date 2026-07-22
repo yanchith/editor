@@ -282,7 +282,7 @@ Document :: struct {
 
         READONLY :: READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT | READONLY_BECAUSE_OF_MANUAL_LOCK;
 
-        // :ClearTransientDocumentFlags
+        // :TransientDocumentFlags
         //
         // These get set during event processing and unset after update for this document's panel is done.
         TRANSIENT :: MODIFIED_THIS_FRAME;
@@ -379,7 +379,7 @@ Panel :: struct {
     cursor_flash_time_start: Apollo_Time;
     cursor_flash: Vector4;
 
-    Flags :: enum_flags {
+    Flags :: enum_flags u32 {
         NONE :: 0;
 
         CLAMP_CURSOR_TO_SCROLL        :: 0x01;
@@ -389,11 +389,14 @@ Panel :: struct {
         RECEIVED_KEYBOARD_INTERACTION :: 0x10;
         RECEIVED_MOUSE_INTERACTION    :: 0x20;
 
+        // Gets set and unset as we update panels.
+        LAST_MOUSE_PRESS_WAS_IN_THIS_PANEL :: 0x80;
+
         // These get set and unset in setup_cursor_anim_interpolation.
         CURSOR_ANIM_TRIGGERED_BY_MOUSE    :: 0x0100;
         CURSOR_ANIM_TRIGGERED_BY_KEYBOARD :: 0x0200;
 
-        // :ClearTransientPanelFlags
+        // :TransientPanelFlags
         //
         // These get set during event processing and unset after update for this panel is done.
         TRANSIENT :: CLAMP_CURSOR_TO_SCROLL |
@@ -1038,14 +1041,22 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     for * panel: editor.panels {
         ProfileZone(":PanelUpdateAndRender");
 
+        //
+        // :PanelUpdate
+        //
+        // This is maybe a misnomer, because some updates already happened when the panel received
+        // keyboard events (route_event_to_panel) and mouse input (zoom, scrolling, selection). In
+        // general, those earlier pieces of code tried to do as little work as possible, deferring
+        // serious updates to this loop (e.g. update_syntax_highlights) by setting various flags on
+        // the panel.
+        //
+        // The bottom half of this loop is animation and rendering.
+        //
+
         document := panel.document;
         if !document {
             // TODO(jt): Draw something in empty panels?
             continue;
-        }
-
-        if document.flags & .MODIFIED_THIS_FRAME {
-            update_syntax_highlights(editor, document, platform, input);
         }
 
         GUTTER :: 10.0; // TODO(jt): Make this configurable. :Config
@@ -1153,6 +1164,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 setup_scroll_interpolation(panel, input.time, panel.scroll, target);
             }
         }
+
+        if document.flags & .MODIFIED_THIS_FRAME {
+            update_syntax_highlights(editor, document, platform, input);
+        }
+
+        //
+        // :PanelAnimateAndRender
+        //
 
         //
         // Scroll animation
@@ -2527,8 +2546,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         document.flags |= .MODIFIED;
 
         // We have to update these after every change, because the very next edit could be needing
-        // this. Doesn't matter much as long as we hit our frame budgets. Also, we could start being
-        // smart about this, becuase not every subsequent action needs these up to date.
+        // this. We could start being smarter about this (e.g. by setting a specific dirty flag),
+        // becuase not every subsequent action needs these up to date.  -jt, 22 July 2026.
         update_parenthesized_scopes(document);
     }
 }
@@ -2971,13 +2990,13 @@ setup_cursor_flash_interpolation :: (panel: *Panel, time: Apollo_Time, source: V
 
 #scope_file
 
+// :TransientDocumentFlags
 clear_transient_document_flags :: (flags: *Document.Flags) {
-    // :ClearTransientDocumentFlags
     flags.* &= ~.TRANSIENT;
 }
 
+// :TransientPanelFlags
 clear_transient_panel_flags :: (flags: *Panel.Flags) {
-    // :ClearTransientPanelFlags
     flags.* &= ~.TRANSIENT;
 }
 
