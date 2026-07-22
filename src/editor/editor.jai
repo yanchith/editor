@@ -171,7 +171,8 @@ MINI_PANEL_LINE_COLOR      :: #run -> Vector4 { c := adjust_saturation_and_value
 MINI_PANEL_ITEM_TEXT_COLOR :: TEXT_COLOR;
 MINI_PANEL_ITEM_WARNING_TEXT_COLOR :: #run unpack_srgba(0xe95410ff);
 
-MINI_PANEL_LINES :: 10; // TODO(jt): Make this configurable! :Config
+PANEL_GUTTER     :: 10.0; // TODO(jt): Make this configurable. :Config
+MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 
 Editor :: struct {
     perm_arena: *Arena;
@@ -380,8 +381,6 @@ Panel :: struct {
         CLAMP_SCROLL_TO_END_OF_LINE   :: 0x08; // Implies CLAMP_SCROLL_TO_CURSOR;
         RECEIVED_KEYBOARD_INTERACTION :: 0x10;
         RECEIVED_MOUSE_INTERACTION    :: 0x20;
-
-        LAST_MOUSE_PRESS_WAS_IN_THIS_PANEL :: 0x80;
 
         // These get set and unset in setup_cursor_anim_interpolation.
         CURSOR_ANIM_TRIGGERED_BY_MOUSE    :: 0x0100;
@@ -842,6 +841,27 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
+    //
+    // Switch active view by clicking
+    //
+    // Remember the click before we do the mouse interaction stuff later. Because the mouse stuff
+    // happens after we have processed the keyboard events, this code might cause some weird
+    // behavior, where the keyboard interaction determines what view is active, and then we change
+    // it here. Shouldn't be a problem in practice, right?
+    //
+    if editor.input_state.keys[Key.MB_LEFT] & .PRESSED {
+        for * panel: editor.panels {
+            panel_rect := get_panel_rect(editor, it_index);
+            if rect_contains_point(panel_rect, input.mouse_position) {
+                if #complete editor.active_view == {
+                    case .FULL; // No-op
+                    case .LEFT;   if it_index == editor.right_view_panel_index  editor.active_view = .RIGHT;
+                    case .RIGHT;  if it_index == editor.left_view_panel_index   editor.active_view = .LEFT;
+                }
+            }
+        }
+    }
+
     {
         //
         // Chaging font size (zoom)
@@ -917,6 +937,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Mouse wheel scrolling
         //
+        // We scroll the hovered panel regardless of which view is hovered or active.
+        //
         if input.mouse_wheel_delta != 0 && !(editor.input_state.modifiers & .CTRL) {
             target := hovered_panel.scroll_target;
             target.y -= cast(f64, input.mouse_wheel_delta);
@@ -930,102 +952,106 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Mouse Selection
         //
+        // Unlike scrolling, mouse selection is sticky to the panel where it started.
+        //
         // TODO(jt): Double click to select word.
         // TODO(jt): Triple click to select line.
         //
         if editor.input_state.keys[Key.MB_LEFT] & .DOWN {
             mouse := input.mouse_position;
 
+            panel_index: s64;
+            if #complete editor.active_view == {
+                case .FULL;   panel_index = editor.full_view_panel_index;
+                case .LEFT;   panel_index = editor.left_view_panel_index;
+                case .RIGHT;  panel_index = editor.right_view_panel_index;
+            }
+
+            panel      := *editor.panels[panel_index];
+            panel_rect := get_panel_rect(editor, panel_index);
+
             //
             // Mouse selection scrolling
             //
-            // nocheckin horizontal scrolling does not work for split views
+            // nocheckin this is not working well yet. Fix!
+            //
             {
                 SCROLL_APRON: f32 :  20.0;
                 SCROLL_SPEED: f64 :  10.0;
                 SCROLL_BOOST: f64 :   5.0;
 
-                if mouse.x < SCROLL_APRON {
+                if mouse.x < panel_rect.x0 + SCROLL_APRON {
                     boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
 
-                    target := hovered_panel.scroll_target;
+                    target := panel.scroll_target;
                     target.x -= SCROLL_SPEED * boost * dt;
                     target.x = max(target.x, 0);
-                    setup_instant_scroll_interpolation(hovered_panel, target);
+                    setup_instant_scroll_interpolation(panel, target);
 
                     wants_next_frame = true;
-                } else if mouse.x > window_w - SCROLL_APRON {
+                } else if mouse.x > panel_rect.x1 - SCROLL_APRON {
                     boost := (mouse.x - (window_w - SCROLL_APRON)) * SCROLL_BOOST;
 
                     // Apron contains the newline (if present) and one additional horizontal cell.
                     apron := 2 * cell_w;
 
-                    line_view := text_buffer_make_view_for_line(hovered_panel.document.buffer, hovered_panel.document.buffer.cursor0.y,, temp);
+                    line_view := text_buffer_make_view_for_line(panel.document.buffer, panel.document.buffer.cursor0.y,, temp);
 
                     // Clamp to zero, so we don't end up scrolling the other way if the line is
                     // short. (Happens if you start scrolling on a long line, but then vertically
                     // scroll to a short line.)
-                    max_x := max(font_compute_position_on_line(editor.font, line_view, hovered_panel.document.buffer.cursor0.x, binary = hovered_panel.document.buffer.binary_mode) - window_w + apron, 0);
+                    max_x := max(font_compute_position_on_line(editor.font, line_view, panel.document.buffer.cursor0.x, binary = panel.document.buffer.binary_mode) - window_w + apron, 0);
 
-                    target := hovered_panel.scroll_target;
+                    target := panel.scroll_target;
                     target.x += SCROLL_SPEED * boost * dt;
                     target.x = min(target.x, max_x);
-                    setup_instant_scroll_interpolation(hovered_panel, target);
+                    setup_instant_scroll_interpolation(panel, target);
 
                     wants_next_frame = true;
                 }
 
-                panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
-                if mouse.y < SCROLL_APRON {
-                    boost := (SCROLL_APRON - mouse.y) * SCROLL_BOOST;
+                if mouse.y < panel_rect.y0 + SCROLL_APRON {
+                    boost := (panel_rect.y0 + SCROLL_APRON - mouse.y) * SCROLL_BOOST;
 
-                    target := hovered_panel.scroll_target;
+                    target := panel.scroll_target;
                     target.y -= SCROLL_SPEED * boost * dt;
                     target.y = max(target.y, 0);
-                    setup_instant_scroll_interpolation(hovered_panel, target);
+                    setup_instant_scroll_interpolation(panel, target);
 
                     wants_next_frame = true;
-                } else if mouse.y > panel_h - SCROLL_APRON {
-                    boost := (mouse.y - (panel_h - SCROLL_APRON)) * SCROLL_BOOST;
+                } else if mouse.y > panel_rect.y1 - SCROLL_APRON {
+                    boost := (mouse.y - (panel_rect.y1 - SCROLL_APRON)) * SCROLL_BOOST;
 
-                    target := hovered_panel.scroll_target;
+                    target := panel.scroll_target;
                     target.y += SCROLL_SPEED * boost * dt;
-                    target.y = min(target.y, cell_h * cast(f64, hovered_panel.document.buffer.line_bytes.count - 1));
-                    setup_instant_scroll_interpolation(hovered_panel, target);
+                    target.y = min(target.y, cell_h * cast(f64, panel.document.buffer.line_bytes.count - 1));
+                    setup_instant_scroll_interpolation(panel, target);
 
                     wants_next_frame = true;
                 }
             }
 
-            hovered_panel_x := ifx editor.active_view != .FULL && hovered_panel_index == editor.right_view_panel_index then window_w * 0.5 else 0.0;
-
-            row := cast(s64, floor((mouse.y + hovered_panel.scroll.y) / cell_h));
+            row := cast(s64, floor((mouse.y + panel.scroll.y) / cell_h));
             col := 0;
 
             if row < 0 {
                 row = 0;
                 col = 0;
-            } else if row > hovered_panel.document.buffer.line_bytes.count - 1 {
-                row = hovered_panel.document.buffer.line_bytes.count - 1;
+            } else if row > panel.document.buffer.line_bytes.count - 1 {
+                row = panel.document.buffer.line_bytes.count - 1;
 
                 // Include newline, so that the cursor can go there.
-                line_view := text_buffer_make_view_for_line(hovered_panel.document.buffer, row, include_newline = true,, temp);
-                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - hovered_panel_x + hovered_panel.scroll.x, binary = hovered_panel.document.buffer.binary_mode);
+                line_view := text_buffer_make_view_for_line(panel.document.buffer, row, include_newline = true,, temp);
+                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.x, binary = panel.document.buffer.binary_mode);
             } else {
                 // Include newline, so that the cursor can go there.
-                line_view := text_buffer_make_view_for_line(hovered_panel.document.buffer, row, include_newline = true,, temp);
-                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - hovered_panel_x + hovered_panel.scroll.x, binary = hovered_panel.document.buffer.binary_mode);
+                line_view := text_buffer_make_view_for_line(panel.document.buffer, row, include_newline = true,, temp);
+                col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.x, binary = panel.document.buffer.binary_mode);
             }
 
-            text_buffer_move_cursor_to(*hovered_panel.document.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
+            text_buffer_move_cursor_to(*panel.document.buffer, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
 
-            hovered_panel.flags |= .RECEIVED_MOUSE_INTERACTION;
-
-            if #complete editor.active_view == {
-                case .FULL; // No-op
-                case .LEFT;   if hovered_panel_index == editor.right_view_panel_index  editor.active_view = .RIGHT;
-                case .RIGHT;  if hovered_panel_index == editor.left_view_panel_index   editor.active_view = .LEFT;
-            }
+            panel.flags |= .RECEIVED_MOUSE_INTERACTION;
         }
     }
 
@@ -1050,31 +1076,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             continue;
         }
 
-        GUTTER :: 10.0; // TODO(jt): Make this configurable. :Config
+        panel_rect, panel_content_rect := get_panel_rect(editor, it_index);
+        panel_x := panel_rect.x0;
+        panel_y := panel_rect.y0;
+        panel_w := rect_width(panel_rect);
+        panel_h := rect_height(panel_rect);
+        panel_content_x := panel_content_rect.x0;
+        panel_content_w := rect_width(panel_content_rect);
 
-        panel_x: f32 = 0.0;
-        panel_content_x: f32 = GUTTER;
-        if editor.active_view != .FULL && editor.right_view_panel_index == it_index {
-            panel_x = window_w * 0.5;
-            panel_content_x = window_w * 0.5 + GUTTER;
-        }
-        panel_y: f32 = 0.0;
-
-        panel_w         := ifx editor.active_view == .FULL then window_w else window_w * 0.5;
-        panel_content_w := ifx editor.active_view == .FULL then window_w - 2 * GUTTER else window_w * 0.5 - 2 * GUTTER;
-
-        panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
-        if editor.mini_panel.open {
-            // Currently, this only affects culling.
-            //
-            // TODO(jt): In Emacs, this would also modify the scroll offset, if the cursor would be
-            // occluded by the newly visible mini panel. Should we do that?
-            panel_h = window_h - (2 + MINI_PANEL_LINES) * cell_h;
-        }
-
-        panel_rect         := rect_from_point_and_size(panel_x, panel_y, panel_w, panel_h);
-        panel_content_rect := rect_from_point_and_size(panel_content_x, panel_y, panel_content_w, panel_h);
-        panel_is_active    := panel == get_panel_for_active_view(editor);
+        panel_is_active := panel == get_panel_for_active_view(editor);
 
         //
         // Compute cursor position.
@@ -1513,8 +1523,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Draw gutters
         //
-        draw_rect(*render_commands, rect_from_point_and_size(panel_x, panel_y, GUTTER, panel_h), GUTTER_COLOR);
-        draw_rect(*render_commands, rect_from_point_and_size(panel_x + GUTTER + panel_content_w, panel_y, GUTTER, panel_h), GUTTER_COLOR);
+        draw_rect(*render_commands, rect_from_point_and_size(panel_x, panel_y, PANEL_GUTTER, panel_h), GUTTER_COLOR);
+        draw_rect(*render_commands, rect_from_point_and_size(panel_x + PANEL_GUTTER + panel_content_w, panel_y, PANEL_GUTTER, panel_h), GUTTER_COLOR);
 
         {
             // TODO(jt): @Cleanup Reformulate the modeline rect as cutting into the current panel instead of using absolute coordinates.
@@ -1775,6 +1785,40 @@ get_panel_for_mouse_cursor :: (editor: Editor, input: Input) -> *Panel, panel_in
     }
 
     return panel, index;
+}
+
+get_panel_rect :: (editor: Editor, panel_index: s64) -> Rect, content_rect: Rect {
+    window_w := cast(f32, editor.input_state.window_size.x);
+    window_h := cast(f32, editor.input_state.window_size.y);
+    cell_h := editor.font.line_height_in_pixels;
+
+    panel_x: f32 = 0.0;
+    panel_content_x: f32 = PANEL_GUTTER;
+    if editor.active_view != .FULL && editor.right_view_panel_index == panel_index {
+        panel_x = window_w * 0.5;
+        panel_content_x = window_w * 0.5 + PANEL_GUTTER;
+    }
+
+    panel_y: f32 = 0.0;
+
+    panel_w         := ifx editor.active_view == .FULL then window_w else window_w * 0.5;
+    panel_content_w := ifx editor.active_view == .FULL then window_w - 2 * PANEL_GUTTER else window_w * 0.5 - 2 * PANEL_GUTTER;
+
+    panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
+    if editor.mini_panel.open {
+        // Currently, this only affects culling.
+        //
+        // TODO(jt): In Emacs, this would also modify the scroll offset, if the cursor would be
+        // occluded by the newly visible mini panel. Should we do that?
+        panel_h = window_h - (2 + MINI_PANEL_LINES) * cell_h;
+    }
+
+    // TODO(jt): @Speed This is slightly wasteful, that we convert xywh into a point rect, only for
+    // the callers to convert it back into xywh. Maybe rethink this once we do this too often?
+    panel_rect         := rect_from_point_and_size(panel_x, panel_y, panel_w, panel_h);
+    panel_content_rect := rect_from_point_and_size(panel_content_x, panel_y, panel_content_w, panel_h);
+
+    return panel_rect, panel_content_rect;
 }
 
 // For ease of use, the editor talks about watching individual files, but it merely means it is

@@ -127,6 +127,8 @@ Input_State :: struct {
     // this frame's input, and we don't have to pass it manually.
     time: Apollo_Time;
 
+    window_size: IVector2;
+
     keys: [KEY_COUNT] Key_State;
     modifiers: Modifier_Flags;
 }
@@ -150,6 +152,8 @@ Modifier_Flags :: enum_flags u8 {
 
 input_state_update_on_frame_start :: (input_state: *Input_State, input: Input) {
     input_state.time = input.time;
+
+    input_state.window_size = input.window_size;
 
     for * input_state.keys {
         it.* &= ~(.PRESSED | .RELEASED);
