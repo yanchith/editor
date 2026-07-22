@@ -980,8 +980,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 SCROLL_SPEED: f64 :  10.0;
                 SCROLL_BOOST: f64 :   5.0;
 
-                if mouse.x < panel_rect.x0 + SCROLL_APRON {
-                    boost := (SCROLL_APRON - mouse.x) * SCROLL_BOOST;
+                left_edge   := panel_rect.x0 + SCROLL_APRON;
+                right_edge  := panel_rect.x1 - SCROLL_APRON;
+                top_edge    := panel_rect.y0 + SCROLL_APRON;
+                bottom_edge := panel_rect.y1 - SCROLL_APRON;
+
+                log("nocheckin mouse: %, left: %, right: %, top: %, bottom: %", mouse, left_edge, right_edge, top_edge, bottom_edge);
+
+                if mouse.x < left_edge {
+                    boost := (left_edge - mouse.x) * SCROLL_BOOST;
+                    log("nocheckin left: %", boost);
 
                     target := panel.scroll_target;
                     target.x -= SCROLL_SPEED * boost * dt;
@@ -989,8 +997,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     setup_instant_scroll_interpolation(panel, target);
 
                     wants_next_frame = true;
-                } else if mouse.x > panel_rect.x1 - SCROLL_APRON {
-                    boost := (mouse.x - (window_w - SCROLL_APRON)) * SCROLL_BOOST;
+                } else if mouse.x > right_edge {
+                    boost := (mouse.x - right_edge) * SCROLL_BOOST;
+                    log("nocheckin right: %", boost);
 
                     // Apron contains the newline (if present) and one additional horizontal cell.
                     apron := 2 * cell_w;
@@ -1010,8 +1019,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     wants_next_frame = true;
                 }
 
-                if mouse.y < panel_rect.y0 + SCROLL_APRON {
-                    boost := (panel_rect.y0 + SCROLL_APRON - mouse.y) * SCROLL_BOOST;
+                if mouse.y < top_edge {
+                    boost := (top_edge - mouse.y) * SCROLL_BOOST;
+                    log("nocheckin top: %", boost);
 
                     target := panel.scroll_target;
                     target.y -= SCROLL_SPEED * boost * dt;
@@ -1019,8 +1029,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     setup_instant_scroll_interpolation(panel, target);
 
                     wants_next_frame = true;
-                } else if mouse.y > panel_rect.y1 - SCROLL_APRON {
-                    boost := (mouse.y - (panel_rect.y1 - SCROLL_APRON)) * SCROLL_BOOST;
+                } else if mouse.y > bottom_edge {
+                    boost := (mouse.y - bottom_edge) * SCROLL_BOOST;
+                    log("nocheckin bottom: %", boost);
 
                     target := panel.scroll_target;
                     target.y += SCROLL_SPEED * boost * dt;
