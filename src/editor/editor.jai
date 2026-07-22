@@ -183,24 +183,21 @@ Editor :: struct {
     key_map: Key_Map(Editor_Action);
     watched_files: [..] string;
 
+    //
     // Documents are referenced by panels (one document, many panels). When we close a panel or
     // switch a panel to a different document, the original document remains. When we close/unload a
-    // document, we need to go through every panel and make sure it does not reference that
-    // document.
+    // document, we need to go through every panel and make sure it does not reference that.
+    //
     documents: Bucket_Array(Document, 16);
+    panels:    [..] Panel;
 
-    // :MultiplePanels
-    //
-    // Currently we have just the one panel, but this array is the preparation for having multiple
-    // panels open (by splitting a viewport horizontally or vertically). We can start doing this by
-    // implementing just vertical side-by-side splitting, which does not require any additional data
-    // structures.
-    //
-    // TODO(jt): Do panel splitting and fix all places in code that rely on the panel covering the
-    // entire window.
-    panels: [..] Panel;
-
-    active_view: Active_View;
+    // This is a simple hardcoded version of the view tree. We can replace it with fully K-d tree
+    // layout out in an array, once we do arbitrary panel splitting.
+    active_view: enum u8 {
+        FULL;   // The screen is not split into multiple views.
+        LEFT;   // The screen is split horizontally, and the left view is active.
+        RIGHT;  // The screen is split horizontally, and the right view is active.
+    };
     full_view_panel_index: s64;
     left_view_panel_index: s64;
     right_view_panel_index: s64;
@@ -212,12 +209,6 @@ Editor :: struct {
     last_message_seen: bool;
 
     dev_view: Dev_View;
-
-    Active_View :: enum u8 {
-        FULL;   // The screen is not split into multiple views.
-        LEFT;   // The screen is split horizontally, and the left view is active.
-        RIGHT;  // The screen is split horizontally, and the right view is active.
-    }
 
     Dev_View :: enum u8 {
         NONE;
@@ -851,14 +842,18 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    if editor.input_state.modifiers & .CTRL {
-        delta: s32;
-        if input.mouse_wheel_delta > 0 then delta = 1;
-        if input.mouse_wheel_delta < 0 then delta = -1;
-        editor.font_size = max(editor.font_size + delta, 1);
-    }
-
     {
+        //
+        // Chaging font size (zoom)
+        //
+
+        if editor.input_state.modifiers & .CTRL {
+            delta: s32;
+            if input.mouse_wheel_delta > 0 then delta = 1;
+            if input.mouse_wheel_delta < 0 then delta = -1;
+            editor.font_size = max(editor.font_size + delta, 1);
+        }
+
         want_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
         if editor.font.pixel_height != want_pixel_height {
             editor_log(editor, "Resetting font to new physical pixel height: % (subpixel: %)", want_pixel_height, FONT_SUBPIXEL);
@@ -919,8 +914,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     } else if editor.modal_interaction.open {
         // TODO(jt): Handle mouse in modal interaction.
     } else {
-        // TODO(jt): Mouse stuff should activate the clicked panel! See :MultiplePanels
-
         //
         // Mouse wheel scrolling
         //
@@ -1094,7 +1087,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if panel.flags & .CLAMP_CURSOR_TO_SCROLL {
             ProfileZone(":ClampCursor");
 
-            // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
             cursor_rect   := drect_from_point_and_size(document_cursor0_position.x, document_cursor0_position.y, cell_w, cell_h);
 
@@ -1131,7 +1123,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             scroll_padding_x := min(panel_w * 0.25, cell_w * SCROLL_PADDING_CELLS_X);
             scroll_padding_y := min(panel_h * 0.25, cell_h * SCROLL_PADDING_CELLS_Y);
 
-            // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
             viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
             scroll_to_rect: DRect;
             if panel.flags & .CLAMP_SCROLL_TO_START_OF_LINE {
@@ -1193,8 +1184,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
 
         // Now that we have finished scrolling, we can define the range that the viewport sees.
-        //
-        // TODO(jt): Compute a viewport for panel instead that takes into account splitting. See :MultiplePanels
         viewport_y0 := panel.scroll.y;
         viewport_y1 := panel.scroll.y + panel_h;
 
