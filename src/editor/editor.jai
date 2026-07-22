@@ -365,7 +365,8 @@ Panel :: struct {
     // negating it).
     scroll: DVector2;
 
-    // Preserved at the start of each frame to find out if we want to kick off cursor animation.
+    // Preserved at the start of each frame to find out if we want to kick off cursor animation, if
+    // the cursor changed position due to input.
     old_cursor: Text_Location;
     old_cursor_position: DVector2;
 
@@ -389,7 +390,6 @@ Panel :: struct {
         RECEIVED_KEYBOARD_INTERACTION :: 0x10;
         RECEIVED_MOUSE_INTERACTION    :: 0x20;
 
-        // Gets set and unset as we update panels.
         LAST_MOUSE_PRESS_WAS_IN_THIS_PANEL :: 0x80;
 
         // These get set and unset in setup_cursor_anim_interpolation.
@@ -851,10 +851,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    // Currently, there must always be at least one panel. We can relax this in the future.
-    hovered_panel, hovered_panel_index := get_panel_for_mouse_cursor(editor, input);
-    assert(hovered_panel != null);
-
     if editor.input_state.modifiers & .CTRL {
         delta: s32;
         if input.mouse_wheel_delta > 0 then delta = 1;
@@ -863,42 +859,40 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     {
-        cell_h_before_zoom := editor.font.line_height_in_pixels;
-
-        cursor_y := hovered_panel.document.buffer.cursor0.y;
-        mouse_y  := (input.mouse_position.y + hovered_panel.scroll_target.y) / cell_h_before_zoom;
-
         want_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
         if editor.font.pixel_height != want_pixel_height {
             editor_log(editor, "Resetting font to new physical pixel height: % (subpixel: %)", want_pixel_height, FONT_SUBPIXEL);
+
+            cell_h_before_zoom := editor.font.line_height_in_pixels;
             font_reset_for_options(*editor.font, want_pixel_height);
+            cell_h_after_zoom  := editor.font.line_height_in_pixels;
 
-            cell_h_after_zoom := editor.font.line_height_in_pixels;
-
-            y: f64 = ifx input.mouse_wheel_delta == 0 then cast(f64, cursor_y) else mouse_y;
-
-            y_position_before_zoom := y * cell_h_before_zoom;
-            y_position_after_zoom  := y * cell_h_after_zoom;
-
-            delta := y_position_after_zoom - y_position_before_zoom;
-
-            {
-                target := hovered_panel.scroll_target;
-                target.y += delta;
-                target.y = max(target.y, 0);
-                setup_instant_scroll_interpolation(hovered_panel, target);
-            }
-
-            // If we change zoom, we need to invalidate old cursor positions in every document. We also
-            // want to fast-forward every every cursor animation, because the interpolants are about to
-            // get stale.
             for * editor.panels {
+                cursor_y := it.document.buffer.cursor0.y;
+                mouse_y  := (input.mouse_position.y + it.scroll_target.y) / cell_h_before_zoom;
+
+                y: f64 = ifx input.mouse_wheel_delta == 0 then cast(f64, cursor_y) else mouse_y;
+
+                y_position_before_zoom := y * cell_h_before_zoom;
+                y_position_after_zoom  := y * cell_h_after_zoom;
+
+                delta := y_position_after_zoom - y_position_before_zoom;
+
+                {
+                    target := it.scroll_target;
+                    target.y += delta;
+                    target.y = max(target.y, 0);
+                    setup_instant_scroll_interpolation(it, target);
+                }
+
+                // If we change zoom, we need to invalidate old cursor positions in every panel. We
+                // also want to fast-forward every every cursor animation, because the interpolants
+                // are about to get stale.
                 cursor_position := get_cursor_position(it.document, editor.font);
 
                 it.old_cursor_position = cursor_position;
                 setup_instant_cursor_anim_interpolation(it, cursor_position);
             }
-
         }
     }
 
@@ -915,6 +909,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     cell_h := editor.font.line_height_in_pixels;
     window_w := cast(f32, input.window_size.x);
     window_h := cast(f32, input.window_size.y);
+
+    // Currently, there must always be at least one panel. We can relax this in the future.
+    hovered_panel, hovered_panel_index := get_panel_for_mouse_cursor(editor, input);
+    assert(hovered_panel != null);
 
     if editor.mini_panel.open {
         // TODO(jt): Handle mouse in mini panel.
