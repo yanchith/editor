@@ -187,7 +187,7 @@ rect_height :: inline (r: Rect) -> f32 {
     }
 }
 
-rect_contains_vector :: inline (r: Rect, v: Vector2) -> bool {
+rect_contains_point :: inline (r: Rect, v: Vector2) -> bool {
     // TODO(jt): This may require a fixup.
     contains_x := v.x >= r.x0 && v.x < r.x1;
     contains_y := v.y >= r.y0 && v.y < r.y1;
