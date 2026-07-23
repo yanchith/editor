@@ -114,9 +114,9 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         // search&replace is open, these cursors will not be valid anymore
                         // and we need to somehow handle that. At the moment I am writing
                         // this, nothing like that exists in the editor.
-                        document.buffer.cursor0 = { x0, y };
-                        document.buffer.cursor1 = { x1, y };
-                        text_buffer_insert(*document.buffer, userdata.input_to_replace, .BARRIER);
+                        active_panel.cursor0 = { x0, y };
+                        active_panel.cursor1 = { x1, y };
+                        text_buffer_insert(*document.buffer, *active_panel.cursor0, *active_panel.cursor1, userdata.input_to_replace, .BARRIER);
 
                         // Instead of advancing the index we contract the array.
                         array_ordered_remove_by_index(*active_panel.highlights, active_panel.highlight_index);
@@ -162,7 +162,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         x := highlight.x0;
                         y := highlight.y;
 
-                        text_buffer_move_cursor_to(*active_panel.document.buffer, x, y, false);
+                        text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursor0, *active_panel.cursor1, x, y, false);
                         recenter_active_panel(editor, input, true);
                     }
                 }
@@ -214,7 +214,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
             array_reset_keeping_memory(*active_panel.highlights);
             active_panel.highlight_index = -1;
 
-            old_cursor_y := document.buffer.cursor0.y;
+            old_cursor_y := active_panel.cursor0.y;
             new_highlight_index := -1;
 
             search_text := userdata.input_to_search;
@@ -281,7 +281,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
                 x := highlight.x0;
                 y := highlight.y;
 
-                text_buffer_move_cursor_to(*document.buffer, x, y, false);
+                text_buffer_move_cursor_to(document.buffer, *active_panel.cursor0, *active_panel.cursor1, x, y, false);
                 recenter_active_panel(editor, input, true);
             }
 
