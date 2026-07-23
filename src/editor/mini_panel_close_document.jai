@@ -93,7 +93,7 @@ delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer
 
     gb := mini_panel.buffer.gb;
     if gb.count {
-        text_buffer_delete_backward(*mini_panel.buffer);
+        text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
         return true;
     }
 
@@ -111,12 +111,12 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
     // we don't want that?
     if mini_panel.items.count == 1 {
         text_buffer_reset(*mini_panel.buffer);
-        text_buffer_insert(*mini_panel.buffer, mini_panel.items[0].text);
+        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, mini_panel.items[0].text);
 
         return true;
     } else if mini_panel.items.count > 1 {
         text_buffer_reset(*mini_panel.buffer);
-        text_buffer_insert(*mini_panel.buffer, mini_panel.items[mini_panel.item_index].text);
+        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, mini_panel.items[mini_panel.item_index].text);
 
         return true;
     }
