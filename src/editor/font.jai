@@ -43,7 +43,7 @@ Font :: struct {
     line_height: s64;
 
     //
-    // Scaled metrics for currently set pixel_height in floating point pixels.
+    // Scaled metrics for currently set pixel_height in pixels.
     //
 
     line_height_in_pixels: f32;
@@ -96,7 +96,8 @@ Glyph_Entry :: struct {
     // version, if present), so just in case, they are here.
     //
 
-    glyph_advance: s32;        // In 26:6 pixels.
+    // hole: u32
+    glyph_advance: s64;        // In 26:6 pixels.
     glyph_offset_x: s32;       // In integer pixels.
     glyph_offset_y: s32;       // In integer pixels.
     glyph_bitmap_width: s32;   // In integer pixels.
@@ -389,7 +390,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
         glyph_index := FT_Get_Char_Index(ft_face, it);
 
         // These get filled in one of the branches below. Either we compute them, or we get them from the cache.
-        glyph_advance: s32;       // In 26:6 pixels.
+        glyph_advance: s64;       // In 26:6 pixels.
         glyph_offset_x: s32;      // In integer pixels.
         glyph_offset_y: s32;      // In integer pixels.
         glyph_bitmap_width: s32;  // In integer pixels.
@@ -458,7 +459,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
 
             // On Unix, FT_Pos is defined as s64, even if they only utilize only 32 bits. This is
             // probably some C long long thing.
-            entry.glyph_advance       = cast(s32, glyph_metrics.horiAdvance);
+            entry.glyph_advance       = glyph_metrics.horiAdvance;
             entry.glyph_offset_x      = glyph.bitmap_left;
             entry.glyph_offset_y      = -glyph.bitmap_top; // Vertical flip
             entry.glyph_bitmap_width  = cast(s32, glyph_bitmap.width);
