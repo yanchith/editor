@@ -2352,7 +2352,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     update_parenthesized_scopes(document);
 
                     level := find_indentation_level(document, panel.cursor0);
-                    buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
+                    buffer_changed |= text_buffer_indent_line(*document.buffer, *panel.cursor0, *panel.cursor1, level, .FUSE);
                 }
                 cursor_moved |= text_buffer_move_cursor_y(document.buffer, *panel.cursor0, *panel.cursor1, 1, false);
             }
@@ -2361,7 +2361,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 update_parenthesized_scopes(document);
 
                 level := find_indentation_level(document, panel.cursor0);
-                buffer_changed |= text_buffer_indent_line(*document.buffer, level, .FUSE);
+                buffer_changed |= text_buffer_indent_line(*document.buffer, *panel.cursor0, *panel.cursor1, level, .FUSE);
             }
 
             if should_make_space_for_block {
@@ -2393,7 +2393,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 for y0..y1 {
                     indentation_level := find_indentation_level(document, { 0, it });
                     text_buffer_move_cursor_to(document.buffer, *panel.cursor0, *panel.cursor1, { 0, it }, false);
-                    changed := text_buffer_indent_line(*document.buffer, indentation_level, ifx first then .NONE else .FUSE);
+                    changed := text_buffer_indent_line(*document.buffer, *panel.cursor0, *panel.cursor1, indentation_level, ifx first then .NONE else .FUSE);
 
                     if changed {
                         update_parenthesized_scopes(document);
@@ -2414,8 +2414,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             }
         }
 
-        case .UNDO_EDIT;  buffer_changed |= text_buffer_undo_edit(*document.buffer);
-        case .REDO_EDIT;  buffer_changed |= text_buffer_redo_edit(*document.buffer);
+        case .UNDO_EDIT;  buffer_changed |= text_buffer_undo_edit(*document.buffer, *panel.cursor0, *panel.cursor1);
+        case .REDO_EDIT;  buffer_changed |= text_buffer_redo_edit(*document.buffer, *panel.cursor0, *panel.cursor1);
 
         case .COPY; {
             panel.selecting = false;
