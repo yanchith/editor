@@ -447,7 +447,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
                 error := FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_RENDER | cast(s32, FT_LOAD_TARGET));
 
                 if error {
-                    // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
+                    // Perhaps we could set a per-frame error flag?
                     continue;
                 }
             }
@@ -456,7 +456,8 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
             glyph_metrics := *ft_face.glyph.metrics;
             glyph_bitmap  := *ft_face.glyph.bitmap;
 
-            // On Unix, FT_Pos is defined as s64, even if they only utilize only 32 bits.
+            // On Unix, FT_Pos is defined as s64, even if they only utilize only 32 bits. This is
+            // probably some C long long thing.
             entry.glyph_advance       = cast(s32, glyph_metrics.horiAdvance);
             entry.glyph_offset_x      = glyph.bitmap_left;
             entry.glyph_offset_y      = -glyph.bitmap_top; // Vertical flip
@@ -537,6 +538,40 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
     }
 }
 
+font_compute_line_length :: (font: Font, line_text: string, binary: bool) -> f64 {
+    if binary {
+        return _font_compute_line_length(font, line_text, true);
+    } else {
+        return _font_compute_line_length(font, line_text, false);
+    }
+}
+
+_font_compute_line_length :: (font: Font, line_text: string, $binary: bool) -> f64 {
+    ProfileZone("font_compute_line_length");
+    advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
+
+    ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
+    for :ITERATOR line_text {
+        #if binary {
+            if it < 32 || it >= 127 {
+                it = 0;
+            }
+        }
+
+        error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | cast(s32, FT_LOAD_TARGET));
+        if error {
+            // Perhaps we could set a per-frame error flag?
+            continue;
+        }
+
+        advance += font.ft_face_for_regular.glyph.metrics.horiAdvance;
+    }
+
+    scaled_advance: f64 = cast(f64, advance) * R64;
+
+    return scaled_advance;
+}
+
 font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, binary: bool) -> f64 {
     if binary {
         return _font_compute_position_on_line(font, line_text, character_index, true);
@@ -566,7 +601,7 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
 
         error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | cast(s32, FT_LOAD_TARGET));
         if error {
-            // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
+            // Perhaps we could set a per-frame error flag?
             continue;
         }
 
@@ -608,7 +643,7 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
 
         error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | cast(s32, FT_LOAD_TARGET));
         if error {
-            // Not sure we can do anything here. Perhaps we could set a per-frame error flag?
+            // Perhaps we could set a per-frame error flag?
             continue;
         }
 

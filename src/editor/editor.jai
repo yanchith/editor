@@ -171,7 +171,10 @@ MINI_PANEL_LINE_COLOR      :: #run -> Vector4 { c := adjust_saturation_and_value
 MINI_PANEL_ITEM_TEXT_COLOR :: TEXT_COLOR;
 MINI_PANEL_ITEM_WARNING_TEXT_COLOR :: #run unpack_srgba(0xe95410ff);
 
-PANEL_GUTTER     :: 10.0; // TODO(jt): Make this configurable. :Config
+PANEL_GUTTER_PIXELS          :: 10.0; // TODO(jt): Make this configurable. :Config
+PANEL_SCROLL_PADDING_CELLS_X :: 3;    // TODO(jt): Make this configurable. :Config
+PANEL_SCROLL_PADDING_CELLS_Y :: 3;    // TODO(jt): Make this configurable. :Config
+
 MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 
 Editor :: struct {
@@ -969,27 +972,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             panel      := *editor.panels[panel_index];
             panel_rect := get_panel_rect(editor, panel_index);
+            panel_w    := rect_width(panel_rect);
 
             //
             // Mouse selection scrolling
             //
-            // nocheckin this is not working well yet. Fix!
-            //
             {
-                SCROLL_APRON: f32 :  20.0;
+                SCROLL_ZONE:  f32 :  20.0;
                 SCROLL_SPEED: f64 :  10.0;
                 SCROLL_BOOST: f64 :   5.0;
 
-                left_edge   := panel_rect.x0 + SCROLL_APRON;
-                right_edge  := panel_rect.x1 - SCROLL_APRON;
-                top_edge    := panel_rect.y0 + SCROLL_APRON;
-                bottom_edge := panel_rect.y1 - SCROLL_APRON;
-
-                log("nocheckin mouse: %, left: %, right: %, top: %, bottom: %", mouse, left_edge, right_edge, top_edge, bottom_edge);
+                left_edge   := panel_rect.x0 + SCROLL_ZONE;
+                right_edge  := panel_rect.x1 - SCROLL_ZONE;
+                top_edge    := panel_rect.y0 + SCROLL_ZONE;
+                bottom_edge := panel_rect.y1 - SCROLL_ZONE;
 
                 if mouse.x < left_edge {
                     boost := (left_edge - mouse.x) * SCROLL_BOOST;
-                    log("nocheckin left: %", boost);
 
                     target := panel.scroll_target;
                     target.x -= SCROLL_SPEED * boost * dt;
@@ -999,17 +998,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     wants_next_frame = true;
                 } else if mouse.x > right_edge {
                     boost := (mouse.x - right_edge) * SCROLL_BOOST;
-                    log("nocheckin right: %", boost);
 
-                    // Apron contains the newline (if present) and one additional horizontal cell.
-                    apron := 2 * cell_w;
+                    // Apron contains at least the horizontal space to place the cursor after
+                    // scroll, and optionally the configurable horizontal padding, so that it
+                    // behaves the same as if we scrolled there by moving the cursor with the
+                    // keyboard.
+                    apron := (1 + PANEL_SCROLL_PADDING_CELLS_X) * cell_w + PANEL_GUTTER_PIXELS;
 
                     line_view := text_buffer_make_view_for_line(panel.document.buffer, panel.document.buffer.cursor0.y,, temp);
 
                     // Clamp to zero, so we don't end up scrolling the other way if the line is
                     // short. (Happens if you start scrolling on a long line, but then vertically
                     // scroll to a short line.)
-                    max_x := max(font_compute_position_on_line(editor.font, line_view, panel.document.buffer.cursor0.x, binary = panel.document.buffer.binary_mode) - window_w + apron, 0);
+                    max_x := max(font_compute_line_length(editor.font, line_view, binary = panel.document.buffer.binary_mode) - panel_w + apron, 0);
 
                     target := panel.scroll_target;
                     target.x += SCROLL_SPEED * boost * dt;
@@ -1021,7 +1022,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 if mouse.y < top_edge {
                     boost := (top_edge - mouse.y) * SCROLL_BOOST;
-                    log("nocheckin top: %", boost);
 
                     target := panel.scroll_target;
                     target.y -= SCROLL_SPEED * boost * dt;
@@ -1031,7 +1031,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     wants_next_frame = true;
                 } else if mouse.y > bottom_edge {
                     boost := (mouse.y - bottom_edge) * SCROLL_BOOST;
-                    log("nocheckin bottom: %", boost);
 
                     target := panel.scroll_target;
                     target.y += SCROLL_SPEED * boost * dt;
@@ -1139,12 +1138,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if panel.flags & .CLAMP_SCROLL_TO_CURSOR || panel.flags & .CLAMP_SCROLL_TO_START_OF_LINE || panel.flags & .CLAMP_SCROLL_TO_END_OF_LINE {
             ProfileZone(":ClampScroll");
 
-            SCROLL_PADDING_CELLS_X :: 3; // TODO(jt): Make this configurable. :Config
-            SCROLL_PADDING_CELLS_Y :: 3; // TODO(jt): Make this configurable. :Config
-            scroll_padding_x := min(panel_w * 0.25, cell_w * SCROLL_PADDING_CELLS_X);
-            scroll_padding_y := min(panel_h * 0.25, cell_h * SCROLL_PADDING_CELLS_Y);
+            scroll_padding_x := min(panel_w * 0.25, cell_w * PANEL_SCROLL_PADDING_CELLS_X);
+            scroll_padding_y := min(panel_h * 0.25, cell_h * PANEL_SCROLL_PADDING_CELLS_Y);
 
-            viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
+            viewport_rect := drect_from_point_and_size(panel.scroll_target.x + PANEL_GUTTER_PIXELS, panel.scroll_target.y, panel_content_w, panel_h);
             scroll_to_rect: DRect;
             if panel.flags & .CLAMP_SCROLL_TO_START_OF_LINE {
                 scroll_to_rect = drect_from_point_and_size(0, document_cursor0_position.y, cell_w, cell_h);
@@ -1534,8 +1531,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Draw gutters
         //
-        draw_rect(*render_commands, rect_from_point_and_size(panel_x, panel_y, PANEL_GUTTER, panel_h), GUTTER_COLOR);
-        draw_rect(*render_commands, rect_from_point_and_size(panel_x + PANEL_GUTTER + panel_content_w, panel_y, PANEL_GUTTER, panel_h), GUTTER_COLOR);
+        draw_rect(*render_commands, rect_from_point_and_size(panel_x, panel_y, PANEL_GUTTER_PIXELS, panel_h), GUTTER_COLOR);
+        draw_rect(*render_commands, rect_from_point_and_size(panel_x + PANEL_GUTTER_PIXELS + panel_content_w, panel_y, PANEL_GUTTER_PIXELS, panel_h), GUTTER_COLOR);
 
         {
             // TODO(jt): @Cleanup Reformulate the modeline rect as cutting into the current panel instead of using absolute coordinates.
@@ -1804,16 +1801,16 @@ get_panel_rect :: (editor: Editor, panel_index: s64) -> Rect, content_rect: Rect
     cell_h := editor.font.line_height_in_pixels;
 
     panel_x: f32 = 0.0;
-    panel_content_x: f32 = PANEL_GUTTER;
+    panel_content_x: f32 = PANEL_GUTTER_PIXELS;
     if editor.active_view != .FULL && editor.right_view_panel_index == panel_index {
         panel_x = window_w * 0.5;
-        panel_content_x = window_w * 0.5 + PANEL_GUTTER;
+        panel_content_x = window_w * 0.5 + PANEL_GUTTER_PIXELS;
     }
 
     panel_y: f32 = 0.0;
 
     panel_w         := ifx editor.active_view == .FULL then window_w else window_w * 0.5;
-    panel_content_w := ifx editor.active_view == .FULL then window_w - 2 * PANEL_GUTTER else window_w * 0.5 - 2 * PANEL_GUTTER;
+    panel_content_w := ifx editor.active_view == .FULL then window_w - 2 * PANEL_GUTTER_PIXELS else window_w * 0.5 - 2 * PANEL_GUTTER_PIXELS;
 
     panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
     if editor.mini_panel.open {
