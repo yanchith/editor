@@ -2310,7 +2310,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
         case .DELETE_LINE; {
             panel.selecting = false;
-            text := text_buffer_delete_line(*document.buffer);
+            text := text_buffer_delete_line(*document.buffer, *panel.cursor0, *panel.cursor1);
             if text {
                 buffer_changed = true;
                 platform.set_clipboard_text(text);
@@ -2544,24 +2544,24 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 if opens && !handled {
                     if panel.cursor0 == panel.cursor1 {
                         // TODO(jt): handle balancing?
-                        text_buffer_insert_char(*document.buffer, char, /*.BARRIER*/);
-                        text_buffer_insert_char(*document.buffer, paired_char, .FUSE);
-                        text_buffer_move_cursor_x(*document.buffer, -1, false);
+                        text_buffer_insert_char(*document.buffer, *panel.cursor0, *panel.cursor1, char, /*.BARRIER*/);
+                        text_buffer_insert_char(*document.buffer, *panel.cursor0, *panel.cursor1, paired_char, .FUSE);
+                        text_buffer_move_cursor_x(document.buffer, *panel.cursor0, *panel.cursor1, -1, false);
                         buffer_changed = true;
                         handled = true;
                     } else {
                         // Surrounding selection never cares for unbalanced parentheses
-                        c0 := document.buffer.cursor0;
-                        c1 := document.buffer.cursor1;
+                        c0 := panel.cursor0;
+                        c1 := panel.cursor1;
                         text_location_sort(*c0, *c1);
 
                         join_cursors(panel);
 
-                        text_buffer_move_cursor_to(*document.buffer, c1, false);
-                        text_buffer_insert_char(*document.buffer, paired_char, .BARRIER);
+                        text_buffer_move_cursor_to(document.buffer, *panel.cursor0, *panel.cursor1, c1, false);
+                        text_buffer_insert_char(*document.buffer, *panel.cursor0, *panel.cursor1, paired_char, .BARRIER);
 
-                        text_buffer_move_cursor_to(*document.buffer, c0, false);
-                        text_buffer_insert_char(*document.buffer, char, .FUSE);
+                        text_buffer_move_cursor_to(document.buffer, *panel.cursor0, *panel.cursor1, c0, false);
+                        text_buffer_insert_char(*document.buffer, *panel.cursor0, *panel.cursor1, char, .FUSE);
 
                         buffer_changed = true;
                         handled = true;
@@ -2569,7 +2569,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 }
 
                 if !handled {
-                    buffer_changed |= text_buffer_insert_char(*document.buffer, char);
+                    buffer_changed |= text_buffer_insert_char(*document.buffer, *panel.cursor0, *panel.cursor1, char);
                     panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
                 }
             }
