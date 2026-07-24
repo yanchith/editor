@@ -1569,6 +1569,11 @@ text_buffer_move_cursor_to_next_blank_line :: (buffer: Text_Buffer, c0: *Text_Lo
     return original_cursor != c0.*;
 }
 
+text_buffer_clamp_cursors :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location) {
+    clamp_location(buffer, c0);
+    clamp_location(buffer, c1);
+}
+
 text_buffer_switch_to_binary_mode :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) {
     buffer.binary_mode = true;
 
@@ -1720,6 +1725,7 @@ assert_valid_buffer :: (buffer: Text_Buffer) {
 
     assert(buffer.line_bytes.count > 0, "Text_Buffer not initialized (has to have at least one line). Call text_buffer_init().");
     assert(buffer.line_bytes.count == buffer.line_chars.count, "Line arrays desync");
+    assert(buffer.line_bytes.count == buffer.line_count, "Line count desync");
 
     // This is too expensive to do in shipping builds. We completely recreate the line index from
     // the buffer contents and compare.
@@ -1814,6 +1820,9 @@ assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
     assert(is_line_valid(buffer, line_index));
 }
 
+// nocheckin audit location_valid_for_{reads,writes}. They don't match up with how we clamp the
+// cursor when moving it around. Either fix or explain better.
+
 assert_location_valid_for_reads :: (buffer: Text_Buffer, loc: Text_Location) {
     assert(is_location_valid_for_reads(buffer, loc));
 }
@@ -1823,19 +1832,28 @@ assert_location_valid_for_writes :: (buffer: Text_Buffer, loc: Text_Location) {
 }
 
 is_line_valid :: (buffer: Text_Buffer, line_index: s64) -> bool {
-    return line_index < buffer.line_bytes.count;
+    return line_index < buffer.line_count;
 }
 
 is_location_valid_for_reads :: (buffer: Text_Buffer, loc: Text_Location) -> bool {
     // For reading, the location must not go past the last non-newline character, or past the last
     // character on the last line, where there is no newline at the end.
-    return loc.y >= 0 && loc.y < buffer.line_bytes.count && loc.x >= 0 && loc.x < buffer.line_chars[loc.y];
+    return loc.y >= 0 && loc.y < buffer.line_count && loc.x >= 0 && loc.x < buffer.line_chars[loc.y];
 }
 
 is_location_valid_for_writes :: (buffer: Text_Buffer, loc: Text_Location) -> bool {
     // For writing, the location can go past the last non-newline character, or past the last
     // character on the last line, where there is no newline at the end.
-    return loc.y >= 0 && loc.y < buffer.line_bytes.count && loc.x >= 0 && loc.x <= buffer.line_chars[loc.y];
+    return loc.y >= 0 && loc.y < buffer.line_count && loc.x >= 0 && loc.x <= buffer.line_chars[loc.y];
+}
+
+clamp_location :: (buffer: Text_Buffer, loc: *Text_Location) {
+    loc.y = clamp(loc.y, 0, buffer.line_count - 1);
+    if loc.y == buffer.line_count - 1 {
+        loc.x = clamp(loc.x, 0, buffer.line_chars[loc.y]); // Can go one past the last character on the last line.
+    } else {
+        loc.x = clamp(loc.x, 0, buffer.line_chars[loc.y] - 1); // Nonlast lines must end with newline, so there is always at least one character there.
+    }
 }
 
 // discard_unapplied_edits should be called each time add a new edit, otherwise you get inconsistent

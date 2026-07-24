@@ -1093,6 +1093,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             continue;
         }
 
+        // Because other panels could have edited the same document before this code runs (either or
+        // this frame, if they run before us in the loop, or in the previous frame, if they run
+        // after), we need to make sure the cursors are still valid. We could also be clamping for
+        // each operation, but I am not sure I like that.  -jt, 24 July 2026.
+        text_buffer_clamp_cursors(document.buffer, *panel.cursor0, *panel.cursor1);
+
         panel_rect, panel_content_rect := get_panel_rect(editor, panel_index);
         panel_x := panel_rect.x0;
         panel_y := panel_rect.y0;
