@@ -108,10 +108,10 @@ delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer
 
             dir_path := String.path_strip_filename(buffer_text);
 
-            text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
-            text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, dir_path);
+            text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursors);
+            text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, dir_path);
         } else {
-            text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
+            text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursors);
         }
 
         return true;
@@ -148,11 +148,11 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
 
             recomposed_path := tprint("%%", buffer_path, completion_filename);
 
-            text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
-            text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, recomposed_path);
+            text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursors);
+            text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, recomposed_path);
 
             if platform.file_is_directory(recomposed_path) {
-                text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, "/");
+                text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, "/");
             }
 
             return true;
@@ -201,11 +201,11 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
         recomposed_path := tprint("%%", buffer_path, completion_filename);
 
-        text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
-        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, recomposed_path);
+        text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursors);
+        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, recomposed_path);
 
         if platform.file_is_directory(recomposed_path) {
-            text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, "/");
+            text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, "/");
         }
 
         return true;
@@ -237,8 +237,8 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                         // manner, so we can read from L1.
                         document.backing_file_last_synced_hash = hash_file_contents(file_contents);
 
-                        text_buffer_insert(*document.buffer, *document.cursor0, *document.cursor1, file_contents, .OMIT);
-                        text_buffer_move_cursor_to(document.buffer, *document.cursor0, *document.cursor1, 0, 0, false);
+                        text_buffer_insert(*document.buffer, *document.cursors, file_contents, .OMIT);
+                        text_buffer_move_cursor_to(document.buffer, *document.cursors, 0, 0, false);
 
                         update_parenthesized_scopes(document);
                         update_syntax_highlights(editor, document, platform, input);
