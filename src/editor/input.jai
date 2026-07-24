@@ -2,7 +2,7 @@ Input :: struct {
     time:  Apollo_Time;
     dtime: Apollo_Time;
 
-    // When adding stuff here, see :VolatileEarlyOut
+    // When adding stuff here, see :BatterySaver.
 
     frame_requested_by_editor: bool;
 
