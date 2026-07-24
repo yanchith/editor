@@ -201,13 +201,13 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH; {
             userdata.input_to_search = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
-            text_buffer_reset(*modal_interaction.buffer);
+            text_buffer_delete_all(*modal_interaction.buffer, *modal_interaction.cursor0, *modal_interaction.cursor1);
 
             userdata.state = .INPUT_TO_REPLACE;
         }
         case .INPUT_TO_REPLACE; {
             userdata.input_to_replace = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
-            text_buffer_reset(*modal_interaction.buffer);
+            text_buffer_delete_all(*modal_interaction.buffer, *modal_interaction.cursor0, *modal_interaction.cursor1);
 
             document := active_panel.document;
 

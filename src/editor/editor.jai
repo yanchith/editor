@@ -417,8 +417,9 @@ Mini_Panel :: struct {
     cursor1: Text_Location;
     selecting: bool;
 
-    key_map: Key_Map(Mini_Panel_Action); // Not reset, because all mini panel things basically interact the same.
     buffer: Text_Buffer;
+
+    key_map: Key_Map(Mini_Panel_Action); // Not reset, because all mini panel things basically interact the same.
 
     items_arena: *Arena;
     items: [..] Item;
@@ -2628,8 +2629,9 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     mini_panel.cursor1 = { 0, 0 };
     mini_panel.selecting = false;
 
-    key_map_flush(*mini_panel.key_map);
     text_buffer_reset(*mini_panel.buffer);
+
+    key_map_flush(*mini_panel.key_map);
 
     array_reset(*mini_panel.items);
     arena_reset(mini_panel.items_arena);
