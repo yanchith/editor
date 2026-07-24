@@ -574,25 +574,25 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *T
     return true;
 }
 
-text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
+text_buffer_delete_line :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) -> string {
     ProfileZone("text_buffer_delete_line");
 
-    assert_valid_buffer(buffer);
+    assert_valid(buffer, c0, c1);
 
     // This used to just delegate work to text_buffer_delete_selection, but it had to make a
     // (potentially large) temp view to check how much to delete. It also generated weird undo
     // display cursors. So now we do everything in here, with just an occasional, tiny temp view.
 
-    line_end := text_buffer_get_end_of_line(buffer, buffer.cursor0.y);
+    line_end := text_buffer_get_end_of_line(buffer, c0.y);
 
-    start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, buffer.cursor0);
+    start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, c0);
     end_gb_index   := text_buffer_get_gap_buffer_index_for_location(buffer, line_end);
     delete_count   := end_gb_index - start_gb_index;
 
     is_only_newline := false;
 
     if delete_count == 0 {
-        line_end     = text_buffer_get_end_of_line(buffer, buffer.cursor0.y, include_newline = true);
+        line_end     = text_buffer_get_end_of_line(buffer, c0.y, include_newline = true);
         end_gb_index = text_buffer_get_gap_buffer_index_for_location(buffer, line_end);
         delete_count = end_gb_index - start_gb_index;
         sanity_assert(delete_count <= 2);
@@ -652,20 +652,20 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = start_gb_index;
     edit.gb_index_after = start_gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-    edit.cursor0_for_edit_before = buffer.cursor0;
-    edit.cursor0_for_edit_after = buffer.cursor0;
-    edit.cursor0_for_display_before = buffer.cursor0;
-    edit.cursor0_for_display_after = buffer.cursor0;
-    edit.cursor1_for_display_before = buffer.cursor1;
-    edit.cursor1_for_display_after = buffer.cursor0;
+    edit.cursor0_for_edit_before = c0.*;
+    edit.cursor0_for_edit_after = c0.*;
+    edit.cursor0_for_display_before = c0.*;
+    edit.cursor0_for_display_after = c0.*;
+    edit.cursor1_for_display_before = c1.*;
+    edit.cursor1_for_display_after = c0.*;
 
     buffer.applied_edit_count = buffer.edits.count;
 
-    update_index_for_delete_forward(buffer, deleted);
+    update_index_for_delete_forward(buffer, c0, deleted);
 
-    buffer.cursor1 = buffer.cursor0;
+    c1.* = c0.*;
 
-    assert_valid_buffer(buffer);
+    assert_valid(buffer, c0, c1);
 
     return deleted;
 }
@@ -673,7 +673,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer) -> string {
 text_buffer_indent_line :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location, indentation_level: s64, undo_modifier: Undo_Modifier_For_Indent = .NONE) -> changed: bool {
     ProfileZone("text_buffer_indent_line");
 
-    assert_valid_buffer(buffer);
+    assert_valid(buffer, c0, c1);
 
     indentation_level = max(indentation_level, 0);
 
