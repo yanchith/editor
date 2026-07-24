@@ -93,7 +93,7 @@ delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer
 
     gb := mini_panel.buffer.gb;
     if gb.count {
-        text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
+        text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursors);
         return true;
     }
 
@@ -110,13 +110,13 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
     // TODO(jt): The reset also nukes the edit history of the mini panel buffer... maybe
     // we don't want that?
     if mini_panel.items.count == 1 {
-        text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
-        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, mini_panel.items[0].text);
+        text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursors);
+        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, mini_panel.items[0].text);
 
         return true;
     } else if mini_panel.items.count > 1 {
-        text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
-        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, mini_panel.items[mini_panel.item_index].text);
+        text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursors);
+        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, mini_panel.items[mini_panel.item_index].text);
 
         return true;
     }
