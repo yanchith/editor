@@ -1,4 +1,5 @@
 #import "Compiler";
+#import "Basic";
 #import "File";
 
 Check    :: #import "Check";
@@ -12,21 +13,27 @@ build :: () {
     do_check   := true;
 
     for get_toplevel_command_line() {
-        if it == "-o"                is_optimized_build = true;
-        if it == "-optimized"        is_optimized_build = true;
-        if it == "-od"               is_optimized_build = true;
-        if it == "-optimized_debug"  is_optimized_build = true;
-        if it == "-llvm"             is_optimized_build = false;
-        if it == "-x64"              is_optimized_build = false;
+        if it == {
+            case "-o";                is_optimized_build = true;
+            case "-optimized";        is_optimized_build = true;
+            case "-od";               is_optimized_build = true;
+            case "-optimized_debug";  is_optimized_build = true;
+        }
     }
 
     for get_build_options().compile_time_command_line {
-        if it == "-profile"     do_profile = true;
-        if it == "-no-profile"  do_profile = false;
-        if it == "-sanity"      do_sanity = true;
-        if it == "-no-sanity"   do_sanity = false;
-        if it == "-check"       do_check = true;
-        if it == "-no-check"    do_check = false;
+        if it == {
+            case "-profile";     do_profile = true;
+            case "-no-profile";  do_profile = false;
+            case "-sanity";      do_sanity = true;
+            case "-no-sanity";   do_sanity = false;
+            case "-check";       do_check = true;
+            case "-no-check";    do_check = false;
+            case; {
+                log_error("Unknown argument '%'.\nExiting.", it);
+                exit(1);
+            }
+        }
     }
 
     make_directory_if_it_does_not_exist("build");
