@@ -749,7 +749,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // out just before submitting stuff to the GPU, but we could take this further and early out
     // during the panel processing loop, etc.
     //
-    // :VolatileEarlyOut
+    // :BatterySaver
     //
     // Note that this is volatile and sensitive to changes in other parts of the code. For instance,
     // we we add a new type of input, we also have to check here to see if it should cause us to
@@ -1022,6 +1022,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     target.x = max(target.x, 0);
                     setup_instant_scroll_interpolation(panel, target);
 
+                    wants_this_frame = true;
                     wants_next_frame = true;
                 } else if mouse.x > right_edge {
                     boost := (mouse.x - right_edge) * SCROLL_BOOST;
@@ -1044,6 +1045,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     target.x = min(target.x, max_x);
                     setup_instant_scroll_interpolation(panel, target);
 
+                    wants_this_frame = true;
                     wants_next_frame = true;
                 }
 
@@ -1055,6 +1057,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     target.y = max(target.y, 0);
                     setup_instant_scroll_interpolation(panel, target);
 
+                    wants_this_frame = true;
                     wants_next_frame = true;
                 } else if mouse.y > bottom_edge {
                     boost := (mouse.y - bottom_edge) * SCROLL_BOOST;
@@ -1064,6 +1067,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     target.y = min(target.y, cell_h * cast(f64, panel.document.buffer.line_bytes.count - 1));
                     setup_instant_scroll_interpolation(panel, target);
 
+                    wants_this_frame = true;
                     wants_next_frame = true;
                 }
             }
@@ -1111,6 +1115,13 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if !document {
             // TODO(jt): Draw something in empty panels?
             continue;
+        }
+
+        defer {
+            // Clearing is deferred, because we are thinking of doing early return in this loop.
+            // See :BatterySaver.
+            clear_transient_document_flags(*document.flags);
+            clear_transient_panel_flags(*panel.flags);
         }
 
         // Because other panels could have edited the same document before this code runs (either or
@@ -1230,6 +1241,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             if t < 1.0 {
+                wants_this_frame = true;
                 wants_next_frame = true;
             }
         }
@@ -1466,6 +1478,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             anim_t = smoothstep(0.0, 1.0, anim_t);
 
             if flash_t < 1.0 || anim_t < 1.0 {
+                wants_this_frame = true;
                 wants_next_frame = true;
             }
 
@@ -1497,6 +1510,18 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 draw_rect(*render_commands, cursor_rect, ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else panel.cursor_flash);
             }
         }
+
+        // TODO(jt): @Speed This is an opportune spot to skip work, if we are not going to be
+        // presenting this frame. However, we can't easily prove that the next iteration won't set
+        // wants_this_frame to true, leading to bad rendering. (Currently, it doesn't happen only by
+        // happy accident.) Maybe we could split this loop into two?
+        //
+        // When this code is enabled, both the Windows (TM) Task Manager and my ears report that the
+        // computer is doing less work. We should think about a robust way of doing this. See :BatterySaver.
+        //
+        // if !wants_this_frame {
+        //     continue;
+        // }
 
         //
         // Layout and draw document text
@@ -1590,9 +1615,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             s := tprint(" % % (%,%)", temp_right_pad(document_name, 15), percent_string, cursor.y + 1, cursor.x);
             _font_layout_and_draw_text(*editor.font, s, *render_commands, *update_regions, modeline_offset, modeline_rect, TEXT_COLOR, .[], binary = false);
         }
-
-        clear_transient_document_flags(*document.flags);
-        clear_transient_panel_flags(*panel.flags);
     }
 
     // Reset scissor for the rest of the drawing.
@@ -1760,8 +1782,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     if editor.font.glyph_cache_overrun {
         log_error("Glyph cache was overrun this frame. Rendering is going to be incorrect. Increase the size of the glyph cache, if this happens.");
     }
-
-    wants_this_frame |= wants_next_frame; // Running animations imply we also want to render the current frame.
 
     if wants_this_frame {
         update_region := irect_union_or_zero(update_regions);

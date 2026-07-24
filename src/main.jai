@@ -56,7 +56,8 @@ Vector4 :: Editor.Vector4;
 IRect   :: Editor.IRect;
 
 // The slow frame is more than 16.66, because it includes waiting for V-sync. Maybe we can do
-// something smart to exclude that once we switch away from OpenGL.
+// something smart to exclude that once we switch away from OpenGL. We definitely want to do less
+// laggy present modes, if possible.
 SLOW_FRAME_THRESHOLD_MILLIS :: 18;
 SLOW_INIT_THRESHOLD_MILLIS  :: 200;
 
