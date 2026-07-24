@@ -212,6 +212,8 @@ Editor :: struct {
     messages: [..] string;
     last_message_seen: bool;
 
+    is_first_frame: bool;
+
     dev_view: Dev_View;
 
     Dev_View :: enum u8 {
@@ -728,6 +730,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
             editor.font.glyph_atlas_height_in_pixels,
         );
     }
+
+    editor.is_first_frame = true;
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_next_frame: bool {
@@ -741,6 +745,26 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         dt = USUAL_DELTA_TIME;
     }
 
+    // With wants_this_frame we control whether early out to save battery/fans. Currently, we early
+    // out just before submitting stuff to the GPU, but we could take this further and early out
+    // during the panel processing loop, etc.
+    //
+    // :VolatileEarlyOut
+    //
+    // Note that this is volatile and sensitive to changes in other parts of the code. For instance,
+    // we we add a new type of input, we also have to check here to see if it should cause us to
+    // always render the frame.
+    //
+    // TODO(jt): Windows still reports a very high power usage if we just move the mouse around. Can
+    // we do something better?
+    wants_this_frame :=
+        editor.is_first_frame ||
+        input.window_size != editor.input_state.window_size ||
+        // TODO(jt): input.window_scale_factor != editor.input_state.window_scale_factor ||
+        input.frame_requested_by_editor ||
+        input.mouse_wheel_delta != 0 ||
+        input.watched_directory_changes.count > 0 ||
+        input.events.count > 0;
     wants_next_frame := false;
 
     render_commands: [..] Render_Command;
@@ -1737,25 +1761,31 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         log_error("Glyph cache was overrun this frame. Rendering is going to be incorrect. Increase the size of the glyph cache, if this happens.");
     }
 
-    update_region := irect_union_or_zero(update_regions);
+    wants_this_frame |= wants_next_frame; // Running animations imply we also want to render the current frame.
 
-    // TODO(jt): @Speed OpenGL is doing some kind of synchronization here. Depending on whether
-    // update_texture does early return (because the update region is empty), either it or
-    // draw_rects blocks for about 10-15ms, but at least one of them does. We should probably just
-    // switch to our own rendering backend (raw Vulkan/Metal, WGPU or SGPU) and tune it for latency.
-    #if FONT_SUBPIXEL {
-        atlas: [] u8;
-        atlas.count = editor.font.glyph_atlas.count * 4;
-        atlas.data  = cast(*u8, editor.font.glyph_atlas.data);
+    if wants_this_frame {
+        update_region := irect_union_or_zero(update_regions);
 
-        renderer.update_texture_rgba8unorm(TEXTURE_ID_GLYPH_ATLAS, atlas, update_region);
-    } else {
-        renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, update_region);
+        // TODO(jt): @Speed OpenGL is doing some kind of synchronization here. Depending on whether
+        // update_texture does early return (because the update region is empty), either it or
+        // draw_rects blocks for about 10-15ms, but at least one of them does. We should probably just
+        // switch to our own rendering backend (raw Vulkan/Metal, WGPU or SGPU) and tune it for latency.
+        #if FONT_SUBPIXEL {
+            atlas: [] u8;
+            atlas.count = editor.font.glyph_atlas.count * 4;
+            atlas.data  = cast(*u8, editor.font.glyph_atlas.data);
+
+            renderer.update_texture_rgba8unorm(TEXTURE_ID_GLYPH_ATLAS, atlas, update_region);
+        } else {
+            renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, update_region);
+        }
+
+        renderer.begin_frame(BACKGROUND_COLOR);
+        renderer.draw(render_commands);
+        renderer.submit_frame();
     }
 
-    renderer.begin_frame(BACKGROUND_COLOR);
-    renderer.draw(render_commands);
-    renderer.submit_frame();
+    editor.is_first_frame = false;
 
     return wants_next_frame;
 }
