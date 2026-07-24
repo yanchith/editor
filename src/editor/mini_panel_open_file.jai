@@ -108,7 +108,7 @@ delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer
 
             dir_path := String.path_strip_filename(buffer_text);
 
-            text_buffer_reset(*mini_panel.buffer);
+            text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
             text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, dir_path);
         } else {
             text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
@@ -148,23 +148,7 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
 
             recomposed_path := tprint("%%", buffer_path, completion_filename);
 
-            /* nocheckin
-c:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1831,5: Assertion failed!
-
-Stack trace:
-C:/Users/yanchith/workspace/jai/modules/Runtime_Support.jai:103: runtime_support_assertion_failed
-C:/Users/yanchith/workspace/jai/modules/Basic/module.jai:86: assert_helper
-c:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1831: assert_location_valid_for_writes
-c:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1718: assert_valid_cursors
-c:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1714: assert_valid
-c:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:218: text_buffer_insert
-c:/Users/yanchith/workspace/editor/src/editor/mini_panel_open_file.jai:152: autocomplete
-c:/Users/yanchith/workspace/editor/src/editor/editor.jai:2021: route_event_to_mini_panel
-c:/Users/yanchith/workspace/editor/src/editor/editor.jai:845: update_and_render
-c:/Users/yanchith/workspace/editor/src/main.jai:698: main
-*/
-
-            text_buffer_reset(*mini_panel.buffer);
+            text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
             text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, recomposed_path);
 
             if platform.file_is_directory(recomposed_path) {
@@ -217,7 +201,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
         recomposed_path := tprint("%%", buffer_path, completion_filename);
 
-        text_buffer_reset(*mini_panel.buffer);
+        text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
         text_buffer_insert(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1, recomposed_path);
 
         if platform.file_is_directory(recomposed_path) {

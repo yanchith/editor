@@ -302,7 +302,8 @@ text_buffer_delete_all :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_L
     c0.* = { 0, 0 };
     c1.* = { 0, 0 };
 
-    return view;}
+    return view;
+}
 
 text_buffer_delete_selection :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) -> /* Pointing to the internal gap buffer */ string {
     ProfileZone("text_buffer_delete_selection");
