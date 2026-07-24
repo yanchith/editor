@@ -41,7 +41,7 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
     }
 
     userdata := arena_push(editor.mini_panel.userdata_arena, Search_Userdata);
-    userdata.original_cursor0 = active_panel.cursor0;
+    userdata.original_cursor0 = active_panel.cursors.c0;
     mini_panel.userdata = userdata;
 }
 
@@ -70,7 +70,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             array_reset_keeping_memory(*active_panel.highlights);
             active_panel.highlight_index = -1;
 
-            old_cursor_y   := active_panel.cursor0.y;
+            old_cursor_y   := active_panel.cursors.c0.y;
             new_item_index := -1;
 
             search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
@@ -170,7 +170,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             x := userdata.cursor.x;
             y := userdata.cursor.y;
 
-            text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursor0, *active_panel.cursor1, x, y, false);
+            text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursors, x, y, false);
 
             active_panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }
@@ -186,7 +186,7 @@ delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer
 
     gb := mini_panel.buffer.gb;
     if gb.count {
-        text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursor0, *mini_panel.cursor1);
+        text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursors);
         return true;
     }
 
@@ -219,7 +219,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
             x := userdata.cursor.x;
             y := userdata.cursor.y;
 
-            text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursor0, *active_panel.cursor1, x, y, false);
+            text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursors, x, y, false);
 
             active_panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }
@@ -257,7 +257,7 @@ cancel :: (editor: *Editor, platform: Platform, input: Input) {
         y := userdata.original_cursor0.y;
 
         if active_panel.document {
-            text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursor0, *active_panel.cursor1, x, y, active_panel.selecting);
+            text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursors, x, y, active_panel.selecting);
         }
 
         active_panel.flags |= .CLAMP_SCROLL_TO_CURSOR;

@@ -42,6 +42,15 @@ Text_Buffer :: struct {
     binary_mode: bool;
 }
 
+Text_Cursors :: struct {
+    c0: Text_Location;
+    c1: Text_Location;
+}
+
+text_cursors_join :: (cursors: *Text_Cursors) {
+    cursors.c1 = cursors.c0;
+}
+
 Text_Location :: struct {
     x: s64;
     y: s64;
@@ -196,26 +205,26 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
     assert_valid_buffer(buffer);
 }
 
-text_buffer_insert_char :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location, char: u32, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
+text_buffer_insert_char :: (buffer: *Text_Buffer, cursors: *Text_Cursors, char: u32, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
     buf: [4] u8;
     s: string;
     s.data = buf.data;
     Unicode.character_utf32_to_utf8(char, *s);
 
-    return text_buffer_insert(buffer, c0, c1, s, undo_modifier);
+    return text_buffer_insert(buffer, cursors, s, undo_modifier);
 }
 
-text_buffer_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location, bytes: [] u8, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
-    /*inline?*/ return text_buffer_insert(buffer, c0, c1, cast(string, bytes), undo_modifier);
+text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, bytes: [] u8, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
+    /*inline?*/ return text_buffer_insert(buffer, cursors, cast(string, bytes), undo_modifier);
 }
 
 // TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
 // switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so we would
 // supply .REVERT, etc.
-text_buffer_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location, text: string, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
+text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: string, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
     ProfileZone("text_buffer_insert");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     if text.count == 0 {
         return false;
@@ -223,16 +232,16 @@ text_buffer_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Locat
 
     insert_caused_delete_selection := false;
 
-    if c0.* != c1.* {
-        text_buffer_delete_selection(buffer, c0, c1);
-        assert(c0.* == c1.*);
+    if cursors.c0 != cursors.c1 {
+        text_buffer_delete_selection(buffer, cursors);
+        assert(cursors.c0 == cursors.c1);
 
         insert_caused_delete_selection = true;
 
         // Fallthrough!
     }
 
-    gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, c0);
+    gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     gap_buffer_insert(*buffer.gb, text);
 
@@ -258,9 +267,9 @@ text_buffer_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Locat
         edit.gb_index_before = gb_index;
         edit.gb_index_after = gb_index + text.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
         // The after cursors are set, well after.
-        edit.cursor0_for_edit_before = c0.*;
-        edit.cursor0_for_display_before = c0.*;
-        edit.cursor1_for_display_before = c1.*;
+        edit.cursor0_for_edit_before = cursors.c0;
+        edit.cursor0_for_display_before = cursors.c0;
+        edit.cursor1_for_display_before = cursors.c1;
 
         // The caller does not know whether we already have something in our undo buffer, so let's
         // only do the fusing if there already is something present there.
@@ -278,40 +287,42 @@ text_buffer_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Locat
         buffer.applied_edit_count = buffer.edits.count;
     }
 
-    update_index_for_insert(buffer, c0, c1, text);
+    update_index_for_insert(buffer, cursors, text);
 
     if undo_modifier != .OMIT {
-        edit.cursor0_for_edit_after = c0.*;
-        edit.cursor0_for_display_after = c0.*;
-        edit.cursor1_for_display_after = c0.*;
+        edit.cursor0_for_edit_after = cursors.c0;
+        edit.cursor0_for_display_after = cursors.c0;
+        edit.cursor1_for_display_after = cursors.c0;
     }
 
-    c1.* = c0.*;
+    cursors.c1 = cursors.c0;
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     return true;
 }
 
-text_buffer_delete_all :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) -> /* Pointing to the internal gap buffer */ string {
+text_buffer_delete_all :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
     start := text_buffer_get_start(buffer);
     end   := text_buffer_get_end(buffer);
 
-    view := /*inline?*/ text_buffer_delete_selection(buffer, *start, *end);
+    c: Text_Cursors = { start, end };
 
-    c0.* = { 0, 0 };
-    c1.* = { 0, 0 };
+    view := /*inline?*/ text_buffer_delete_selection(buffer, *c);
+
+    cursors.c0 = { 0, 0 };
+    cursors.c1 = { 0, 0 };
 
     return view;
 }
 
-text_buffer_delete_selection :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) -> /* Pointing to the internal gap buffer */ string {
+text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
     ProfileZone("text_buffer_delete_selection");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    _start := c0.*;
-    _end   := c1.*;
+    _start := cursors.c0;
+    _end   := cursors.c1;
 
     if _start == _end {
         return "";
@@ -332,8 +343,8 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *
     // gap_buffer clamps, but we should have calculated the indices correctly in this case.
     sanity_assert(deleted_bytes.count == delete_count);
 
-    c0.* = start;
-    c1.* = start;
+    cursors.c0 = start;
+    cursors.c1 = start;
 
     discard_unapplied_edits(buffer);
 
@@ -354,28 +365,28 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *
 
     buffer.applied_edit_count = buffer.edits.count;
 
-    update_index_for_delete_forward(buffer, c0, deleted);
+    update_index_for_delete_forward(buffer, cursors, deleted);
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     return deleted;
 }
 
 // TODO(jt): @Cleanup Take a parameter to specify the count to delete. Do delete in batch, like
 // text_buffer_delete_selection does. There's also an update index function we can call.
-text_buffer_delete_forward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) -> changed: bool {
+text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> changed: bool {
     ProfileZone("text_buffer_delete_forward");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    if c0.* != c1.* {
-        deleted := text_buffer_delete_selection(buffer, c0, c1);
-        assert(c0.* == c1.*);
+    if cursors.c0 != cursors.c1 {
+        deleted := text_buffer_delete_selection(buffer, cursors);
+        assert(cursors.c0 == cursors.c1);
 
         return deleted.count > 0;
     }
 
-    gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, c0);
+    gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
 
     bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
@@ -385,17 +396,17 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Te
 
     newline_advance := string_starts_with_newline(bytes, binary = buffer.binary_mode);
     if newline_advance {
-        assert(c0.y < buffer.line_chars.count - 1);              // The last line can't have a newline.
-        assert(c0.x == buffer.line_chars[c0.y] - 1); // The newline has to be the last char.
+        assert(cursors.c0.y < buffer.line_chars.count - 1);          // The last line can't have a newline.
+        assert(cursors.c0.x == buffer.line_chars[cursors.c0.y] - 1); // The newline has to be the last char.
 
         // We treat \r\n as one character, if it happens to be in there.
-        buffer.line_chars[c0.y] -= 1;
-        buffer.line_bytes[c0.y] -= newline_advance;
+        buffer.line_chars[cursors.c0.y] -= 1;
+        buffer.line_bytes[cursors.c0.y] -= newline_advance;
 
-        buffer.line_chars[c0.y] += buffer.line_chars[c0.y + 1];
-        buffer.line_bytes[c0.y] += buffer.line_bytes[c0.y + 1];
+        buffer.line_chars[cursors.c0.y] += buffer.line_chars[cursors.c0.y + 1];
+        buffer.line_bytes[cursors.c0.y] += buffer.line_bytes[cursors.c0.y + 1];
 
-        remove_line(buffer, c0.y + 1);
+        remove_line(buffer, cursors.c0.y + 1);
 
         deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
         assert(newline_advance == deleted.count);
@@ -412,12 +423,12 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Te
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
         edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-        edit.cursor0_for_edit_before = c0.*;
-        edit.cursor0_for_edit_after = c0.*;
-        edit.cursor0_for_display_before = c0.*;
-        edit.cursor0_for_display_after = c0.*;
-        edit.cursor1_for_display_before = c0.*;
-        edit.cursor1_for_display_after = c0.*;
+        edit.cursor0_for_edit_before = cursors.c0;
+        edit.cursor0_for_edit_after = cursors.c0;
+        edit.cursor0_for_display_before = cursors.c0;
+        edit.cursor0_for_display_after = cursors.c0;
+        edit.cursor1_for_display_before = cursors.c0;
+        edit.cursor1_for_display_after = cursors.c0;
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
@@ -427,8 +438,8 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Te
         }
 
         if codepoint_advance {
-            buffer.line_chars[c0.y] -= 1;
-            buffer.line_bytes[c0.y] -= codepoint_advance;
+            buffer.line_chars[cursors.c0.y] -= 1;
+            buffer.line_bytes[cursors.c0.y] -= codepoint_advance;
 
             deleted := gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
             assert(codepoint_advance == deleted.count);
@@ -445,39 +456,39 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Te
             edit.text_mark = arena_get_mark(buffer.edit_text_arena);
             edit.gb_index_before = gb_index;
             edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-            edit.cursor0_for_edit_before = c0.*;
-            edit.cursor0_for_edit_after = c0.*;
-            edit.cursor0_for_display_before = c0.*;
-            edit.cursor0_for_display_after = c0.*;
-            edit.cursor1_for_display_before = c0.*;
-            edit.cursor1_for_display_after = c0.*;
+            edit.cursor0_for_edit_before = cursors.c0;
+            edit.cursor0_for_edit_after = cursors.c0;
+            edit.cursor0_for_display_before = cursors.c0;
+            edit.cursor0_for_display_after = cursors.c0;
+            edit.cursor1_for_display_before = cursors.c0;
+            edit.cursor1_for_display_after = cursors.c0;
 
             buffer.applied_edit_count = buffer.edits.count;
         }
     }
 
-    c1.* = c0.*;
+    cursors.c1 = cursors.c0;
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     return true;
 }
 
 // TODO(jt): @Cleanup Take a second parameter to specify the count to delete. Do delete in batch, like
 // text_buffer_delete_selection does. There's also an update index function we can call.
-text_buffer_delete_backward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) -> changed: bool {
+text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> changed: bool {
     ProfileZone("text_buffer_delete_backward");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    if c0.* != c1.* {
-        deleted := text_buffer_delete_selection(buffer, c0, c1);
-        assert(c0.* == c1.*);
+    if cursors.c0 != cursors.c1 {
+        deleted := text_buffer_delete_selection(buffer, cursors);
+        assert(cursors.c0 == cursors.c1);
 
         return deleted.count > 0;
     }
 
-    gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, c0);
+    gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
 
     bytes := gap_buffer_get_bytes_before_gap(buffer.gb);
@@ -487,23 +498,23 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *T
 
     newline_advance := string_ends_with_newline(bytes, binary = buffer.binary_mode);
     if newline_advance {
-        assert(c0.x == 0);
-        assert(c0.y > 0);
+        assert(cursors.c0.x == 0);
+        assert(cursors.c0.y > 0);
 
-        new_cursor_x := buffer.line_chars[c0.y - 1] - 1;
+        new_cursor_x := buffer.line_chars[cursors.c0.y - 1] - 1;
 
-        buffer.line_chars[c0.y - 1] -= 1;
-        buffer.line_bytes[c0.y - 1] -= newline_advance;
+        buffer.line_chars[cursors.c0.y - 1] -= 1;
+        buffer.line_bytes[cursors.c0.y - 1] -= newline_advance;
 
-        buffer.line_chars[c0.y - 1] += buffer.line_chars[c0.y];
-        buffer.line_bytes[c0.y - 1] += buffer.line_bytes[c0.y];
+        buffer.line_chars[cursors.c0.y - 1] += buffer.line_chars[cursors.c0.y];
+        buffer.line_bytes[cursors.c0.y - 1] += buffer.line_bytes[cursors.c0.y];
 
-        remove_line(buffer, c0.y);
+        remove_line(buffer, cursors.c0.y);
 
-        old_cursor := c0.*;
+        old_cursor := cursors.c0;
 
-        c0.x = new_cursor_x;
-        c0.y -= 1;
+        cursors.c0.x = new_cursor_x;
+        cursors.c0.y -= 1;
 
         deleted := gap_buffer_delete_backward(*buffer.gb, newline_advance);
         assert(newline_advance == deleted.count);
@@ -521,11 +532,11 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *T
         edit.gb_index_before = gb_index;
         edit.gb_index_after = gb_index - deleted.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
         edit.cursor0_for_edit_before = old_cursor;
-        edit.cursor0_for_edit_after = c0.*;
+        edit.cursor0_for_edit_after = cursors.c0;
         edit.cursor0_for_display_before = old_cursor;
-        edit.cursor0_for_display_after = c0.*;
+        edit.cursor0_for_display_after = cursors.c0;
         edit.cursor1_for_display_before = old_cursor;
-        edit.cursor1_for_display_after = c0.*;
+        edit.cursor1_for_display_after = cursors.c0;
 
         buffer.applied_edit_count = buffer.edits.count;
     } else {
@@ -535,12 +546,12 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *T
         }
 
         if codepoint_advance {
-            buffer.line_chars[c0.y] -= 1;
-            buffer.line_bytes[c0.y] -= codepoint_advance;
+            buffer.line_chars[cursors.c0.y] -= 1;
+            buffer.line_bytes[cursors.c0.y] -= codepoint_advance;
 
-            old_cursor := c0.*;
+            old_cursor := cursors.c0;
 
-            c0.x -= 1;
+            cursors.c0.x -= 1;
 
             deleted := gap_buffer_delete_backward(*buffer.gb, codepoint_advance);
             assert(codepoint_advance == deleted.count);
@@ -558,42 +569,42 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *T
             edit.gb_index_before = gb_index;
             edit.gb_index_after = gb_index - deleted.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
             edit.cursor0_for_edit_before = old_cursor;
-            edit.cursor0_for_edit_after = c0.*;
+            edit.cursor0_for_edit_after = cursors.c0;
             edit.cursor0_for_display_before = old_cursor;
-            edit.cursor0_for_display_after = c0.*;
+            edit.cursor0_for_display_after = cursors.c0;
             edit.cursor1_for_display_before = old_cursor;
-            edit.cursor1_for_display_after = c0.*;
+            edit.cursor1_for_display_after = cursors.c0;
 
             buffer.applied_edit_count = buffer.edits.count;
         }
     }
 
-    c1.* = c0.*;
+    cursors.c1 = cursors.c0;
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     return true;
 }
 
-text_buffer_delete_line :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) -> string {
+text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> string {
     ProfileZone("text_buffer_delete_line");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     // This used to just delegate work to text_buffer_delete_selection, but it had to make a
     // (potentially large) temp view to check how much to delete. It also generated weird undo
     // display cursors. So now we do everything in here, with just an occasional, tiny temp view.
 
-    line_end := text_buffer_get_end_of_line(buffer, c0.y);
+    line_end := text_buffer_get_end_of_line(buffer, cursors.c0.y);
 
-    start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, c0);
+    start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
     end_gb_index   := text_buffer_get_gap_buffer_index_for_location(buffer, line_end);
     delete_count   := end_gb_index - start_gb_index;
 
     is_only_newline := false;
 
     if delete_count == 0 {
-        line_end     = text_buffer_get_end_of_line(buffer, c0.y, include_newline = true);
+        line_end     = text_buffer_get_end_of_line(buffer, cursors.c0.y, include_newline = true);
         end_gb_index = text_buffer_get_gap_buffer_index_for_location(buffer, line_end);
         delete_count = end_gb_index - start_gb_index;
         sanity_assert(delete_count <= 2);
@@ -653,28 +664,28 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = start_gb_index;
     edit.gb_index_after = start_gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-    edit.cursor0_for_edit_before = c0.*;
-    edit.cursor0_for_edit_after = c0.*;
-    edit.cursor0_for_display_before = c0.*;
-    edit.cursor0_for_display_after = c0.*;
-    edit.cursor1_for_display_before = c1.*;
-    edit.cursor1_for_display_after = c0.*;
+    edit.cursor0_for_edit_before = cursors.c0;
+    edit.cursor0_for_edit_after = cursors.c0;
+    edit.cursor0_for_display_before = cursors.c0;
+    edit.cursor0_for_display_after = cursors.c0;
+    edit.cursor1_for_display_before = cursors.c1;
+    edit.cursor1_for_display_after = cursors.c0;
 
     buffer.applied_edit_count = buffer.edits.count;
 
-    update_index_for_delete_forward(buffer, c0, deleted);
+    update_index_for_delete_forward(buffer, cursors, deleted);
 
-    c1.* = c0.*;
+    cursors.c1 = cursors.c0;
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     return deleted;
 }
 
-text_buffer_indent_line :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location, indentation_level: s64, undo_modifier: Undo_Modifier_For_Indent = .NONE) -> changed: bool {
+text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indentation_level: s64, undo_modifier: Undo_Modifier_For_Indent = .NONE) -> changed: bool {
     ProfileZone("text_buffer_indent_line");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     indentation_level = max(indentation_level, 0);
 
@@ -682,13 +693,13 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
     // but that part could be improved.
     INDENTATION_VALUE: u8 : #char " ";
 
-    original_cursor0 := c0.*;
-    original_cursor1 := c1.*;
+    original_cursor0 := cursors.c0;
+    original_cursor1 := cursors.c1;
 
-    line_gb_index := text_buffer_get_gap_buffer_index_for_line(buffer, c0.y);
+    line_gb_index := text_buffer_get_gap_buffer_index_for_line(buffer, cursors.c0.y);
 
     line_start := line_gb_index;
-    line_end   := line_gb_index + buffer.line_bytes[c0.y] - 1;
+    line_end   := line_gb_index + buffer.line_bytes[cursors.c0.y] - 1;
 
     // TODO(jt): @Speed SIMDify loop.
     space_count := 0;
@@ -711,8 +722,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
         gap_buffer_delete_backward(*buffer.gb, delete_count);
         gb_index_after := buffer.gb.gap_index;
 
-        buffer.line_bytes[c0.y] -= delete_count;
-        buffer.line_chars[c0.y] -= delete_count;
+        buffer.line_bytes[cursors.c0.y] -= delete_count;
+        buffer.line_chars[cursors.c0.y] -= delete_count;
 
         edit_cursor_before: Text_Location = original_cursor0;
         edit_cursor_before.x = space_count;
@@ -754,8 +765,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
 
         buffer.applied_edit_count = buffer.edits.count;
 
-        c0.* = display_cursor_after;
-        c1.* = display_cursor_after;
+        cursors.c0 = display_cursor_after;
+        cursors.c1 = display_cursor_after;
 
         changed = true;
     } else if indentation_level > space_count {
@@ -767,8 +778,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
         gap_buffer_insert(*buffer.gb, INDENTATION_VALUE, insert_count);
         gb_index_after := buffer.gb.gap_index;
 
-        buffer.line_bytes[c0.y] += insert_count;
-        buffer.line_chars[c0.y] += insert_count;
+        buffer.line_bytes[cursors.c0.y] += insert_count;
+        buffer.line_chars[cursors.c0.y] += insert_count;
 
         edit_cursor_before: Text_Location = original_cursor0;
         edit_cursor_before.x = space_count;
@@ -809,24 +820,24 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
 
         buffer.applied_edit_count = buffer.edits.count;
 
-        c0.* = display_cursor_after;
-        c1.* = display_cursor_after;
+        cursors.c0 = display_cursor_after;
+        cursors.c1 = display_cursor_after;
 
         changed = true;
     } else if is_only_whitespace {
-        c0.x = indentation_level;
-        c1.x = indentation_level;
+        cursors.c0.x = indentation_level;
+        cursors.c1.x = indentation_level;
     }
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     return changed;
 }
 
-text_buffer_undo_edit :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) -> changed: bool {
+text_buffer_undo_edit :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> changed: bool {
     ProfileZone("text_buffer_undo_edit");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     if buffer.applied_edit_count == 0 {
         return false;
@@ -842,7 +853,7 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Lo
         // TODO(jt): @Cleanup The one exception to the above is that switching to binary currently
         // zeroes both cursors, so we also need to pass cursor1 to update for insert. Maybe we
         // should redesign that?
-        c0.* = edit.cursor0_for_edit_after;
+        cursors.c0 = edit.cursor0_for_edit_after;
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_after);
 
         if #complete edit.type == {
@@ -850,7 +861,7 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Lo
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
 
-                update_index_for_delete_backward(buffer, c0, cast(string, deleted_bytes));
+                update_index_for_delete_backward(buffer, cursors, cast(string, deleted_bytes));
             }
 
             case .INSERT_FORWARD_MEMSET; {
@@ -861,37 +872,37 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Lo
                     }
                 }
 
-                update_index_for_delete_backward(buffer, c0, cast(string, deleted_bytes));
+                update_index_for_delete_backward(buffer, cursors, cast(string, deleted_bytes));
             }
 
             case .DELETE_FORWARD; {
                 gap_buffer_insert(*buffer.gb, edit.text);
-                update_index_for_insert(buffer, c0, c1, edit.text);
+                update_index_for_insert(buffer, cursors, edit.text);
 
                 sanity_assert(edit.cursor0_for_edit_before == edit.cursor0_for_edit_after);
                 sanity_assert(edit.gb_index_before == edit.gb_index_after);
                 // @Hack The cursor does not move when we "insert backward", but we don't have a
                 // real insert backward, so we doctor the cursor and gap index so that the asserts
                 // down below don't fire.
-                c0.* = edit.cursor0_for_edit_after;
+                cursors.c0 = edit.cursor0_for_edit_after;
                 gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_after);
             }
 
             case .DELETE_BACKWARD; {
                 gap_buffer_insert(*buffer.gb, edit.text);
-                update_index_for_insert(buffer, c0, c1, edit.text);
+                update_index_for_insert(buffer, cursors, edit.text);
             }
 
             case .DELETE_BACKWARD_MEMSET; {
                 gap_buffer_insert(*buffer.gb, edit.memset_value, edit.memset_count);
-                update_index_for_insert(buffer, c0, c1, edit.memset_value, edit.memset_count);
+                update_index_for_insert(buffer, cursors, edit.memset_value, edit.memset_count);
             }
         };
 
-        sanity_assert(c0.* == edit.cursor0_for_edit_before);
+        sanity_assert(cursors.c0 == edit.cursor0_for_edit_before);
         sanity_assert(buffer.gb.gap_index == edit.gb_index_before);
-        c0.* = edit.cursor0_for_display_before;
-        c1.* = edit.cursor1_for_display_before;
+        cursors.c0 = edit.cursor0_for_display_before;
+        cursors.c1 = edit.cursor1_for_display_before;
 
         applied_count += 1;
 
@@ -917,15 +928,15 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Lo
 
     buffer.applied_edit_count -= applied_count;
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     return true;
 }
 
-text_buffer_redo_edit :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) -> changed: bool {
+text_buffer_redo_edit :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> changed: bool {
     ProfileZone("text_buffer_redo_edit");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     if buffer.applied_edit_count == buffer.edits.count {
         return false;
@@ -941,32 +952,32 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Lo
         // TODO(jt): @Cleanup The one exception to the above is that switching to binary currently
         // zeroes both cursors, so we also need to pass cursor1 to update for insert. Maybe we
         // should redesign that?
-        c0.* = edit.cursor0_for_edit_before;
+        cursors.c0 = edit.cursor0_for_edit_before;
         gap_buffer_move_gap_to(*buffer.gb, edit.gb_index_before);
 
         if #complete edit.type == {
             case .INSERT_FORWARD; {
                 gap_buffer_insert(*buffer.gb, edit.text);
-                update_index_for_insert(buffer, c0, c1, edit.text);
+                update_index_for_insert(buffer, cursors, edit.text);
             }
 
             case .INSERT_FORWARD_MEMSET; {
                 gap_buffer_insert(*buffer.gb, edit.memset_value, edit.memset_count);
-                update_index_for_insert(buffer, c0, c1, edit.memset_value, edit.memset_count);
+                update_index_for_insert(buffer, cursors, edit.memset_value, edit.memset_count);
             }
 
             case .DELETE_FORWARD; {
                 deleted_bytes := gap_buffer_delete_forward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
 
-                update_index_for_delete_forward(buffer, c0, cast(string, deleted_bytes));
+                update_index_for_delete_forward(buffer, cursors, cast(string, deleted_bytes));
             }
 
             case .DELETE_BACKWARD; {
                 deleted_bytes := gap_buffer_delete_backward(*buffer.gb, edit.text.count);
                 sanity_assert(cast(string, deleted_bytes) == edit.text);
 
-                update_index_for_delete_backward(buffer, c0, cast(string, deleted_bytes));
+                update_index_for_delete_backward(buffer, cursors, cast(string, deleted_bytes));
             }
 
             case .DELETE_BACKWARD_MEMSET; {
@@ -977,14 +988,14 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Lo
                     }
                 }
 
-                update_index_for_delete_backward(buffer, c0, cast(string, deleted_bytes));
+                update_index_for_delete_backward(buffer, cursors, cast(string, deleted_bytes));
             }
         };
 
-        sanity_assert(c0.* == edit.cursor0_for_edit_after);
+        sanity_assert(cursors.c0 == edit.cursor0_for_edit_after);
         sanity_assert(buffer.gb.gap_index == edit.gb_index_after);
-        c0.* = edit.cursor0_for_display_after;
-        c1.* = edit.cursor1_for_display_after;
+        cursors.c0 = edit.cursor0_for_display_after;
+        cursors.c1 = edit.cursor1_for_display_after;
 
         applied_count += 1;
 
@@ -1010,7 +1021,7 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Lo
 
     buffer.applied_edit_count += applied_count;
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
     return true;
 }
@@ -1119,37 +1130,37 @@ text_buffer_make_view_for_interval :: (buffer: Text_Buffer, _start: Text_Locatio
     return cast(string, view);
 }
 
-text_buffer_move_cursor_x :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, delta: s64, selecting: bool) -> cursor_moved: bool {
+text_buffer_move_cursor_x :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta: s64, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_x");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    original_cursor := c0.*;
+    original_cursor := cursors.c0;
 
     if delta > 0 {
         while delta > 0 {
             // Text_Location can be past the last non-newline character. However, the last line does not
             // have the newline character, so we only pretend it does.
-            if c0.y == buffer.line_chars.count - 1 {
-                c0.x = min(c0.x + 1, buffer.line_chars[c0.y]);
-            } else if c0.x < buffer.line_chars[c0.y] - 1 {
-                c0.x += 1;
+            if cursors.c0.y == buffer.line_chars.count - 1 {
+                cursors.c0.x = min(cursors.c0.x + 1, buffer.line_chars[cursors.c0.y]);
+            } else if cursors.c0.x < buffer.line_chars[cursors.c0.y] - 1 {
+                cursors.c0.x += 1;
             } else {
-                c0.x = 0;
-                c0.y += 1;
+                cursors.c0.x = 0;
+                cursors.c0.y += 1;
             }
 
             delta -= 1;
         }
     } else if delta < 0 {
         while delta < 0 {
-            if c0.y == 0 {
-                c0.x = max(c0.x - 1, 0);
-            } else if c0.x > 0 {
-                c0.x -= 1;
+            if cursors.c0.y == 0 {
+                cursors.c0.x = max(cursors.c0.x - 1, 0);
+            } else if cursors.c0.x > 0 {
+                cursors.c0.x -= 1;
             } else {
-                c0.x = buffer.line_chars[c0.y - 1] - 1;
-                c0.y -= 1;
+                cursors.c0.x = buffer.line_chars[cursors.c0.y - 1] - 1;
+                cursors.c0.y -= 1;
             }
 
             delta += 1;
@@ -1157,107 +1168,107 @@ text_buffer_move_cursor_x :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text
     }
 
     if !selecting {
-        c1.* = c0.*;
+        cursors.c1 = cursors.c0;
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 
-    return original_cursor != c0.*;
+    return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_y :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, delta: s64, selecting: bool) -> cursor_moved: bool {
+text_buffer_move_cursor_y :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta: s64, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_y");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    original_cursor := c0.*;
+    original_cursor := cursors.c0;
 
     // Text_Location can not be past the last line
-    c0.y = clamp(c0.y + delta, 0, buffer.line_chars.count - 1);
+    cursors.c0.y = clamp(cursors.c0.y + delta, 0, buffer.line_chars.count - 1);
 
     // Clamp X.
-    if c0.y == buffer.line_chars.count - 1 {
-        c0.x = clamp(c0.x, 0, buffer.line_chars[c0.y]);
+    if cursors.c0.y == buffer.line_chars.count - 1 {
+        cursors.c0.x = clamp(cursors.c0.x, 0, buffer.line_chars[cursors.c0.y]);
     } else {
-        c0.x = clamp(c0.x, 0, buffer.line_chars[c0.y] - 1);
+        cursors.c0.x = clamp(cursors.c0.x, 0, buffer.line_chars[cursors.c0.y] - 1);
     }
 
     if !selecting {
-        c1.* = c0.*;
+        cursors.c1 = cursors.c0;
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 
-    return original_cursor != c0.*;
+    return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_to :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, _x: s64, _y: s64, selecting: bool) {
-    /*inline?*/ text_buffer_move_cursor_to(buffer, c0, c1, { _x, _y }, selecting);
+text_buffer_move_cursor_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, _x: s64, _y: s64, selecting: bool) {
+    /*inline?*/ text_buffer_move_cursor_to(buffer, cursors, { _x, _y }, selecting);
 }
 
-text_buffer_move_cursor_to :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, loc: Text_Location, selecting: bool) {
+text_buffer_move_cursor_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, loc: Text_Location, selecting: bool) {
     ProfileZone("text_buffer_move_cursor_to");
 
-    assert_valid_buffer(buffer);
+    assert_valid(buffer, cursors);
 
     y := clamp(loc.y, 0, buffer.line_count - 1);
     x := clamp(loc.x, 0, buffer.line_chars[y]);
 
-    c0.* = { x, y };
+    cursors.c0 = { x, y };
 
     if !selecting {
-        c1.* = c0.*;
+        cursors.c1 = cursors.c0;
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 }
 
-text_buffer_move_cursor_to_start :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, selecting: bool) -> cursor_moved: bool {
+text_buffer_move_cursor_to_start :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_start");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    original_cursor := c0.*;
+    original_cursor := cursors.c0;
 
-    c0.* = { 0, 0 };
+    cursors.c0 = { 0, 0 };
 
     if !selecting {
-        c1.* = c0.*;
+        cursors.c1 = cursors.c0;
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 
-    return original_cursor != c0.*;
+    return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_to_end :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, selecting: bool) -> cursor_moved: bool {
+text_buffer_move_cursor_to_end :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_end");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    original_cursor := c0.*;
+    original_cursor := cursors.c0;
 
     y := buffer.line_chars.count - 1;
     x := buffer.line_chars[y];
-    c0.* = { x, y };
+    cursors.c0 = { x, y };
 
     if !selecting {
-        c1.* =  c0.*;
+        cursors.c1 =  cursors.c0;
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 
-    return original_cursor != c0.*;
+    return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_to_start_of_line :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, selecting: bool) -> cursor_moved: bool {
+text_buffer_move_cursor_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_start_of_line");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    original_cursor := c0.*;
+    original_cursor := cursors.c0;
 
-    line_view := text_buffer_make_view_for_line(buffer, c0.y,, temp);
+    line_view := text_buffer_make_view_for_line(buffer, cursors.c0.y,, temp);
 
     first_nonspace_index := -1;
     for line_view {
@@ -1269,45 +1280,45 @@ text_buffer_move_cursor_to_start_of_line :: (buffer: Text_Buffer, c0: *Text_Loca
         }
     }
 
-    if first_nonspace_index == -1 || c0.x == first_nonspace_index {
-        c0.x = 0;
+    if first_nonspace_index == -1 || cursors.c0.x == first_nonspace_index {
+        cursors.c0.x = 0;
     } else {
-        c0.x = first_nonspace_index;
+        cursors.c0.x = first_nonspace_index;
     }
 
     if !selecting {
-        c1.* = c0.*;
+        cursors.c1 = cursors.c0;
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 
-    return original_cursor != c0.*;
+    return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_to_end_of_line :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, selecting: bool) -> cursor_moved: bool {
+text_buffer_move_cursor_to_end_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_end_of_line");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    original_cursor := c0.*;
+    original_cursor := cursors.c0;
 
-    c0.* = text_buffer_get_end_of_line(buffer, c0.y);
+    cursors.c0 = text_buffer_get_end_of_line(buffer, cursors.c0.y);
 
     if !selecting {
-        c1.* = c0.*;
+        cursors.c1 = cursors.c0;
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 
-    return original_cursor != c0.*;
+    return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_to_previous_word_boundary :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, selecting: bool) -> cursor_moved: bool, cursor_y_moved: bool {
+text_buffer_move_cursor_to_previous_word_boundary :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool, cursor_y_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_previous_word_boundary");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    original_cursor := c0.*;
+    original_cursor := cursors.c0;
 
     _search_line_backward :: (line_view: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
         // The line is empty, so we couldn't have started inside a word.
@@ -1355,47 +1366,47 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: Text_Buffer, c0: *
         }
     }
 
-    line_start         := text_buffer_get_start_of_line(buffer, c0.y);
-    view_before_cursor := text_buffer_make_view_for_interval(buffer, line_start, c0.*,, temp);
+    line_start         := text_buffer_get_start_of_line(buffer, cursors.c0.y);
+    view_before_cursor := text_buffer_make_view_for_interval(buffer, line_start, cursors.c0,, temp);
 
     found, inside_word, dx := search_line_backward(view_before_cursor, buffer.binary_mode);
     if found || inside_word {
-        c0.x -= dx;
+        cursors.c0.x -= dx;
     } else {
         while true {
-            previous_cursor := c0.*;
-            text_buffer_move_cursor_y(buffer, c0, c1, -1, selecting);
-            if previous_cursor.y == c0.y {
+            previous_cursor := cursors.c0;
+            text_buffer_move_cursor_y(buffer, cursors, -1, selecting);
+            if previous_cursor.y == cursors.c0.y {
                 break;
             }
 
-            c0.* = text_buffer_get_end_of_line(buffer, c0.y);
+            cursors.c0 = text_buffer_get_end_of_line(buffer, cursors.c0.y);
 
-            line_view := text_buffer_make_view_for_line(buffer, c0.y,, temp);
+            line_view := text_buffer_make_view_for_line(buffer, cursors.c0.y,, temp);
 
             found, inside_word, dx = search_line_backward(line_view, buffer.binary_mode);
             if found || inside_word {
-                c0.x -= dx;
+                cursors.c0.x -= dx;
                 break;
             }
         }
     }
 
     if !selecting {
-        c1.* = c0.*;
+        cursors.c1 = cursors.c0;
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 
-    return original_cursor != c0.*, original_cursor.y != c0.y;
+    return original_cursor != cursors.c0, original_cursor.y != cursors.c0.y;
 }
 
-text_buffer_move_cursor_to_next_word_boundary :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, selecting: bool) -> cursor_moved: bool, cursor_y_moved: bool {
+text_buffer_move_cursor_to_next_word_boundary :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool, cursor_y_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_next_word_boundary");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    original_cursor := c0.*;
+    original_cursor := cursors.c0;
 
     _search_line_forward :: (line_view: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
         // The line is empty, so we couldn't have started inside a word.
@@ -1443,54 +1454,54 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: Text_Buffer, c0: *Text
         }
     }
 
-    line_end          := text_buffer_get_end_of_line(buffer, c0.y);
-    view_after_cursor := text_buffer_make_view_for_interval(buffer, c0, line_end,, temp);
+    line_end          := text_buffer_get_end_of_line(buffer, cursors.c0.y);
+    view_after_cursor := text_buffer_make_view_for_interval(buffer, cursors.c0, line_end,, temp);
 
     found, inside_word, dx := search_line_forward(view_after_cursor, buffer.binary_mode);
     if found || inside_word {
-        c0.x += dx;
+        cursors.c0.x += dx;
     } else {
         while true {
-            previous_cursor := c0.*;
-            text_buffer_move_cursor_y(buffer, c0, c1, 1, selecting);
-            if previous_cursor.y == c0.y {
+            previous_cursor := cursors.c0;
+            text_buffer_move_cursor_y(buffer, cursors, 1, selecting);
+            if previous_cursor.y == cursors.c0.y {
                 break;
             }
 
-            c0.x = 0;
+            cursors.c0.x = 0;
 
-            line_view := text_buffer_make_view_for_line(buffer, c0.y,, temp);
+            line_view := text_buffer_make_view_for_line(buffer, cursors.c0.y,, temp);
 
             found, inside_word, dx = search_line_forward(line_view, buffer.binary_mode);
             if found || inside_word {
-                c0.x += dx;
+                cursors.c0.x += dx;
                 break;
             }
         }
     }
 
     if !selecting {
-        c1.* = c0.*;
+        cursors.c1 = cursors.c0;
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 
-    return original_cursor != c0.*, original_cursor.y != c0.y;
+    return original_cursor != cursors.c0, original_cursor.y != cursors.c0.y;
 }
 
 // TODO(jt): @Speed Searching through 45 lines towards the end of a 1GB file takes about 350
 // milliseconds. Most of that time is spent in text_buffer_make_view_for_line.
-text_buffer_move_cursor_to_previous_blank_line :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, selecting: bool) -> cursor_moved: bool {
+text_buffer_move_cursor_to_previous_blank_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_previous_blank_line");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    original_cursor := c0.*;
+    original_cursor := cursors.c0;
 
     found := false;
     found_index := -1;
     {
-        line_index := c0.y - 1;
+        line_index := cursors.c0.y - 1;
         while !found && line_index >= 0 {
             line_view := text_buffer_make_view_for_line(buffer, line_index,, temp);
 
@@ -1514,29 +1525,29 @@ text_buffer_move_cursor_to_previous_blank_line :: (buffer: Text_Buffer, c0: *Tex
     }
 
     if found {
-        text_buffer_move_cursor_y(buffer, c0, c1, found_index - c0.y, selecting);
+        text_buffer_move_cursor_y(buffer, cursors, found_index - cursors.c0.y, selecting);
     } else {
-        text_buffer_move_cursor_y(buffer, c0, c1, -1, selecting);
+        text_buffer_move_cursor_y(buffer, cursors, -1, selecting);
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 
-    return original_cursor != c0.*;
+    return original_cursor != cursors.c0;
 }
 
 // TODO(jt): @Speed Searching through 45 lines towards the end of a 1GB file takes about 350
 // milliseconds. Most of that time is spent in text_buffer_make_view_for_line.
-text_buffer_move_cursor_to_next_blank_line :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location, selecting: bool) -> cursor_moved: bool {
+text_buffer_move_cursor_to_next_blank_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_next_blank_line");
 
-    assert_valid(buffer, c0, c1);
+    assert_valid(buffer, cursors);
 
-    original_cursor := c0.*;
+    original_cursor := cursors.c0;
 
     found := false;
     found_index := -1;
     {
-        line_index := c0.y + 1;
+        line_index := cursors.c0.y + 1;
         while !found && line_index < buffer.line_bytes.count {
             line_view := text_buffer_make_view_for_line(buffer, line_index,, temp);
 
@@ -1560,22 +1571,22 @@ text_buffer_move_cursor_to_next_blank_line :: (buffer: Text_Buffer, c0: *Text_Lo
     }
 
     if found {
-        text_buffer_move_cursor_y(buffer, c0, c1, found_index - c0.y, selecting);
+        text_buffer_move_cursor_y(buffer, cursors, found_index - cursors.c0.y, selecting);
     } else {
-        text_buffer_move_cursor_y(buffer, c0, c1, 1, selecting);
+        text_buffer_move_cursor_y(buffer, cursors, 1, selecting);
     }
 
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 
-    return original_cursor != c0.*;
+    return original_cursor != cursors.c0;
 }
 
-text_buffer_clamp_cursors :: (buffer: Text_Buffer, c0: *Text_Location, c1: *Text_Location) {
-    clamp_location(buffer, c0);
-    clamp_location(buffer, c1);
+text_buffer_clamp_cursors :: (buffer: Text_Buffer, cursors: *Text_Cursors) {
+    clamp_location(buffer, *cursors.c0);
+    clamp_location(buffer, *cursors.c1);
 }
 
-text_buffer_switch_to_binary_mode :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location) {
+text_buffer_switch_to_binary_mode :: (buffer: *Text_Buffer, cursors: *Text_Cursors) {
     buffer.binary_mode = true;
 
     array_reset_keeping_memory(*buffer.line_bytes);
@@ -1609,8 +1620,8 @@ text_buffer_switch_to_binary_mode :: (buffer: *Text_Buffer, c0: *Text_Location, 
     // TODO(jt): Preserve cursor when pasting binary data from clipboard, although apparently it
     // isn't that easy to get binary data from the clipboard. We can preserve cursors by converting
     // them to gap buffer indices and back.
-    c0.* = { 0, 0 };
-    c1.* = { 0, 0 };
+    cursors.c0 = { 0, 0 };
+    cursors.c1 = { 0, 0 };
 
     buffer.line_count = buffer.line_bytes.count;
 }
@@ -1710,17 +1721,16 @@ text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, loc: Text
 
 #scope_file
 
-assert_valid :: (buffer: Text_Buffer, c0: Text_Location, c1: Text_Location) {
+assert_valid :: (buffer: Text_Buffer, cursors: Text_Cursors) {
     assert_valid_buffer(buffer);
-    assert_valid_cursors(buffer, c0, c1);
+    assert_valid_cursors(buffer, cursors);
 }
 
-assert_valid_cursors :: (buffer: Text_Buffer, c0: Text_Location, c1: Text_Location) {
-    assert_location_valid_for_writes(buffer, c0);
-    assert_location_valid_for_writes(buffer, c1);
+assert_valid_cursors :: (buffer: Text_Buffer, cursors: Text_Cursors) {
+    assert_location_valid_for_writes(buffer, cursors.c0);
+    assert_location_valid_for_writes(buffer, cursors.c1);
 }
 
-// nocheckin Make sure that we only use this where we don't have cursors, otherwise use assert_valid
 assert_valid_buffer :: (buffer: Text_Buffer) {
     ProfileZone("assert_valid_buffer");
 
@@ -1899,19 +1909,19 @@ discard_unapplied_edits :: (buffer: *Text_Buffer) {
     }
 }
 
-update_index_for_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location, value: u8, count: s64) {
+update_index_for_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, value: u8, count: s64) {
     // TODO(jt): @Cleanup @Hack @Speed We can do much better than calling the generic thing.
     text := alloc_string(count,, temp);
     memset(text.data, value, count);
 
-    update_index_for_insert(buffer, c0, c1, text);
+    update_index_for_insert(buffer, cursors, text);
 }
 
 // c1 must be handled at the caller level, with the exception that this sets it when switching to binary mode.
 //
 // TODO(jt): @Speed This is super slow on large data to the point that it takes the most of the
 // time. We could parse lines with SIMD?
-update_index_for_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_Location, _text: string) {
+update_index_for_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, _text: string) {
     ProfileZone("update_index_for_insert");
 
     text := _text;
@@ -1923,32 +1933,32 @@ update_index_for_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
     // ourselves throughout the rest of the insert.
     bytes_on_line_before_cursor: s64;
     {
-        line_start := text_buffer_get_start_of_line(buffer, c0.y);
-        bytes_on_line_before_cursor = text_buffer_get_byte_count_for_interval(buffer, line_start, c0);
+        line_start := text_buffer_get_start_of_line(buffer, cursors.c0.y);
+        bytes_on_line_before_cursor = text_buffer_get_byte_count_for_interval(buffer, line_start, cursors.c0);
     }
 
     if buffer.binary_mode {
         for text {
             if it == "\n" {
-                count_after_cursor := buffer.line_bytes[c0.y] - bytes_on_line_before_cursor;
+                count_after_cursor := buffer.line_bytes[cursors.c0.y] - bytes_on_line_before_cursor;
 
-                buffer.line_bytes[c0.y] += 1 - count_after_cursor;
-                buffer.line_chars[c0.y] += 1 - count_after_cursor;
+                buffer.line_bytes[cursors.c0.y] += 1 - count_after_cursor;
+                buffer.line_chars[cursors.c0.y] += 1 - count_after_cursor;
 
-                insert_line(buffer, c0.y + 1, count_after_cursor, count_after_cursor);
+                insert_line(buffer, cursors.c0.y + 1, count_after_cursor, count_after_cursor);
 
-                c0.y += 1;
-                c0.x = 0;
+                cursors.c0.y += 1;
+                cursors.c0.x = 0;
 
                 bytes_on_line_before_cursor = 0;
 
                 continue;
             }
 
-            buffer.line_bytes[c0.y] += 1;
-            buffer.line_chars[c0.y] += 1;
+            buffer.line_bytes[cursors.c0.y] += 1;
+            buffer.line_chars[cursors.c0.y] += 1;
 
-            c0.x += 1;
+            cursors.c0.x += 1;
 
             bytes_on_line_before_cursor += 1;
         }
@@ -1956,18 +1966,18 @@ update_index_for_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
         while text.count {
             newline_advance := string_starts_with_newline(text, binary = false);
             if newline_advance {
-                byte_count_after_cursor := buffer.line_bytes[c0.y] - bytes_on_line_before_cursor;
-                char_count_after_cursor := buffer.line_chars[c0.y] - c0.x;
+                byte_count_after_cursor := buffer.line_bytes[cursors.c0.y] - bytes_on_line_before_cursor;
+                char_count_after_cursor := buffer.line_chars[cursors.c0.y] - cursors.c0.x;
 
                 advance(*text, newline_advance);
 
-                buffer.line_bytes[c0.y] += newline_advance - byte_count_after_cursor;
-                buffer.line_chars[c0.y] += 1 - char_count_after_cursor;
+                buffer.line_bytes[cursors.c0.y] += newline_advance - byte_count_after_cursor;
+                buffer.line_chars[cursors.c0.y] += 1 - char_count_after_cursor;
 
-                insert_line(buffer, c0.y + 1, byte_count_after_cursor, char_count_after_cursor);
+                insert_line(buffer, cursors.c0.y + 1, byte_count_after_cursor, char_count_after_cursor);
 
-                c0.y += 1;
-                c0.x = 0;
+                cursors.c0.y += 1;
+                cursors.c0.x = 0;
 
                 bytes_on_line_before_cursor = 0;
 
@@ -1986,7 +1996,7 @@ update_index_for_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
 
                 // Must be first, because the rest doesn't check for OOB.
                 if codepoint_advance > text.count {
-                    text_buffer_switch_to_binary_mode(buffer, c0, c1);
+                    text_buffer_switch_to_binary_mode(buffer, cursors);
                     return;
                 }
 
@@ -1997,19 +2007,19 @@ update_index_for_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
                     }
 
                     if zero_found {
-                        text_buffer_switch_to_binary_mode(buffer, c0, c1);
+                        text_buffer_switch_to_binary_mode(buffer, cursors);
                         return;
                     }
                 }
 
                 if !byte_is_utf8_char_boundary(text[0]) {
-                    text_buffer_switch_to_binary_mode(buffer, c0, c1);
+                    text_buffer_switch_to_binary_mode(buffer, cursors);
                     return;
                 }
 
                 _, codepoint_advance_check := find_next_utf8_char_boundary(text, 0, sanity = false);
                 if codepoint_advance != codepoint_advance_check {
-                    text_buffer_switch_to_binary_mode(buffer, c0, c1);
+                    text_buffer_switch_to_binary_mode(buffer, cursors);
                     return;
                 }
             }
@@ -2018,9 +2028,9 @@ update_index_for_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
 
             advance(*text, codepoint_advance);
 
-            buffer.line_bytes[c0.y] += codepoint_advance;
-            buffer.line_chars[c0.y] += 1;
-            c0.x += 1;
+            buffer.line_bytes[cursors.c0.y] += codepoint_advance;
+            buffer.line_chars[cursors.c0.y] += 1;
+            cursors.c0.x += 1;
 
             bytes_on_line_before_cursor += codepoint_advance;
         }
@@ -2028,7 +2038,7 @@ update_index_for_insert :: (buffer: *Text_Buffer, c0: *Text_Location, c1: *Text_
 }
 
 // c1 must be handled at the caller level. Does not actually modify c0, but it is passed by pointer for consistency.
-update_index_for_delete_forward :: (buffer: *Text_Buffer, c0: *Text_Location, _text: string) {
+update_index_for_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, _text: string) {
     ProfileZone("update_index_for_delete_forward");
 
     text := _text;
@@ -2036,16 +2046,16 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, c0: *Text_Location, _t
     while text.count {
         newline_advance := string_starts_with_newline(text, binary = buffer.binary_mode);
         if newline_advance {
-            assert(c0.y < buffer.line_bytes.count - 1);              // The last line can't have a newline.
-            assert(c0.x == buffer.line_chars[c0.y] - 1); // The newline has to be the last char.
+            assert(cursors.c0.y < buffer.line_bytes.count - 1);  // The last line can't have a newline.
+            assert(cursors.c0.x == buffer.line_chars[cursors.c0.y] - 1); // The newline has to be the last char.
 
-            buffer.line_chars[c0.y] -= 1;
-            buffer.line_bytes[c0.y] -= newline_advance;
+            buffer.line_chars[cursors.c0.y] -= 1;
+            buffer.line_bytes[cursors.c0.y] -= newline_advance;
 
-            buffer.line_chars[c0.y] += buffer.line_chars[c0.y + 1];
-            buffer.line_bytes[c0.y] += buffer.line_bytes[c0.y + 1];
+            buffer.line_chars[cursors.c0.y] += buffer.line_chars[cursors.c0.y + 1];
+            buffer.line_bytes[cursors.c0.y] += buffer.line_bytes[cursors.c0.y + 1];
 
-            remove_line(buffer, c0.y + 1);
+            remove_line(buffer, cursors.c0.y + 1);
 
             advance(*text, newline_advance);
             assert(text.count >= 0);
@@ -2055,8 +2065,8 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, c0: *Text_Location, _t
                 _, codepoint_advance = find_next_utf8_char_boundary(text, 0);
             }
 
-            buffer.line_chars[c0.y] -= 1;
-            buffer.line_bytes[c0.y] -= codepoint_advance;
+            buffer.line_chars[cursors.c0.y] -= 1;
+            buffer.line_bytes[cursors.c0.y] -= codepoint_advance;
 
             advance(*text, codepoint_advance);
             assert(text.count >= 0);
@@ -2065,7 +2075,7 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, c0: *Text_Location, _t
 }
 
 // c1 must be handled at the caller level
-update_index_for_delete_backward :: (buffer: *Text_Buffer, c0: *Text_Location, _text: string) {
+update_index_for_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, _text: string) {
     ProfileZone("update_index_for_delete_backward");
 
     text := _text;
@@ -2073,21 +2083,21 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, c0: *Text_Location, _
     while text.count {
         newline_advance := string_ends_with_newline(text, binary = buffer.binary_mode);
         if newline_advance {
-            assert(c0.x == 0);
-            assert(c0.y > 0);
+            assert(cursors.c0.x == 0);
+            assert(cursors.c0.y > 0);
 
-            new_cursor_x := buffer.line_chars[c0.y - 1] - 1;
+            new_cursor_x := buffer.line_chars[cursors.c0.y - 1] - 1;
 
-            buffer.line_chars[c0.y - 1] -= 1;
-            buffer.line_bytes[c0.y - 1] -= newline_advance;
+            buffer.line_chars[cursors.c0.y - 1] -= 1;
+            buffer.line_bytes[cursors.c0.y - 1] -= newline_advance;
 
-            buffer.line_chars[c0.y - 1] += buffer.line_chars[c0.y];
-            buffer.line_bytes[c0.y - 1] += buffer.line_bytes[c0.y];
+            buffer.line_chars[cursors.c0.y - 1] += buffer.line_chars[cursors.c0.y];
+            buffer.line_bytes[cursors.c0.y - 1] += buffer.line_bytes[cursors.c0.y];
 
-            remove_line(buffer, c0.y);
+            remove_line(buffer, cursors.c0.y);
 
-            c0.x = new_cursor_x;
-            c0.y -= 1;
+            cursors.c0.x = new_cursor_x;
+            cursors.c0.y -= 1;
 
             text.count -= newline_advance;
             assert(text.count >= 0);
@@ -2098,10 +2108,10 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, c0: *Text_Location, _
             }
 
             if codepoint_advance {
-                buffer.line_chars[c0.y] -= 1;
-                buffer.line_bytes[c0.y] -= codepoint_advance;
+                buffer.line_chars[cursors.c0.y] -= 1;
+                buffer.line_bytes[cursors.c0.y] -= codepoint_advance;
 
-                c0.x -= 1;
+                cursors.c0.x -= 1;
 
                 text.count -= codepoint_advance;
                 assert(text.count >= 0);
