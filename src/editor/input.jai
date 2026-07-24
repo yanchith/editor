@@ -2,6 +2,8 @@ Input :: struct {
     time:  Apollo_Time;
     dtime: Apollo_Time;
 
+    // When adding stuff here, see :VolatileEarlyOut
+
     frame_requested_by_editor: bool;
 
     window_size: IVector2;
