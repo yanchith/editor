@@ -34,14 +34,21 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return;
     }
 
+    // TODO(jt): @Incomplete Allow searching LISTING views.
+    if panel.view.kind != .DOCUMENT {
+        return;
+    }
+
+    view := *panel.view._document;
+
     userdata := arena_push(editor.mini_panel.userdata_arena, Search_Userdata);
-    userdata.original_cursor0 = active_panel.cursors.c0;
+    userdata.original_cursor0 = view.cursors.c0;
     mini_panel.userdata = userdata;
 }
 
@@ -54,23 +61,30 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         return;
     }
 
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return;
     }
+
+    // TODO(jt): @Incomplete Allow searching LISTING views.
+    if panel.view.kind != .DOCUMENT {
+        return;
+    }
+
+    view := *panel.view._document;
 
     if buffer_changed {
         array_reset(*mini_panel.items);
         arena_reset(mini_panel.items_arena);
 
-        if active_panel.document {
-            document := active_panel.document;
+        if view.document {
+            document := view.document;
 
-            array_reset_keeping_memory(*active_panel.highlights);
-            active_panel.highlight_index = -1;
+            array_reset_keeping_memory(*panel.highlights);
+            panel.highlight_index = -1;
 
-            old_cursor_y   := active_panel.cursors.c0.y;
+            old_cursor_y   := view.cursors.c0.y;
             new_item_index := -1;
 
             search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
@@ -115,7 +129,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     }
                     x1 := x0 + search_text_char_count;
 
-                    highlight := array_add(*active_panel.highlights);
+                    highlight := array_add(*panel.highlights);
                     highlight.x0 = x0;
                     highlight.x1 = x1;
                     highlight.y  = it;
@@ -149,7 +163,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
             if new_item_index != -1 {
                 mini_panel.item_index = new_item_index;
-                active_panel.highlight_index = new_item_index;
+                panel.highlight_index = new_item_index;
                 selected_item_changed = true;
             }
         }
@@ -158,7 +172,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
     }
 
     if selected_item_changed {
-        active_panel.highlight_index = mini_panel.item_index;
+        panel.highlight_index = mini_panel.item_index;
 
         // Changing the mini panel buffer OR the selected item can put the index to -1 (in case
         // of search, -1 can only be achieved by changing the buffer), so in general we don't
@@ -170,9 +184,9 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             x := userdata.cursor.x;
             y := userdata.cursor.y;
 
-            text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursors, x, y, false);
+            text_buffer_move_cursor_to(view.document.buffer, *view.cursors, x, y, false);
 
-            active_panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }
     }
 }
@@ -204,29 +218,36 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         return false;
     }
 
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return false;
     }
 
+    // TODO(jt): @Incomplete Allow searching LISTING views.
+    if panel.view.kind != .DOCUMENT {
+        return false;
+    }
+
+    view := *panel.view._document;
+
     if mini_panel.items.count {
         assert(mini_panel.item_index >= 0);
-        if active_panel.document {
+        if view.document {
             item := *mini_panel.items[mini_panel.item_index];
 
             userdata := cast(*Search_Item_Userdata, item.userdata);
             x := userdata.cursor.x;
             y := userdata.cursor.y;
 
-            text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursors, x, y, false);
+            text_buffer_move_cursor_to(view.document.buffer, *view.cursors, x, y, false);
 
-            active_panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }
     }
 
-    array_reset_keeping_memory(*active_panel.highlights);
-    active_panel.highlight_index = -1;
+    array_reset_keeping_memory(*panel.highlights);
+    panel.highlight_index = -1;
 
     close_mini_panel(editor, platform, input);
 
@@ -240,24 +261,31 @@ cancel :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return;
     }
 
-    array_reset_keeping_memory(*active_panel.highlights);
-    active_panel.highlight_index = -1;
+    // TODO(jt): @Incomplete Allow searching LISTING views.
+    if panel.view.kind != .DOCUMENT {
+        return;
+    }
+
+    view := *panel.view._document;
+
+    array_reset_keeping_memory(*panel.highlights);
+    panel.highlight_index = -1;
 
     userdata: *Search_Userdata = editor.mini_panel.userdata;
     x := userdata.original_cursor0.x;
     y := userdata.original_cursor0.y;
 
-    if active_panel.document {
-        text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursors, x, y, active_panel.selecting);
+    if view.document {
+        text_buffer_move_cursor_to(view.document.buffer, *view.cursors, x, y, view.selecting);
     }
 
-    active_panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+    view.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
     close_mini_panel(editor, platform, input);
 }

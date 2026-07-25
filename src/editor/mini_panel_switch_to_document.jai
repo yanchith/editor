@@ -11,6 +11,11 @@ mini_panel_switch_to_document_procs: Mini_Panel_Procs = {
 
 #scope_file
 
+Switch_View_Item_Userdata :: struct {
+    kind: View_Kind;
+    pointer: *void;
+}
+
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
     return tprint("%  Switch to document: ", temp_right_pad(tprint("%", editor.mini_panel.items.count), 4));
 }
@@ -28,10 +33,16 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         return;
     }
 
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return;
+    }
+
+    current_thing: *void = null;
+    if #complete panel.view.kind == {
+        case .DOCUMENT;  current_thing = panel.view._document.document;
+        case .LISTING;   current_thing = panel.view._listing.listing;
     }
 
     if buffer_changed {
@@ -45,7 +56,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
         for * editor.documents {
             document_name: string;
-            if it.kind == {
+            if #complete it.kind == {
                 case .SCRATCH;  document_name = "*scratch*";
                 case .FILE;     document_name = it.backing_file_path; // TODO(jt): Strip path prefix common for all items.
             }
@@ -53,7 +64,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             found_index, found := String.index_of_string_nocase(document_name, search_text);
             if found {
                 // Select the most recent document, except the one pointed to by the currently active panel.
-                if active_panel.document != it && it.time_of_last_interaction > max_time_of_last_interaction {
+                if current_thing != it && it.time_of_last_interaction > max_time_of_last_interaction {
                     max_time_of_last_interaction = it.time_of_last_interaction;
                     mini_panel.item_index = mini_panel.items.count;
                 }
@@ -70,7 +81,44 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 item.text_color = ifx it.flags & .MODIFIED then MINI_PANEL_ITEM_WARNING_TEXT_COLOR else MINI_PANEL_ITEM_TEXT_COLOR;
                 item.highlight_x0 = x0;
                 item.highlight_x1 = x0 + search_text_char_count;
-                item.userdata = it;
+
+                userdata := arena_push(mini_panel.items_arena, Switch_View_Item_Userdata);
+                userdata.kind = .DOCUMENT;
+                userdata.pointer = it;
+
+                item.userdata = userdata;
+            }
+        }
+
+        for * editor.listings {
+            listing_name: string = it.directory_path;
+
+            found_index, found := String.index_of_string_nocase(listing_name, search_text);
+            if found {
+                // Select the most recent document, except the one pointed to by the currently active panel.
+                if current_thing != it && it.time_of_last_interaction > max_time_of_last_interaction {
+                    max_time_of_last_interaction = it.time_of_last_interaction;
+                    mini_panel.item_index = mini_panel.items.count;
+                }
+
+                s := "";
+                if listing_name.count {
+                    s = arena_push_string(mini_panel.items_arena, listing_name);
+                }
+
+                x0 := count_utf8_chars(String.slice(listing_name, 0, found_index));
+
+                item := array_add(*mini_panel.items);
+                item.text = s;
+                item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
+                item.highlight_x0 = x0;
+                item.highlight_x1 = x0 + search_text_char_count;
+
+                userdata := arena_push(mini_panel.items_arena, Switch_View_Item_Userdata);
+                userdata.kind = .LISTING;
+                userdata.pointer = it;
+
+                item.userdata = userdata;
             }
         }
 
@@ -125,23 +173,33 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         return false;
     }
 
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return false;
     }
 
     if mini_panel.items.count {
         assert(mini_panel.item_index >= 0);
-        item := *mini_panel.items[mini_panel.item_index];
 
-        document := cast(*Document, item.userdata);
+        userdata: *Switch_View_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
+        if userdata {
+            if #complete userdata.kind ==  {
+                case .DOCUMENT; {
+                    document := cast(*Document, userdata.pointer);
+                    panel_set_document(panel, editor, document);
+                }
 
-        panel_set_document(active_panel, editor, document);
+                case .LISTING; {
+                    listing := cast(*Listing, userdata.pointer);
+                    panel_set_listing(panel, editor, listing);
+                }
+            }
 
-        // TODO(jt): Emacs actually remembers the previous scroll of the panel in
-        // document. Do we want to do the same?
-        recenter_active_panel(editor, input, force_center = true, skip_interpolation = true);
+            // TODO(jt): Emacs actually remembers the previous scroll of the panel in
+            // document. Do we want to do the same?
+            recenter_panel(editor, input, force_center = true, skip_interpolation = true);
+        }
     }
 
     close_mini_panel(editor, platform, input);
