@@ -85,41 +85,48 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
         return false;
     }
 
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return false;
     }
+
+    // Search and replace only works for DOCUMENT views.
+    if panel.view.kind != .DOCUMENT {
+        return false;
+    }
+
+    view := *panel.view._document;
 
     userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH;   return false;
         case .INPUT_TO_REPLACE;  return false;
         case .REPLACING; {
-            sanity_assert(active_panel.highlights.count > 0);
+            sanity_assert(panel.highlights.count > 0);
 
             buffered, action := key_map_input(*userdata.replacing_key_map, event, editor.input_state.modifiers);
             if action == {
                 case .YES; #through;
                 case .NO; {
                     if action == .YES {
-                        highlight := active_panel.highlights[active_panel.highlight_index];
+                        highlight := panel.highlights[panel.highlight_index];
                         x0 := highlight.x0;
                         x1 := highlight.x1;
                         y  := highlight.y;
 
-                        document := active_panel.document;
+                        document := view.document;
 
                         // If we ever do anything that changes the buffer while the
                         // search&replace is open, these cursors will not be valid anymore
                         // and we need to somehow handle that. At the moment I am writing
                         // this, nothing like that exists in the editor.
-                        active_panel.cursors.c0 = { x0, y };
-                        active_panel.cursors.c1 = { x1, y };
-                        text_buffer_insert(*document.buffer, *active_panel.cursors, userdata.input_to_replace, .BARRIER);
+                        view.cursors.c0 = { x0, y };
+                        view.cursors.c1 = { x1, y };
+                        text_buffer_insert(*document.buffer, *view.cursors, userdata.input_to_replace, .BARRIER);
 
                         // Instead of advancing the index we contract the array.
-                        array_ordered_remove_by_index(*active_panel.highlights, active_panel.highlight_index);
+                        array_ordered_remove_by_index(*panel.highlights, panel.highlight_index);
 
                         //
                         // If there are additional highlights on the same line, we need to
@@ -130,9 +137,9 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         if remove_count != insert_count {
                             delta := insert_count - remove_count;
 
-                            index := active_panel.highlight_index;
-                            while index < active_panel.highlights.count {
-                                highlight := *active_panel.highlights[index];
+                            index := panel.highlight_index;
+                            while index < panel.highlights.count {
+                                highlight := *panel.highlights[index];
                                 if highlight.y > y {
                                     break;
                                 }
@@ -147,28 +154,28 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         userdata.replaced_count += 1;
                         userdata.processed_count += 1;
                     } else if action == .NO {
-                        active_panel.highlight_index += 1;
+                        panel.highlight_index += 1;
                         userdata.processed_count += 1;
                     }
 
-                    if active_panel.highlight_index >= active_panel.highlights.count {
-                        array_reset_keeping_memory(*active_panel.highlights);
-                        active_panel.highlight_index = -1;
+                    if panel.highlight_index >= panel.highlights.count {
+                        array_reset_keeping_memory(*panel.highlights);
+                        panel.highlight_index = -1;
 
                         editor_log(editor, "Done! Replaced % matches", userdata.replaced_count);
                         close_modal_interaction(editor, platform, input);
                     } else {
-                        highlight := active_panel.highlights[active_panel.highlight_index];
+                        highlight := panel.highlights[panel.highlight_index];
                         x := highlight.x0;
                         y := highlight.y;
 
-                        text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursors, x, y, false);
-                        recenter_active_panel(editor, input, true);
+                        text_buffer_move_cursor_to(view.document.buffer, *view.cursors, x, y, false);
+                        recenter_panel(editor, input, true);
                     }
                 }
                 case .CANCEL; {
-                    array_reset_keeping_memory(*active_panel.highlights);
-                    active_panel.highlight_index = -1;
+                    array_reset_keeping_memory(*panel.highlights);
+                    panel.highlight_index = -1;
 
                     editor_log(editor, "Cancel! Replaced % matches", userdata.replaced_count);
                     close_modal_interaction(editor, platform, input);
@@ -189,11 +196,18 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return;
     }
+
+    // Search and replace only works for DOCUMENT views.
+    if panel.view.kind != .DOCUMENT {
+        return;
+    }
+
+    view := *panel.view._document;
 
     arena := modal_interaction.userdata_arena;
 
@@ -209,12 +223,12 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
             userdata.input_to_replace = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
             text_buffer_delete_all(*modal_interaction.buffer, *modal_interaction.cursors);
 
-            document := active_panel.document;
+            document := view.document;
 
-            array_reset_keeping_memory(*active_panel.highlights);
-            active_panel.highlight_index = -1;
+            array_reset_keeping_memory(*panel.highlights);
+            panel.highlight_index = -1;
 
-            old_cursor_y := active_panel.cursors.c0.y;
+            old_cursor_y := view.cursors.c0.y;
             new_highlight_index := -1;
 
             search_text := userdata.input_to_search;
@@ -250,9 +264,9 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
                     x1 := x0 + search_text_char_count;
                     y  := it;
 
-                    highlight_index := active_panel.highlights.count;
+                    highlight_index := panel.highlights.count;
 
-                    highlight := array_add(*active_panel.highlights);
+                    highlight := array_add(*panel.highlights);
                     highlight.x0 = x0;
                     highlight.x1 = x1;
                     highlight.y  = it;
@@ -275,25 +289,25 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
             }
 
             if new_highlight_index != -1 {
-                active_panel.highlight_index = new_highlight_index;
+                panel.highlight_index = new_highlight_index;
 
-                highlight := active_panel.highlights[new_highlight_index];
+                highlight := panel.highlights[new_highlight_index];
                 x := highlight.x0;
                 y := highlight.y;
 
-                text_buffer_move_cursor_to(document.buffer, *active_panel.cursors, x, y, false);
-                recenter_active_panel(editor, input, true);
+                text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
+                recenter_panel(editor, input, true);
             }
 
-            if active_panel.highlights.count && new_highlight_index != -1 {
+            if panel.highlights.count && new_highlight_index != -1 {
                 userdata.state = .REPLACING;
 
-                userdata.found_count = active_panel.highlights.count;
+                userdata.found_count = panel.highlights.count;
                 userdata.replaced_count = 0;
                 userdata.processed_count = 0;
             } else {
-                array_reset_keeping_memory(*active_panel.highlights);
-                active_panel.highlight_index = -1;
+                array_reset_keeping_memory(*panel.highlights);
+                panel.highlight_index = -1;
 
                 editor_log(editor, "No matches found");
                 close_modal_interaction(editor, platform, input);
@@ -304,14 +318,14 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
 }
 
 cancel :: (editor: *Editor, platform: Platform, input: Input) {
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return;
     }
 
-    array_reset_keeping_memory(*active_panel.highlights);
-    active_panel.highlight_index = -1;
+    array_reset_keeping_memory(*panel.highlights);
+    panel.highlight_index = -1;
 
     close_modal_interaction(editor, platform, input);
 }
