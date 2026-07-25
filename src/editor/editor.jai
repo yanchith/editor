@@ -511,7 +511,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         success=, ttf_bold_italic := platform.read_file("./data/fonts/LiberationMono/LiberationMono-BoldItalic.ttf",, arena_allocator(font_arena));
         assert(success);
 
-        FONT_SIZE :: 18;
+        // TODO(jt): None of the text editors seem to agree on what font size actually is, at least
+        // Emacs, VS Code and this editor have completely different ideas. Figure this out and match
+        // a standard, if that's even possible.
+        FONT_SIZE :: 18; // 16 for use, 18 for streaming
 
         want_pixel_height := cast(s32, ceil(FONT_SIZE * input.window_scale_factor));
 
@@ -904,12 +907,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             editor.font_size = max(editor.font_size + delta, 1);
         }
 
-        want_pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
-        if editor.font.pixel_height != want_pixel_height {
-            editor_log(editor, "Resetting font to new physical pixel height: % (subpixel: %)", want_pixel_height, FONT_SUBPIXEL);
+        pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
+        if editor.font.pixel_height != pixel_height {
+            editor_log(editor, "Font size: %, physical pixel height: %, subpixel: %", editor.font_size, pixel_height, FONT_SUBPIXEL);
 
             cell_h_before_zoom := editor.font.line_height_in_pixels;
-            font_reset_for_options(*editor.font, want_pixel_height);
+            font_reset_for_options(*editor.font, pixel_height);
             cell_h_after_zoom  := editor.font.line_height_in_pixels;
 
             for * editor.panels {
