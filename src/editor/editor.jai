@@ -4,7 +4,7 @@ TODO(jt): Known serious bugs:
 
 (none currently)
 
-TODO(jt): Stuff to do:
+TODO(jt): Roadmap:
 
 - [X] Implement Arena, or use Flat_Pool.
 - [X] Display text on screen
@@ -29,19 +29,19 @@ TODO(jt): Stuff to do:
 - [X] Matching parentheses highlight
 - [~] Syntax aware indentation (C-i)
 - [~] Watch opened files for changes on disk
+- [~] Panel tiling
+- [ ] Directory Lister panel
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
 - [ ] *compilation* buffer
-- [ ] Panel tiling
 - [ ] Mode defined comments
 - [ ] Themes
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode Panel
 - [ ] Multiple Cursors
-- [ ] Projects (project settings, project compilations, project text search with jumping, project-wide find/replace)
+- [ ] Projects (project root, settings, compilations, text search with jumping, find/replace)
 - [ ] Emacs-like undo? (If I find out I can't live without)
 - [ ] Emacs-like kill ring (If I find out I can't live without)
-- [ ] Directory Lister panel
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] FreeType subpixel rendering
 - [ ] Font Kerning
