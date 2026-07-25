@@ -35,9 +35,9 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         return;
     }
 
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return;
     }
 
@@ -169,9 +169,9 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         return false;
     }
 
-    active_panel := get_panel_for_active_view(editor);
-    sanity_assert(active_panel != null);
-    if !active_panel {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
         return false;
     }
 
@@ -245,15 +245,15 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
                         watch_file(editor, platform, input, document.backing_file_path);
 
-                        panel_set_document(active_panel, editor, document);
+                        panel_set_document(panel, editor, document);
                         recenter_active_panel(editor, input, true);
                     }
                 } else {
                     editor_log(editor, "Opening new file with path: %", file_absolute_path);
-                    panel_set_document(active_panel, editor, document);
+                    panel_set_document(panel, editor, document);
                 }
             } else {
-                panel_set_document(active_panel, editor, document);
+                panel_set_document(panel, editor, document);
             }
         } else {
             log_error("Failed to get absolute path for %", file_path);
