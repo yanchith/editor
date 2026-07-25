@@ -64,7 +64,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         array_reset(*mini_panel.items);
         arena_reset(mini_panel.items_arena);
 
-        if active_panel && active_panel.document {
+        if active_panel.document {
             document := active_panel.document;
 
             array_reset_keeping_memory(*active_panel.highlights);
@@ -212,7 +212,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
     if mini_panel.items.count {
         assert(mini_panel.item_index >= 0);
-        if active_panel && active_panel.document {
+        if active_panel.document {
             item := *mini_panel.items[mini_panel.item_index];
 
             userdata := cast(*Search_Item_Userdata, item.userdata);
@@ -225,10 +225,8 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         }
     }
 
-    if active_panel {
-        array_reset_keeping_memory(*active_panel.highlights);
-        active_panel.highlight_index = -1;
-    }
+    array_reset_keeping_memory(*active_panel.highlights);
+    active_panel.highlight_index = -1;
 
     close_mini_panel(editor, platform, input);
 
@@ -248,20 +246,18 @@ cancel :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    if active_panel {
-        array_reset_keeping_memory(*active_panel.highlights);
-        active_panel.highlight_index = -1;
+    array_reset_keeping_memory(*active_panel.highlights);
+    active_panel.highlight_index = -1;
 
-        userdata: *Search_Userdata = editor.mini_panel.userdata;
-        x := userdata.original_cursor0.x;
-        y := userdata.original_cursor0.y;
+    userdata: *Search_Userdata = editor.mini_panel.userdata;
+    x := userdata.original_cursor0.x;
+    y := userdata.original_cursor0.y;
 
-        if active_panel.document {
-            text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursors, x, y, active_panel.selecting);
-        }
-
-        active_panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
+    if active_panel.document {
+        text_buffer_move_cursor_to(active_panel.document.buffer, *active_panel.cursors, x, y, active_panel.selecting);
     }
+
+    active_panel.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
     close_mini_panel(editor, platform, input);
 }
