@@ -137,13 +137,11 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
         document := cast(*Document, item.userdata);
 
-        if active_panel {
-            panel_set_document(active_panel, editor, document);
+        panel_set_document(active_panel, editor, document);
 
-            // TODO(jt): Emacs actually remembers the previous scroll of the panel in
-            // document. Do we want to do the same?
-            recenter_active_panel(editor, input, force_center = true, skip_interpolation = true);
-        }
+        // TODO(jt): Emacs actually remembers the previous scroll of the panel in
+        // document. Do we want to do the same?
+        recenter_active_panel(editor, input, force_center = true, skip_interpolation = true);
     }
 
     close_mini_panel(editor, platform, input);
