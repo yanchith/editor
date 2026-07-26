@@ -62,7 +62,7 @@ TODO(jt): @Stream Small things to do:
 - [ ] SEARCH should allow words separated by spaces
 - [ ] SEARCH items render with syntax highlighting
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
-- [ ] Deduplicate path prefixes in SWITCH_TO_DOCUMENT and CLOSE_DOCUMENT
+- [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
 - [ ] C-j join-next-line
 - [ ] M-d, C-<backspace> (delete forward/backward word)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
@@ -73,7 +73,7 @@ TODO(jt): @Stream Small things to do:
 - [ ] M-q (reflow)
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Flash cursor with typing (needs tuning)
-- [X] When switching-to/closing documents, sort by recency.
+- [X] When switching/closing view, sort by recency.
 - [ ] Read-only mode for documents.
 - [ ] Dark text color under bright rectangles (cursor, selection, line)
 - [ ] Animate current line highlight the same way we animate cursor.
@@ -129,8 +129,8 @@ operator==     :: Math.operator==;
 #load "color.jai";
 #load "mini_panel_search.jai";
 #load "mini_panel_open_file.jai";
-#load "mini_panel_switch_to_document.jai";
-#load "mini_panel_close_document.jai";
+#load "mini_panel_switch_view.jai";
+#load "mini_panel_close_view.jai";
 #load "modal_interaction_search_and_replace.jai";
 #load "lang_jai.jai";
 #load "hello.jai";
@@ -200,9 +200,8 @@ Editor :: struct {
 
     //
     // Documents and listings are referenced by panel views (possibly multiple times). When we close
-    // a panel or switch it to a different document/listing, the original remains. When we
-    // close/unload a document/listing, we need to go through every panel and make sure it does not
-    // reference that.
+    // a panel or switch it to a different view, the original remains. When we close/unload a
+    // document/listing, we need to go through every panel and make sure it does not reference that.
     //
     panels:    [..] Panel;
     documents: Bucket_Array(Document, 16);
@@ -580,8 +579,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-x C-s", .SAVE_DOCUMENT);
         key_map_add(key_map, "C-x C-r", .RELOAD_DOCUMENT);
 
-        key_map_add(key_map, "C-x b",   .SWITCH_TO_DOCUMENT);
-        key_map_add(key_map, "C-x k",   .CLOSE_DOCUMENT);
+        key_map_add(key_map, "C-x b",   .SWITCH_VIEW);
+        key_map_add(key_map, "C-x k",   .CLOSE_VIEW);
 
         key_map_add(key_map, "C-M-p",   .SWAP_LINE_UP);
         key_map_add(key_map, "C-M-n",   .SWAP_LINE_DOWN);
@@ -1746,9 +1745,8 @@ Editor_Action :: enum {
     SAVE_DOCUMENT;
     RELOAD_DOCUMENT;
 
-    // nocheckin These should be renamed, because now we can also switch to views.
-    SWITCH_TO_DOCUMENT;
-    CLOSE_DOCUMENT;
+    SWITCH_VIEW;
+    CLOSE_VIEW;
 
     SWAP_LINE_UP;
     SWAP_LINE_DOWN;
@@ -1923,8 +1921,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     }
                 }
 
-                case .SWITCH_TO_DOCUMENT;           open_mini_panel(editor, platform, input, mini_panel_switch_to_document_procs);
-                case .CLOSE_DOCUMENT;               open_mini_panel(editor, platform, input, mini_panel_close_document_procs);
+                case .SWITCH_VIEW;                  open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
+                case .CLOSE_VIEW;                   open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
 
                 case .SWAP_LINE_UP;                 // TODO(jt): text_buffer_swap_line_up
                 case .SWAP_LINE_DOWN;               // TODO(jt): text_buffer_swap_line_down
@@ -2269,17 +2267,12 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
     wants_this_frame := false;
     wants_next_frame := false;
 
-    // nocheckin maybe some of these are unused?
-
     cell_w := editor.font.max_glyph_width_in_pixels;
     cell_h := editor.font.line_height_in_pixels;
 
     panel_rect, panel_content_rect := get_panel_rect(editor, panel_index);
-    panel_x := panel_rect.x0;
-    panel_y := panel_rect.y0;
     panel_w := rect_width(panel_rect);
     panel_h := rect_height(panel_rect);
-    panel_content_x := panel_content_rect.x0;
     panel_content_w := rect_width(panel_content_rect);
 
     if panel.view.kind == {
@@ -2443,7 +2436,6 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
 draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Command, atlas_update_regions: *[..] IRect, panel: Panel, panel_index: s64) {
     ProfileZone("draw_panel");
 
-    // nocheckin maybe some of these are unused?
     window_h := cast(f32, input.window_size.y);
     cell_w := editor.font.max_glyph_width_in_pixels;
     cell_h := editor.font.line_height_in_pixels;
