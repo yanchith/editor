@@ -289,15 +289,15 @@ Font_Style_Range :: struct {
     variant: Font_Variant;
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..] Render_Command, update_regions: *[..] IRect, offset: DVector2, scissor_rect: Rect, default_color: Vector4, style_ranges: [] Font_Style_Range, binary: bool) {
+font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..] Render_Command, atlas_update_regions: *[..] IRect, offset: DVector2, scissor_rect: Rect, default_color: Vector4, style_ranges: [] Font_Style_Range, binary: bool) {
     if binary {
-        _font_layout_and_draw_text(font, text, render_commands, update_regions, offset, scissor_rect, default_color, style_ranges, true);
+        _font_layout_and_draw_text(font, text, render_commands, atlas_update_regions, offset, scissor_rect, default_color, style_ranges, true);
     } else {
-        _font_layout_and_draw_text(font, text, render_commands, update_regions, offset, scissor_rect, default_color, style_ranges, false);
+        _font_layout_and_draw_text(font, text, render_commands, atlas_update_regions, offset, scissor_rect, default_color, style_ranges, false);
     }
 }
 
-_font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..] Render_Command, update_regions: *[..] IRect, offset: DVector2, scissor_rect: Rect, default_color: Vector4, style_ranges: [] Font_Style_Range, $binary: bool) {
+_font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..] Render_Command, atlas_update_regions: *[..] IRect, offset: DVector2, scissor_rect: Rect, default_color: Vector4, style_ranges: [] Font_Style_Range, $binary: bool) {
     ProfileZone("font_layout_and_draw_text");
 
     style_range_index: s64 = -1;
@@ -492,7 +492,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
 
             table_add(*font.glyph_table, compose_key(glyph_index, glyph_variant), entry_index);
             array_add(
-                update_regions,
+                atlas_update_regions,
                 irect_from_point_and_size(
                     glyph_cell_x * font.glyph_atlas_cell_width_in_pixels,
                     glyph_cell_y * font.glyph_atlas_cell_height_in_pixels,

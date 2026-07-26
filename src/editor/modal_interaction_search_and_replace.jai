@@ -170,7 +170,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         y := highlight.y;
 
                         text_buffer_move_cursor_to(view.document.buffer, *view.cursors, x, y, false);
-                        recenter_panel(editor, input, true);
+                        recenter_active_panel(editor, input, true);
                     }
                 }
                 case .CANCEL; {
@@ -296,7 +296,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
                 y := highlight.y;
 
                 text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
-                recenter_panel(editor, input, true);
+                recenter_active_panel(editor, input, true);
             }
 
             if panel.highlights.count && new_highlight_index != -1 {
