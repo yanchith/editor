@@ -77,6 +77,7 @@ TODO(jt): @Stream Small things to do:
 - [ ] Read-only mode for documents.
 - [ ] Dark text color under bright rectangles (cursor, selection, line)
 - [ ] Animate current line highlight the same way we animate cursor.
+- [ ] Cursor trail (requires our own renderer)
 
 */
 
@@ -116,6 +117,7 @@ operator==     :: Math.operator==;
 #load "hash.jai";
 #load "string.jai";
 #load "math.jai";
+#load "interpolation.jai";
 #load "platform.jai";
 #load "renderer.jai";
 #load "input.jai";
@@ -176,6 +178,11 @@ PANEL_SCROLL_PADDING_CELLS_X :: 3;    // TODO(jt): Make this configurable. :Conf
 PANEL_SCROLL_PADDING_CELLS_Y :: 3;    // TODO(jt): Make this configurable. :Config
 
 MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
+
+PANEL_SCROLL_DURATION:         f32 : 0.15; // TODO(jt): Make this configurable. :Config
+CURSOR_FLASH_DURATION:         f32 : 0.20; // TODO(jt): Make flash time configurable. :Config
+CURSOR_ANIM_DURATION_MOUSE:    f32 : 0.15; // TODO(jt): Make mouse anim time configurable. :Config
+CURSOR_ANIM_DURATION_KEYBOARD: f32 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
 
 // TODO(jt): @Cleanup Just use the item count and index from the listing.
 TEMPORARY_HACK_LISTING_LINE_COUNT :: 9000;
@@ -241,15 +248,10 @@ Panel :: struct {
     // Scroll vectors are f64, because buffers can be large and we actually ran into precision
     // issues with f32 vectors. Doubles suffice for now (verified up to 4GB of prose), but maybe we
     // should do our own numeric type eventually (either 58:6 fixed point or maybe s64 + f32 offset)?
-    scroll_source: DVector2;
+    //
     // TODO(jt): Snap scroll_target to integers, so we don't blur the font. (At least LiberationMono
     // actually takes care to advance in integer amount of pixels when laying out the line.)
-    scroll_target: DVector2;
-    scroll_time_start: Apollo_Time;
-    // TODO(jt): Consider rethinking the coordinate system here. Currently scroll is screen-centric,
-    // but maybe we want to represent it as translation in world space (which would basically mean
-    // negating it).
-    scroll: DVector2;
+    scroll: Interpolation(DVector2);
 
     Highlight :: struct {
         x0: s64;
@@ -285,16 +287,8 @@ Document_View :: struct {
     old_cursor: Text_Location;
     old_cursor_position: DVector2;
 
-    // nocheckin rename to cursor_position
-    cursor_anim_source: DVector2;
-    cursor_anim_target: DVector2;
-    cursor_anim_time_start: Apollo_Time;
-    cursor_anim: DVector2;
-
-    cursor_flash_source: Vector4;
-    cursor_flash_target: Vector4;
-    cursor_flash_time_start: Apollo_Time;
-    cursor_flash: Vector4;
+    cursor_position: Interpolation(DVector2);
+    cursor_flash:    Interpolation(Vector4);
 
     // TODO(jt): @Cleanup Maybe some of these flags are useful to Listing_View as well, we could unify.
     Flags :: enum_flags u32 {
@@ -306,10 +300,6 @@ Document_View :: struct {
         CLAMP_SCROLL_TO_END_OF_LINE   :: 0x08; // Implies CLAMP_SCROLL_TO_CURSOR;
         RECEIVED_KEYBOARD_INTERACTION :: 0x10;
         RECEIVED_MOUSE_INTERACTION    :: 0x20;
-
-        // These get set and unset in setup_cursor_anim_interpolation.
-        CURSOR_ANIM_TRIGGERED_BY_MOUSE    :: 0x0100;
-        CURSOR_ANIM_TRIGGERED_BY_KEYBOARD :: 0x0200;
 
         // :TransientDocumentViewFlags
         //
@@ -966,7 +956,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 view := *it.view._document;
 
                 cursor_y := view.cursors.c0.y;
-                mouse_y  := (input.mouse_position.y + it.scroll_target.y) / cell_h_before_zoom;
+                mouse_y  := (input.mouse_position.y + it.scroll.target.y) / cell_h_before_zoom;
 
                 y: f64 = ifx input.mouse_wheel_delta == 0 then cast(f64, cursor_y) else mouse_y;
 
@@ -976,10 +966,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 delta := y_position_after_zoom - y_position_before_zoom;
 
                 {
-                    target := it.scroll_target;
+                    target := it.scroll.target;
                     target.y += delta;
                     target.y = max(target.y, 0);
-                    setup_instant_scroll_interpolation(it, target);
+                    interpolation_init(*it.scroll, target);
                 }
 
                 // If we change zoom, we need to invalidate old cursor positions in every panel. We
@@ -988,7 +978,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 cursor_position := get_cursor_position(view, editor.font);
 
                 view.old_cursor_position = cursor_position;
-                setup_instant_cursor_anim_interpolation(view, cursor_position);
+                interpolation_init(*view.cursor_position, cursor_position);
             }
         }
     }
@@ -1022,7 +1012,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // We scroll the hovered panel regardless of which view is hovered or active.
         //
         if input.mouse_wheel_delta != 0 && !(editor.input_state.modifiers & .CTRL) {
-            target := hovered_panel.scroll_target;
+            target := hovered_panel.scroll.target;
             target.y -= cast(f64, input.mouse_wheel_delta);
             if #complete hovered_panel.view.kind == {
                 case .DOCUMENT; {
@@ -1035,7 +1025,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
             }
 
-            setup_instant_scroll_interpolation(hovered_panel, target);
+            interpolation_init(*hovered_panel.scroll, target);
 
             if hovered_panel.view.kind == .DOCUMENT {
                 view := *hovered_panel.view._document;
@@ -1088,10 +1078,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         if mouse.x < left_edge {
                             boost := (left_edge - mouse.x) * SCROLL_BOOST;
 
-                            target := panel.scroll_target;
+                            target := panel.scroll.target;
                             target.x -= SCROLL_SPEED * boost * dt;
                             target.x = max(target.x, 0);
-                            setup_instant_scroll_interpolation(panel, target);
+                            interpolation_init(*panel.scroll, target);
 
                             wants_this_frame = true;
                             wants_next_frame = true;
@@ -1111,10 +1101,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             // scroll to a short line.)
                             max_x := max(font_compute_line_length(editor.font, line_view, binary = document.buffer.binary_mode) - panel_w + apron, 0);
 
-                            target := panel.scroll_target;
+                            target := panel.scroll.target;
                             target.x += SCROLL_SPEED * boost * dt;
                             target.x = min(target.x, max_x);
-                            setup_instant_scroll_interpolation(panel, target);
+                            interpolation_init(*panel.scroll, target);
 
                             wants_this_frame = true;
                             wants_next_frame = true;
@@ -1123,20 +1113,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         if mouse.y < top_edge {
                             boost := (top_edge - mouse.y) * SCROLL_BOOST;
 
-                            target := panel.scroll_target;
+                            target := panel.scroll.target;
                             target.y -= SCROLL_SPEED * boost * dt;
                             target.y = max(target.y, 0);
-                            setup_instant_scroll_interpolation(panel, target);
+                            interpolation_init(*panel.scroll, target);
 
                             wants_this_frame = true;
                             wants_next_frame = true;
                         } else if mouse.y > bottom_edge {
                             boost := (mouse.y - bottom_edge) * SCROLL_BOOST;
 
-                            target := panel.scroll_target;
+                            target := panel.scroll.target;
                             target.y += SCROLL_SPEED * boost * dt;
                             target.y = min(target.y, cell_h * cast(f64, document.buffer.line_bytes.count - 1));
-                            setup_instant_scroll_interpolation(panel, target);
+                            interpolation_init(*panel.scroll, target);
 
                             wants_this_frame = true;
                             wants_next_frame = true;
@@ -1147,7 +1137,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     // Mouse selection in DOCUMENT views.
                     //
 
-                    row := cast(s64, floor((mouse.y + panel.scroll.y) / cell_h));
+                    row := cast(s64, floor((mouse.y + panel.scroll.value.y) / cell_h));
                     col := 0;
 
                     if row < 0 {
@@ -1158,11 +1148,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                         // Include newline, so that the cursor can go there.
                         line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
-                        col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.x, binary = document.buffer.binary_mode);
+                        col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
                     } else {
                         // Include newline, so that the cursor can go there.
                         line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
-                        col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.x, binary = document.buffer.binary_mode);
+                        col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
                     }
 
                     text_buffer_move_cursor_to(document.buffer, *view.cursors, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
@@ -2315,7 +2305,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
             // Clamp cursor to buffer
             //
             if view.flags & .CLAMP_CURSOR_TO_SCROLL {
-                viewport_rect := drect_from_point_and_size(panel.scroll_target.x, panel.scroll_target.y, panel_w, panel_h);
+                viewport_rect := drect_from_point_and_size(panel.scroll.target.x, panel.scroll.target.y, panel_w, panel_h);
                 cursor_rect   := drect_from_point_and_size(cursor0_position.x, cursor0_position.y, cell_w, cell_h);
 
                 SCROLL_PADDING :: 7; // TODO(jt): Make this configurable. :Config
@@ -2347,34 +2337,42 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 scroll_padding_x := min(panel_w * 0.25, cell_w * PANEL_SCROLL_PADDING_CELLS_X);
                 scroll_padding_y := min(panel_h * 0.25, cell_h * PANEL_SCROLL_PADDING_CELLS_Y);
 
-                viewport_rect := drect_from_point_and_size(panel.scroll_target.x + PANEL_GUTTER_PIXELS, panel.scroll_target.y, panel_content_w, panel_h);
+                viewport_rect := drect_from_point_and_size(panel.scroll.target.x + PANEL_GUTTER_PIXELS, panel.scroll.target.y, panel_content_w, panel_h);
                 scroll_to_rect: DRect;
                 if view.flags & .CLAMP_SCROLL_TO_START_OF_LINE {
-                    scroll_to_rect = drect_from_point_and_size(0, cursor0_position.y, cell_w, cell_h);
+                    scroll_to_rect = drect_from_point_and_size(PANEL_GUTTER_PIXELS, cursor0_position.y, cell_w, cell_h);
                 } else if view.flags & .CLAMP_SCROLL_TO_END_OF_LINE {
-                    scroll_to_rect = drect_from_point_and_size(cursor0_line_end_x, cursor0_position.y, cell_w, cell_h);
+                    scroll_to_rect = drect_from_point_and_size(PANEL_GUTTER_PIXELS + cursor0_line_end_x, cursor0_position.y, cell_w, cell_h);
                 } else {
-                    scroll_to_rect = drect_from_point_and_size(cursor0_position.x, cursor0_position.y, cell_w, cell_h);
+                    scroll_to_rect = drect_from_point_and_size(PANEL_GUTTER_PIXELS + cursor0_position.x, cursor0_position.y, cell_w, cell_h);
                 }
 
                 if scroll_to_rect.x1 > viewport_rect.x1 {
-                    target := panel.scroll_target;
+                    target := panel.scroll.target;
                     target.x = scroll_to_rect.x0 - panel_w + drect_width(scroll_to_rect) + scroll_padding_x;
-                    setup_scroll_interpolation(panel, input.time, panel.scroll, target);
+                    target.x = max(target.x, 0);
+
+                    interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
                 } else if scroll_to_rect.x0 < viewport_rect.x0 {
-                    target := panel.scroll_target;
+                    target := panel.scroll.target;
                     target.x = scroll_to_rect.x0 - scroll_padding_x;
-                    setup_scroll_interpolation(panel, input.time, panel.scroll, target);
+                    target.x = max(target.x, 0);
+
+                    interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
                 }
 
                 if scroll_to_rect.y1 > viewport_rect.y1 {
-                    target := panel.scroll_target;
+                    target := panel.scroll.target;
                     target.y = scroll_to_rect.y0 - panel_h + drect_height(scroll_to_rect) + scroll_padding_y;
-                    setup_scroll_interpolation(panel, input.time, panel.scroll, target);
+                    target.y = max(target.y, 0);
+
+                    interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
                 } else if scroll_to_rect.y0 < viewport_rect.y0 {
-                    target := panel.scroll_target;
+                    target := panel.scroll.target;
                     target.y = scroll_to_rect.y0 - scroll_padding_y;
-                    setup_scroll_interpolation(panel, input.time, panel.scroll, target);
+                    target.y = max(target.y, 0);
+
+                    interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
                 }
             }
 
@@ -2399,56 +2397,21 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 //
                 // UPDATE: Now we do the same for cursor flash animation.
                 if view.old_cursor != view.cursors.c0 {
-                    triggered_by_mouse    := cast(bool, view.flags & .RECEIVED_MOUSE_INTERACTION);
-                    triggered_by_keyboard := cast(bool, view.flags & .RECEIVED_KEYBOARD_INTERACTION);
+                    anim_duration: f32 = 0.0;
+                    if view.flags & .RECEIVED_MOUSE_INTERACTION     anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_MOUSE);
+                    if view.flags & .RECEIVED_KEYBOARD_INTERACTION  anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_KEYBOARD);
 
-                    setup_cursor_anim_interpolation(view, input.time, view.old_cursor_position, new_cursor_position, triggered_by_mouse, triggered_by_keyboard);
+                    interpolation_start(*view.cursor_position, view.old_cursor_position, new_cursor_position, input.time, anim_duration);
                 }
 
                 if document.flags & .MODIFIED_THIS_FRAME {
-                    setup_cursor_flash_interpolation(view, input.time, ACTIVE_CURSOR_COLOR, CURSOR_COLOR);
+                    interpolation_start(*view.cursor_flash, ACTIVE_CURSOR_COLOR, CURSOR_COLOR, input.time, CURSOR_FLASH_DURATION);
                 }
 
-                FLASH_TIME:         f64 : 0.20; // TODO(jt): Make flash time configurable. :Config
-                ANIM_TIME_MOUSE:    f64 : 0.15; // TODO(jt): Make mouse anim time configurable. :Config
-                ANIM_TIME_KEYBOARD: f64 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
-
-                anim_time: f64 = 0.0;
-                if view.flags & .CURSOR_ANIM_TRIGGERED_BY_MOUSE     anim_time = max(anim_time, ANIM_TIME_MOUSE);
-                if view.flags & .CURSOR_ANIM_TRIGGERED_BY_KEYBOARD  anim_time = max(anim_time, ANIM_TIME_KEYBOARD);
-
-                flash_t: f32;
-                #if FLASH_TIME == 0 {
-                    flash_t = 1.0;
-                } else {
-                    flash_t = cast(f32, (to_float64_seconds(input.time) - to_float64_seconds(view.cursor_flash_time_start)) / FLASH_TIME);
-                }
-
-                flash_t = clamp(flash_t, 0.0, 1.0);
-                flash_t = smoothstep(0.0, 1.0, flash_t);
-
-                // TODO(jt): For visuals, it would be nice, if the interpolated cursor left a trail
-                // behind it as it moves, because currently, when it moves very fast, you can spot the
-                // individual positions it occupies. Fred does this with a CRT persistence effect. Let's
-                // also do that!
-                //
-                // UPDATE: I accidentally had something like this with a rect_clamp bug, and it really
-                // does look cool. Let's do this!
-
-                anim_t: f32;
-                if anim_time == 0 {
-                    anim_t = 1.0;
-                } else {
-                    anim_t = cast(f32, (to_float64_seconds(input.time) + USUAL_DELTA_TIME - to_float64_seconds(view.cursor_anim_time_start)) / anim_time);
-                }
-
-                anim_t = clamp(anim_t, 0.0, 1.0);
-                anim_t = smoothstep(0.0, 1.0, anim_t);
-
-                view.cursor_flash = lerp(view.cursor_flash_source, view.cursor_flash_target, flash_t);
-                view.cursor_anim = lerp(view.cursor_anim_source, view.cursor_anim_target, anim_t);
-
-                if flash_t < 1.0 || anim_t < 1.0 {
+                interpolation_running := false;
+                interpolation_running |= interpolation_update(*view.cursor_position, input.time);
+                interpolation_running |= interpolation_update(*view.cursor_flash, input.time);
+                if interpolation_running {
                     wants_this_frame = true;
                     wants_next_frame = true;
                 }
@@ -2467,21 +2430,8 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
     // Animate Scroll
     //
     {
-        SCROLL_TIME: f64 : 0.15; // TODO(jt): Make this configurable. :Config
-
-        scroll_t: f32;
-        #if SCROLL_TIME == 0 {
-            scroll_t = 1.0;
-        } else {
-            scroll_t = cast(f32, (to_float64_seconds(input.time) + USUAL_DELTA_TIME - to_float64_seconds(panel.scroll_time_start)) / SCROLL_TIME);
-        }
-
-        scroll_t = clamp(scroll_t, 0.0, 1.0);
-        scroll_t = smoothstep(0.0, 1.0, scroll_t);
-
-        panel.scroll = lerp(panel.scroll_source, panel.scroll_target, scroll_t);
-
-        if scroll_t < 1.0 {
+        interpolation_running := interpolation_update(*panel.scroll, input.time);
+        if interpolation_running {
             wants_this_frame = true;
             wants_next_frame = true;
         }
@@ -2511,8 +2461,8 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
         panel_is_active = panel_index == active_panel_index;
     }
 
-    viewport_y0 := panel.scroll.y;
-    viewport_y1 := panel.scroll.y + panel_h;
+    viewport_y0 := panel.scroll.value.y;
+    viewport_y1 := panel.scroll.value.y + panel_h;
 
     set_scissor(render_commands, panel_rect);
 
@@ -2545,7 +2495,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 y1 := y0 + cell_h;
 
                 highlight_rect_world: DRect = { x0, y0, x1, y1 };
-                highlight_rect_screen := panel_content_rect.p0 + drect_to_rect(highlight_rect_world - panel.scroll);
+                highlight_rect_screen := panel_content_rect.p0 + drect_to_rect(highlight_rect_world - panel.scroll.value);
                 highlight_rect_screen = rect_clamp(highlight_rect_screen, panel_content_rect);
 
                 if it_index == panel.highlight_index {
@@ -2579,7 +2529,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                         selection_y1_world,
                     };
 
-                    selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                    selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll.value);
                     selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
                     draw_rect(render_commands, selection_rect_screen, SELECTION_COLOR);
@@ -2591,7 +2541,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                     //
                     // Because we expect scroll_offset to be small, we keep it in f32.
                     scroll_offset: Vector2;
-                    scroll_offset.x = cast(f32, panel.scroll.x);
+                    scroll_offset.x = cast(f32, panel.scroll.value.x);
                     scroll_offset.y = cast(f32, viewport_y0 - cell_h * cast(f64, viewport_line0));
 
                     // First line, if in viewport
@@ -2613,7 +2563,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                             selection_y1_world,
                         };
 
-                        selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                        selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll.value);
                         selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
                         draw_rect(render_commands, selection_rect_screen, SELECTION_COLOR);
@@ -2639,7 +2589,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                             selection_y1_world,
                         };
 
-                        selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                        selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll.value);
                         selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
                         draw_rect(render_commands, selection_rect_screen, SELECTION_COLOR);
@@ -2662,7 +2612,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                             selection_y1_world,
                         };
 
-                        selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll);
+                        selection_rect_screen := panel_content_rect.p0 + drect_to_rect(selection_rect_world - panel.scroll.value);
                         selection_rect_screen = rect_clamp(selection_rect_screen, panel_content_rect);
 
                         draw_rect(render_commands, selection_rect_screen, SELECTION_COLOR);
@@ -2691,7 +2641,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 }
 
                 if found {
-                    highlight_position := get_position_of_location(document, editor.font, highlight_loc) - panel.scroll;
+                    highlight_position := get_position_of_location(document, editor.font, highlight_loc) - panel.scroll.value;
                     highlight_rect := rect_from_point_and_size(panel_content_x + cast(f32, highlight_position.x), cast(f32, highlight_position.y), cell_w, cell_h);
 
                     draw_rect(render_commands, highlight_rect, MATCHING_PARENTHESIS_COLOR);
@@ -2702,23 +2652,23 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             // Draw cursor
             //
             if panel_is_active {
-                cursor_position := get_cursor_position(view, editor.font);
+                cursor_position := view.cursor_position.value;
 
                 line_rect := rect_from_point_and_size(
                     panel_content_x,
-                    cast(f32, cursor_position.y - panel.scroll.y),
+                    cast(f32, cursor_position.y - panel.scroll.value.y),
                     panel_w,
                     cell_h,
                 );
 
                 draw_rect(render_commands, line_rect, LINE_COLOR);
 
-                r := drect_from_point_and_size(panel_content_x + view.cursor_anim.x, view.cursor_anim.y, cell_w, cell_h) - panel.scroll;
+                r := drect_from_point_and_size(panel_content_x + cursor_position.x, cursor_position.y, cell_w, cell_h) - panel.scroll.value;
 
                 cursor_rect := drect_to_rect(r);
                 cursor_rect = rect_clamp(cursor_rect, panel_content_rect);
 
-                draw_rect(render_commands, cursor_rect, ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else view.cursor_flash);
+                draw_rect(render_commands, cursor_rect, ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else view.cursor_flash.value);
             }
 
             //
@@ -2738,7 +2688,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 // big (although I'd wager we have serious performance problems before that starts to
                 // matter), so we go f64 to be future proof.
                 offset: DVector2;
-                offset.x = panel_content_x + -panel.scroll.x;
+                offset.x = panel_content_x + -panel.scroll.value.x;
                 offset.y = -viewport_y0 + cell_h * cast(f64, viewport_line0);
 
                 style_ranges: [..] Font_Style_Range;
@@ -3112,11 +3062,6 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
         }
     }
 
-    panel.scroll_source = { 0, 0 };
-    panel.scroll_target = { 0, 0 };
-    panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes for e.g. to_float64_seconds.
-    panel.scroll = { 0, 0 };
-
     panel.view.kind = .DOCUMENT;
 
     view := *panel.view._document;
@@ -3131,15 +3076,10 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
     view.old_cursor = view.cursors.c0;
     view.old_cursor_position = cursor_position;
 
-    view.cursor_anim_source = cursor_position;
-    view.cursor_anim_target = cursor_position;
-    view.cursor_anim_time_start = {};
-    view.cursor_anim = cursor_position;
+    interpolation_init(*view.cursor_position, cursor_position);
+    interpolation_init(*view.cursor_flash, CURSOR_COLOR);
 
-    view.cursor_flash_source = CURSOR_COLOR;
-    view.cursor_flash_target = CURSOR_COLOR;
-    view.cursor_flash_time_start = {};
-    view.cursor_flash = CURSOR_COLOR;
+    interpolation_init(*panel.scroll, { 0, 0 });
 
     document.time_of_last_interaction = editor.input_state.time;
 }
@@ -3174,34 +3114,36 @@ recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, 
     }
 
     target: DVector2;
-    target.x = panel.scroll_target.x;
+    target.x = panel.scroll.target.x;
 
     if force_center {
         target.y = center;
-    } else if panel.scroll_target.y == center {
+    } else if panel.scroll.target.y == center {
         target.y = top;
-    } else if panel.scroll_target.y == top {
+    } else if panel.scroll.target.y == top {
         target.y = bottom;
     } else {
         target.y = center;
     }
 
+    target.y = max(target.y, 0);
+
     if skip_interpolation {
-        setup_instant_scroll_interpolation(panel, target);
+        interpolation_init(*panel.scroll, target);
     } else {
-        setup_scroll_interpolation(panel, input.time, panel.scroll, target);
+        interpolation_start(*panel.scroll, panel.scroll.value, target, input.time, PANEL_SCROLL_DURATION);
     }
 }
 
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
-    top: f64 = 0; // Just here for symmetry with scrolling
+    top: f64 = 0; // Just here for symmetry with scrolling down.
 
     delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
-    delta = min(delta, panel.scroll_target.y - top);
+    delta = min(delta, panel.scroll.target.y - top);
 
-    target := panel.scroll_target;
+    target := panel.scroll.target;
     target.y -= delta;
-    setup_scroll_interpolation(panel, input.time, panel.scroll, target);
+    interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
 
     if panel.view.kind == .DOCUMENT {
         panel.view._document.flags |= .CLAMP_CURSOR_TO_SCROLL;
@@ -3216,14 +3158,14 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     }
 
     bottom := cast(f64, line_count) * cell_h;
-    sanity_assert(bottom >= panel.scroll_target.y);
+    sanity_assert(bottom >= panel.scroll.target.y);
 
     delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
-    delta = min(delta, bottom - (panel.scroll_target.y + delta));
+    delta = min(delta, bottom - (panel.scroll.target.y + delta));
 
-    target := panel.scroll_target;
+    target := panel.scroll.target;
     target.y += delta;
-    setup_scroll_interpolation(panel, input.time, panel.scroll, target);
+    interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
 
     if panel.view.kind == .DOCUMENT {
         panel.view._document.flags |= .CLAMP_CURSOR_TO_SCROLL;
@@ -3259,63 +3201,6 @@ get_position_of_location :: (document: Document, font: Font, loc: Text_Location)
     position.y = cast(f64, loc.y) * font.line_height_in_pixels;
 
     return position;
-}
-
-setup_scroll_interpolation :: (panel: *Panel, time: Apollo_Time, source: DVector2, target: DVector2) {
-    // This early return prevents changing current interpolation to one that's just slightly
-    // different, and thus prolonging the animation and making it jittery. This happens, when we
-    // hold down a button (e.g. C-v) that triggers us setting up the interepolation.
-    if target == panel.scroll_target {
-        return;
-    }
-
-    panel.scroll_time_start = time;
-
-    panel.scroll_source.x = max(source.x, 0.0);
-    panel.scroll_source.y = max(source.y, 0.0);
-
-    panel.scroll_target.x = max(target.x, 0.0);
-    panel.scroll_target.y = max(target.y, 0.0);
-
-    panel.scroll = panel.scroll_source;
-}
-
-setup_instant_scroll_interpolation :: (panel: *Panel, target: DVector2) {
-    panel.scroll_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
-
-    panel.scroll_source.x = max(target.x, 0.0);
-    panel.scroll_source.y = max(target.y, 0.0);
-    panel.scroll_target = panel.scroll_source;
-    panel.scroll = panel.scroll_source;
-}
-
-setup_cursor_anim_interpolation :: (view: *Document_View, time: Apollo_Time, source: DVector2, target: DVector2, triggered_by_mouse := false, triggered_by_keyboard := false) {
-    view.cursor_anim_source = source;
-    view.cursor_anim_target = target;
-    view.cursor_anim_time_start = time;
-    view.cursor_anim = source;
-
-    if triggered_by_mouse     view.flags |= .CURSOR_ANIM_TRIGGERED_BY_MOUSE;
-    else                      view.flags &= ~.CURSOR_ANIM_TRIGGERED_BY_MOUSE;
-    if triggered_by_keyboard  view.flags |= .CURSOR_ANIM_TRIGGERED_BY_KEYBOARD;
-    else                      view.flags &= ~.CURSOR_ANIM_TRIGGERED_BY_KEYBOARD;
-}
-
-setup_instant_cursor_anim_interpolation :: (view: *Document_View, target: DVector2) {
-    view.cursor_anim_source = target;
-    view.cursor_anim_target = target;
-    view.cursor_anim_time_start = {}; // Zero instead of APOLLO_TIME_INVALID, as that crashes Int128 stuff in to_float64_seconds.
-    view.cursor_anim = target;
-
-    view.flags &= ~.CURSOR_ANIM_TRIGGERED_BY_MOUSE;
-    view.flags &= ~.CURSOR_ANIM_TRIGGERED_BY_KEYBOARD;
-}
-
-setup_cursor_flash_interpolation :: (view: *Document_View, time: Apollo_Time, source: Vector4, target: Vector4) {
-    view.cursor_flash_source = source;
-    view.cursor_flash_target = target;
-    view.cursor_flash_time_start = time;
-    view.cursor_flash = source;
 }
 
 #scope_file
