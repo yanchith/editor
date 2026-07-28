@@ -244,17 +244,14 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                         update_syntax_highlights(editor, document, platform, input);
 
                         watch_file(editor, platform, input, document.backing_file_path);
-
-                        panel_set_document(panel, editor, document);
-                        recenter_active_panel(editor, input, true);
                     }
                 } else {
                     editor_log(editor, "Opening new file with path: %", file_absolute_path);
-                    panel_set_document(panel, editor, document);
                 }
-            } else {
-                panel_set_document(panel, editor, document);
             }
+
+            panel_set_document(panel, editor, document);
+            recenter_active_panel(editor, input, true);
         } else {
             log_error("Failed to get absolute path for %", file_path);
         }
