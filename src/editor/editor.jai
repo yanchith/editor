@@ -2456,7 +2456,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
     viewport_y0 := panel.scroll.value.y;
     viewport_y1 := panel.scroll.value.y + panel_h;
 
-    set_scissor(render_commands, panel_rect);
+    set_scissor(render_commands, panel_content_rect);
 
     if panel.view.kind == {
         case .DOCUMENT; {
