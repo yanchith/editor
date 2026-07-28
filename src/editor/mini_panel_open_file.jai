@@ -214,8 +214,8 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         if success {
             String.path_overwrite_separators(file_absolute_path, "/");
 
-            document, document_newly_created := find_or_add_document(editor, platform, .FILE, file_absolute_path);
-            if document_newly_created {
+            document, document_added := find_or_add_document(editor, platform, .FILE, file_absolute_path);
+            if document_added {
                 if file_exists {
                     editor_log(editor, "Opening file: %", file_absolute_path);
 

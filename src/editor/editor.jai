@@ -2915,7 +2915,7 @@ update_syntax_highlights :: (editor: *Editor, document: *Document, platform: Pla
     }
 }
 
-find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, newly_created: bool {
+find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, added: bool {
     for * editor.documents {
         if it.kind != kind                            continue;
         if it.backing_file_path != backing_file_path  continue;
