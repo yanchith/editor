@@ -78,6 +78,7 @@ TODO(jt): @Stream Small things to do:
 - [ ] Dark text color under bright rectangles (cursor, selection, line)
 - [ ] Animate current line highlight the same way we animate cursor.
 - [ ] Cursor trail (requires our own renderer)
+- [ ] editor_log_error
 
 */
 
