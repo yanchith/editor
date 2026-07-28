@@ -3207,22 +3207,8 @@ clear_transient_document_view_flags :: (flags: *Document_View.Flags) {
     flags.* &= ~.TRANSIENT;
 }
 
-draw_rect :: (render_commands: *[..] Render_Command, x0: f32, y0: f32, x1: f32, y1: f32, _color: Vector3 = { 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
-    color: Vector4;
-    color.xyz = _color;
-    color.w   = 1.0;
-    inline draw_rect(render_commands, { x0, y0, x1, y1 }, color, texture);
-}
-
 draw_rect :: (render_commands: *[..] Render_Command, x0: f32, y0: f32, x1: f32, y1: f32, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
     inline draw_rect(render_commands, { x0, y0, x1, y1 }, color, texture);
-}
-
-draw_rect :: (render_commands: *[..] Render_Command, rect: Rect, _color: Vector3 = { 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
-    color: Vector4;
-    color.xyz = _color;
-    color.w   = 1.0;
-    inline draw_rect(render_commands, rect, color, texture);
 }
 
 draw_rect :: (render_commands: *[..] Render_Command, rect: Rect, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
