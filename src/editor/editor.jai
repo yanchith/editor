@@ -810,7 +810,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             view := *it.view._document;
             if view.old_cursor != view.cursors.c0 {
                 view.old_cursor = view.cursors.c0;
-                view.old_cursor_position = get_cursor_position(view, editor.font);
+                view.old_cursor_position = get_position_at_cursor(view, editor.font);
             }
         }
     }
@@ -974,7 +974,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 // If we change zoom, we need to invalidate old cursor positions in every panel. We
                 // also want to fast-forward every every cursor animation, because the interpolants
                 // are about to get stale.
-                cursor_position := get_cursor_position(view, editor.font);
+                cursor_position := get_position_at_cursor(view, editor.font);
 
                 view.old_cursor_position = cursor_position;
                 interpolation_init(*view.cursor_position, cursor_position);
@@ -2292,7 +2292,8 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
             //
             // Compute cursor position.
             //
-            cursor0_position, cursor0_line_end_x := get_cursor_position(view, editor.font);
+            cursor0_position    := get_position_at_cursor(view, editor.font);
+            cursor0_line_length := get_line_length_at_cursor(view, editor.font);
 
             //
             // Clamp cursor to buffer
@@ -2319,7 +2320,8 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 }
 
                 if cursor_position_dirty {
-                    cursor0_position, cursor0_line_end_x = get_cursor_position(view, editor.font);
+                    cursor0_position    = get_position_at_cursor(view, editor.font);
+                    cursor0_line_length = get_line_length_at_cursor(view, editor.font);
                 }
             }
 
@@ -2335,7 +2337,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 if view.flags & .CLAMP_SCROLL_TO_START_OF_LINE {
                     scroll_to_rect = drect_from_point_and_size(PANEL_GUTTER_PIXELS, cursor0_position.y, cell_w, cell_h);
                 } else if view.flags & .CLAMP_SCROLL_TO_END_OF_LINE {
-                    scroll_to_rect = drect_from_point_and_size(PANEL_GUTTER_PIXELS + cursor0_line_end_x, cursor0_position.y, cell_w, cell_h);
+                    scroll_to_rect = drect_from_point_and_size(PANEL_GUTTER_PIXELS + cursor0_line_length, cursor0_position.y, cell_w, cell_h);
                 } else {
                     scroll_to_rect = drect_from_point_and_size(PANEL_GUTTER_PIXELS + cursor0_position.x, cursor0_position.y, cell_w, cell_h);
                 }
@@ -2633,7 +2635,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 }
 
                 if found {
-                    highlight_position := get_position_of_location(document, editor.font, highlight_loc) - panel.scroll.value;
+                    highlight_position := get_position_for_location(document, editor.font, highlight_loc) - panel.scroll.value;
                     highlight_rect := rect_from_point_and_size(panel_content_x + cast(f32, highlight_position.x), cast(f32, highlight_position.y), cell_w, cell_h);
 
                     draw_rect(render_commands, highlight_rect, MATCHING_PARENTHESIS_COLOR);
@@ -3063,7 +3065,7 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
     view.cursors = document.cursors;
     view.selecting = false;
 
-    cursor_position := get_cursor_position(view, editor.font);
+    cursor_position := get_position_at_cursor(view, editor.font);
 
     view.old_cursor = view.cursors.c0;
     view.old_cursor_position = cursor_position;
@@ -3164,28 +3166,33 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     }
 }
 
-get_cursor_position :: (view: Document_View, font: Font) -> cursor_position: DVector2, cursor_line_end_x: f64 {
+// TODO(jt): @Memory Calling multiple of these get_xyz_at_cursor getters is wasteful, as each one
+// makes their own view of the buffer, iterates the line, etc. We could do some fusion here, if it
+// shows up on profiles.
+
+get_position_at_cursor :: (view: Document_View, font: Font) -> DVector2 {
     document := view.document;
     if !document {
-        return { 0, 0 }, 0;
+        return { 0, 0 };
     }
 
-    x := view.cursors.c0.x;
-    y := view.cursors.c0.y;
+    position := get_position_for_location(document, font, view.cursors.c0);
 
-    line_view := text_buffer_make_view_for_line(document.buffer, y,, temp);
-
-    position: DVector2;
-    position.x = font_compute_position_on_line(font, line_view, x, binary = document.buffer.binary_mode);
-    position.y = cast(f64, y) * font.line_height_in_pixels;
-
-    line_end   := text_buffer_get_end_of_line(document.buffer, y);
-    line_end_x := font_compute_position_on_line(font, line_view, line_end.x, binary = document.buffer.binary_mode);
-
-    return position, line_end_x;
+    return position;
 }
 
-get_position_of_location :: (document: Document, font: Font, loc: Text_Location) -> DVector2 {
+get_line_length_at_cursor :: (view: Document_View, font: Font) -> f64 {
+    document := view.document;
+    if !document {
+        0;
+    }
+
+    line_length := get_line_length_for_line_index(document, font, view.cursors.c0.y);
+
+    return line_length;
+}
+
+get_position_for_location :: (document: Document, font: Font, loc: Text_Location) -> DVector2 {
     line_view := text_buffer_make_view_for_line(document.buffer, loc.y,, temp);
 
     position: DVector2;
@@ -3193,6 +3200,13 @@ get_position_of_location :: (document: Document, font: Font, loc: Text_Location)
     position.y = cast(f64, loc.y) * font.line_height_in_pixels;
 
     return position;
+}
+
+get_line_length_for_line_index :: (document: Document, font: Font, line_index: s64) -> f64 {
+    line_view   := text_buffer_make_view_for_line(document.buffer, line_index,, temp);
+    line_length := font_compute_line_length(font, line_view, binary = document.buffer.binary_mode);
+
+    return line_length;
 }
 
 #scope_file
