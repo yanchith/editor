@@ -429,9 +429,17 @@ Document :: struct {
 Listing :: struct {
     locator: Bucket_Locator;
 
+    kind: Kind;
     time_of_last_interaction: Apollo_Time;
 
-    directory_path: string;
+    backing_directory_path: string;
+
+    Kind :: enum u32 {
+        DIRECTORY;
+        // TODO(jt): Add VIEWS (unified) ... this is basically entitities.
+        // TODO(jt): Add SEARCH_RESULTS
+        // TODO(jt): Add COMPILATION_ERRORS
+    }
 }
 
 // TODO(jt): @Design @Cleanup Try moving Mini_Panel, Modal_Interaction, and their APIs to their own
@@ -2955,10 +2963,28 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
     document.parenthesized_scopes.allocator    = arena_allocator(document_arena);
     document.syntax_highlight_tokens.allocator = arena_allocator(document_arena);
 
-    locator, document_pointer := bucket_array_add(*editor.documents, document);
-    document_pointer.locator = locator;
+    locator, pointer := bucket_array_add(*editor.documents, document);
+    pointer.locator = locator;
 
-    return document_pointer, true;
+    return pointer, true;
+}
+
+find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind, backing_directory_path: string) -> *Listing, added: bool {
+    for * editor.listings {
+        if it.kind != kind                                      continue;
+        if it.backing_directory_path != backing_directory_path  continue;
+
+        it.time_of_last_interaction = editor.input_state.time;
+
+        return it, false;
+    }
+
+    listing: Listing; // nocheckin initialize
+
+    locator, pointer := bucket_array_add(*editor.listings, listing);
+    pointer.locator = locator;
+
+    return pointer, true;
 }
 
 close_document :: (editor: *Editor, document: *Document) {

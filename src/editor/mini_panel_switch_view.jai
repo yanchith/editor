@@ -91,7 +91,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         }
 
         for * editor.listings {
-            listing_name: string = it.directory_path;
+            listing_name: string = it.backing_directory_path;
 
             found_index, found := String.index_of_string_nocase(listing_name, search_text);
             if found {
