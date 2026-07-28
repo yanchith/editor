@@ -192,20 +192,17 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
     }
 
     if file_is_directory {
-        // TODO(jt): If we ever have directory listers, rip this out and open the directory in the lister.
-        completion_text := String.path_filename(mini_panel.items[mini_panel.item_index].text);
-        buffer_text := text_buffer_make_view_for_line(mini_panel.buffer, 0, force_allocate = true,, temp);
-        buffer_path, _, _, buffer_filename := String.path_decomp(buffer_text);
+        success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
+        if success {
+            String.path_overwrite_separators(file_absolute_path, "/");
 
-        completion_filename := String.path_filename(completion_text);
+            listing, listing_added := find_or_add_listing(editor, platform, .DIRECTORY, file_absolute_path);
 
-        recomposed_path := tprint("%%", buffer_path, completion_filename);
-
-        text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursors);
-        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, recomposed_path);
-
-        if platform.file_is_directory(recomposed_path) {
-            text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, "/");
+            // nocheckin HERE populate with content... they also need a way to refresh their
+            // contents (C-g), so maybe we should have directory_listing.jai, view_listing.jai,
+            // etc...
+        } else {
+            log_error("Failed to get absolute_path for %", file_path);
         }
 
         return true;
