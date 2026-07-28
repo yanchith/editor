@@ -3226,7 +3226,7 @@ set_scissor :: (render_commands: *[..] Render_Command, scissor_rect: Rect) {
     command.rect = scissor_rect;
 }
 
-// These arena sizes are upper bounds for each category, so that we don't throw a 16GB reservation for everything.
+// These arena sizes are upper bounds for each category, so that we don't make a 16GB reservation for everything.
 //
 // TODO(jt): @Memory We should probably port our block-chaining arena to JAI, so that we don't have
 // to guess these upper bounds and don't run out of address space.
