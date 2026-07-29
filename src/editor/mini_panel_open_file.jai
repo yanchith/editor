@@ -198,14 +198,27 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
             listing, listing_added := find_or_add_listing(editor, platform, .DIRECTORY, file_absolute_path);
 
-            // nocheckin HERE populate with content... they also need a way to refresh their
-            // contents (C-g), so maybe we should have directory_listing.jai, view_listing.jai,
-            // etc...
+            file_list := platform.list_directory(file_absolute_path,, temp);
+            for file_list {
+                listed_file_path := it.name;
+                listed_filename := String.path_filename(it.name);
+
+                s := "";
+                if it.name.count {
+                    s = arena_push_string(listing.arena, listed_filename);
+
+                    item := array_add(*listing.items);
+                    item.text = s;
+                    item.text_color = LISTING_ITEM_COLOR;
+                }
+            }
+
+            panel_set_listing(panel, editor, listing);
         } else {
             log_error("Failed to get absolute_path for %", file_path);
         }
 
-        return true;
+        close_mini_panel(editor, platform, input);
     } else {
         success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
         if success {

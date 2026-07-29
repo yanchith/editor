@@ -162,6 +162,8 @@ GUTTER_COLOR               :: BACKGROUND_COLOR;
 SEPARATOR_COLOR            :: MODELINE_COLOR;
 BACKGROUND_COLOR           :: #run unpack_srgba(0x191919ff);
 
+LISTING_ITEM_COLOR :: TEXT_COLOR;
+
 TEXT_COLOR                   :: #run unpack_srgba(0xcdaa7dff);
 KEYWORD_COLOR                :: #run unpack_srgba(0xe95410ff);
 ATTRIBUTE_COLOR              :: KEYWORD_COLOR;
@@ -312,6 +314,8 @@ Document_View :: struct {
 
 Listing_View :: struct {
     listing: *Listing; // Possibly null!
+
+    item_index: s64;
 }
 
 Document :: struct {
@@ -322,7 +326,7 @@ Document :: struct {
     flags: Flags;
     time_of_last_interaction: Apollo_Time;
 
-    cursors: Text_Cursors; // Used to restore cursors in the panel, if the document was in the background. Otherwise, the panel's cursors take precedence.
+    cursors: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
     buffer: Text_Buffer;
 
     arena: *Arena; // For backing_file_path and syntax_highlight_tokens.
@@ -425,20 +429,30 @@ Document :: struct {
     }
 }
 
-// nocheckin Unify with mini_panel listings!
+// TODO(jt): @Cleanup Unify Listing/Listing_View with mini_panel listings!
 Listing :: struct {
     locator: Bucket_Locator;
 
     kind: Kind;
     time_of_last_interaction: Apollo_Time;
 
+    arena: *Arena; // For backing_directory_path and items.
+
     backing_directory_path: string;
+
+    items: [..] Item;
+    item_index: s64; // Used to restore item_index in panel view, if the listing was in the background. Otherwise, the view's item_index takes precedence.
 
     Kind :: enum u32 {
         DIRECTORY;
         // TODO(jt): Add VIEWS (unified) ... this is basically entitities.
         // TODO(jt): Add SEARCH_RESULTS
         // TODO(jt): Add COMPILATION_ERRORS
+    }
+
+    Item :: struct {
+        text: string;
+        text_color: Vector4;
     }
 }
 
@@ -2762,7 +2776,33 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
         }
 
         case .LISTING; {
+            view := *panel.view._listing;
 
+            listing := view.listing;
+
+            viewport_line0 := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, listing.items.count - 1);
+            viewport_line1 := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, listing.items.count - 1);
+
+            for viewport_line0..viewport_line1 {
+                item := *listing.items[it];
+
+                if it == listing.item_index {
+                    selection_y_world  := cast(f64, it) * cell_h;
+                    selection_y_screen := panel_y + cast(f32, selection_y_world - panel.scroll.value.y);
+                    selection_rect_screen := rect_from_point_and_size(panel_content_x, selection_y_screen, panel_content_w, cell_h);
+                    draw_rect(render_commands, selection_rect_screen, SELECTION_COLOR);
+                }
+
+                // Because we start the layout just before the current viewport, the rendering scroll Y offset
+                // is just the fractional part of the cell.
+                offset: DVector2;
+                offset.x = panel_content_x + -panel.scroll.value.x;
+                offset.y = -viewport_y0 + cell_h * cast(f64, it);
+
+                scissor_rect := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
+
+                _font_layout_and_draw_text(*editor.font, item.text, render_commands, atlas_update_regions, offset, scissor_rect, item.text_color, .[], binary = false);
+            }
         }
     }
 
@@ -2979,7 +3019,16 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
         return it, false;
     }
 
+    listing_arena := make_arena(platform, .MEDIUM);
+
     listing: Listing; // nocheckin initialize
+
+    listing.arena = listing_arena;
+    if backing_directory_path.count {
+        listing.backing_directory_path = arena_push_string(listing_arena, backing_directory_path);
+    }
+
+    listing.items.allocator = arena_allocator(listing_arena);
 
     locator, pointer := bucket_array_add(*editor.listings, listing);
     pointer.locator = locator;
@@ -3075,11 +3124,24 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
 
     // If this was a document-viewing panel, save the cursors on the document, so that they can be
     // restored later, once the document comes back to the foreground.
-    if panel.view.kind == .DOCUMENT {
-        view := *panel.view._document;
+    //
+    // Analogous for listing-viewing panel and item_index.
+    //
+    // TODO(jt): @Cleanup This is a copypasta between document/listing code.
+    if panel.view.kind == {
+        case .DOCUMENT; {
+            view := *panel.view._document;
 
-        if view.document {
-            view.document.cursors = view.cursors;
+            if view.document {
+                view.document.cursors = view.cursors;
+            }
+        }
+        case .LISTING; {
+            view := *panel.view._listing;
+
+            if view.listing {
+                view.listing.item_index = view.item_index;
+            }
         }
     }
 
@@ -3106,7 +3168,42 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
 }
 
 panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
-    // nocheckin
+    // For now, each (Listing_View) panel must have a document. We may later relax this and show
+    // some default background, or something.
+    assert(listing != null);
+
+    // If this was a document-viewing panel, save the cursors on the document, so that they can be
+    // restored later, once the document comes back to the foreground.
+    //
+    // Analogous for listing-viewing panel and item_index.
+    //
+    // TODO(jt): @Cleanup This is a copypasta between document/listing code.
+    if panel.view.kind == {
+        case .DOCUMENT; {
+            view := *panel.view._document;
+
+            if view.document {
+                view.document.cursors = view.cursors;
+            }
+        }
+        case .LISTING; {
+            view := *panel.view._listing;
+
+            if view.listing {
+                view.listing.item_index = view.item_index;
+            }
+        }
+    }
+
+    panel.view.kind = .LISTING;
+
+    view := *panel.view._listing;
+
+    view.listing = listing;
+
+    view.item_index = listing.item_index;
+
+    listing.time_of_last_interaction = editor.input_state.time;
 }
 
 #scope_module
