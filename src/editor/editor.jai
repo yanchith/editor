@@ -187,10 +187,6 @@ CURSOR_FLASH_DURATION:         f32 : 0.20; // TODO(jt): Make flash time configur
 CURSOR_ANIM_DURATION_MOUSE:    f32 : 0.15; // TODO(jt): Make mouse anim time configurable. :Config
 CURSOR_ANIM_DURATION_KEYBOARD: f32 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
 
-// TODO(jt): @Cleanup Just use the item count and index from the listing.
-TEMPORARY_HACK_LISTING_LINE_COUNT :: 9000;
-TEMPORARY_HACK_LISTING_LINE_INDEX :: 0;
-
 Editor :: struct {
     perm_arena: *Arena;
 
@@ -198,7 +194,11 @@ Editor :: struct {
     font_size: s32; // Scaled!
 
     input_state: Input_State;
-    key_map: Key_Map(Editor_Action);
+
+    global_key_map:   Key_Map(Editor_Action);
+    document_key_map: Key_Map(Document_Action);
+    listing_key_map:  Key_Map(Listing_Action);
+
     watched_files: [..] string;
 
     //
@@ -578,9 +578,33 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         input_state_update_with_event(*editor.input_state, it);
     }
 
-    // Editor key map
     {
-        key_map := *editor.key_map;
+        key_map := *editor.global_key_map;
+        key_map.allocator = arena_allocator(editor.perm_arena);
+
+        key_map_reserve(key_map, 128);
+
+        key_map_add(key_map, "C-x C-f", .OPEN_FILE);
+
+        key_map_add(key_map, "C-x b",   .SWITCH_VIEW);
+        key_map_add(key_map, "C-x k",   .CLOSE_VIEW);
+
+        key_map_add(key_map, "C-l",     .RECENTER);
+        key_map_add(key_map, "M-v",     .SCROLL_UP);
+        key_map_add(key_map, "C-v",     .SCROLL_DOWN);
+        key_map_add(key_map, "<pageup>", .SCROLL_UP);
+        key_map_add(key_map, "<pagedown>", .SCROLL_DOWN);
+        key_map_add(key_map, "<prior>", .SCROLL_UP);
+        key_map_add(key_map, "<next>",  .SCROLL_DOWN);
+
+        key_map_add(key_map, "C-x 3",   .SPLIT_VIEW_HORIZONTALLY);
+        key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_VIEW);
+        key_map_add(key_map, "C-x 1",   .CLOSE_OTHER_VIEWS);
+        key_map_add(key_map, "C-x o",   .GO_TO_NEXT_VIEW);
+    }
+
+    {
+        key_map := *editor.document_key_map;
         key_map.allocator = arena_allocator(editor.perm_arena);
 
         key_map_reserve(key_map, 128);
@@ -598,12 +622,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         // TODO(jt): @Cleanup In Emacs, SEARCH_AND_REPLACE is C-M-%, but our platform layer sucks, so we just bound it to something else for now.
         key_map_add(key_map, "C-r",     .SEARCH_AND_REPLACE);
 
-        key_map_add(key_map, "C-x C-f", .OPEN_FILE);
         key_map_add(key_map, "C-x C-s", .SAVE_DOCUMENT);
         key_map_add(key_map, "C-x C-r", .RELOAD_DOCUMENT);
-
-        key_map_add(key_map, "C-x b",   .SWITCH_VIEW);
-        key_map_add(key_map, "C-x k",   .CLOSE_VIEW);
 
         key_map_add(key_map, "C-M-p",   .SWAP_LINE_UP);
         key_map_add(key_map, "C-M-n",   .SWAP_LINE_DOWN);
@@ -611,24 +631,16 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-a",     .MOVE_TO_START_OF_LINE);
         key_map_add(key_map, "C-e",     .MOVE_TO_END_OF_LINE);
 
-        key_map_add(key_map, "M-<",     .MOVE_TO_START_OF_DOCUMENT);
-        key_map_add(key_map, "<home>",  .MOVE_TO_START_OF_DOCUMENT);
-        key_map_add(key_map, "M->",     .MOVE_TO_END_OF_DOCUMENT);
-        key_map_add(key_map, "<end>",   .MOVE_TO_END_OF_DOCUMENT);
+        key_map_add(key_map, "M-<",     .MOVE_TO_START);
+        key_map_add(key_map, "<home>",  .MOVE_TO_START);
+        key_map_add(key_map, "M->",     .MOVE_TO_END);
+        key_map_add(key_map, "<end>",   .MOVE_TO_END);
 
         key_map_add(key_map, "M-p",     .MOVE_TO_PREVIOUS_BLANK_LINE);
         key_map_add(key_map, "M-n",     .MOVE_TO_NEXT_BLANK_LINE);
 
         key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
         key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
-
-        key_map_add(key_map, "C-l",     .RECENTER);
-        key_map_add(key_map, "M-v",     .SCROLL_UP);
-        key_map_add(key_map, "C-v",     .SCROLL_DOWN);
-        key_map_add(key_map, "<pageup>", .SCROLL_UP);
-        key_map_add(key_map, "<pagedown>", .SCROLL_DOWN);
-        key_map_add(key_map, "<prior>", .SCROLL_UP);
-        key_map_add(key_map, "<next>",  .SCROLL_DOWN);
 
         key_map_add(key_map, "C-<space>", .START_SELECTING);
         key_map_add(key_map, "C-g",     .STOP_SELECTING);
@@ -655,13 +667,20 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "M-w",     .COPY);
         key_map_add(key_map, "C-w",     .CUT);
         key_map_add(key_map, "C-y",     .PASTE);
+    }
 
-        key_map_add(key_map, "C-x 3",   .SPLIT_VIEW_HORIZONTALLY);
-        key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_VIEW);
-        key_map_add(key_map, "C-x 1",   .CLOSE_OTHER_VIEWS);
-        key_map_add(key_map, "C-x o",   .GO_TO_NEXT_VIEW);
+    {
+        key_map := *editor.listing_key_map;
+        key_map.allocator = arena_allocator(editor.perm_arena);
 
-        log("Document keymap:\n%", key_map_sprint(key_map,, temp));
+        key_map_reserve(key_map, 128);
+
+        key_map_add(key_map, "p",       .MOVE_UP);
+        key_map_add(key_map, "C-p",     .MOVE_UP);
+        key_map_add(key_map, "<up>",    .MOVE_UP);
+        key_map_add(key_map, "n",       .MOVE_DOWN);
+        key_map_add(key_map, "C-n",     .MOVE_DOWN);
+        key_map_add(key_map, "<down>",  .MOVE_DOWN);
     }
 
     editor.watched_files.allocator = arena_allocator(editor.perm_arena);
@@ -736,8 +755,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<enter>",     .CONFIRM);
         key_map_add(key_map, "C-m",         .CONFIRM);
         key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
-
-        log("Mini Panel keymap:\n%", key_map_sprint(key_map,, temp));
 
         // Mini text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*mini_panel.buffer, make_arena(platform, .SMALL));
@@ -1042,8 +1059,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     target.y = clamp(target.y, 0, cell_h * cast(f64, view.document.buffer.line_count - 1));
                 }
                 case. LISTING; {
-                    // TODO(jt): @Incomplete Clamp using the item count in the listing!
-                    target.y = clamp(target.y, 0, cell_h * TEMPORARY_HACK_LISTING_LINE_COUNT);
+                    view := *hovered_panel.view._listing;
+                    target.y = clamp(target.y, 0, cell_h * cast(f64, view.listing.items.count - 1));
                 }
             }
 
@@ -1564,8 +1581,8 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                     if document.flags & .MODIFIED {
                         document.flags |= .READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
 
-                        save_shortcut := shortcut_sprint(key_map_find_shortcut(editor.key_map, .SAVE_DOCUMENT),, temp);
-                        reload_shortcut := shortcut_sprint(key_map_find_shortcut(editor.key_map, .RELOAD_DOCUMENT),, temp);
+                        save_shortcut := shortcut_sprint(key_map_find_shortcut(editor.document_key_map, .SAVE_DOCUMENT),, temp);
+                        reload_shortcut := shortcut_sprint(key_map_find_shortcut(editor.document_key_map, .RELOAD_DOCUMENT),, temp);
                         editor_log(editor, "% modified, but file changed on filesystem. % or % to exit read only mode", String.path_filename(document.backing_file_path), save_shortcut, reload_shortcut);
                     } else {
                         // TODO(jt): @Speed @Memory Figure out a diff instead of changing the whole file?
@@ -1756,20 +1773,34 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 Editor_Action :: enum {
     NONE;
 
+    OPEN_FILE;
+
+    SWITCH_VIEW;
+    CLOSE_VIEW;
+
+    RECENTER;
+    SCROLL_UP;
+    SCROLL_DOWN;
+
+    SPLIT_VIEW_HORIZONTALLY;
+    CLOSE_CURRENT_VIEW;
+    CLOSE_OTHER_VIEWS;
+    GO_TO_NEXT_VIEW;
+}
+
+Document_Action :: enum {
+    NONE;
+
     MOVE_UP;
     MOVE_DOWN;
     MOVE_LEFT;
     MOVE_RIGHT;
 
-    SEARCH;
+    SEARCH; // TODO(jt): Make SEARCH work for listings too.
     SEARCH_AND_REPLACE;
 
-    OPEN_FILE;
     SAVE_DOCUMENT;
     RELOAD_DOCUMENT;
-
-    SWITCH_VIEW;
-    CLOSE_VIEW;
 
     SWAP_LINE_UP;
     SWAP_LINE_DOWN;
@@ -1777,18 +1808,14 @@ Editor_Action :: enum {
     MOVE_TO_START_OF_LINE;
     MOVE_TO_END_OF_LINE;
 
-    MOVE_TO_START_OF_DOCUMENT;
-    MOVE_TO_END_OF_DOCUMENT;
+    MOVE_TO_START;
+    MOVE_TO_END;
 
     MOVE_TO_PREVIOUS_BLANK_LINE;
     MOVE_TO_NEXT_BLANK_LINE;
 
     MOVE_FORWARD_WORD;
     MOVE_BACKWARD_WORD;
-
-    RECENTER;
-    SCROLL_UP;
-    SCROLL_DOWN;
 
     START_SELECTING;
     STOP_SELECTING;
@@ -1811,17 +1838,146 @@ Editor_Action :: enum {
     COPY;
     CUT;
     PASTE;
+}
 
-    SPLIT_VIEW_HORIZONTALLY;
-    CLOSE_CURRENT_VIEW;
-    CLOSE_OTHER_VIEWS;
-    GO_TO_NEXT_VIEW;
+Listing_Action :: enum {
+    NONE;
+
+    MOVE_UP;
+    MOVE_DOWN;
 }
 
 route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
     panel := get_panel_for_active_view(editor);
     if !panel {
         return;
+    }
+
+    panel_buffered := false;
+    panel_action   := false;
+
+    {
+        buffered, action := key_map_input(*editor.global_key_map, event, editor.input_state.modifiers);
+        panel_buffered |= buffered;
+        panel_action |= action != .NONE;
+        if action == {
+            case .OPEN_FILE; {
+                path := "./";
+
+                if panel.view.kind == {
+                    case .DOCUMENT; {
+                        view := *panel.view._document;
+                        document := view.document;
+                        if document && document.kind == .FILE && document.backing_file_path.count {
+                            path = String.path_strip_filename(document.backing_file_path);
+                        }
+                    }
+                    case .LISTING; {
+                        view := *panel.view._listing;
+                        listing := view.listing;
+                        if listing && listing.kind == .DIRECTORY && listing.backing_directory_path.count {
+                            path = listing.backing_directory_path;
+                        }
+                    }
+                }
+
+                open_mini_panel(editor, platform, input, mini_panel_open_file_procs, path);
+            }
+
+            case .SWITCH_VIEW;  open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
+            case .CLOSE_VIEW;   open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
+
+            case .RECENTER;     recenter_active_panel(editor, input);
+            case .SCROLL_UP;    scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
+            case .SCROLL_DOWN;  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
+
+            case .SPLIT_VIEW_HORIZONTALLY; {
+                if editor.active_view == .FULL {
+                    assert(editor.panels.count == 1);
+
+                    success := false;
+
+                    if panel.view.kind == {
+                        case .DOCUMENT; {
+                            view := *panel.view._document;
+                            document := view.document;
+                            if document {
+                                right_panel := array_add(*editor.panels);
+                                panel_init_with_document(right_panel, editor, platform, document);
+                                success = true;
+                            }
+                        }
+                        case .LISTING; {
+                            view := *panel.view._listing;
+                            listing := view.listing;
+                            if listing {
+                                right_panel := array_add(*editor.panels);
+                                panel_init_with_listing(right_panel, editor, platform, listing);
+                            }
+                        }
+                    }
+
+                    editor.left_view_panel_index  = 0;
+                    editor.right_view_panel_index = 1;
+
+                    editor.active_view = .LEFT;
+                }
+            }
+            case .CLOSE_CURRENT_VIEW; {
+                if #complete editor.active_view == {
+                    case .FULL; // No-op
+                    case .LEFT; {
+                        assert(editor.panels.count == 2);
+
+                        panel_deinit(*editor.panels[editor.left_view_panel_index]);
+                        array_unordered_remove_by_index(*editor.panels, editor.left_view_panel_index);
+
+                        editor.full_view_panel_index = 0;
+                        editor.active_view = .FULL;
+                    }
+                    case .RIGHT; {
+                        assert(editor.panels.count == 2);
+
+                        panel_deinit(*editor.panels[editor.right_view_panel_index]);
+                        array_unordered_remove_by_index(*editor.panels, editor.right_view_panel_index);
+
+                        editor.full_view_panel_index = 0;
+                        editor.active_view = .FULL;
+                    }
+                }
+            }
+            case .CLOSE_OTHER_VIEWS; {
+                if #complete editor.active_view == {
+                    case .FULL; // No-op
+                    case .LEFT; {
+                        assert(editor.panels.count == 2);
+
+                        panel_deinit(*editor.panels[editor.right_view_panel_index]);
+                        array_unordered_remove_by_index(*editor.panels, editor.right_view_panel_index);
+
+                        editor.full_view_panel_index = 0;
+                        editor.active_view = .FULL;
+                    }
+                    case .RIGHT; {
+                        assert(editor.panels.count == 2);
+
+                        panel_deinit(*editor.panels[editor.left_view_panel_index]);
+                        array_unordered_remove_by_index(*editor.panels, editor.left_view_panel_index);
+
+                        editor.full_view_panel_index = 0;
+                        editor.active_view = .FULL;
+                    }
+                }
+            }
+            case .GO_TO_NEXT_VIEW; {
+                if #complete editor.active_view == {
+                    case .FULL; // No-op
+                    case .LEFT;   editor.active_view = .RIGHT;
+                    case .RIGHT;  editor.active_view = .LEFT;
+                }
+            }
+
+        }
     }
 
     if #complete panel.view.kind == {
@@ -1838,7 +1994,9 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
             shift_selecting := editor.input_state.modifiers & .SHIFT;
 
-            buffered, action := key_map_input(*editor.key_map, event, editor.input_state.modifiers);
+            buffered, action := key_map_input(*editor.document_key_map, event, editor.input_state.modifiers);
+            panel_buffered |= buffered;
+            panel_action |= action != .NONE;
             if action == {
                 case .MOVE_UP; {
                     cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
@@ -1872,15 +2030,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 case .SEARCH;              open_mini_panel(editor, platform, input, mini_panel_search_procs);
                 case .SEARCH_AND_REPLACE;  open_modal_interaction(editor, platform, input, modal_interaction_search_and_replace_procs);
 
-                case .OPEN_FILE; {
-                    path := "./";
-
-                    if document.kind == .FILE && document.backing_file_path.count {
-                        path = String.path_strip_filename(document.backing_file_path);
-                    }
-
-                    open_mini_panel(editor, platform, input, mini_panel_open_file_procs, path);
-                }
                 case .SAVE_DOCUMENT; {
                     if document.backing_file_path.count {
                         if document.flags & .MODIFIED {
@@ -1944,17 +2093,14 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     }
                 }
 
-                case .SWITCH_VIEW;                  open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
-                case .CLOSE_VIEW;                   open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
-
                 case .SWAP_LINE_UP;                 // TODO(jt): text_buffer_swap_line_up
                 case .SWAP_LINE_DOWN;               // TODO(jt): text_buffer_swap_line_down
 
                 case .MOVE_TO_START_OF_LINE;        cursor_moved |= text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting);
                 case .MOVE_TO_END_OF_LINE;          cursor_moved |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, view.selecting);
 
-                case .MOVE_TO_START_OF_DOCUMENT;    cursor_moved |= text_buffer_move_cursor_to_start(document.buffer, *view.cursors, view.selecting);
-                case .MOVE_TO_END_OF_DOCUMENT;      cursor_moved |= text_buffer_move_cursor_to_end(document.buffer, *view.cursors, view.selecting);
+                case .MOVE_TO_START;                cursor_moved |= text_buffer_move_cursor_to_start(document.buffer, *view.cursors, view.selecting);
+                case .MOVE_TO_END;                  cursor_moved |= text_buffer_move_cursor_to_end(document.buffer, *view.cursors, view.selecting);
 
                 case .MOVE_TO_PREVIOUS_BLANK_LINE;  cursor_moved |= text_buffer_move_cursor_to_previous_blank_line(document.buffer, *view.cursors, view.selecting);
                 case .MOVE_TO_NEXT_BLANK_LINE;      cursor_moved |= text_buffer_move_cursor_to_next_blank_line(document.buffer, *view.cursors, view.selecting);
@@ -1971,10 +2117,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
                     }
                 }
-
-                case .RECENTER;                     recenter_active_panel(editor, input);
-                case .SCROLL_UP;                    scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
-                case .SCROLL_DOWN;                  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
 
                 case .START_SELECTING;              view.selecting = true;  text_cursors_join(*view.cursors);
                 case .STOP_SELECTING;               view.selecting = false; text_cursors_join(*view.cursors);
@@ -2112,80 +2254,9 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, text, .BARRIER);
                     }
                 }
-
-                // nocheckin The view manipulation commands don't care if we are in DOCUMENT or
-                // LISTING view, we should probably pull them out into common code at the beginning
-                // of this procedure.
-
-                case .SPLIT_VIEW_HORIZONTALLY; {
-                    if editor.active_view == .FULL {
-                        assert(editor.panels.count == 1);
-
-                        right_panel := array_add(*editor.panels);
-                        panel_init_with_document(right_panel, editor, platform, document);
-
-                        editor.left_view_panel_index  = 0;
-                        editor.right_view_panel_index = 1;
-
-                        editor.active_view = .LEFT;
-                    }
-                }
-                case .CLOSE_CURRENT_VIEW; {
-                    if #complete editor.active_view == {
-                        case .FULL; // No-op
-                        case .LEFT; {
-                            assert(editor.panels.count == 2);
-
-                            panel_deinit(*editor.panels[editor.left_view_panel_index]);
-                            array_unordered_remove_by_index(*editor.panels, editor.left_view_panel_index);
-
-                            editor.full_view_panel_index = 0;
-                            editor.active_view = .FULL;
-                        }
-                        case .RIGHT; {
-                            assert(editor.panels.count == 2);
-
-                            panel_deinit(*editor.panels[editor.right_view_panel_index]);
-                            array_unordered_remove_by_index(*editor.panels, editor.right_view_panel_index);
-
-                            editor.full_view_panel_index = 0;
-                            editor.active_view = .FULL;
-                        }
-                    }
-                }
-                case .CLOSE_OTHER_VIEWS; {
-                    if #complete editor.active_view == {
-                        case .FULL; // No-op
-                        case .LEFT; {
-                            assert(editor.panels.count == 2);
-
-                            panel_deinit(*editor.panels[editor.right_view_panel_index]);
-                            array_unordered_remove_by_index(*editor.panels, editor.right_view_panel_index);
-
-                            editor.full_view_panel_index = 0;
-                            editor.active_view = .FULL;
-                        }
-                        case .RIGHT; {
-                            assert(editor.panels.count == 2);
-
-                            panel_deinit(*editor.panels[editor.left_view_panel_index]);
-                            array_unordered_remove_by_index(*editor.panels, editor.left_view_panel_index);
-
-                            editor.full_view_panel_index = 0;
-                            editor.active_view = .FULL;
-                        }
-                    }
-                }
-                case .GO_TO_NEXT_VIEW; {
-                    if #complete editor.active_view == {
-                        case .FULL; // No-op
-                        case .LEFT;   editor.active_view = .RIGHT;
-                        case .RIGHT;  editor.active_view = .LEFT;
-                    }
-                }
             }
 
-            if !buffered && action == .NONE && event.flags & .PRESSED {
+            if !panel_buffered && !panel_action && event.flags & .PRESSED {
                 if event.type == {
                     case .CODEPOINT; {
                         view.selecting = false;
@@ -2274,7 +2345,18 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         }
 
         case .LISTING; {
-            // nocheckin do stuff!
+            view := *panel.view._listing;
+
+            listing := view.listing;
+            if !listing {
+                return;
+            }
+
+            buffered, action := key_map_input(*editor.listing_key_map, event, editor.input_state.modifiers);
+            if action == {
+                case .MOVE_UP;    listing.item_index = clamp(listing.item_index - 1, 0, listing.items.count - 1);
+                case .MOVE_DOWN;  listing.item_index = clamp(listing.item_index + 1, 0, listing.items.count - 1);
+            }
         }
     }
 }
@@ -2987,7 +3069,6 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
             document.mode = .JAI;
         }
     }
-
     document.flags = .NONE;
     document.time_of_last_interaction = editor.input_state.time;
 
@@ -3021,7 +3102,9 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
 
     listing_arena := make_arena(platform, .MEDIUM);
 
-    listing: Listing; // nocheckin initialize
+    listing: Listing;
+    listing.kind = .DIRECTORY;
+    listing.time_of_last_interaction = editor.input_state.time;
 
     listing.arena = listing_arena;
     if backing_directory_path.count {
@@ -3219,7 +3302,7 @@ recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, 
     y: f32;
     if #complete panel.view.kind == {
         case .DOCUMENT;  y = panel.view._document.cursors.c0.y * editor.font.line_height_in_pixels;
-        case .LISTING;   y = TEMPORARY_HACK_LISTING_LINE_INDEX * editor.font.line_height_in_pixels;
+        case .LISTING;   y = panel.view._listing.item_index * editor.font.line_height_in_pixels;
     }
 
     top    := y;
@@ -3253,6 +3336,8 @@ recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, 
     }
 }
 
+// nocheckin scroll_panel_{up,down}_one_screen is broken for listings
+
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     top: f64 = 0; // Just here for symmetry with scrolling down.
 
@@ -3272,7 +3357,7 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     line_count: s64;
     if #complete panel.view.kind == {
         case .DOCUMENT;  line_count = panel.view._document.document.buffer.line_count;
-        case .LISTING;   line_count = TEMPORARY_HACK_LISTING_LINE_COUNT;
+        case .LISTING;   line_count = panel.view._listing.listing.items.count;
     }
 
     bottom := cast(f64, line_count) * cell_h;
