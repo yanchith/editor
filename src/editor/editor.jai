@@ -326,7 +326,7 @@ Document :: struct {
     flags: Flags;
     time_of_last_interaction: Apollo_Time;
 
-    cursors: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
+    cursors_cold: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
     buffer: Text_Buffer;
 
     arena: *Arena; // For backing_file_path and syntax_highlight_tokens.
@@ -441,7 +441,7 @@ Listing :: struct {
     backing_directory_path: string;
 
     items: [..] Item;
-    item_index: s64; // Used to restore item_index in panel view, if the listing was in the background. Otherwise, the view's item_index takes precedence.
+    item_index_cold: s64; // Used to restore item_index in panel view, if the listing was in the background. Otherwise, the view's item_index takes precedence.
 
     Kind :: enum u32 {
         DIRECTORY;
@@ -681,6 +681,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "n",       .MOVE_DOWN);
         key_map_add(key_map, "C-n",     .MOVE_DOWN);
         key_map_add(key_map, "<down>",  .MOVE_DOWN);
+
+        key_map_add(key_map, "C-m",     .OPEN);
+        key_map_add(key_map, "<enter>", .OPEN);
+        key_map_add(key_map, "C-o",     .OPEN_IN_OTHER_PANEL);
     }
 
     editor.watched_files.allocator = arena_allocator(editor.perm_arena);
@@ -697,9 +701,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         hello_arena := make_arena(platform, .LARGE);
         hello_text := make_hello_text(hello_arena, HELLO_SIZE);
 
-        text_buffer_insert(*scratch_document.buffer, *scratch_document.cursors, hello_text, .OMIT);
-        scratch_document.cursors.c0 = { 0, 0 };
-        scratch_document.cursors.c1 = { 0, 0 };
+        text_buffer_insert(*scratch_document.buffer, *scratch_document.cursors_cold, hello_text, .OMIT);
+        scratch_document.cursors_cold.c0 = { 0, 0 };
+        scratch_document.cursors_cold.c1 = { 0, 0 };
 
         // For when you want to materialize The Year of Glad.
         //
@@ -1587,11 +1591,11 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                     } else {
                         // TODO(jt): @Speed @Memory Figure out a diff instead of changing the whole file?
 
-                        cursor_before_reload := document.cursors.c0;
+                        cursor_before_reload := document.cursors_cold.c0;
 
-                        text_buffer_delete_all(*document.buffer, *document.cursors);
-                        text_buffer_insert(*document.buffer, *document.cursors, contents, .FUSE);
-                        text_buffer_move_cursor_to(document.buffer, *document.cursors, cursor_before_reload, false);
+                        text_buffer_delete_all(*document.buffer, *document.cursors_cold);
+                        text_buffer_insert(*document.buffer, *document.cursors_cold, contents, .FUSE);
+                        text_buffer_move_cursor_to(document.buffer, *document.cursors_cold, cursor_before_reload, false);
 
                         update_parenthesized_scopes(document);
                         update_syntax_highlights(editor, document, platform, input);
@@ -1845,6 +1849,9 @@ Listing_Action :: enum {
 
     MOVE_UP;
     MOVE_DOWN;
+
+    OPEN;
+    OPEN_IN_OTHER_PANEL;
 }
 
 route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
@@ -2354,8 +2361,18 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
             buffered, action := key_map_input(*editor.listing_key_map, event, editor.input_state.modifiers);
             if action == {
-                case .MOVE_UP;    listing.item_index = clamp(listing.item_index - 1, 0, listing.items.count - 1);
-                case .MOVE_DOWN;  listing.item_index = clamp(listing.item_index + 1, 0, listing.items.count - 1);
+                case .MOVE_UP;    view.item_index = clamp(view.item_index - 1, 0, listing.items.count - 1);
+                case .MOVE_DOWN;  view.item_index = clamp(view.item_index + 1, 0, listing.items.count - 1);
+
+                case .OPEN;  #through;
+                case .OPEN_IN_OTHER_PANEL; {
+                    in_other_panel := action == .OPEN_IN_OTHER_PANEL;
+
+                    item_path := listing.items[view.item_index].text;
+                    full_path := String.path_join(listing.backing_directory_path, item_path, separator = "/",, temp);
+
+                    open_file(editor, platform, input, full_path);
+                }
             }
         }
     }
@@ -2868,7 +2885,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             for viewport_line0..viewport_line1 {
                 item := *listing.items[it];
 
-                if it == listing.item_index {
+                if it == view.item_index {
                     selection_y_world  := cast(f64, it) * cell_h;
                     selection_y_screen := panel_y + cast(f32, selection_y_world - panel.scroll.value.y);
                     selection_rect_screen := rect_from_point_and_size(panel_content_x, selection_y_screen, panel_content_w, cell_h);
@@ -3043,6 +3060,93 @@ update_syntax_highlights :: (editor: *Editor, document: *Document, platform: Pla
     if #complete document.mode == {
         case .PLAIN_TEXT; // Nothing
         case .JAI;        lang_jai_update_syntax_highlights(editor, document, platform, input);
+    }
+}
+
+open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: string, open_in_panel: *Panel = null) {
+    panel: *Panel;
+    if open_in_panel {
+        panel = open_in_panel;
+    } else {
+        panel = get_panel_for_active_view(editor);
+    }
+    sanity_assert(panel != null);
+    if !panel {
+        return;
+    }
+
+    file_exists       := platform.file_exists(file_path);
+    file_is_directory := platform.file_is_directory(file_path);
+
+    if file_is_directory {
+        success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
+        if success {
+            String.path_overwrite_separators(file_absolute_path, "/");
+
+            listing, listing_added := find_or_add_listing(editor, platform, .DIRECTORY, file_absolute_path);
+            editor_log(editor, "Opening directory: %", file_absolute_path);
+
+            if listing_added {
+                file_list := platform.list_directory(file_absolute_path,, temp);
+                for file_list {
+                    listed_file_path := it.name;
+                    listed_filename := String.path_filename(it.name);
+
+                    s := "";
+                    if listed_filename.count {
+                        s = arena_push_string(listing.arena, listed_filename);
+
+                        item := array_add(*listing.items);
+                        item.text = s;
+                        item.text_color = LISTING_ITEM_COLOR;
+                    }
+                }
+            }
+
+            panel_set_listing(panel, editor, listing);
+        } else {
+            log_error("Failed to get absolute_path for %", file_path);
+        }
+    } else {
+        success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
+        if success {
+            String.path_overwrite_separators(file_absolute_path, "/");
+
+            document, document_added := find_or_add_document(editor, platform, .FILE, file_absolute_path);
+            if document_added {
+                if file_exists {
+                    editor_log(editor, "Opening file: %", file_absolute_path);
+
+                    document.backing_file_exists = true;
+                    document.backing_file_time_of_last_sync = input.time;
+
+                    _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+                    document.backing_file_last_synced_modification_time = modification_time;
+                    document.backing_file_last_synced_size = size;
+
+                    success, file_contents := platform.read_file(file_absolute_path,, temp);
+                    if success {
+                        // TODO(jt): @Speed This is slow, because we are going over the data
+                        // twice. Once to make the hash, and the second time to insert into the text
+                        // buffer. We should probably do it in a single pass, or in a chunked
+                        // manner, so we can read from the L1 cache.
+                        document.backing_file_last_synced_hash = hash_file_contents(file_contents);
+
+                        text_buffer_insert(*document.buffer, *document.cursors_cold, file_contents, .OMIT);
+                        text_buffer_move_cursor_to(document.buffer, *document.cursors_cold, 0, 0, false);
+
+                        update_parenthesized_scopes(document);
+                        update_syntax_highlights(editor, document, platform, input);
+
+                        watch_file(editor, platform, input, document.backing_file_path);
+                    }
+                } else {
+                    editor_log(editor, "Opening new file with path: %", file_absolute_path);
+                }
+            }
+
+            panel_set_document(panel, editor, document);
+        }
     }
 }
 
@@ -3267,14 +3371,14 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
             view := *panel.view._document;
 
             if view.document {
-                view.document.cursors = view.cursors;
+                view.document.cursors_cold = view.cursors;
             }
         }
         case .LISTING; {
             view := *panel.view._listing;
 
             if view.listing {
-                view.listing.item_index = view.item_index;
+                view.listing.item_index_cold = view.item_index;
             }
         }
     }
@@ -3285,7 +3389,7 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
 
     view.document = document;
 
-    view.cursors = document.cursors;
+    view.cursors = document.cursors_cold;
     view.selecting = false;
 
     cursor_position := get_position_at_cursor(view, editor.font);
@@ -3317,14 +3421,14 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
             view := *panel.view._document;
 
             if view.document {
-                view.document.cursors = view.cursors;
+                view.document.cursors_cold = view.cursors;
             }
         }
         case .LISTING; {
             view := *panel.view._listing;
 
             if view.listing {
-                view.listing.item_index = view.item_index;
+                view.listing.item_index_cold = view.item_index;
             }
         }
     }
@@ -3335,7 +3439,7 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
 
     view.listing = listing;
 
-    view.item_index = listing.item_index;
+    view.item_index = listing.item_index_cold;
 
     listing.time_of_last_interaction = editor.input_state.time;
 }
