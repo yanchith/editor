@@ -39,12 +39,6 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         return;
     }
 
-    current_thing: *void = null;
-    if #complete panel.view.kind == {
-        case .DOCUMENT;  current_thing = panel.view._document.document;
-        case .LISTING;   current_thing = panel.view._listing.listing;
-    }
-
     if buffer_changed {
         array_reset(*mini_panel.items);
         arena_reset(mini_panel.items_arena);
@@ -53,6 +47,12 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         search_text_char_count := mini_panel.buffer.line_chars[0];
 
         max_time_of_last_interaction: Apollo_Time;
+
+        current_thing: *void = null;
+        if #complete panel.view.kind == {
+            case .DOCUMENT;  current_thing = panel.view._document.document;
+            case .LISTING;   current_thing = panel.view._listing.listing;
+        }
 
         for * editor.documents {
             document_name: string;
@@ -95,7 +95,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
             found_index, found := String.index_of_string_nocase(listing_name, search_text);
             if found {
-                // Select the most recent document, except the one pointed to by the currently active panel.
+                // Select the most recent listing, except the one pointed to by the currently active panel.
                 if current_thing != it && it.time_of_last_interaction > max_time_of_last_interaction {
                     max_time_of_last_interaction = it.time_of_last_interaction;
                     mini_panel.item_index = mini_panel.items.count;
@@ -183,23 +183,21 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         assert(mini_panel.item_index >= 0);
 
         userdata: *Switch_View_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
-        if userdata {
-            if #complete userdata.kind ==  {
-                case .DOCUMENT; {
-                    document := cast(*Document, userdata.pointer);
-                    panel_set_document(panel, editor, document);
-                }
-
-                case .LISTING; {
-                    listing := cast(*Listing, userdata.pointer);
-                    panel_set_listing(panel, editor, listing);
-                }
+        if #complete userdata.kind ==  {
+            case .DOCUMENT; {
+                document: *Document = userdata.pointer;
+                panel_set_document(panel, editor, document);
             }
 
-            // TODO(jt): Emacs actually remembers the previous scroll of the panel in
-            // document. Do we want to do the same?
-            recenter_active_panel(editor, input, force_center = true, skip_interpolation = true);
+            case .LISTING; {
+                listing: *Listing = userdata.pointer;
+                panel_set_listing(panel, editor, listing);
+            }
         }
+
+        // TODO(jt): Emacs actually remembers the previous scroll of the panel in
+        // document. Do we want to do the same?
+        recenter_active_panel(editor, input, force_center = true, skip_interpolation = true);
     }
 
     close_mini_panel(editor, platform, input);

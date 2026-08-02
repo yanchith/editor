@@ -3127,12 +3127,10 @@ close_document :: (editor: *Editor, document: *Document) {
     thing_to_show_time: Apollo_Time = APOLLO_TIME_INVALID; // The maximum negative time. Anything valid will compare higher.
 
     for * editor.documents {
-        if it != document {
-            if it.time_of_last_interaction > thing_to_show_time {
-                thing_to_show = it;
-                thing_to_show_kind = .DOCUMENT;
-                thing_to_show_time = it.time_of_last_interaction;
-            }
+        if it != document && it.time_of_last_interaction > thing_to_show_time {
+            thing_to_show = it;
+            thing_to_show_kind = .DOCUMENT;
+            thing_to_show_time = it.time_of_last_interaction;
         }
     }
 
@@ -3144,10 +3142,10 @@ close_document :: (editor: *Editor, document: *Document) {
         }
     }
 
-    // This means we have to find a document/listing with time_of_last_interaction > 0. If we don't
-    // find it, we either have no documents/listings (bad, becuase at least *scratch* shouldn't be
-    // closeable), or their time_of_last_interaction was not properly set everywhere it should
-    // be. We could do a fallback here to find ANY document.  -jt, 25 July 2026.
+    // Find a document/listing with time_of_last_interaction > 0. If we don't, we either have no
+    // documents/listings (bad, becuase at least *scratch* shouldn't be closeable), or their
+    // time_of_last_interaction was not properly set everywhere it should be. We could do a fallback
+    // here to find ANYTHING.  -jt, 25 July 2026.
     assert(thing_to_show != null);
 
     // Make sure nobody references the document anymore.
@@ -3177,7 +3175,60 @@ close_document :: (editor: *Editor, document: *Document) {
     bucket_array_remove(*editor.documents, locator);
 }
 
-// nocheckin Do close_listing
+close_listing :: (editor: *Editor, listing: *Listing) {
+    // TODO(jt): @Cleanup close_listing is very similar to close_document. They are both
+    // things/entities. Maybe we should have a generic close_thing and deal with the special-case
+    // code with polymorphism?
+
+    editor_log(editor, "Closing listing %", listing.backing_directory_path);
+
+    thing_to_show: *void;
+    thing_to_show_kind: View_Kind;
+    thing_to_show_time: Apollo_Time = APOLLO_TIME_INVALID; // The maximum negative time. Anything valid will compare higher.
+
+    for * editor.documents {
+        if it.time_of_last_interaction > thing_to_show_time {
+            thing_to_show = it;
+            thing_to_show_kind = .DOCUMENT;
+            thing_to_show_time = it.time_of_last_interaction;
+        }
+    }
+
+    for * editor.listings {
+        if it != listing && it.time_of_last_interaction > thing_to_show_time {
+            thing_to_show = it;
+            thing_to_show_kind = .LISTING;
+            thing_to_show_time = it.time_of_last_interaction;
+        }
+    }
+
+    // See analogous comment in close_document.
+    assert(thing_to_show != null);
+
+    // Make sure nobody references the listing anymore.
+    for * editor.panels {
+        if it.view.kind == .LISTING && it.view._listing.listing == listing {
+            if #complete thing_to_show_kind == {
+                case .DOCUMENT; {
+                    it.view.kind = .DOCUMENT;
+                    it.view._document.document = thing_to_show;
+                }
+                case .LISTING; {
+                    it.view.kind = .LISTING;
+                    it.view._listing.listing = thing_to_show;
+                }
+            }
+        }
+    }
+
+    // Release arenaa. Can't touch anything dynamically allocated on the listing after.
+    arena_release(listing.arena);
+
+    locator := listing.locator;
+
+    // Remove listing itself.
+    bucket_array_remove(*editor.listings, locator);
+}
 
 panel_init_with_document :: (panel: *Panel, editor: Editor, platform: Platform, document: *Document) {
     panel.highlights_arena = make_arena(platform, .LARGE);
