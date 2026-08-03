@@ -240,7 +240,6 @@ Editor :: struct {
     Dev_View :: enum u8 {
         NONE;
         ATLAS_TEXTURE;
-        PALETTE;
     };
 }
 
@@ -915,7 +914,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .KEY; {
                     if it.key == {
                         case .F1;   toggle_dev_view(*editor.dev_view, .ATLAS_TEXTURE); handled = true;
-                        case .F2;   toggle_dev_view(*editor.dev_view, .PALETTE); handled = true;
                     }
                 }
 
@@ -1321,7 +1319,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    if editor.dev_view == {
+    if #complete editor.dev_view == {
         case .NONE; // Nothing
         case .ATLAS_TEXTURE; {
             wants_this_frame = true;
@@ -1331,68 +1329,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
             draw_rect(*render_commands, 0, 0, w, h, { 0.89, 0.89, 0.95, 1 });
             draw_rect(*render_commands, 0, 0, w, h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
-        }
-        case .PALETTE; {
-            wants_this_frame = true;
-            array_reset_keeping_memory(*render_commands);
-
-            for 0..255 {
-                WIDTH  :: 100.0;
-                HEIGHT :: 4.0;
-
-                y := HEIGHT * it;
-                color: Vector4 = { cast(f32, it) / 255.0, 0.0, 0.0, 1.0 };
-
-                {
-                    r := rect_from_point_and_size(0, y, WIDTH, HEIGHT);
-                    draw_rect(*render_commands, r, adjust_value(color, 1.0 / 1.50));
-                }
-
-                {
-                    r := rect_from_point_and_size(100, y, WIDTH, HEIGHT);
-                    draw_rect(*render_commands, r, adjust_value(color, 1.0 / 1.25));
-                }
-
-                {
-                    r := rect_from_point_and_size(200, y, WIDTH, HEIGHT);
-                    draw_rect(*render_commands, r, color);
-                }
-
-                {
-                    r := rect_from_point_and_size(300, y, WIDTH, HEIGHT);
-                    draw_rect(*render_commands, r, adjust_value(color, 1.25));
-                }
-
-                {
-                    r := rect_from_point_and_size(400, y, WIDTH, HEIGHT);
-                    draw_rect(*render_commands, r, adjust_value(color, 1.50));
-                }
-
-                {
-                    r := rect_from_point_and_size(700, y, WIDTH, HEIGHT);
-                    draw_rect(*render_commands, r, adjust_saturation(color, 1.0 / 1.50));
-                }
-
-                {
-                    r := rect_from_point_and_size(800, y, WIDTH, HEIGHT);
-                    draw_rect(*render_commands, r, adjust_saturation(color, 1.0 / 1.25));
-                }
-
-                {
-                    r := rect_from_point_and_size(900, y, WIDTH, HEIGHT);
-                    draw_rect(*render_commands, r, color);
-                }
-
-                {
-                    r := rect_from_point_and_size(1000, y, WIDTH, HEIGHT);
-                    draw_rect(*render_commands, r, adjust_saturation(color, 1.25));
-                }
-
-                {
-                    r := rect_from_point_and_size(1100, y, WIDTH, HEIGHT);
-                    draw_rect(*render_commands, r, adjust_saturation(color, 1.50));
-                }
-            }
         }
     }
 
