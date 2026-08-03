@@ -12,11 +12,13 @@ mini_panel_search_procs: Mini_Panel_Procs = {
 #scope_file
 
 Search_Userdata :: struct {
-    original_cursor0: Text_Location;
+    original_x: s64; // Not used for listings.
+    original_y: s64;
 }
 
 Search_Item_Userdata :: struct {
-    cursor: Text_Location;
+    x: s64;
+    y: s64;
 }
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
@@ -45,11 +47,13 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
     if #complete panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
-            userdata.original_cursor0 = view.cursors.c0;
+            userdata.original_x = view.cursors.c0.x;
+            userdata.original_y = view.cursors.c0.y;
         }
         case .LISTING; {
             view := *panel.view._listing;
-            userdata.original_cursor0 = { 0, view.item_index };
+            userdata.original_x = 0;
+            userdata.original_y = view.item_index;
         }
     }
 
@@ -71,105 +75,166 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         return;
     }
 
-    // nocheckin here!
-    // TODO(jt): @Incomplete Allow searching LISTING views.
-    if panel.view.kind != .DOCUMENT {
-        return;
-    }
-
-    view := *panel.view._document;
-
     if buffer_changed {
         array_reset(*mini_panel.items);
         arena_reset(mini_panel.items_arena);
 
-        if view.document {
-            document := view.document;
+        array_reset_keeping_memory(*panel.highlights);
+        panel.highlight_index = -1;
 
-            array_reset_keeping_memory(*panel.highlights);
-            panel.highlight_index = -1;
+        search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
+        search_text_char_count := mini_panel.buffer.line_chars[0];
 
-            old_cursor_y   := view.cursors.c0.y;
-            new_item_index := -1;
+        if panel.view.kind == {
+            case .DOCUMENT; {
+                view := *panel.view._document;
+                document := view.document;
 
-            search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-            search_text_char_count := mini_panel.buffer.line_chars[0];
+                if document {
+                    old_cursor_y   := view.cursors.c0.y;
+                    new_item_index := -1;
 
-            // TODO(jt): @Speed This causes us to miss frames above 4MB buffers. It is serviceable
-            // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
-            // fan-out & collect threading, but we should also do SIMD.
-            gb_index := 0;
-            for 0..document.buffer.line_bytes.count - 1 {
-                gb_count := document.buffer.line_bytes[it];
+                    // TODO(jt): @Speed This causes us to miss frames above 4MB buffers. It is serviceable
+                    // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
+                    // fan-out & collect threading, but we should also do SIMD.
+                    gb_index := 0;
+                    for 0..document.buffer.line_bytes.count - 1 {
+                        gb_count := document.buffer.line_bytes[it];
 
-                // :IncrementalGapBufferIndices
-                //
-                // We go straight to the gap buffer and count its indices manually, so that
-                // we avoid the quadratic behavior of calling get_gb_index_for_line each
-                // time through the loop.
-                //
-                // Note that even though we pass in temp, making of the view will only
-                // allocate for one of the lines - the one that crosses the gap.
-                //
-                // UPDATE: Could we have a for_expansion that just does this line-oriented iteration
-                // for us (including the manual gap buffer index counting?)
-                line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
-                line_text  := cast(string, line_bytes);
+                        // :IncrementalGapBufferIndices
+                        //
+                        // We go straight to the gap buffer and count its indices manually, so that
+                        // we avoid the quadratic behavior of calling get_gb_index_for_line each
+                        // time through the loop.
+                        //
+                        // Note that even though we pass in temp, making of the view will only
+                        // allocate for one of the lines - the one that crosses the gap.
+                        //
+                        // UPDATE: Could we have a for_expansion that just does this line-oriented iteration
+                        // for us (including the manual gap buffer index counting?)
+                        line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
+                        line_text  := cast(string, line_bytes);
 
-                found_index := find_index_from_left_nocase(line_text, search_text);
-                if found_index != -1 {
-                    s := "";
-                    line_number_prefix_length := 0;
+                        found_index := find_index_from_left_nocase(line_text, search_text);
+                        if found_index != -1 {
+                            s := "";
+                            line_number_prefix_length := 0;
 
-                    if line_text.count {
-                        line_number_prefix := temp_right_pad(tprint("%  ", it + 1), 4);
+                            if line_text.count {
+                                line_number_prefix := temp_right_pad(tprint("%  ", it + 1), 4);
 
-                        s = sprint("%%", line_number_prefix, line_text,, arena_allocator(mini_panel.items_arena));
-                        line_number_prefix_length = line_number_prefix.count;
+                                s = sprint("%%", line_number_prefix, line_text,, arena_allocator(mini_panel.items_arena));
+                                line_number_prefix_length = line_number_prefix.count;
+                            }
+
+                            x0 := found_index;
+                            if !document.buffer.binary_mode {
+                                x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
+                            }
+                            x1 := x0 + search_text_char_count;
+
+                            highlight := array_add(*panel.highlights);
+                            highlight.x0 = x0;
+                            highlight.x1 = x1;
+                            highlight.y  = it;
+
+                            item_index := mini_panel.items.count;
+                            item := array_add(*mini_panel.items);
+                            item.text = s;
+                            item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
+                            if document.buffer.binary_mode {
+                                item.flags |= .BINARY;
+                            }
+                            item.highlight_x0 = line_number_prefix_length + x0;
+                            item.highlight_x1 = line_number_prefix_length + x1;
+
+                            userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
+                            userdata.x = x0;
+                            userdata.y = it;
+
+                            item.userdata = userdata;
+
+                            if new_item_index == -1 && it >= old_cursor_y {
+                                new_item_index = item_index;
+                            }
+                        }
+
+                        gb_index += gb_count;
                     }
 
-                    x0 := found_index;
-                    if !document.buffer.binary_mode {
-                        x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
+                    if new_item_index == -1 {
+                        new_item_index = mini_panel.items.count - 1;
                     }
-                    x1 := x0 + search_text_char_count;
 
-                    highlight := array_add(*panel.highlights);
-                    highlight.x0 = x0;
-                    highlight.x1 = x1;
-                    highlight.y  = it;
-
-                    item_index := mini_panel.items.count;
-                    item := array_add(*mini_panel.items);
-                    item.text = s;
-                    item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
-                    if document.buffer.binary_mode {
-                        item.flags |= .BINARY;
-                    }
-                    item.highlight_x0 = line_number_prefix_length + x0;
-                    item.highlight_x1 = line_number_prefix_length + x1;
-
-                    userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
-                    userdata.cursor = { x0, it };
-
-                    item.userdata = userdata;
-
-                    if new_item_index == -1 && it >= old_cursor_y {
-                        new_item_index = item_index;
+                    if new_item_index != -1 {
+                        mini_panel.item_index = new_item_index;
+                        panel.highlight_index = new_item_index;
+                        selected_item_changed = true;
                     }
                 }
 
-                gb_index += gb_count;
             }
 
-            if new_item_index == -1 {
-                new_item_index = mini_panel.items.count - 1;
-            }
+            case .LISTING; {
+                view := *panel.view._listing;
+                listing := view.listing;
 
-            if new_item_index != -1 {
-                mini_panel.item_index = new_item_index;
-                panel.highlight_index = new_item_index;
-                selected_item_changed = true;
+                if listing {
+                    // TODO(jt): @Cleanup We call it old_cursor_y here to disambiguate from
+                    // item_index... because both a listing panel and the minipanel have them.
+                    old_cursor_y   := view.item_index;
+                    new_item_index := -1;
+
+                    for listing.items {
+                        found_index := find_index_from_left_nocase(it.text, search_text);
+                        if found_index != -1 {
+                            s := "";
+                            line_number_prefix_length := 0;
+
+                            if it.text.count {
+                                line_number_prefix := temp_right_pad(tprint("%  ", it_index + 1), 4);
+
+                                s = sprint("%%", line_number_prefix, it.text,, arena_allocator(mini_panel.items_arena));
+                                line_number_prefix_length = line_number_prefix.count;
+                            }
+
+                            x0 := found_index;
+                            x1 := x0 + search_text_char_count;
+
+                            highlight := array_add(*panel.highlights);
+                            highlight.x0 = x0;
+                            highlight.x1 = x1;
+                            highlight.y  = it_index;
+
+                            item_index := mini_panel.items.count;
+                            item := array_add(*mini_panel.items);
+                            item.text = s;
+                            item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
+                            item.highlight_x0 = line_number_prefix_length + x0;
+                            item.highlight_x1 = line_number_prefix_length + x1;
+
+                            userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
+                            userdata.x = 0;
+                            userdata.y = it_index;
+
+                            item.userdata = userdata;
+
+                            if new_item_index == -1 && it_index >= old_cursor_y {
+                                new_item_index = item_index;
+                            }
+                        }
+                    }
+
+                    if new_item_index == -1 {
+                        new_item_index = mini_panel.items.count - 1;
+                    }
+
+                    if new_item_index != -1 {
+                        mini_panel.item_index = new_item_index;
+                        panel.highlight_index = new_item_index;
+                        selected_item_changed = true;
+                    }
+                }
             }
         }
 
@@ -186,13 +251,30 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             item := *mini_panel.items[mini_panel.item_index];
 
             userdata: *Search_Item_Userdata = item.userdata;
-            x := userdata.cursor.x;
-            y := userdata.cursor.y;
+            x := userdata.x;
+            y := userdata.y;
 
-            text_buffer_move_cursor_to(view.document.buffer, *view.cursors, x, y, false);
+            if panel.view.kind == {
+                case .DOCUMENT; {
+                    view := *panel.view._document;
+                    document := view.document;
 
-            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
-            view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
+                    text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
+
+                    view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+                    view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
+                }
+
+                case .LISTING; {
+                    view := *panel.view._listing;
+                    listing := view.listing;
+
+                    view.item_index = clamp(y, 0, listing.items.count);
+
+                    view.flags |= .CLAMP_SCROLL_TO_ITEM_INDEX;
+                    // view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION; nocheckin
+                }
+            }
         }
     }
 }
@@ -232,9 +314,11 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
     if mini_panel.items.count {
         assert(mini_panel.item_index >= 0);
-
         item := *mini_panel.items[mini_panel.item_index];
+
         userdata := cast(*Search_Item_Userdata, item.userdata);
+        x := userdata.x;
+        y := userdata.y;
 
         if panel.view.kind == {
             case .DOCUMENT; {
@@ -242,11 +326,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                 document := view.document;
 
                 if document {
-                    x := userdata.cursor.x;
-                    y := userdata.cursor.y;
-
                     text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
-
                     view.flags |= .CLAMP_SCROLL_TO_CURSOR;
                 }
             }
@@ -256,10 +336,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                 listing := view.listing;
 
                 if listing {
-                    y := userdata.cursor.y;
-
                     view.item_index = clamp(y, 0, listing.items.count - 1);
-
                     view.flags |= .CLAMP_SCROLL_TO_ITEM_INDEX;
                 }
             }
@@ -287,25 +364,36 @@ cancel :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    // TODO(jt): @Incomplete Allow searching LISTING views.
-    if panel.view.kind != .DOCUMENT {
-        return;
-    }
+    userdata: *Search_Userdata = editor.mini_panel.userdata;
+    x := userdata.original_x;
+    y := userdata.original_y;
 
-    view := *panel.view._document;
+    if panel.view.kind == {
+        case .DOCUMENT; {
+            view := *panel.view._document;
+            document := view.document;
+
+            if document {
+                text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, view.selecting);
+            }
+
+            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        }
+
+        case .LISTING; {
+            view := *panel.view._listing;
+            listing := view.listing;
+
+            if listing {
+                view.item_index = clamp(y, 0, listing.items.count);
+            }
+
+            view.flags |= .CLAMP_SCROLL_TO_ITEM_INDEX;
+        }
+    }
 
     array_reset_keeping_memory(*panel.highlights);
     panel.highlight_index = -1;
-
-    userdata: *Search_Userdata = editor.mini_panel.userdata;
-    x := userdata.original_cursor0.x;
-    y := userdata.original_cursor0.y;
-
-    if view.document {
-        text_buffer_move_cursor_to(view.document.buffer, *view.cursors, x, y, view.selecting);
-    }
-
-    view.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
     close_mini_panel(editor, platform, input);
 }
