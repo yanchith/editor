@@ -195,9 +195,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
             }
         }
 
-        // TODO(jt): Emacs actually remembers the previous scroll of the panel in
-        // document. Do we want to do the same?
-        recenter_active_panel(editor, input, force_center = true, skip_interpolation = true);
+        recenter_panel(panel, editor, input, force_center = true, skip_interpolation = true);
     }
 
     close_mini_panel(editor, platform, input);
