@@ -183,8 +183,8 @@ MINI_PANEL_ITEM_TEXT_COLOR :: TEXT_COLOR;
 MINI_PANEL_ITEM_WARNING_TEXT_COLOR :: #run unpack_srgba(0xe95410ff);
 
 PANEL_GUTTER_PIXELS          :: 10.0; // TODO(jt): Make this configurable. :Config
-PANEL_SCROLL_PADDING_CELLS_X :: 3;    // TODO(jt): Make this configurable. :Config
-PANEL_SCROLL_PADDING_CELLS_Y :: 3;    // TODO(jt): Make this configurable. :Config
+PANEL_SCROLL_PADDING_CELLS_X :: 5;    // TODO(jt): Make this configurable. :Config
+PANEL_SCROLL_PADDING_CELLS_Y :: 5;    // TODO(jt): Make this configurable. :Config
 
 MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 
@@ -960,7 +960,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     for * panel, panel_index: editor.panels {
-        early_update_panel(editor, platform, input, panel, panel_index);
+        update_panel_early(editor, platform, input, panel, panel_index);
     }
 
     {
@@ -1048,9 +1048,27 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     cell_h := editor.font.line_height_in_pixels;
 
     if editor.mini_panel.open {
-        // TODO(jt): @Incomplete Handle mouse in mini panel.
+        // TODO(jt): @Incomplete Handle mouse in mini panel. Currently we just close it if we click outside.
+        mini_panel_h := (MINI_PANEL_LINES + 1) * cell_h;
+        mini_panel_y := max(window_h - mini_panel_h, 0);
+        mini_panel_rect := rect_from_point_and_size(0, mini_panel_y, window_w, mini_panel_h);
+
+        if editor.input_state.keys[Key.MB_LEFT] & .PRESSED && !rect_contains_point(mini_panel_rect, input.mouse_position) {
+            editor.mini_panel.procs.cancel(editor, platform, input);
+        }
     } else if editor.modal_interaction.open {
-        // TODO(jt): @Incomplete Handle mouse in modal interaction.
+        // TODO(jt): @Incomplete Handle mouse in modal interaction. Currently, we just close it if we click outside.
+
+        message_line_y := window_h - cell_h;
+        message_line_rect := rect_from_point_and_size(0, message_line_y, window_w, cell_h);
+
+        if editor.input_state.keys[Key.MB_LEFT] & .PRESSED && !rect_contains_point(message_line_rect, input.mouse_position) {
+            editor.modal_interaction.procs.cancel(editor, platform, input);
+        }
+    } else {
+        for * panel, panel_index: editor.panels {
+            wants_this_frame, wants_next_frame |= update_panel_for_mouse(editor, platform, input, panel, panel_index, dt);
+        }
     }
 
     for * panel, panel_index: editor.panels {
@@ -1078,12 +1096,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if editor.mini_panel.open {
             mini_panel := *editor.mini_panel;
 
-            background_h := (MINI_PANEL_LINES + 1) * cell_h;
-            background_y := max(window_h - background_h, 0);
-            draw_rect(*render_commands, 0, background_y, window_w, window_h, BACKGROUND_COLOR);
+            mini_panel_h := (MINI_PANEL_LINES + 1) * cell_h;
+            mini_panel_y := max(window_h - mini_panel_h, 0);
+            draw_rect(*render_commands, 0, mini_panel_y, window_w, window_h, BACKGROUND_COLOR);
 
             if mini_panel.item_index == -1 {
-                draw_rect(*render_commands, 0, background_y, window_w, background_y + cell_h, MINI_PANEL_LINE_COLOR);
+                draw_rect(*render_commands, 0, mini_panel_y, window_w, mini_panel_y + cell_h, MINI_PANEL_LINE_COLOR);
             }
 
             action_text := mini_panel.procs.get_action_text(editor, platform, input);
@@ -1094,12 +1112,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             cursor0_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, mini_panel.cursors.c0.x, binary = false));
             cursor1_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, mini_panel.cursors.c1.x, binary = false));
 
-            draw_rect(*render_commands, cursor0_x, background_y, cursor1_x, background_y + cell_h, SELECTION_COLOR);
-            draw_rect(*render_commands, cursor0_x, background_y, cursor0_x + cell_w, background_y + cell_h, CURSOR_COLOR);
+            draw_rect(*render_commands, cursor0_x, mini_panel_y, cursor1_x, mini_panel_y + cell_h, SELECTION_COLOR);
+            draw_rect(*render_commands, cursor0_x, mini_panel_y, cursor0_x + cell_w, mini_panel_y + cell_h, CURSOR_COLOR);
 
             main_line := tprint("%%", action_text, line_view);
 
-            _font_layout_and_draw_text(*editor.font, main_line, *render_commands, *atlas_update_regions, { 0, background_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
+            _font_layout_and_draw_text(*editor.font, main_line, *render_commands, *atlas_update_regions, { 0, mini_panel_y }, { 0, 0, window_w, window_h }, TEXT_COLOR, .[], binary = false);
 
             index0 := max(mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
             index1 := min(index0 + MINI_PANEL_LINES, mini_panel.items.count - 1);
@@ -1109,8 +1127,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 item := *mini_panel.items[it];
 
                 if it == mini_panel.item_index {
-                    y0 := background_y + (it_index + 1) * cell_h;
-                    y1 := background_y + (it_index + 2) * cell_h;
+                    y0 := mini_panel_y + (it_index + 1) * cell_h;
+                    y1 := mini_panel_y + (it_index + 2) * cell_h;
                     draw_rect(*render_commands, 0, y0, window_w, y1, MINI_PANEL_LINE_COLOR);
 
                     // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
@@ -1122,7 +1140,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     draw_rect(*render_commands, cast(f32, x0), y0, cast(f32, x1), y1, HIGHLIGHT_COLOR);
                 }
 
-                offset_y: f64 = background_y + (it_index + 1) * cell_h;
+                offset_y: f64 = mini_panel_y + (it_index + 1) * cell_h;
                 font_layout_and_draw_text(*editor.font, item.text, *render_commands, *atlas_update_regions, { 0, offset_y }, { 0, 0, window_w, window_h }, item.text_color, .[], binary = cast(bool, item.flags & .BINARY));
 
                 it_index += 1;
@@ -2174,7 +2192,9 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 }
 
-early_update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, panel_index: s64) {
+update_panel_early :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, panel_index: s64) {
+    ProfileZone("update_panel_early");
+
     mouse := input.mouse_position;
 
     panel_rect := get_panel_rect(editor, panel_index);
@@ -2191,13 +2211,8 @@ early_update_panel :: (editor: *Editor, platform: Platform, input: Input, panel:
     }
 }
 
-update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, panel_index: s64, dt: f64) -> wants_this_frame: bool, wants_next_frame: bool {
-    ProfileZone("update_panel");
-    // The name of this procedure is a little untrue, because some updates already happened when the
-    // panel received keyboard events (route_event_to_panel) and mouse input (zoom, scrolling,
-    // selection). In general, those earlier pieces of code tried to do as little work as possible,
-    // deferring serious updates to this loop (e.g. update_syntax_highlights) by setting various
-    // flags on the panel.  -jt 26 July 2026.
+update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, panel_index: s64, dt: f64) -> wants_this_frame: bool, wants_next_frame: bool {
+    ProfileZone("update_panel_for_mouse");
 
     wants_this_frame := false;
     wants_next_frame := false;
@@ -2209,14 +2224,11 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
 
     panel_rect, panel_content_rect := get_panel_rect(editor, panel_index);
     panel_w := rect_width(panel_rect);
-    panel_h := rect_height(panel_rect);
-    panel_content_w := rect_width(panel_content_rect);
     panel_is_active := false;
     {
         _, active_panel_index := get_panel_for_active_view(editor);
         panel_is_active = panel_index == active_panel_index;
     }
-
 
     //
     // Mouse hover update
@@ -2381,9 +2393,33 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
         }
     }
 
-    //
-    // General update
-    //
+    return wants_this_frame, wants_next_frame;
+}
+
+update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, panel_index: s64, dt: f64) -> wants_this_frame: bool, wants_next_frame: bool {
+    ProfileZone("update_panel");
+    // The name of this procedure is a little untrue, because some updates already happened when the
+    // panel received keyboard events (route_event_to_panel) and mouse input
+    // (update_panel_for_mouse). In general, those earlier pieces of code tried to do as little work
+    // as possible, deferring serious updates to this loop (e.g. update_syntax_highlights) by
+    // setting various flags on the panel.  -jt 26 July 2026.
+
+    wants_this_frame := false;
+    wants_next_frame := false;
+
+    cell_w := editor.font.max_glyph_width_in_pixels;
+    cell_h := editor.font.line_height_in_pixels;
+
+    panel_rect, panel_content_rect := get_panel_rect(editor, panel_index);
+    panel_w := rect_width(panel_rect);
+    panel_h := rect_height(panel_rect);
+    panel_content_w := rect_width(panel_content_rect);
+    panel_is_active := false;
+    {
+        _, active_panel_index := get_panel_for_active_view(editor);
+        panel_is_active = panel_index == active_panel_index;
+    }
+
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
