@@ -73,6 +73,7 @@ TODO(jt): @Stream Small things to do:
 - [ ] M-q (reflow)
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Flash cursor with typing (needs tuning)
+- [ ] Flash pasted text
 - [X] When switching/closing view, sort by recency.
 - [ ] Read-only mode for documents.
 - [ ] Dark text color under bright rectangles (cursor, selection, line)
@@ -314,7 +315,6 @@ Document_View :: struct {
 
 Listing_View :: struct {
     listing: *Listing; // Possibly null!
-
     item_index: s64;
 }
 
@@ -1894,7 +1894,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             case .SWITCH_VIEW;  open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
             case .CLOSE_VIEW;   open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
 
-            case .RECENTER;     recenter_active_panel(editor, input);
+            case .RECENTER;     recenter_panel(panel, editor, input);
             case .SCROLL_UP;    scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
             case .SCROLL_DOWN;  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
 
@@ -3223,7 +3223,7 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
     return pointer, true;
 }
 
-close_document :: (editor: *Editor, document: *Document) {
+close_document :: (editor: *Editor, input: Input, document: *Document) {
     editor_log(editor, "Closing document % %", document.kind, document.backing_file_path);
 
     thing_to_show: *void;
@@ -3255,14 +3255,16 @@ close_document :: (editor: *Editor, document: *Document) {
     // Make sure nobody references the document anymore.
     for * editor.panels {
         if it.view.kind == .DOCUMENT && it.view._document.document == document {
+            it.view._document.document = null; // So that the panel_set_xyz routines don't try to read from it.
+
             if #complete thing_to_show_kind == {
                 case .DOCUMENT; {
-                    it.view.kind = .DOCUMENT;
-                    it.view._document.document = thing_to_show;
+                    panel_set_document(it, editor, thing_to_show);
+                    recenter_panel(it, editor, input, force_center = true, skip_interpolation = true);
                 }
                 case .LISTING; {
-                    it.view.kind = .LISTING;
-                    it.view._listing.listing = thing_to_show;
+                    panel_set_listing(it, editor, thing_to_show);
+                    recenter_panel(it, editor, input, force_center = true, skip_interpolation = true);
                 }
             }
         }
@@ -3279,7 +3281,7 @@ close_document :: (editor: *Editor, document: *Document) {
     bucket_array_remove(*editor.documents, locator);
 }
 
-close_listing :: (editor: *Editor, listing: *Listing) {
+close_listing :: (editor: *Editor, input: Input, listing: *Listing) {
     // TODO(jt): @Cleanup close_listing is very similar to close_document. They are both
     // things/entities. Maybe we should have a generic close_thing and deal with the special-case
     // code with polymorphism?
@@ -3312,20 +3314,22 @@ close_listing :: (editor: *Editor, listing: *Listing) {
     // Make sure nobody references the listing anymore.
     for * editor.panels {
         if it.view.kind == .LISTING && it.view._listing.listing == listing {
+            it.view._listing.listing = null; // So that the panel_set_xyz routines don't try to read from it.
+
             if #complete thing_to_show_kind == {
                 case .DOCUMENT; {
-                    it.view.kind = .DOCUMENT;
-                    it.view._document.document = thing_to_show;
+                    panel_set_document(it, editor, thing_to_show);
+                    recenter_panel(it, editor, input, force_center = true, skip_interpolation = true);
                 }
                 case .LISTING; {
-                    it.view.kind = .LISTING;
-                    it.view._listing.listing = thing_to_show;
+                    panel_set_listing(it, editor, thing_to_show);
+                    recenter_panel(it, editor, input, force_center = true, skip_interpolation = true);
                 }
             }
         }
     }
 
-    // Release arenaa. Can't touch anything dynamically allocated on the listing after.
+    // Release arena. Can't touch anything dynamically allocated on the listing after.
     arena_release(listing.arena);
 
     locator := listing.locator;
@@ -3438,8 +3442,9 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
     view := *panel.view._listing;
 
     view.listing = listing;
-
     view.item_index = listing.item_index_cold;
+
+    interpolation_init(*panel.scroll, { 0, 0 });
 
     listing.time_of_last_interaction = editor.input_state.time;
 }
@@ -3448,8 +3453,7 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
 
 // TODO(jt): The user experience of this kind of sucks. The first C-l should always recenter. But
 // then we need to remember if it is the first press.
-recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, skip_interpolation := false) {
-    panel := get_panel_for_active_view(editor);
+recenter_panel :: (panel: *Panel, editor: Editor, input: Input, force_center := false, skip_interpolation := false) {
     if !panel {
         return;
     }
@@ -3491,16 +3495,14 @@ recenter_active_panel :: (editor: *Editor, input: Input, force_center := false, 
     }
 }
 
-// nocheckin scroll_panel_{up,down}_one_screen is broken for listings
+// nocheckin opening a new file with long first line moves scrolls to the right
 
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
-    top: f64 = 0; // Just here for symmetry with scrolling down.
-
     delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
-    delta = min(delta, panel.scroll.target.y - top);
 
     target := panel.scroll.target;
     target.y -= delta;
+    target.y = max(target.y, 0);
     interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
 
     if panel.view.kind == .DOCUMENT {
@@ -3519,10 +3521,10 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     sanity_assert(bottom >= panel.scroll.target.y);
 
     delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
-    delta = min(delta, bottom - (panel.scroll.target.y + delta));
 
     target := panel.scroll.target;
     target.y += delta;
+    target.y = min(target.y, max(bottom - delta, 0));
     interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
 
     if panel.view.kind == .DOCUMENT {
