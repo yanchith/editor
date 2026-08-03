@@ -3495,8 +3495,6 @@ recenter_panel :: (panel: *Panel, editor: Editor, input: Input, force_center := 
     }
 }
 
-// nocheckin opening a new file with long first line moves scrolls to the right
-
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
 
