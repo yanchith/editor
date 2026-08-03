@@ -596,6 +596,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_reserve(key_map, 128);
 
+        key_map_add(key_map, "C-s",     .SEARCH);
+
         key_map_add(key_map, "C-x C-f", .OPEN_FILE);
 
         key_map_add(key_map, "C-x b",   .SWITCH_VIEW);
@@ -630,7 +632,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-f",     .MOVE_RIGHT);
         key_map_add(key_map, "<right>", .MOVE_RIGHT);
 
-        key_map_add(key_map, "C-s",     .SEARCH);
         // TODO(jt): @Cleanup In Emacs, SEARCH_AND_REPLACE is C-M-%, but our platform layer sucks, so we just bound it to something else for now.
         key_map_add(key_map, "C-r",     .SEARCH_AND_REPLACE);
 
@@ -1569,8 +1570,10 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
     }
 }
 
-Editor_Action :: enum {
+Editor_Action :: enum { // Could also be called Panel_Action nocheckin
     NONE;
+
+    SEARCH;
 
     OPEN_FILE;
 
@@ -1595,7 +1598,6 @@ Document_Action :: enum {
     MOVE_LEFT;
     MOVE_RIGHT;
 
-    SEARCH; // TODO(jt): Make SEARCH work for listings too.
     SEARCH_AND_REPLACE;
 
     SAVE_DOCUMENT;
@@ -1663,6 +1665,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         panel_buffered |= buffered;
         panel_action |= action != .NONE;
         if action == {
+            case .SEARCH;       open_mini_panel(editor, platform, input, mini_panel_search_procs);
+
             case .OPEN_FILE; {
                 path := "./";
 
@@ -1826,7 +1830,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     }
                 }
 
-                case .SEARCH;              open_mini_panel(editor, platform, input, mini_panel_search_procs);
                 case .SEARCH_AND_REPLACE;  open_modal_interaction(editor, platform, input, modal_interaction_search_and_replace_procs);
 
                 case .SAVE_DOCUMENT; {
