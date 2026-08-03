@@ -192,14 +192,14 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                 document: *Document = userdata.pointer;
 
                 unwatch_file(editor, platform, input, document.backing_file_path);
-                close_document(editor, document);
+                close_document(editor, input, document);
             }
 
             case .LISTING; {
                 listing: *Listing = userdata.pointer;
 
                 // TODO(jt): Unwatch directory, if we start watching them?
-                close_listing(editor, listing);
+                close_listing(editor, input, listing);
             }
         }
     }
