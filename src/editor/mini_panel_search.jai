@@ -187,6 +187,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             text_buffer_move_cursor_to(view.document.buffer, *view.cursors, x, y, false);
 
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
         }
     }
 }
