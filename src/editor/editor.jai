@@ -202,7 +202,7 @@ Editor :: struct {
 
     input_state: Input_State;
 
-    global_key_map:   Key_Map(Editor_Action);
+    panel_key_map:    Key_Map(Panel_Action);
     document_key_map: Key_Map(Document_Action);
     listing_key_map:  Key_Map(Listing_Action);
 
@@ -591,7 +591,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     }
 
     {
-        key_map := *editor.global_key_map;
+        key_map := *editor.panel_key_map;
         key_map.allocator = arena_allocator(editor.perm_arena);
 
         key_map_reserve(key_map, 128);
@@ -1570,7 +1570,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
     }
 }
 
-Editor_Action :: enum { // Could also be called Panel_Action nocheckin
+Panel_Action :: enum {
     NONE;
 
     SEARCH;
@@ -1657,13 +1657,13 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
         return;
     }
 
-    panel_buffered := false;
-    panel_action   := false;
+    panel_buffered_event  := false;
+    panel_executed_action := false;
 
     {
-        buffered, action := key_map_input(*editor.global_key_map, event, editor.input_state.modifiers);
-        panel_buffered |= buffered;
-        panel_action |= action != .NONE;
+        buffered, action := key_map_input(*editor.panel_key_map, event, editor.input_state.modifiers);
+        panel_buffered_event  |= buffered;
+        panel_executed_action |= action != .NONE;
         if action == {
             case .SEARCH;       open_mini_panel(editor, platform, input, mini_panel_search_procs);
 
@@ -1798,8 +1798,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             shift_selecting := editor.input_state.modifiers & .SHIFT;
 
             buffered, action := key_map_input(*editor.document_key_map, event, editor.input_state.modifiers);
-            panel_buffered |= buffered;
-            panel_action |= action != .NONE;
+            panel_buffered_event  |= buffered;
+            panel_executed_action |= action != .NONE;
             if action == {
                 case .MOVE_UP; {
                     cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
@@ -2058,7 +2058,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 }
             }
 
-            if !panel_buffered && !panel_action && event.flags & .PRESSED {
+            if !panel_buffered_event && !panel_executed_action && event.flags & .PRESSED {
                 if event.type == {
                     case .CODEPOINT; {
                         view.selecting = false;
