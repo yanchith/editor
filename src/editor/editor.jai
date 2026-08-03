@@ -2906,6 +2906,32 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 _font_layout_and_draw_text(*editor.font, item.text, render_commands, atlas_update_regions, offset, scissor_rect, item.text_color, .[], binary = false);
             }
+
+            //
+            // Draw modeline
+            //
+            {
+                // TODO(jt): @Cleanup Reformulate the modeline rect as cutting into the current panel instead of using absolute coordinates.
+                modeline_y      := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
+                modeline_rect   := rect_from_point_and_size(panel_x, modeline_y, panel_w, cell_h);
+                modeline_offset := DVector2.{ panel_x, modeline_y };
+
+                set_scissor(render_commands, modeline_rect);
+                draw_rect(render_commands, modeline_rect, ifx panel_is_active then MODELINE_COLOR_ACTIVE else MODELINE_COLOR);
+
+                item_index := view.item_index;
+                percent := cast(s64, 100.0 * cast(f32, item_index) / cast(f32, listing.items.count));
+
+                listing_name: string;
+                if #complete listing.kind == {
+                    case .DIRECTORY;  listing_name = String.path_filename(listing.backing_directory_path);
+                }
+
+                percent_string := temp_right_pad(tprint("%\%", percent), 4);
+
+                s := tprint("    % % L%", temp_right_pad(listing_name, 15), percent_string, item_index + 1);
+                _font_layout_and_draw_text(*editor.font, s, render_commands, atlas_update_regions, modeline_offset, modeline_rect, SYSTEM_TEXT_COLOR, .[], binary = false);
+            }
         }
     }
 
@@ -3086,6 +3112,7 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
         success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
         if success {
             String.path_overwrite_separators(file_absolute_path, "/");
+            file_absolute_path = String.trim_right(file_absolute_path, "/");
 
             listing, listing_added := find_or_add_listing(editor, platform, .DIRECTORY, file_absolute_path);
             editor_log(editor, "Opening directory: %", file_absolute_path);
