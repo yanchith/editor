@@ -40,15 +40,19 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    // TODO(jt): @Incomplete Allow searching LISTING views.
-    if panel.view.kind != .DOCUMENT {
-        return;
+    userdata := arena_push(editor.mini_panel.userdata_arena, Search_Userdata);
+
+    if #complete panel.view.kind == {
+        case .DOCUMENT; {
+            view := *panel.view._document;
+            userdata.original_cursor0 = view.cursors.c0;
+        }
+        case .LISTING; {
+            view := *panel.view._listing;
+            userdata.original_cursor0 = { 0, view.item_index };
+        }
     }
 
-    view := *panel.view._document;
-
-    userdata := arena_push(editor.mini_panel.userdata_arena, Search_Userdata);
-    userdata.original_cursor0 = view.cursors.c0;
     mini_panel.userdata = userdata;
 }
 
@@ -67,6 +71,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         return;
     }
 
+    // nocheckin here!
     // TODO(jt): @Incomplete Allow searching LISTING views.
     if panel.view.kind != .DOCUMENT {
         return;
@@ -225,25 +230,39 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         return false;
     }
 
-    // TODO(jt): @Incomplete Allow searching LISTING views.
-    if panel.view.kind != .DOCUMENT {
-        return false;
-    }
-
-    view := *panel.view._document;
-
     if mini_panel.items.count {
         assert(mini_panel.item_index >= 0);
-        if view.document {
-            item := *mini_panel.items[mini_panel.item_index];
 
-            userdata := cast(*Search_Item_Userdata, item.userdata);
-            x := userdata.cursor.x;
-            y := userdata.cursor.y;
+        item := *mini_panel.items[mini_panel.item_index];
+        userdata := cast(*Search_Item_Userdata, item.userdata);
 
-            text_buffer_move_cursor_to(view.document.buffer, *view.cursors, x, y, false);
+        if panel.view.kind == {
+            case .DOCUMENT; {
+                view := *panel.view._document;
+                document := view.document;
 
-            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+                if document {
+                    x := userdata.cursor.x;
+                    y := userdata.cursor.y;
+
+                    text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
+
+                    view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+                }
+            }
+
+            case .LISTING; {
+                view := *panel.view._listing;
+                listing := view.listing;
+
+                if listing {
+                    y := userdata.cursor.y;
+
+                    view.item_index = clamp(y, 0, listing.items.count - 1);
+
+                    view.flags |= .CLAMP_SCROLL_TO_ITEM_INDEX;
+                }
+            }
         }
     }
 

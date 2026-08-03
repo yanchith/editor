@@ -328,6 +328,7 @@ Listing_View :: struct {
         NONE :: 0;
 
         CLAMP_ITEM_INDEX_TO_SCROLL :: 0x01;
+        CLAMP_SCROLL_TO_ITEM_INDEX :: 0x02;
     }
 }
 
@@ -2594,6 +2595,31 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                     view.item_index -= delta;
 
                     item_index_y = cast(f64, view.item_index) * cell_h;
+                }
+            }
+
+            //
+            // Scroll buffer to item index
+            //
+            if view.flags & .CLAMP_SCROLL_TO_ITEM_INDEX {
+                scroll_padding_x := min(panel_w * 0.25, cell_w * PANEL_SCROLL_PADDING_CELLS_X);
+                scroll_padding_y := min(panel_h * 0.25, cell_h * PANEL_SCROLL_PADDING_CELLS_Y);
+
+                viewport_rect := drect_from_point_and_size(panel.scroll.target.x + PANEL_GUTTER_PIXELS, panel.scroll.target.y, panel_content_w, panel_h);
+                scroll_to_rect := drect_from_point_and_size(PANEL_GUTTER_PIXELS, item_index_y, cell_w, cell_h);
+
+                if scroll_to_rect.y1 > viewport_rect.y1 {
+                    target := panel.scroll.target;
+                    target.y = scroll_to_rect.y0 - panel_h + drect_height(scroll_to_rect) + scroll_padding_y;
+                    target.y = max(target.y, 0);
+
+                    interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
+                } else if scroll_to_rect.y0 < viewport_rect.y0 {
+                    target := panel.scroll.target;
+                    target.y = scroll_to_rect.y0 - scroll_padding_y;
+                    target.y = max(target.y, 0);
+
+                    interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
                 }
             }
         }
