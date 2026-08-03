@@ -992,37 +992,48 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             cell_h_after_zoom  := editor.font.line_height_in_pixels;
 
             for * editor.panels {
-                // TODO(jt): @Incomplete Do a LISTING version the map zoom thing.
-                if it.view.kind != .DOCUMENT {
-                    continue;
+                y: s64;
+                if #complete it.view.kind == {
+                    case .DOCUMENT; {
+                        view := *it.view._document;
+                        if input.mouse_wheel_delta == 0 {
+                            y = view.cursors.c0.y;
+                        } else {
+                            y = cast(s64, floor(input.mouse_position.y + it.scroll.target.y) / cell_h_before_zoom);
+                        }
+                    }
+
+                    case .LISTING; {
+                        view := *it.view._listing;
+                        if input.mouse_wheel_delta == 0 {
+                            y = view.item_index;
+                        } else {
+                            y = cast(s64, floor(input.mouse_position.y + it.scroll.target.y) / cell_h_before_zoom);
+                        }
+                    }
                 }
-
-                view := *it.view._document;
-
-                cursor_y := view.cursors.c0.y;
-                mouse_y  := (input.mouse_position.y + it.scroll.target.y) / cell_h_before_zoom;
-
-                y: f64 = ifx input.mouse_wheel_delta == 0 then cast(f64, cursor_y) else mouse_y;
 
                 y_position_before_zoom := y * cell_h_before_zoom;
                 y_position_after_zoom  := y * cell_h_after_zoom;
 
                 delta := y_position_after_zoom - y_position_before_zoom;
 
-                {
-                    target := it.scroll.target;
-                    target.y += delta;
-                    target.y = max(target.y, 0);
-                    interpolation_init(*it.scroll, target);
+                target := it.scroll.target;
+                target.y += delta;
+                target.y = max(target.y, 0);
+                interpolation_init(*it.scroll, target);
+
+                if it.view.kind == .DOCUMENT {
+                    view := *it.view._document;
+
+                    // If we change zoom, we need to invalidate old cursor positions in every panel. We
+                    // also want to fast-forward every every cursor animation, because the interpolants
+                    // are about to get stale.
+                    cursor_position := get_position_at_cursor(view, editor.font);
+
+                    view.old_cursor_position = cursor_position;
+                    interpolation_init(*view.cursor_position, cursor_position);
                 }
-
-                // If we change zoom, we need to invalidate old cursor positions in every panel. We
-                // also want to fast-forward every every cursor animation, because the interpolants
-                // are about to get stale.
-                cursor_position := get_position_at_cursor(view, editor.font);
-
-                view.old_cursor_position = cursor_position;
-                interpolation_init(*view.cursor_position, cursor_position);
             }
         }
     }
@@ -1046,9 +1057,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     assert(hovered_panel != null);
 
     if editor.mini_panel.open {
-        // TODO(jt): Handle mouse in mini panel.
+        // TODO(jt): @Incomplete Handle mouse in mini panel.
     } else if editor.modal_interaction.open {
-        // TODO(jt): Handle mouse in modal interaction.
+        // TODO(jt): @Incomplete Handle mouse in modal interaction.
     } else {
         //
         // Mouse wheel scrolling
@@ -1205,10 +1216,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
 
                 case .LISTING; {
-                    // TODO(jt): Do a LISTING version of mouse selection .
+                    // TODO(jt): @Incomplete Do a LISTING version of mouse selection.
                 }
             }
-
         }
     }
 
@@ -1377,6 +1387,22 @@ get_panel_for_active_view :: (editor: Editor) -> *Panel, panel_index: s64 {
         case .FULL;   index = editor.full_view_panel_index;
         case .LEFT;   index = editor.left_view_panel_index;
         case .RIGHT;  index = editor.right_view_panel_index;
+    }
+
+    panel: *Panel = null;
+    if editor.panels.count {
+        panel = *editor.panels[index];
+    }
+
+    return panel, index;
+}
+
+get_panel_for_inactive_view :: (editor: Editor) -> *Panel, panel_index: s64 {
+    index: s64;
+    if #complete editor.active_view == {
+        case .FULL;   index = editor.full_view_panel_index;
+        case .LEFT;   index = editor.right_view_panel_index;
+        case .RIGHT;  index = editor.left_view_panel_index;
     }
 
     panel: *Panel = null;
@@ -1841,8 +1867,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 if editor.active_view == .FULL {
                     assert(editor.panels.count == 1);
 
-                    success := false;
-
                     if panel.view.kind == {
                         case .DOCUMENT; {
                             view := *panel.view._document;
@@ -1850,7 +1874,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                             if document {
                                 right_panel := array_add(*editor.panels);
                                 panel_init_with_document(right_panel, editor, platform, document);
-                                success = true;
                             }
                         }
                         case .LISTING; {
@@ -2305,12 +2328,35 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                 case .OPEN;  #through;
                 case .OPEN_IN_OTHER_PANEL; {
-                    in_other_panel := action == .OPEN_IN_OTHER_PANEL;
+                    open_in_panel := panel;
+                    if action == .OPEN_IN_OTHER_PANEL {
+                        if editor.active_view == .FULL {
+                            assert(editor.panels.count == 1);
+
+                            // The panel is not actually valid, until we set a view (a document or
+                            // listing). We are going to do that soon after, in open_file.
+                            open_in_panel = array_add(*editor.panels);
+                            panel_init(open_in_panel, platform);
+
+                            editor.left_view_panel_index  = 0;
+                            editor.right_view_panel_index = 1;
+
+                            editor.active_view = .RIGHT;
+                        } else {
+                            open_in_panel = get_panel_for_inactive_view(editor);
+
+                            if editor.active_view == {
+                                case .FULL;   // Shouldn't get here.
+                                case .LEFT;   editor.active_view = .RIGHT;
+                                case .RIGHT;  editor.active_view = .LEFT;
+                            }
+                        }
+                    }
 
                     item_path := listing.items[view.item_index].text;
                     full_path := String.path_join(listing.backing_directory_path, item_path, separator = "/",, temp);
 
-                    open_file(editor, platform, input, full_path);
+                    open_file(editor, platform, input, full_path, open_in_panel);
                 }
             }
         }
@@ -3305,19 +3351,21 @@ close_listing :: (editor: *Editor, input: Input, listing: *Listing) {
     bucket_array_remove(*editor.listings, locator);
 }
 
-panel_init_with_document :: (panel: *Panel, editor: Editor, platform: Platform, document: *Document) {
+// WARNING: At the moment, panels without views (documents/listings) are invalid, so only use this
+// if you know you are going to set the view soon after.
+panel_init :: (panel: *Panel, platform: Platform) {
     panel.highlights_arena = make_arena(platform, .LARGE);
     panel.highlights.allocator = arena_allocator(panel.highlights_arena);
     panel.highlight_index = -1;
+}
 
+panel_init_with_document :: (panel: *Panel, editor: Editor, platform: Platform, document: *Document) {
+    panel_init(panel, platform);
     panel_set_document(panel, editor, document);
 }
 
 panel_init_with_listing :: (panel: *Panel, editor: Editor, platform: Platform, listing: *Listing) {
-    panel.highlights_arena = make_arena(platform, .LARGE);
-    panel.highlights.allocator = arena_allocator(panel.highlights_arena);
-    panel.highlight_index = -1;
-
+    panel_init(panel, platform);
     panel_set_listing(panel, editor, listing);
 }
 
