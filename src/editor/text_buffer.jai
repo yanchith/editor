@@ -1831,7 +1831,7 @@ assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
     assert(is_line_valid(buffer, line_index));
 }
 
-// nocheckin audit location_valid_for_{reads,writes}. They don't match up with how we clamp the
+// TODO(jt): @Audit location_valid_for_{reads,writes}. They don't match up with how we clamp the
 // cursor when moving it around. Either fix or explain better.
 
 assert_location_valid_for_reads :: (buffer: Text_Buffer, loc: Text_Location) {
