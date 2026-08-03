@@ -153,9 +153,9 @@ FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(250);  // The
 CURSOR_COLOR               :: #run unpack_srgba(0x50ffa0ff);
 ACTIVE_CURSOR_COLOR        :: #run unpack_srgba(0xffffffff);
 READONLY_CURSOR_COLOR      :: #run unpack_srgba(0xff0000ff);
-SELECTION_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.2; return c; };
-HIGHLIGHT_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.4; return c; };
-ACTIVE_HIGHLIGHT_COLOR     :: #run unpack_srgba(0xd08080ff);
+SELECTION_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.125; return c; };
+HIGHLIGHT_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.200; return c; };
+ACTIVE_HIGHLIGHT_COLOR     :: #run unpack_srgba(0xd09090c0);
 MATCHING_PARENTHESIS_COLOR :: #run unpack_srgba(0x70a0f0ff);
 LINE_COLOR                 :: Vector4.{ 0, 0, 0, 0 };
 MODELINE_COLOR             :: #run unpack_srgba(0x090909ff);
