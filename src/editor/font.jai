@@ -114,7 +114,7 @@ make_font :: (arena: *Arena, ttf_regular: [] u8, ttf_bold: [] u8, ttf_italic: []
     font.arena      = arena;
     font.arena_mark = arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
     font.texture_id = texture_id;
-    // pixel_height assigned in font_reset_for_pixel_height.
+    // pixel_height assigned in font_reset_for_options.
 
     error: FT_Error;
 
