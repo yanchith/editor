@@ -54,13 +54,13 @@ interpolation_chain :: (interpolation: *Interpolation($T), target: T, now: Apoll
     }
 }
 
-interpolation_update :: (interpolation: *Interpolation, now: Apollo_Time) -> running: bool {
+interpolation_update :: (interpolation: *Interpolation, now: Apollo_Time, snappy := false) -> running: bool {
     t: f32;
     if interpolation.duration == 0.0 {
         t = 1.0;
     } else {
-        // TODO(jt): Better "integration". Should we add 1/2 of delta time or something to make it less laggy?
-        t = cast(f32, to_float64_seconds(now) - to_float64_seconds(interpolation.start)) / interpolation.duration;
+        a := ifx snappy then 0.5 * USUAL_DELTA_TIME else 0.0;
+        t = cast(f32, to_float64_seconds(now) + a - to_float64_seconds(interpolation.start)) / interpolation.duration;
     }
 
     t = clamp(t, 0.0, 1.0);

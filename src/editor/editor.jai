@@ -59,8 +59,10 @@ TODO(jt): @Stream Small things to do:
 - [X] OPEN_FILE completion also completes, if we are on the text line but there is only one item in the list.
 - [X] Selection in mini panel text buffer.
 - [ ] Selection in modal interaction text buffer.
+- [ ] Animate scrolling in mini panel.
+- [ ] Animate opening of the mini panel.
 - [ ] SEARCH should allow words separated by spaces
-- [ ] SEARCH items render with syntax highlighting
+- [ ] SEARCH items shouold render with syntax highlighting
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
 - [ ] C-j join-next-line
@@ -77,7 +79,7 @@ TODO(jt): @Stream Small things to do:
 - [X] When switching/closing view, sort by recency.
 - [ ] Read-only mode for documents.
 - [ ] Dark text color under bright rectangles (cursor, selection, line)
-- [ ] Animate current line highlight the same way we animate cursor.
+- [X] Animate current line highlight the same way we animate cursor.
 - [ ] Cursor trail (requires our own renderer)
 - [ ] editor_log_error
 
@@ -151,20 +153,22 @@ FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(250);  // The
 
 // TODO(jt): Make the colors themeable. :Config
 CURSOR_COLOR               :: #run unpack_srgba(0x50ffa0ff);
-ACTIVE_CURSOR_COLOR        :: #run unpack_srgba(0xffffffff);
-READONLY_CURSOR_COLOR      :: #run unpack_srgba(0xff0000ff);
-SELECTION_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.125; return c; };
-HIGHLIGHT_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.5, 1.2); c.w = 0.200; return c; };
-ACTIVE_HIGHLIGHT_COLOR     :: #run unpack_srgba(0xd09090c0);
+CURSOR_COLOR_ACTIVE        :: #run unpack_srgba(0xffffffff);
+CURSOR_COLOR_READONLY      :: #run unpack_srgba(0xff0000ff);
+LINE_COLOR                 :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.25, 1.2); c.w = 0.050; return c; };
+SELECTION_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.25, 1.2); c.w = 0.150; return c; };
+HIGHLIGHT_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.25, 1.2); c.w = 0.200; return c; };
+HIGHLIGHT_COLOR_ACTIVE     :: #run unpack_srgba(0xd09090c0);
 MATCHING_PARENTHESIS_COLOR :: #run unpack_srgba(0x70a0f0ff);
-LINE_COLOR                 :: Vector4.{ 0, 0, 0, 0 };
-MODELINE_COLOR             :: #run unpack_srgba(0x090909ff);
+MODELINE_COLOR             :: #run unpack_srgba(0x111111ff);
+MODELINE_COLOR_ACTIVE      :: #run unpack_srgba(0x090909ff);
 GUTTER_COLOR               :: BACKGROUND_COLOR;
-SEPARATOR_COLOR            :: MODELINE_COLOR;
+SEPARATOR_COLOR            :: MODELINE_COLOR_ACTIVE;
 BACKGROUND_COLOR           :: #run unpack_srgba(0x191919ff);
 
 LISTING_ITEM_COLOR :: TEXT_COLOR;
 
+SYSTEM_TEXT_COLOR            :: #run unpack_srgba(0xb0b0b0ff);
 TEXT_COLOR                   :: #run unpack_srgba(0xcdaa7dff);
 KEYWORD_COLOR                :: #run unpack_srgba(0xe95410ff);
 ATTRIBUTE_COLOR              :: KEYWORD_COLOR;
@@ -183,10 +187,11 @@ PANEL_SCROLL_PADDING_CELLS_Y :: 3;    // TODO(jt): Make this configurable. :Conf
 
 MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 
-PANEL_SCROLL_DURATION:         f32 : 0.15; // TODO(jt): Make this configurable. :Config
-CURSOR_FLASH_DURATION:         f32 : 0.20; // TODO(jt): Make flash time configurable. :Config
-CURSOR_ANIM_DURATION_MOUSE:    f32 : 0.15; // TODO(jt): Make mouse anim time configurable. :Config
-CURSOR_ANIM_DURATION_KEYBOARD: f32 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
+PANEL_SCROLL_DURATION:                  f32 : 0.15; // TODO(jt): Make this configurable. :Config
+CURSOR_FLASH_DURATION:                  f32 : 0.20; // TODO(jt): Make flash time configurable. :Config
+CURSOR_ANIM_DURATION_KEYBOARD_DIRECT:   f32 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
+CURSOR_ANIM_DURATION_KEYBOARD_INDIRECT: f32 : 0.15; // TODO(jt): Make keyboard anim time configurable. :Config
+CURSOR_ANIM_DURATION_MOUSE:             f32 : 0.15; // TODO(jt): Make mouse anim time configurable. :Config
 
 Editor :: struct {
     perm_arena: *Arena;
@@ -301,15 +306,15 @@ Document_View :: struct {
         CLAMP_SCROLL_TO_CURSOR        :: 0x02;
         CLAMP_SCROLL_TO_START_OF_LINE :: 0x04; // Implies CLAMP_SCROLL_TO_CURSOR;
         CLAMP_SCROLL_TO_END_OF_LINE   :: 0x08; // Implies CLAMP_SCROLL_TO_CURSOR;
-        RECEIVED_KEYBOARD_INTERACTION :: 0x10;
-        RECEIVED_MOUSE_INTERACTION    :: 0x20;
 
-        // :TransientDocumentViewFlags
-        //
+        RECEIVED_DIRECT_KEYBOARD_INTERACTION   :: 0x10;
+        RECEIVED_INDIRECT_KEYBOARD_INTERACTION :: 0x20;
+        RECEIVED_MOUSE_INTERACTION             :: 0x20;
+
         // These get set during event processing and unset after update for this panel is done.
         TRANSIENT :: CLAMP_CURSOR_TO_SCROLL
             | CLAMP_SCROLL_TO_CURSOR | CLAMP_SCROLL_TO_START_OF_LINE | CLAMP_SCROLL_TO_END_OF_LINE
-            | RECEIVED_KEYBOARD_INTERACTION | RECEIVED_MOUSE_INTERACTION;
+            | RECEIVED_DIRECT_KEYBOARD_INTERACTION | RECEIVED_INDIRECT_KEYBOARD_INTERACTION | RECEIVED_MOUSE_INTERACTION;
     }
 }
 
@@ -375,8 +380,6 @@ Document :: struct {
 
         READONLY :: READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT | READONLY_BECAUSE_OF_MANUAL_LOCK;
 
-        // :TransientDocumentFlags
-        //
         // These get set during event processing and unset after update for this document's panel is done.
         TRANSIENT :: MODIFIED_THIS_FRAME;
     }
@@ -2336,7 +2339,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 //
                 // :CentralizedCursorInterpolationSetup
                 document.time_of_last_interaction = input.time;
-                view.flags |= .RECEIVED_KEYBOARD_INTERACTION;
+                view.flags |= .RECEIVED_DIRECT_KEYBOARD_INTERACTION;
                 view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             }
 
@@ -2515,18 +2518,19 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 // UPDATE: Now we do the same for cursor flash animation.
                 if view.old_cursor != view.cursors.c0 {
                     anim_duration: f32 = 0.0;
-                    if view.flags & .RECEIVED_MOUSE_INTERACTION     anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_MOUSE);
-                    if view.flags & .RECEIVED_KEYBOARD_INTERACTION  anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_KEYBOARD);
+                    if view.flags & .RECEIVED_MOUSE_INTERACTION              anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_MOUSE);
+                    if view.flags & .RECEIVED_INDIRECT_KEYBOARD_INTERACTION  anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_KEYBOARD_INDIRECT);
+                    if view.flags & .RECEIVED_DIRECT_KEYBOARD_INTERACTION    anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_KEYBOARD_DIRECT);
 
                     interpolation_start(*view.cursor_position, view.old_cursor_position, new_cursor_position, input.time, anim_duration);
                 }
 
                 if document.flags & .MODIFIED_THIS_FRAME {
-                    interpolation_start(*view.cursor_flash, ACTIVE_CURSOR_COLOR, CURSOR_COLOR, input.time, CURSOR_FLASH_DURATION);
+                    interpolation_start(*view.cursor_flash, CURSOR_COLOR_ACTIVE, CURSOR_COLOR, input.time, CURSOR_FLASH_DURATION);
                 }
 
                 interpolation_running := false;
-                interpolation_running |= interpolation_update(*view.cursor_position, input.time);
+                interpolation_running |= interpolation_update(*view.cursor_position, input.time, snappy = true);
                 interpolation_running |= interpolation_update(*view.cursor_flash, input.time);
                 if interpolation_running {
                     wants_this_frame = true;
@@ -2534,8 +2538,8 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 }
             }
 
-            clear_transient_document_view_flags(*view.flags);
-            clear_transient_document_flags(*document.flags);
+            view.flags     &= ~.TRANSIENT;
+            document.flags &= ~.TRANSIENT;
         }
 
         case .LISTING; {
@@ -2547,7 +2551,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
     // Animate Scroll
     //
     {
-        interpolation_running := interpolation_update(*panel.scroll, input.time);
+        interpolation_running := interpolation_update(*panel.scroll, input.time, snappy = true);
         if interpolation_running {
             wants_this_frame = true;
             wants_next_frame = true;
@@ -2615,7 +2619,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 highlight_rect_screen = rect_clamp(highlight_rect_screen, panel_content_rect);
 
                 if it_index == panel.highlight_index {
-                    draw_rect(render_commands, highlight_rect_screen, ACTIVE_HIGHLIGHT_COLOR);
+                    draw_rect(render_commands, highlight_rect_screen, HIGHLIGHT_COLOR_ACTIVE);
                 } else {
                     draw_rect(render_commands, highlight_rect_screen, HIGHLIGHT_COLOR);
                 }
@@ -2784,7 +2788,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 cursor_rect := drect_to_rect(r);
                 cursor_rect = rect_clamp(cursor_rect, panel_content_rect);
 
-                draw_rect(render_commands, cursor_rect, ifx document.flags & .READONLY then READONLY_CURSOR_COLOR else view.cursor_flash.value);
+                draw_rect(render_commands, cursor_rect, ifx document.flags & .READONLY then CURSOR_COLOR_READONLY else view.cursor_flash.value);
             }
 
             //
@@ -2856,7 +2860,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 modeline_offset := DVector2.{ panel_x, modeline_y };
 
                 set_scissor(render_commands, modeline_rect);
-                draw_rect(render_commands, modeline_rect, MODELINE_COLOR);
+                draw_rect(render_commands, modeline_rect, ifx panel_is_active then MODELINE_COLOR_ACTIVE else MODELINE_COLOR);
 
                 cursor  := view.cursors.c0;
                 percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, document.buffer.line_bytes.count));
@@ -2869,8 +2873,8 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 percent_string := temp_right_pad(tprint("%\%", percent), 4);
 
-                s := tprint(" % % (%,%)", temp_right_pad(document_name, 15), percent_string, cursor.y + 1, cursor.x);
-                _font_layout_and_draw_text(*editor.font, s, render_commands, atlas_update_regions, modeline_offset, modeline_rect, TEXT_COLOR, .[], binary = false);
+                s := tprint("    % % (%,%)", temp_right_pad(document_name, 15), percent_string, cursor.y + 1, cursor.x);
+                _font_layout_and_draw_text(*editor.font, s, render_commands, atlas_update_regions, modeline_offset, modeline_rect, SYSTEM_TEXT_COLOR, .[], binary = false);
             }
         }
 
@@ -3574,16 +3578,6 @@ get_line_length_for_line_index :: (document: Document, font: Font, line_index: s
 }
 
 #scope_file
-
-// :TransientDocumentFlags
-clear_transient_document_flags :: (flags: *Document.Flags) {
-    flags.* &= ~.TRANSIENT;
-}
-
-// :TransientDocumentViewFlags
-clear_transient_document_view_flags :: (flags: *Document_View.Flags) {
-    flags.* &= ~.TRANSIENT;
-}
 
 draw_rect :: (render_commands: *[..] Render_Command, x0: f32, y0: f32, x1: f32, y1: f32, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
     inline draw_rect(render_commands, { x0, y0, x1, y1 }, color, texture);

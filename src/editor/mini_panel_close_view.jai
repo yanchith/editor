@@ -67,7 +67,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
             found_index, found := String.index_of_string_nocase(document_name, search_text);
             if found {
-                // Select the most recent document.
+                // Select the most recent document. (This is hopefully the current view.)
                 if it.time_of_last_interaction > max_time_of_last_interaction {
                     max_time_of_last_interaction = it.time_of_last_interaction;
                     mini_panel.item_index = mini_panel.items.count;
@@ -95,8 +95,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         }
 
         for * editor.listings {
-            // Select the most recent listing, except the one pointed to by the currently active panel.
-            if current_thing != it && it.time_of_last_interaction > max_time_of_last_interaction {
+            // Select the most recent listing. (This is hopefully the current view.)
+            if it.time_of_last_interaction > max_time_of_last_interaction {
                 max_time_of_last_interaction = it.time_of_last_interaction;
                 mini_panel.item_index = mini_panel.items.count;
             }
