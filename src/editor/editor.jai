@@ -319,8 +319,16 @@ Document_View :: struct {
 }
 
 Listing_View :: struct {
+    flags: Flags;
+
     listing: *Listing; // Possibly null!
     item_index: s64;
+
+    Flags :: enum_flags u32 {
+        NONE :: 0;
+
+        CLAMP_ITEM_INDEX_TO_SCROLL :: 0x01;
+    }
 }
 
 Document :: struct {
@@ -951,30 +959,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    //
-    // Switch active view by clicking
-    //
-    // Remember the click before we do the mouse interaction stuff later. Because the mouse stuff
-    // happens after we have processed the keyboard events, this code might cause some weird
-    // behavior, where the keyboard interaction determines what view is active, and then we change
-    // it here. Shouldn't be a problem in practice, right?
-    //
-    if editor.input_state.keys[Key.MB_LEFT] & .PRESSED {
-        for * panel: editor.panels {
-            panel_rect := get_panel_rect(editor, it_index);
-            if rect_contains_point(panel_rect, input.mouse_position) {
-                if #complete editor.active_view == {
-                    case .FULL; // No-op
-                    case .LEFT;   if it_index == editor.right_view_panel_index  editor.active_view = .RIGHT;
-                    case .RIGHT;  if it_index == editor.left_view_panel_index   editor.active_view = .LEFT;
-                }
-            }
-        }
+    for * panel, panel_index: editor.panels {
+        early_update_panel(editor, platform, input, panel, panel_index);
     }
 
     {
         //
         // Chaging font size (zoom)
+        //
+        // Because we respect the mouse (or cursor) position when changing fonts, this gets its own
+        // update loop, which is for now inlined here.
         //
 
         if editor.input_state.modifiers & .CTRL {
@@ -1053,186 +1047,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     cell_w := editor.font.max_glyph_width_in_pixels;
     cell_h := editor.font.line_height_in_pixels;
 
-    // Currently, there must always be at least one panel. We can relax this in the future.
-    hovered_panel, hovered_panel_index := get_panel_for_mouse_cursor(editor, input);
-    assert(hovered_panel != null);
-
     if editor.mini_panel.open {
         // TODO(jt): @Incomplete Handle mouse in mini panel.
     } else if editor.modal_interaction.open {
         // TODO(jt): @Incomplete Handle mouse in modal interaction.
-    } else {
-        //
-        // Mouse wheel scrolling
-        //
-        // We scroll the hovered panel regardless of whether it is active.
-        //
-        if input.mouse_wheel_delta != 0 && !(editor.input_state.modifiers & .CTRL) {
-            target := hovered_panel.scroll.target;
-            target.y -= cast(f64, input.mouse_wheel_delta);
-            if #complete hovered_panel.view.kind == {
-                case .DOCUMENT; {
-                    view := *hovered_panel.view._document;
-                    target.y = clamp(target.y, 0, cell_h * cast(f64, view.document.buffer.line_count - 1));
-                }
-                case. LISTING; {
-                    view := *hovered_panel.view._listing;
-                    target.y = clamp(target.y, 0, cell_h * cast(f64, view.listing.items.count - 1));
-                }
-            }
-
-            interpolation_init(*hovered_panel.scroll, target);
-
-            if hovered_panel.view.kind == .DOCUMENT {
-                view := *hovered_panel.view._document;
-
-                view.flags |= .CLAMP_CURSOR_TO_SCROLL;
-                view.flags |= .RECEIVED_MOUSE_INTERACTION;
-            }
-        }
-
-        // TODO(jt): We can in time refine this to a more flexible API, like:
-        //
-        //     panel_wants_to_interact_with_mouse_hover(panel, input);
-        //
-        if hovered_panel.view.kind == .LISTING {
-            // See :DrawHoveredSelection and :BatterySaver.
-            wants_this_frame = true;
-            wants_next_frame = true; // Because we have to give the hover one frame to disappear.
-        }
-
-        //
-        // Mouse Selection
-        //
-        // Unlike wheel scrolling, mouse selection is sticky to the panel where it started.
-        //
-        // TODO(jt): Double click to select word.
-        // TODO(jt): Triple click to select line.
-        //
-        if editor.input_state.keys[Key.MB_LEFT] & .DOWN {
-            mouse := input.mouse_position;
-
-            panel_index: s64;
-            if #complete editor.active_view == {
-                case .FULL;   panel_index = editor.full_view_panel_index;
-                case .LEFT;   panel_index = editor.left_view_panel_index;
-                case .RIGHT;  panel_index = editor.right_view_panel_index;
-            }
-
-            panel      := *editor.panels[panel_index];
-            panel_rect := get_panel_rect(editor, panel_index);
-            panel_w    := rect_width(panel_rect);
-
-            if #complete panel.view.kind == {
-                case .DOCUMENT; {
-                    view     := *panel.view._document;
-                    document := view.document;
-
-                    //
-                    // Mouse selection scrolling in DOCUMENT views.
-                    //
-                    {
-                        SCROLL_ZONE:  f32 :  20.0;
-                        SCROLL_SPEED: f64 :  10.0;
-                        SCROLL_BOOST: f64 :   5.0;
-
-                        left_edge   := panel_rect.x0 + SCROLL_ZONE;
-                        right_edge  := panel_rect.x1 - SCROLL_ZONE;
-                        top_edge    := panel_rect.y0 + SCROLL_ZONE;
-                        bottom_edge := panel_rect.y1 - SCROLL_ZONE;
-
-                        if mouse.x < left_edge {
-                            boost := (left_edge - mouse.x) * SCROLL_BOOST;
-
-                            target := panel.scroll.target;
-                            target.x -= SCROLL_SPEED * boost * dt;
-                            target.x = max(target.x, 0);
-                            interpolation_init(*panel.scroll, target);
-
-                            wants_this_frame = true;
-                            wants_next_frame = true;
-                        } else if mouse.x > right_edge {
-                            boost := (mouse.x - right_edge) * SCROLL_BOOST;
-
-                            // Apron contains at least the horizontal space to place the cursor after
-                            // scroll, and optionally the configurable horizontal padding, so that it
-                            // behaves the same as if we scrolled there by moving the cursor with the
-                            // keyboard.
-                            apron := (1 + PANEL_SCROLL_PADDING_CELLS_X) * cell_w + PANEL_GUTTER_PIXELS;
-
-                            line_view := text_buffer_make_view_for_line(document.buffer, view.cursors.c0.y,, temp);
-
-                            // Clamp to zero, so we don't end up scrolling the other way if the line is
-                            // short. (Happens if you start scrolling on a long line, but then vertically
-                            // scroll to a short line.)
-                            max_x := max(font_compute_line_length(editor.font, line_view, binary = document.buffer.binary_mode) - panel_w + apron, 0);
-
-                            target := panel.scroll.target;
-                            target.x += SCROLL_SPEED * boost * dt;
-                            target.x = min(target.x, max_x);
-                            interpolation_init(*panel.scroll, target);
-
-                            wants_this_frame = true;
-                            wants_next_frame = true;
-                        }
-
-                        if mouse.y < top_edge {
-                            boost := (top_edge - mouse.y) * SCROLL_BOOST;
-
-                            target := panel.scroll.target;
-                            target.y -= SCROLL_SPEED * boost * dt;
-                            target.y = max(target.y, 0);
-                            interpolation_init(*panel.scroll, target);
-
-                            wants_this_frame = true;
-                            wants_next_frame = true;
-                        } else if mouse.y > bottom_edge {
-                            boost := (mouse.y - bottom_edge) * SCROLL_BOOST;
-
-                            target := panel.scroll.target;
-                            target.y += SCROLL_SPEED * boost * dt;
-                            target.y = min(target.y, cell_h * cast(f64, document.buffer.line_bytes.count - 1));
-                            interpolation_init(*panel.scroll, target);
-
-                            wants_this_frame = true;
-                            wants_next_frame = true;
-                        }
-                    }
-
-                    //
-                    // Mouse selection in DOCUMENT views.
-                    //
-
-                    row := cast(s64, floor((mouse.y + panel.scroll.value.y) / cell_h));
-                    col := 0;
-
-                    if row < 0 {
-                        row = 0;
-                        col = 0;
-                    } else if row > document.buffer.line_bytes.count - 1 {
-                        row = document.buffer.line_bytes.count - 1;
-
-                        // Include newline, so that the cursor can go there.
-                        line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
-                        col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
-                    } else {
-                        // Include newline, so that the cursor can go there.
-                        line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
-                        col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
-                    }
-
-                    text_buffer_move_cursor_to(document.buffer, *view.cursors, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
-
-                    view.flags |= .RECEIVED_MOUSE_INTERACTION;
-                }
-
-                case .LISTING;  // TODO(jt): @Incomplete Make it possible to click items!
-            }
-        }
     }
 
     for * panel, panel_index: editor.panels {
-        wants_this_frame, wants_next_frame |= update_panel(editor, platform, input, panel, panel_index);
+        wants_this_frame, wants_next_frame |= update_panel(editor, platform, input, panel, panel_index, dt);
     }
 
     // Only draw, if we have to output this frame. According to the Windows (TM) Task Manager, this
@@ -1412,26 +1234,6 @@ get_panel_for_inactive_view :: (editor: Editor) -> *Panel, panel_index: s64 {
         case .FULL;   index = editor.full_view_panel_index;
         case .LEFT;   index = editor.right_view_panel_index;
         case .RIGHT;  index = editor.left_view_panel_index;
-    }
-
-    panel: *Panel = null;
-    if editor.panels.count {
-        panel = *editor.panels[index];
-    }
-
-    return panel, index;
-}
-
-get_panel_for_mouse_cursor :: (editor: Editor, input: Input) -> *Panel, panel_index: s64 {
-    index: s64;
-    if editor.active_view == .FULL {
-        index = editor.full_view_panel_index;
-    } else {
-        if input.mouse_position.x < 0.5 * input.window_size.x {
-            index = editor.left_view_panel_index;
-        } else {
-            index = editor.right_view_panel_index;
-        }
     }
 
     panel: *Panel = null;
@@ -2372,7 +2174,24 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     }
 }
 
-update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, panel_index: s64) -> wants_this_frame: bool, wants_next_frame: bool {
+early_update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, panel_index: s64) {
+    mouse := input.mouse_position;
+
+    panel_rect := get_panel_rect(editor, panel_index);
+
+    //
+    // Switch active view by clicking
+    //
+    if editor.input_state.keys[Key.MB_LEFT] & .PRESSED && rect_contains_point(panel_rect, mouse) {
+        if #complete editor.active_view == {
+            case .FULL; // No-op
+            case .LEFT;   if panel_index == editor.right_view_panel_index  editor.active_view = .RIGHT;
+            case .RIGHT;  if panel_index == editor.left_view_panel_index   editor.active_view = .LEFT;
+        }
+    }
+}
+
+update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, panel_index: s64, dt: f64) -> wants_this_frame: bool, wants_next_frame: bool {
     ProfileZone("update_panel");
     // The name of this procedure is a little untrue, because some updates already happened when the
     // panel received keyboard events (route_event_to_panel) and mouse input (zoom, scrolling,
@@ -2383,6 +2202,8 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
     wants_this_frame := false;
     wants_next_frame := false;
 
+    mouse := input.mouse_position;
+
     cell_w := editor.font.max_glyph_width_in_pixels;
     cell_h := editor.font.line_height_in_pixels;
 
@@ -2390,7 +2211,179 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
     panel_w := rect_width(panel_rect);
     panel_h := rect_height(panel_rect);
     panel_content_w := rect_width(panel_content_rect);
+    panel_is_active := false;
+    {
+        _, active_panel_index := get_panel_for_active_view(editor);
+        panel_is_active = panel_index == active_panel_index;
+    }
 
+
+    //
+    // Mouse hover update
+    //
+    if rect_contains_point(panel_content_rect, input.mouse_position) {
+        //
+        // Mouse wheel scrolling
+        //
+        // We scroll the hovered panel regardless of whether it is active.
+        //
+
+        if input.mouse_wheel_delta != 0 && !(editor.input_state.modifiers & .CTRL) {
+            target := panel.scroll.target;
+            target.y -= cast(f64, input.mouse_wheel_delta);
+            if #complete panel.view.kind == {
+                case .DOCUMENT; {
+                    view := *panel.view._document;
+                    target.y = clamp(target.y, 0, cell_h * cast(f64, view.document.buffer.line_count - 1));
+                }
+                case. LISTING; {
+                    view := *panel.view._listing;
+                    target.y = clamp(target.y, 0, cell_h * cast(f64, view.listing.items.count - 1));
+                }
+            }
+
+            interpolation_init(*panel.scroll, target);
+
+            if panel.view.kind == .DOCUMENT {
+                view := *panel.view._document;
+
+                view.flags |= .CLAMP_CURSOR_TO_SCROLL;
+                view.flags |= .RECEIVED_MOUSE_INTERACTION;
+            }
+        }
+
+        // TODO(jt): We can in time refine this to a more flexible API, like:
+        //
+        //     panel_wants_to_interact_with_mouse_hover(panel, input);
+        //
+        if panel.view.kind == .LISTING {
+            // See :DrawHoveredSelection and :BatterySaver.
+            wants_this_frame = true;
+            wants_next_frame = true; // Because we have to give the hover one frame to disappear.
+        }
+    }
+
+    //
+    // Mouse selection/drag update
+    //
+    // Unlike wheel scrolling, mouse selection is sticky to the panel where it started.
+    //
+    // TODO(jt): Double click to select word.
+    // TODO(jt): Triple click to select line.
+    //
+    if panel_is_active && editor.input_state.keys[Key.MB_LEFT] & .DOWN {
+        if #complete panel.view.kind == {
+            case .DOCUMENT; {
+                view     := *panel.view._document;
+                document := view.document;
+
+                //
+                // Mouse selection scrolling in DOCUMENT views.
+                //
+                {
+                    SCROLL_ZONE:  f32 :  20.0;
+                    SCROLL_SPEED: f64 :  10.0;
+                    SCROLL_BOOST: f64 :   5.0;
+
+                    left_edge   := panel_rect.x0 + SCROLL_ZONE;
+                    right_edge  := panel_rect.x1 - SCROLL_ZONE;
+                    top_edge    := panel_rect.y0 + SCROLL_ZONE;
+                    bottom_edge := panel_rect.y1 - SCROLL_ZONE;
+
+                    if mouse.x < left_edge {
+                        boost := (left_edge - mouse.x) * SCROLL_BOOST;
+
+                        target := panel.scroll.target;
+                        target.x -= SCROLL_SPEED * boost * dt;
+                        target.x = max(target.x, 0);
+                        interpolation_init(*panel.scroll, target);
+
+                        wants_this_frame = true;
+                        wants_next_frame = true;
+                    } else if mouse.x > right_edge {
+                        boost := (mouse.x - right_edge) * SCROLL_BOOST;
+
+                        // Apron contains at least the horizontal space to place the cursor after
+                        // scroll, and optionally the configurable horizontal padding, so that it
+                        // behaves the same as if we scrolled there by moving the cursor with the
+                        // keyboard.
+                        apron := (1 + PANEL_SCROLL_PADDING_CELLS_X) * cell_w + PANEL_GUTTER_PIXELS;
+
+                        line_view := text_buffer_make_view_for_line(document.buffer, view.cursors.c0.y,, temp);
+
+                        // Clamp to zero, so we don't end up scrolling the other way if the line is
+                        // short. (Happens if you start scrolling on a long line, but then vertically
+                        // scroll to a short line.)
+                        max_x := max(font_compute_line_length(editor.font, line_view, binary = document.buffer.binary_mode) - panel_w + apron, 0);
+
+                        target := panel.scroll.target;
+                        target.x += SCROLL_SPEED * boost * dt;
+                        target.x = min(target.x, max_x);
+                        interpolation_init(*panel.scroll, target);
+
+                        wants_this_frame = true;
+                        wants_next_frame = true;
+                    }
+
+                    if mouse.y < top_edge {
+                        boost := (top_edge - mouse.y) * SCROLL_BOOST;
+
+                        target := panel.scroll.target;
+                        target.y -= SCROLL_SPEED * boost * dt;
+                        target.y = max(target.y, 0);
+                        interpolation_init(*panel.scroll, target);
+
+                        wants_this_frame = true;
+                        wants_next_frame = true;
+                    } else if mouse.y > bottom_edge {
+                        boost := (mouse.y - bottom_edge) * SCROLL_BOOST;
+
+                        target := panel.scroll.target;
+                        target.y += SCROLL_SPEED * boost * dt;
+                        target.y = min(target.y, cell_h * cast(f64, document.buffer.line_bytes.count - 1));
+                        interpolation_init(*panel.scroll, target);
+
+                        wants_this_frame = true;
+                        wants_next_frame = true;
+                    }
+                }
+
+                //
+                // Mouse selection in DOCUMENT views.
+                //
+
+                row := cast(s64, floor((mouse.y + panel.scroll.value.y) / cell_h));
+                col := 0;
+
+                if row < 0 {
+                    row = 0;
+                    col = 0;
+                } else if row > document.buffer.line_bytes.count - 1 {
+                    row = document.buffer.line_bytes.count - 1;
+
+                    // Include newline, so that the cursor can go there.
+                    line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
+                    col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
+                } else {
+                    // Include newline, so that the cursor can go there.
+                    line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
+                    col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
+                }
+
+                text_buffer_move_cursor_to(document.buffer, *view.cursors, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
+
+                view.flags |= .RECEIVED_MOUSE_INTERACTION;
+            }
+
+            case .LISTING; {
+
+            }
+        }
+    }
+
+    //
+    // General update
+    //
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
@@ -2418,18 +2411,16 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 viewport_rect := drect_from_point_and_size(panel.scroll.target.x, panel.scroll.target.y, panel_w, panel_h);
                 cursor_rect   := drect_from_point_and_size(cursor0_position.x, cursor0_position.y, cell_w, cell_h);
 
-                SCROLL_PADDING :: 7; // TODO(jt): Make this configurable. :Config
-
                 cursor_position_dirty := false;
                 if viewport_rect.y0 > cursor_rect.y1 {
                     // Move cursor down
-                    delta := cast(s64, ceil((viewport_rect.y0 - cursor_rect.y1) / cell_h)) + SCROLL_PADDING;
+                    delta := cast(s64, ceil((viewport_rect.y0 - cursor_rect.y1) / cell_h)) + PANEL_SCROLL_PADDING_CELLS_Y;
                     text_buffer_move_cursor_y(document.buffer, *view.cursors, delta, view.selecting);
 
                     cursor_position_dirty = true;
                 } else if viewport_rect.y1 < cursor_rect.y0 {
                     // Move cursor up
-                    delta := cast(s64, ceil((cursor_rect.y0 - viewport_rect.y1) / cell_h)) + SCROLL_PADDING;
+                    delta := cast(s64, ceil((cursor_rect.y0 - viewport_rect.y1) / cell_h)) + PANEL_SCROLL_PADDING_CELLS_Y;
                     text_buffer_move_cursor_y(document.buffer, *view.cursors, -delta, view.selecting);
 
                     cursor_position_dirty = true;
@@ -2534,7 +2525,41 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
         }
 
         case .LISTING; {
+            view := *panel.view._listing;
+            listing := view.listing;
 
+            if !listing {
+                return wants_this_frame, wants_next_frame;
+            }
+
+            // Because other panels could have edited the same listing before this code runs (either this
+            // frame, if they ran before us in the loop, or in the previous frame, if they ran after), we
+            // need to make sure the index is still valid.
+            view.item_index = clamp(view.item_index, 0, listing.items.count - 1);
+
+            item_index_y := cast(f64, view.item_index) * cell_h;
+
+            //
+            // Clamp item index to buffer
+            //
+            if view.flags & .CLAMP_ITEM_INDEX_TO_SCROLL {
+                viewport_rect := drect_from_point_and_size(panel.scroll.target.x, panel.scroll.target.y, panel_w, panel_h);
+                line_rect   := drect_from_point_and_size(0, item_index_y, panel_w, cell_h);
+
+                if viewport_rect.y0 > line_rect.y1 {
+                    // Move item index down
+                    delta := cast(s64, ceil((viewport_rect.y0 - line_rect.y1) / cell_h)) + PANEL_SCROLL_PADDING_CELLS_Y;
+                    view.item_index += delta;
+
+                    item_index_y = cast(f64, view.item_index) * cell_h;
+                } else if viewport_rect.y1 < line_rect.y0 {
+                    // Move item index up
+                    delta := cast(s64, ceil((line_rect.y0 - viewport_rect.y1) / cell_h)) + PANEL_SCROLL_PADDING_CELLS_Y;
+                    view.item_index -= delta;
+
+                    item_index_y = cast(f64, view.item_index) * cell_h;
+                }
+            }
         }
     }
 
@@ -2569,7 +2594,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
     panel_content_w := rect_width(panel_content_rect);
     panel_is_active := false;
     {
-        active_panel, active_panel_index := get_panel_for_active_view(editor);
+        _, active_panel_index := get_panel_for_active_view(editor);
         panel_is_active = panel_index == active_panel_index;
     }
 
@@ -3537,8 +3562,9 @@ scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     target.y = max(target.y, 0);
     interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
 
-    if panel.view.kind == .DOCUMENT {
-        panel.view._document.flags |= .CLAMP_CURSOR_TO_SCROLL;
+    if panel.view.kind == {
+        case .DOCUMENT;  panel.view._document.flags |= .CLAMP_CURSOR_TO_SCROLL;
+        case .LISTING;   panel.view._listing.flags |= .CLAMP_ITEM_INDEX_TO_SCROLL;
     }
 }
 
@@ -3559,8 +3585,9 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     target.y = min(target.y, max(bottom - delta, 0));
     interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
 
-    if panel.view.kind == .DOCUMENT {
-        panel.view._document.flags |= .CLAMP_CURSOR_TO_SCROLL;
+    if panel.view.kind == {
+        case .DOCUMENT;  panel.view._document.flags |= .CLAMP_CURSOR_TO_SCROLL;
+        case .LISTING;   panel.view._listing.flags |= .CLAMP_ITEM_INDEX_TO_SCROLL;
     }
 }
 
