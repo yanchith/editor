@@ -156,6 +156,7 @@ CURSOR_COLOR               :: #run unpack_srgba(0x50ffa0ff);
 CURSOR_COLOR_ACTIVE        :: #run unpack_srgba(0xffffffff);
 CURSOR_COLOR_READONLY      :: #run unpack_srgba(0xff0000ff);
 LINE_COLOR                 :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.25, 1.2); c.w = 0.050; return c; };
+HOVER_COLOR                :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.25, 1.2); c.w = 0.100; return c; };
 SELECTION_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.25, 1.2); c.w = 0.150; return c; };
 HIGHLIGHT_COLOR            :: #run -> Vector4 { c := adjust_saturation_and_value(CURSOR_COLOR, 0.25, 1.2); c.w = 0.200; return c; };
 HIGHLIGHT_COLOR_ACTIVE     :: #run unpack_srgba(0xd09090c0);
@@ -1064,7 +1065,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         //
         // Mouse wheel scrolling
         //
-        // We scroll the hovered panel regardless of which view is hovered or active.
+        // We scroll the hovered panel regardless of whether it is active.
         //
         if input.mouse_wheel_delta != 0 && !(editor.input_state.modifiers & .CTRL) {
             target := hovered_panel.scroll.target;
@@ -1088,6 +1089,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 view.flags |= .CLAMP_CURSOR_TO_SCROLL;
                 view.flags |= .RECEIVED_MOUSE_INTERACTION;
             }
+        }
+
+        // TODO(jt): We can in time refine this to a more flexible API, like:
+        //
+        //     panel_wants_to_interact_with_mouse_hover(panel, input);
+        //
+        if hovered_panel.view.kind == .LISTING {
+            // See :DrawHoveredSelection and :BatterySaver.
+            wants_this_frame = true;
+            wants_next_frame = true; // Because we have to give the hover one frame to disappear.
         }
 
         //
@@ -1215,9 +1226,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     view.flags |= .RECEIVED_MOUSE_INTERACTION;
                 }
 
-                case .LISTING; {
-                    // TODO(jt): @Incomplete Do a LISTING version of mouse selection.
-                }
+                case .LISTING;  // TODO(jt): @Incomplete Make it possible to click items!
             }
         }
     }
@@ -2556,6 +2565,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
     panel_w := rect_width(panel_rect);
     panel_h := rect_height(panel_rect);
     panel_content_x := panel_content_rect.x0;
+    panel_content_y := panel_content_rect.y0;
     panel_content_w := rect_width(panel_content_rect);
     panel_is_active := false;
     {
@@ -2871,11 +2881,20 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             for viewport_line0..viewport_line1 {
                 item := *listing.items[it];
 
+                line_y_world  := cast(f64, it) * cell_h;
+                line_y_screen := panel_content_y + cast(f32, line_y_world - panel.scroll.value.y);
+                line_rect_screen := rect_from_point_and_size(panel_content_x, line_y_screen, panel_content_w, cell_h);
+
                 if it == view.item_index {
-                    selection_y_world  := cast(f64, it) * cell_h;
-                    selection_y_screen := panel_y + cast(f32, selection_y_world - panel.scroll.value.y);
-                    selection_rect_screen := rect_from_point_and_size(panel_content_x, selection_y_screen, panel_content_w, cell_h);
-                    draw_rect(render_commands, selection_rect_screen, SELECTION_COLOR);
+                    draw_rect(render_commands, line_rect_screen, SELECTION_COLOR);
+                }
+
+                // :DrawHoveredSelection
+                //
+                // We draw a rectangle over a hovered item. However, For this to be actually drawn,
+                // we must make sure we decided to actually render this frame (see :BatterySaver).
+                if rect_contains_point(line_rect_screen, input.mouse_position) {
+                    draw_rect(render_commands, line_rect_screen, HOVER_COLOR);
                 }
 
                 // Because we start the layout just before the current viewport, the rendering scroll Y offset
