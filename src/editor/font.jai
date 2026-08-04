@@ -138,24 +138,21 @@ make_font :: (arena: *Arena, ttf_regular: [] u8, ttf_bold: [] u8, ttf_italic: []
     if ttf_bold.count {
         error = FT_New_Memory_Face(font.ft_library, ttf_bold.data, cast(s32, ttf_bold.count), 0, *font.ft_face_for_bold);
         if error {
-            log_error("FreeType error when creating a new face from the bold ttf buffer");
-            return font;
+            log_error("FreeType error when creating a new face from the bold ttf buffer. Will default to regular.");
         }
     }
 
     if ttf_italic.count {
         error = FT_New_Memory_Face(font.ft_library, ttf_italic.data, cast(s32, ttf_italic.count), 0, *font.ft_face_for_italic);
         if error {
-            log_error("FreeType error when creating a new face from the italic ttf buffer");
-            return font;
+            log_error("FreeType error when creating a new face from the italic ttf buffer. Will default to regular.");
         }
     }
 
     if ttf_bold_italic.count {
         error = FT_New_Memory_Face(font.ft_library, ttf_bold_italic.data, cast(s32, ttf_bold_italic.count), 0, *font.ft_face_for_bold_italic);
         if error {
-            log_error("FreeType error when creating a new face from the bold_italic ttf buffer");
-            return font;
+            log_error("FreeType error when creating a new face from the bold_italic ttf buffer, Will default to regular.");
         }
     }
 
@@ -380,9 +377,9 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
         ft_face: FT_Face;
         if #complete glyph_variant == {
             case .REGULAR;      ft_face = font.ft_face_for_regular;
-            case .BOLD;         ft_face = font.ft_face_for_bold;
-            case .ITALIC;       ft_face = font.ft_face_for_italic;
-            case .BOLD_ITALIC;  ft_face = font.ft_face_for_bold_italic;
+            case .BOLD;         ft_face = ifx font.ft_face_for_bold        then font.ft_face_for_bold else font.ft_face_for_regular;
+            case .ITALIC;       ft_face = ifx font.ft_face_for_italic      then font.ft_face_for_italic else font.ft_face_for_regular;
+            case .BOLD_ITALIC;  ft_face = ifx font.ft_face_for_bold_italic then font.ft_face_for_bold_italic else font.ft_face_for_regular;
         }
 
         // FT_Get_Char_Index returns 0, if it can't find the character. 0 also automatically maps to
