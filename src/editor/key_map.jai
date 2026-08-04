@@ -77,7 +77,10 @@ shortcut_equals_nocase :: (a: Shortcut, b: Shortcut) -> bool {
         key_a := a.sequence[it];
         key_b := b.sequence[it];
 
-        if !shortcut_key_equals_nocase(key_a, key_b, false) {
+        // TODO(jt): @Cleanup @Hack The 'it == a.count - 1' is here to make M-< and M-> work. To
+        // produce < and >, we need to press shift on en-us, but that's an additional modifier. We
+        // should really think more carefully about this whole system.  -jt, 4 August 2026
+        if !shortcut_key_equals_nocase(key_a, key_b, it == a.count - 1) {
             return false;
         }
     }
@@ -180,10 +183,10 @@ shortcut_print_to_builder :: (shortcut: Shortcut, b: *String_Builder) {
     for 0..shortcut.count - 1 {
         key := shortcut.sequence[it];
 
-        if key.modifier_flags & .CTRL  print(b, "C-");
-        if key.modifier_flags & .ALT   print(b, "M-");
-        if key.modifier_flags & .SHIFT print(b, "S-");
-        if key.modifier_flags & .META  print(b, "X-");
+        if key.modifier_flags & .CTRL   print(b, "C-");
+        if key.modifier_flags & .ALT    print(b, "M-");
+        if key.modifier_flags & .SHIFT  print(b, "S-");
+        if key.modifier_flags & .META   print(b, "X-");
 
         if key.type == {
             case .KEY; {

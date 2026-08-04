@@ -2508,7 +2508,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
     // panel received keyboard events (route_event_to_panel) and mouse input
     // (update_panel_for_mouse). In general, those earlier pieces of code tried to do as little work
     // as possible, deferring serious updates to this loop (e.g. update_syntax_highlights) by
-    // setting various flags on the panel.  -jt 26 July 2026.
+    // setting various flags on the panel.  -jt, 26 July 2026.
 
     wants_this_frame := false;
     wants_next_frame := false;
