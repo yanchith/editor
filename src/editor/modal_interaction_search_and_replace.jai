@@ -327,6 +327,7 @@ cancel :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
+    // nocheckin Should the panel really own the highlights?
     array_reset_keeping_memory(*panel.highlights);
     panel.highlight_index = -1;
 
