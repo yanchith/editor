@@ -1506,7 +1506,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     buffer_changed := false;
     old_item_index := mini_panel.item_index;
 
-    buffered, action := key_map_input(*editor.mini_panel.key_map, event, editor.input_state.modifiers);
+    buffered, action := key_map_input(*mini_panel.key_map, event, editor.input_state.modifiers);
     if action == {
         case .MOVE_UP;                 mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
         case .MOVE_DOWN;               mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
@@ -1854,7 +1854,17 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
             shift_selecting := editor.input_state.modifiers & .SHIFT;
 
-            buffered, action := key_map_input(*editor.document_key_map, event, editor.input_state.modifiers);
+            buffered := false;
+            action   := Document_Action.NONE;
+
+            if panel_executed_action {
+                // If a higher key_map executed an action, this one can't. It also has to flush
+                // instead of buffering.
+                key_map_flush(*editor.document_key_map);
+            } else {
+                buffered, action = key_map_input(*editor.document_key_map, event, editor.input_state.modifiers);
+            }
+
             panel_buffered_event  |= buffered;
             panel_executed_action |= action != .NONE;
             if action == {
@@ -2211,7 +2221,17 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 return;
             }
 
-            buffered, action := key_map_input(*editor.listing_key_map, event, editor.input_state.modifiers);
+            buffered := false;
+            action   := Listing_Action.NONE;
+
+            if panel_executed_action {
+                // If a higher key_map executed an action, this one can't. It also has to flush
+                // instead of buffering.
+                key_map_flush(*editor.listing_key_map);
+            } else {
+                buffered, action = key_map_input(*editor.listing_key_map, event, editor.input_state.modifiers);
+            }
+
             if action == {
                 case .MOVE_UP;    view.item_index = clamp(view.item_index - 1, 0, listing.items.count - 1);
                 case .MOVE_DOWN;  view.item_index = clamp(view.item_index + 1, 0, listing.items.count - 1);
