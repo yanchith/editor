@@ -210,8 +210,9 @@ font_reset_for_options :: (font: *Font, pixel_height: s32) {
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
     font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
 
-    // Because the atlas is bilinearly filtered, and we don't want to sample data from adjacent cells.
-    PADDING :: 1;
+    // Because the atlas is bilinearly filtered, and we don't want to sample data from adjacent
+    // cells. Also, asserts in copy_glyph_cell required us to increase the PADDING to 2.
+    PADDING :: 2;
 
     atlas_cell_width_in_pixels  := font.max_glyph_width_in_integer_pixels + PADDING;
     atlas_cell_height_in_pixels := font.max_glyph_height_in_integer_pixels + PADDING;
@@ -716,8 +717,13 @@ clear_glyph_cell_subpixel :: (dest: *u32, width: s32, height: s32, pitch: s32) {
 
 copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
     ProfileZone("copy_glyph_cell");
-    for y: 0..min(dest_height, source_height) - 1 {
-        for x: 0..min(dest_width, source_width) - 1 {
+
+    sanity_assert(dest_width >= source_width);
+    sanity_assert(dest_height >= source_height);
+    w := min(dest_width, source_width);
+    h := min(dest_height, source_height);
+    for y: 0..h - 1 {
+        for x: 0..w - 1 {
             dest_p   := dest + y * dest_pitch + x;
             source_p := source + y * source_pitch + x;
             dest_p.* = source_p.*;
@@ -727,15 +733,20 @@ copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s3
 
 copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
     ProfileZone("copy_glyph_cell_subpixel");
-    for y: 0..min(dest_height, source_height) - 1 {
-        for x: 0..min(dest_width, source_width / 3) - 1 {
+
+    sanity_assert(dest_width >= source_width / 3);
+    sanity_assert(dest_height >= source_height);
+    w := min(dest_width, source_width / 3);
+    h := min(dest_height, source_height);
+    for y: 0..h - 1 {
+        for x: 0..w - 1 {
             dest_p   := dest + y * dest_pitch + x;
             source_p := source + y * source_pitch + x * 3;
 
             r: u8 = (source_p + 0).*;
             g: u8 = (source_p + 1).*;
             b: u8 = (source_p + 2).*;
-            a: u8 = 255;
+            a: u8 = 255; // Not actually used for subpixel stuff, but useful to debug render the texture
 
             rgba: u32 = (cast(u32, r) << 24) | (cast(u32, g) << 16) | (cast(u32, b) << 8) | a;;
 
