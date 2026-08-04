@@ -136,6 +136,7 @@ operator==     :: Math.operator==;
 #load "mini_panel_switch_view.jai";
 #load "mini_panel_close_view.jai";
 #load "modal_interaction_search_and_replace.jai";
+#load "modal_interaction_build.jai";
 #load "lang_jai.jai";
 #load "hello.jai";
 
@@ -615,6 +616,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_VIEW);
         key_map_add(key_map, "C-x 1",   .CLOSE_OTHER_VIEWS);
         key_map_add(key_map, "C-x o",   .GO_TO_NEXT_VIEW);
+
+        key_map_add(key_map, "C-M-b",   .BUILD);
     }
 
     {
@@ -924,7 +927,25 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.key == {
-                        case .F1;   toggle_dev_view(*editor.dev_view, .ATLAS_TEXTURE); handled = true;
+                        case .F1;  toggle_dev_view(*editor.dev_view, .ATLAS_TEXTURE); handled = true;
+                        case .F2; {
+                            _, pwd := platform.get_absolute_path(".",, temp);
+                            wd := String.path_join(pwd, "/file_examples",, temp);
+                            String.path_overwrite_separators(wd, "/");
+                            exit_code, output, error := platform.run_in_process("jai first.jai", wd);
+
+                            document, panel := get_scratch(editor);
+                            cursors := ifx panel then *panel.view._document.cursors else *document.cursors_cold;
+
+                            text_buffer_delete_all(*document.buffer, cursors);
+                            text_buffer_insert(*document.buffer, cursors, tprint("EXIT: %\n", exit_code));
+
+                            text_buffer_insert(*document.buffer, cursors, "OUTPUT\n\n");
+                            text_buffer_insert(*document.buffer, cursors, output);
+
+                            text_buffer_insert(*document.buffer, cursors, "ERROR\n\n");
+                            text_buffer_insert(*document.buffer, cursors, error);
+                        }
                     }
                 }
 
@@ -1230,6 +1251,39 @@ editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #call
     editor.last_message_seen = false;
 
     log(format_string, ..args, loc);
+}
+
+// Returns Panel and panel_index only if *scratch* has a currently assigned panel.
+get_scratch :: (editor: Editor) -> *Document, *Panel, panel_index: s64 {
+    document: *Document;
+    panel: *Panel;
+    panel_index: s64 = -1;
+
+    for * editor.panels {
+        if it.view.kind != .DOCUMENT                    continue;
+        if it.view._document.document.kind != .SCRATCH  continue;
+
+        document = it.view._document.document;
+        panel = it;
+        panel_index = it_index;
+
+        break;
+    }
+
+    if document {
+        return document, panel, panel_index;
+    }
+
+    for * editor.documents {
+        if it.kind == .SCRATCH {
+            document = it;
+            break;
+        }
+    }
+
+    assert(document != null, "We are missing *scratch*"); // Currently, *scratch* can't be closed, right?!
+
+    return document, panel, panel_index;
 }
 
 get_panel_for_active_view :: (editor: Editor) -> *Panel, panel_index: s64 {
@@ -1588,6 +1642,8 @@ Panel_Action :: enum {
     CLOSE_CURRENT_VIEW;
     CLOSE_OTHER_VIEWS;
     GO_TO_NEXT_VIEW;
+
+    BUILD;
 }
 
 Document_Action :: enum {
@@ -1780,6 +1836,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 }
             }
 
+            case .BUILD;  open_modal_interaction(editor, platform, input, modal_interaction_build_procs);
         }
     }
 
