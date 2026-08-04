@@ -77,7 +77,7 @@ shortcut_equals_nocase :: (a: Shortcut, b: Shortcut) -> bool {
         key_a := a.sequence[it];
         key_b := b.sequence[it];
 
-        if !shortcut_key_equals_nocase(key_a, key_b, it == a.count - 1) {
+        if !shortcut_key_equals_nocase(key_a, key_b, false) {
             return false;
         }
     }
