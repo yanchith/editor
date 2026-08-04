@@ -46,6 +46,7 @@ String         :: #import "String";
 System         :: #import "System";
 File           :: #import "File";
 File_Utilities :: #import "File_Utilities";
+Process        :: #import "Process";
 Window         :: #import "Window_Creation";
 Input          :: #import "Input"; // This is our modified version. See :ModifiedInputModule.
 Clipboard      :: #import "Clipboard";
@@ -162,6 +163,20 @@ main :: () {
                 madvise(pointer, cast(u64, size), MADV_DONTNEED);
                 mprotect(pointer, cast(u64, size), PROT_NONE);
             }
+        }
+
+        platform.run_in_process = (args: string, working_directory: string) -> exit_code: s32, output: string, error: string {
+            // break_command_into_string always puts the thing in temp, so our context override is
+            // just futureproofing...
+            arguments := Process.break_command_into_strings(args,, temp);
+
+            result, output, error := Process.run_command(..arguments, working_directory = working_directory, capture_and_return_output = true);
+
+            if result.type != .EXITED {
+                log_error("Process result is %, exit code: %", result.type, result.exit_code);
+            }
+
+            return result.exit_code, output, error;
         }
 
         platform.get_absolute_path = (path: string) -> success: bool, string {
