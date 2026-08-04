@@ -953,24 +953,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .KEY; {
                     if it.key == {
                         case .F1;  toggle_dev_view(*editor.dev_view, .ATLAS_TEXTURE); handled = true;
-                        case .F2; {
-                            _, pwd := platform.get_absolute_path(".",, temp);
-                            wd := String.path_join(pwd, "/file_examples",, temp);
-                            String.path_overwrite_separators(wd, "/");
-                            exit_code, output, error := platform.run_in_process("jai first.jai", wd);
-
-                            document, panel := get_scratch(editor);
-                            cursors := ifx panel then *panel.view._document.cursors else *document.cursors_cold;
-
-                            text_buffer_delete_all(*document.buffer, cursors);
-                            text_buffer_insert(*document.buffer, cursors, tprint("EXIT: %\n", exit_code));
-
-                            text_buffer_insert(*document.buffer, cursors, "OUTPUT\n\n");
-                            text_buffer_insert(*document.buffer, cursors, output);
-
-                            text_buffer_insert(*document.buffer, cursors, "ERROR\n\n");
-                            text_buffer_insert(*document.buffer, cursors, error);
-                        }
                     }
                 }
 
