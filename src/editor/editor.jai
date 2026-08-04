@@ -563,17 +563,42 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     {
         ProfileZone(":InitFont");
-        font_arena := make_arena(platform, .LARGE);
+        font_arena     := make_arena(platform, .LARGE);
+        font_allocator := arena_allocator(font_arena);
 
-        success := true;
-        success=, ttf_regular     := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Regular.ttf",, arena_allocator(font_arena));
+        FONT :: "LiberationMono";
+        // FONT :: "FiraCode";
+
+        font_path :: (name: string, type: string) -> string {
+            return tprint("./data/fonts/%1/%1-%2.ttf", name, type);
+        }
+
+        success, ttf_regular := platform.read_file(font_path(FONT, "Regular"),, font_allocator);
         assert(success);
-        success=, ttf_bold        := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Bold.ttf",, arena_allocator(font_arena));
-        assert(success);
-        success=, ttf_italic      := platform.read_file("./data/fonts/LiberationMono/LiberationMono-Italic.ttf",, arena_allocator(font_arena));
-        assert(success);
-        success=, ttf_bold_italic := platform.read_file("./data/fonts/LiberationMono/LiberationMono-BoldItalic.ttf",, arena_allocator(font_arena));
-        assert(success);
+
+        ttf_bold: [] u8;
+        {
+            success, _ttf_bold := platform.read_file(font_path(FONT, "Bold"),, font_allocator);
+            if success {
+                ttf_bold = _ttf_bold;
+            }
+        }
+
+        ttf_italic: [] u8;
+        {
+            success, _ttf_italic := platform.read_file(font_path(FONT, "Italic"),, font_allocator);
+            if success {
+                ttf_italic = _ttf_italic;
+            }
+        }
+
+        ttf_bold_italic: [] u8;
+        {
+            success, _ttf_bold_italic := platform.read_file(font_path(FONT, "BoldItalic"),, font_allocator);
+            if success {
+                ttf_bold_italic = _ttf_bold_italic;
+            }
+        }
 
         // TODO(jt): None of the text editors seem to agree on what font size actually is, at least
         // Emacs, VS Code and this editor have completely different ideas. Figure this out and match
