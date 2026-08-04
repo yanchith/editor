@@ -979,7 +979,7 @@ OUT_IN vec2 v_tex_coords;
 OUT_IN vec4 v_color;
 
 #ifdef VERTEX_SHADER
-// These have to be named vert_xyz, because OpenGL is looking for those idents.
+// These have to be named vert_xyz, because Simp is looking for those idents.
 in vec4 vert_position;
 in vec4 vert_color;
 in vec2 vert_uv0;
@@ -1010,7 +1010,7 @@ OUT_IN vec2 v_tex_coords;
 OUT_IN vec4 v_color;
 
 #ifdef VERTEX_SHADER
-// These have to be named vert_xyz, because OpenGL is looking for those idents.
+// These have to be named vert_xyz, because Simp is looking for those idents.
 in vec4 vert_position;
 in vec4 vert_color;
 in vec2 vert_uv0;
