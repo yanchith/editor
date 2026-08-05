@@ -563,6 +563,11 @@ _font_compute_line_length :: (font: Font, line_text: string, $binary: bool) -> f
             if it < 32 || it >= 127 {
                 it = 0;
             }
+        } else {
+            // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
+            if it == #char "\n" {
+                it = #char " ";
+            }
         }
 
         error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | cast(s32, FT_LOAD_TARGET));
@@ -603,6 +608,11 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
+            }
+        } else {
+            // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
+            if it == #char "\n" {
+                it = #char " ";
             }
         }
 
@@ -645,6 +655,11 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
+            }
+        } else {
+            // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
+            if it == #char "\n" {
+                it = #char " ";
             }
         }
 

@@ -2840,7 +2840,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                     // First line, if in viewport
                     if cursor_start.y >= viewport_line0 && cursor_start.y <= viewport_line1 {
                         line_start := text_buffer_get_start_of_line(document.buffer, cursor_start.y);
-                        line_end   := text_buffer_get_end_of_line(document.buffer, cursor_start.y);
+                        line_end   := text_buffer_get_end_of_line(document.buffer, cursor_start.y, include_newline = true);
 
                         view_before_cursor := text_buffer_make_view_for_interval(document.buffer, line_start, cursor_start,, temp);
                         view_after_cursor  := text_buffer_make_view_for_interval(document.buffer, cursor_start, line_end,, temp);
@@ -2869,8 +2869,9 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                             continue;
                         }
 
-                        line_end  := text_buffer_get_end_of_line(document.buffer, it);
-                        line_view := text_buffer_make_view_for_line(document.buffer, it,, temp);
+                        line_end  := text_buffer_get_end_of_line(document.buffer, it, include_newline = true);
+                        line_view := text_buffer_make_view_for_line(document.buffer, it, include_newline = true,, temp);
+
                         selection_x0_world := 0.0;
                         selection_x1_world := font_compute_position_on_line(editor.font, line_view, line_end.x, binary = document.buffer.binary_mode);
                         selection_y0_world := cast(f64, it) * cell_h;
