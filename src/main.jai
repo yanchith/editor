@@ -387,7 +387,7 @@ main :: () {
         renderer_state.text_shader.alpha_blend = true;
 
         renderer: Editor.Renderer;
-        renderer.create_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, width: s32, height: s32) {
+        renderer.create_texture_r8unorm = (texture_id: Editor.Texture_ID, data: [] u8, width: s32, height: s32, filter: Editor.Texture_Filter) {
             bitmap: Simp.Bitmap;
             Simp.bitmap_alloc(*bitmap, width, height, .R8,, temp);
             bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
@@ -398,9 +398,18 @@ main :: () {
             texture: Simp.Texture;
             Simp.texture_load_from_bitmap(*texture, *bitmap);
 
+            // Simp sets LINEAR filtering on the texture in backend_realloc_texture, override that here.
+            if filter == .NEAREST {
+                gl_texture := texture.gl_handle;
+                glBindTexture(GL_TEXTURE_2D, gl_texture);
+
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            }
+
             table_add(*renderer_state.textures, texture_id, texture);
         }
-        renderer.create_texture_rgba8unorm = (texture_id: Editor.Texture_ID, data: [] u8, width: s32, height: s32) {
+        renderer.create_texture_rgba8unorm = (texture_id: Editor.Texture_ID, data: [] u8, width: s32, height: s32, filter: Editor.Texture_Filter) {
             bitmap: Simp.Bitmap;
             Simp.bitmap_alloc(*bitmap, width, height, .RGBA8,, temp);
             bitmap.flags &= ~.FREE_DATA_ON_DEINIT; // The bitmap is allocated in temporary storage, so no need.
@@ -410,6 +419,15 @@ main :: () {
 
             texture: Simp.Texture;
             Simp.texture_load_from_bitmap(*texture, *bitmap);
+
+            // Simp sets LINEAR filtering on the texture in backend_realloc_texture, override that here.
+            if filter == .NEAREST {
+                gl_texture := texture.gl_handle;
+
+                glBindTexture(GL_TEXTURE_2D, gl_texture);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            }
 
             table_add(*renderer_state.textures, texture_id, texture);
         }
@@ -504,6 +522,15 @@ main :: () {
                                 target_shader := *renderer_state.text_shader;
                                 if context.simp.current_shader != target_shader {
                                     Simp.immediate_set_shader(target_shader);
+
+                                    // immediate_set_shader enables GL_BLEND for us, but sets up the blend func to use:
+                                    //   SRC * src_alpha, DST * (1 - dst_alpha)
+                                    //
+                                    // We override that to use the blend weights from the shader (output to index1).
+                                    #if Editor.FONT_SUBPIXEL {
+                                        glBlendFunc(GL_SRC1_COLOR, GL_ONE_MINUS_SRC1_COLOR);
+                                    }
+
                                     Simp.set_projection();
                                 }
 
@@ -1025,12 +1052,16 @@ void main() {
 #endif
 
 #ifdef FRAGMENT_SHADER
-out vec4 f_color;
+layout(location = 0, index = 0) out vec4 f_color;
+layout(location = 0, index = 1) out vec4 f_weights;
 
 uniform sampler2D diffuse_texture;
 
 void main () {
-    f_color = v_color * texture(diffuse_texture, v_tex_coords);
+    vec3 coverage = texture(diffuse_texture, v_tex_coords).rgb;
+
+    f_color   = v_color;
+    f_weights = vec4(coverage, 1.0);
 }
 #endif
 END
