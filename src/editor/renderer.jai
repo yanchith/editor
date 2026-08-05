@@ -13,10 +13,15 @@ Render_Command_Type :: enum u32 {
     SET_SCISSOR :: 1;
 }
 
+Texture_Filter :: enum {
+    NEAREST :: 0;
+    LINEAR  :: 1;
+}
+
 Renderer :: struct {
-    create_texture_r8unorm: (texture_id: Texture_ID, data: [] u8, width: s32, height: s32);
+    create_texture_r8unorm: (texture_id: Texture_ID, data: [] u8, width: s32, height: s32, filter: Texture_Filter);
     update_texture_r8unorm: (texture_id: Texture_ID, data: [] u8, update_rect: IRect); // data is width*height*1 of the orignal texture.
-    create_texture_rgba8unorm: (texture_id: Texture_ID, data: [] u8, width: s32, height: s32);
+    create_texture_rgba8unorm: (texture_id: Texture_ID, data: [] u8, width: s32, height: s32, filter: Texture_Filter);
     update_texture_rgba8unorm: (texture_id: Texture_ID, data: [] u8, update_rect: IRect); // data is width*height*4 of the orignal texture.
 
     begin_frame:  (clear_color: Vector4);
