@@ -837,6 +837,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
             atlas,
             editor.font.glyph_atlas_width_in_pixels,
             editor.font.glyph_atlas_height_in_pixels,
+            .NEAREST,
         );
     } else {
         renderer.create_texture_r8unorm(
@@ -844,6 +845,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
             editor.font.glyph_atlas,
             editor.font.glyph_atlas_width_in_pixels,
             editor.font.glyph_atlas_height_in_pixels,
+            .LINEAR,
         );
     }
 
