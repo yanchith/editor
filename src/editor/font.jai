@@ -743,14 +743,13 @@ copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest
             dest_p   := dest + y * dest_pitch + x;
             source_p := source + y * source_pitch + x * 3;
 
-            r: u8 = (source_p + 0).*;
-            g: u8 = (source_p + 1).*;
-            b: u8 = (source_p + 2).*;
-            a: u8 = 255; // Not actually used for subpixel stuff, but useful to debug render the texture
+            rgba: [4] u8;
+            rgba[0] = (source_p + 0).*;
+            rgba[1] = (source_p + 1).*;
+            rgba[2] = (source_p + 2).*;
+            rgba[3] = 255; // Not used for the subpixel stuff, but potentially useful to for debug rendering.
 
-            rgba: u32 = (cast(u32, r) << 24) | (cast(u32, g) << 16) | (cast(u32, b) << 8) | a;;
-
-            dest_p.* = rgba;
+            dest_p.* = cast(*u32, *rgba).*;
         }
     }
 }
