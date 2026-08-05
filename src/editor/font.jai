@@ -2,7 +2,7 @@
 
 // TODO(jt): @Cleanup Subpixel rendering is shelved for now. Search for FONT_SUBPIXEL to find places
 // in code it affects. Either complete the work and evaluate the results, or remove it.
-FONT_SUBPIXEL :: false;
+FONT_SUBPIXEL :: true;
 
 FONT_ATLAS_WIDTH_IN_PIXELS  :: 1024;
 FONT_ATLAS_HEIGHT_IN_PIXELS :: 1024;
@@ -463,6 +463,15 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
             entry.glyph_bitmap_width  = cast(s32, glyph_bitmap.width);
             entry.glyph_bitmap_height = cast(s32, glyph_bitmap.rows);
 
+            // :SubpixelDivideByThree
+            //
+            // Freetype automatically almost all relevant glyph metrics for subpixel automatically,
+            // but it leaves the bitmap width as its actual thing. The bitmap is RGB (24 bits per
+            // pixel) coverages. To get the number of pixels, we divide by three.
+            #if FONT_SUBPIXEL {
+                entry.glyph_bitmap_width /= 3;
+            }
+
             glyph_advance       = entry.glyph_advance;
             glyph_offset_x      = entry.glyph_offset_x;
             glyph_offset_y      = entry.glyph_offset_y;
@@ -734,6 +743,7 @@ copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s3
 copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
     ProfileZone("copy_glyph_cell_subpixel");
 
+    // See :SubpixelDivideByThree.
     sanity_assert(dest_width >= source_width / 3);
     sanity_assert(dest_height >= source_height);
     w := min(dest_width, source_width / 3);
