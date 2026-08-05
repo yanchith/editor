@@ -747,7 +747,7 @@ copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest
             rgba[0] = (source_p + 0).*;
             rgba[1] = (source_p + 1).*;
             rgba[2] = (source_p + 2).*;
-            rgba[3] = 255; // Not used for the subpixel stuff, but potentially useful to for debug rendering.
+            rgba[3] = 255; // Not used for the subpixel stuff, but potentially useful for debug rendering.
 
             dest_p.* = cast(*u32, *rgba).*;
         }
