@@ -8,9 +8,10 @@ Profiler :: #import "Profiler"()(IMPORT_MODE = .METAPROGRAM);
 build :: () {
     is_optimized_build := false;
 
-    do_profile := false;
-    do_sanity  := true;
-    do_check   := true;
+    do_check    := true;
+    do_profile  := false;
+    do_sanity   := true;
+    do_subpixel := true;
 
     for get_toplevel_command_line() {
         if it == {
@@ -23,12 +24,14 @@ build :: () {
 
     for get_build_options().compile_time_command_line {
         if it == {
-            case "-profile";     do_profile = true;
-            case "-no-profile";  do_profile = false;
-            case "-sanity";      do_sanity = true;
-            case "-no-sanity";   do_sanity = false;
-            case "-check";       do_check = true;
-            case "-no-check";    do_check = false;
+            case "-check";        do_check = true;
+            case "-no-check";     do_check = false;
+            case "-profile";      do_profile = true;
+            case "-no-profile";   do_profile = false;
+            case "-sanity";       do_sanity = true;
+            case "-no-sanity";    do_sanity = false;
+            case "-subpixel";     do_subpixel = true;
+            case "-no-subpixel";  do_subpixel = false;
             case; {
                 log_error("Unknown argument '%'.\nExiting.", it);
                 exit(1);
@@ -64,6 +67,10 @@ build :: () {
 
     if do_sanity {
         add_build_string("__SANITY :: true;\n", w);
+    }
+
+    if do_subpixel {
+        add_build_string("__SUBPIXEL :: true;\n", w);
     }
 
     add_build_file("src/main.jai", w);

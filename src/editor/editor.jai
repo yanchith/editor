@@ -28,8 +28,9 @@ TODO(jt): Roadmap:
 - [X] Mode defined parentheses (surround, autoclose)
 - [X] Matching parentheses highlight
 - [~] Syntax aware indentation (C-i)
-- [~] Watch opened files for changes on disk
+- [X] Watch opened files for changes on disk
 - [~] Panel tiling
+- [X] FreeType subpixel rendering
 - [ ] Directory Lister panel
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
@@ -43,12 +44,15 @@ TODO(jt): Roadmap:
 - [ ] Emacs-like undo? (If I find out I can't live without)
 - [ ] Emacs-like kill ring (If I find out I can't live without)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
-- [ ] FreeType subpixel rendering
 - [ ] Font Kerning
 - [ ] Very nice text rendering (kb_text_shape + Slug)
 - [ ] Git integration (via plugin?)
 - [ ] 4coder style floating annotations? (e.g. name of the function or if statement expresion after closing brace)
 - [ ] Customization and plugins
+
+TODO(jt): @Stream Interesting side-projects to do:
+
+- [ ] Visual profiler triggered by an F-key
 
 TODO(jt): @Stream Small things to do:
 
@@ -63,6 +67,7 @@ TODO(jt): @Stream Small things to do:
 - [ ] Animate opening of the mini panel.
 - [ ] SEARCH should allow words separated by spaces
 - [ ] SEARCH items shouold render with syntax highlighting
+- [ ] SEARCH should highlight all matches in the current view, not just the first one on the line. We should also probably add a way to navigate them (C-f, C-n).
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
 - [ ] C-j join-next-line
@@ -85,7 +90,7 @@ TODO(jt): @Stream Small things to do:
 
 */
 
-#module_parameters()(SANITY := false);
+#module_parameters()(SANITY := false, SUBPIXEL := true);
 
 f32 :: float32;
 f64 :: float64;
@@ -827,7 +832,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     editor.messages.allocator = arena_allocator(editor.perm_arena);
 
-    #if FONT_SUBPIXEL {
+    #if SUBPIXEL {
         atlas: [] u8;
         atlas.count = editor.font.glyph_atlas.count * 4;
         atlas.data  = cast(*u8, editor.font.glyph_atlas.data);
@@ -1012,7 +1017,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         pixel_height := cast(s32, ceil(editor.font_size * input.window_scale_factor));
         if editor.font.pixel_height != pixel_height {
-            editor_log(editor, "Font size: %, physical pixel height: %, subpixel: %", editor.font_size, pixel_height, FONT_SUBPIXEL);
+            editor_log(editor, "Font size: %, physical pixel height: %", editor.font_size, pixel_height);
 
             cell_h_before_zoom := editor.font.line_height_in_pixels;
             font_reset_for_options(*editor.font, pixel_height);
@@ -1234,7 +1239,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // update_texture does early return (because the update region is empty), either it or
         // draw_rects blocks for about 10-15ms, but at least one of them does. We should probably just
         // switch to our own rendering backend (raw Vulkan/Metal, WGPU or SGPU) and tune it for latency.
-        #if FONT_SUBPIXEL {
+        #if SUBPIXEL {
             atlas: [] u8;
             atlas.count = editor.font.glyph_atlas.count * 4;
             atlas.data  = cast(*u8, editor.font.glyph_atlas.data);

@@ -8,6 +8,13 @@ f64 :: float64;
     SANITY :: false;
 }
 
+// SUBPIXEL enables subpixel font rendering.
+#if #exists(__SUBPIXEL) {
+    SUBPIXEL :: __SUBPIXEL;
+} else {
+    SUBPIXEL :: false;
+}
+
 #if OS == .WINDOWS {
     #import "Windows";
     #import "Windows_Utf8";
@@ -51,7 +58,7 @@ Window         :: #import "Window_Creation";
 Input          :: #import "Input"; // This is our modified version. See :ModifiedInputModule.
 Clipboard      :: #import "Clipboard";
 Simp           :: #import "Simp";
-Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY);
+Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY, SUBPIXEL = SUBPIXEL);
 
 Vector4 :: Editor.Vector4;
 IRect   :: Editor.IRect;
@@ -382,7 +389,7 @@ main :: () {
 
         renderer_state.window = window;
 
-        shader := #ifx Editor.FONT_SUBPIXEL SHADER_TEXT_SUBPIXEL else SHADER_TEXT;
+        shader := #ifx SUBPIXEL then SHADER_TEXT_SUBPIXEL else SHADER_TEXT;
         renderer_state.text_shader.gl_handle = Simp.get_shader_program(shader);
         renderer_state.text_shader.alpha_blend = true;
 
@@ -523,11 +530,13 @@ main :: () {
                                 if context.simp.current_shader != target_shader {
                                     Simp.immediate_set_shader(target_shader);
 
-                                    // immediate_set_shader enables GL_BLEND for us, but sets up the blend func to use:
+                                    // immediate_set_shader enables GL_BLEND for us, but sets up the default blend func:
+                                    //
                                     //   SRC * src_alpha, DST * (1 - dst_alpha)
                                     //
-                                    // We override that to use the blend weights from the shader (output to index1).
-                                    #if Editor.FONT_SUBPIXEL {
+                                    // For subpixel rendering, we override that to use the per-channel blend weights from the shader.
+                                    // (Note the 1 in SRC1, which referes to index 1 of the shader output.)
+                                    #if SUBPIXEL {
                                         glBlendFunc(GL_SRC1_COLOR, GL_ONE_MINUS_SRC1_COLOR);
                                     }
 
@@ -1053,15 +1062,15 @@ void main() {
 
 #ifdef FRAGMENT_SHADER
 layout(location = 0, index = 0) out vec4 f_color;
-layout(location = 0, index = 1) out vec4 f_weights;
+layout(location = 0, index = 1) out vec4 f_blend;
 
 uniform sampler2D diffuse_texture;
 
 void main () {
     vec3 coverage = texture(diffuse_texture, v_tex_coords).rgb;
 
-    f_color   = v_color;
-    f_weights = vec4(coverage, 1.0);
+    f_color = v_color;
+    f_blend = vec4(coverage, 1.0);
 }
 #endif
 END
