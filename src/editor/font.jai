@@ -1,9 +1,5 @@
 #import "freetype";
 
-// TODO(jt): @Cleanup Subpixel rendering is shelved for now. Search for FONT_SUBPIXEL to find places
-// in code it affects. Either complete the work and evaluate the results, or remove it.
-FONT_SUBPIXEL :: true;
-
 FONT_ATLAS_WIDTH_IN_PIXELS  :: 1024;
 FONT_ATLAS_HEIGHT_IN_PIXELS :: 1024;
 
@@ -125,7 +121,7 @@ make_font :: (arena: *Arena, ttf_regular: [] u8, ttf_bold: [] u8, ttf_italic: []
         return font;
     }
 
-    #if FONT_SUBPIXEL {
+    #if SUBPIXEL {
         FT_Library_SetLcdFilter(font.ft_library, .DEFAULT);
     }
 
@@ -211,8 +207,9 @@ font_reset_for_options :: (font: *Font, pixel_height: s32) {
     font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
 
     // Because the atlas is bilinearly filtered, and we don't want to sample data from adjacent
-    // cells. Also, asserts in copy_glyph_cell required us to increase the PADDING to 2.
-    PADDING :: 2;
+    // cells. Also, asserts in copy_glyph_cell required us to increase the PADDING to 2, and asserts
+    // in copy_glyph_cell_subpixel to 4.
+    PADDING :: 4;
 
     atlas_cell_width_in_pixels  := font.max_glyph_width_in_integer_pixels + PADDING;
     atlas_cell_height_in_pixels := font.max_glyph_height_in_integer_pixels + PADDING;
@@ -465,10 +462,12 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
 
             // :SubpixelDivideByThree
             //
-            // Freetype automatically almost all relevant glyph metrics for subpixel automatically,
-            // but it leaves the bitmap width as its actual thing. The bitmap is RGB (24 bits per
-            // pixel) coverages. To get the number of pixels, we divide by three.
-            #if FONT_SUBPIXEL {
+            // Freetype automatically adjusts almost all relevant glyph metrics for subpixel
+            // rendering, but it leaves the bitmap width as its actual thing. The bitmap is RGB (24
+            // bits per pixel) coverages. To get the number of pixels, we divide by three. This is
+            // important, because we derive all sorts of things from it (sizes of update regions,
+            // texture coordinates, ...).
+            #if SUBPIXEL {
                 entry.glyph_bitmap_width /= 3;
             }
 
@@ -486,7 +485,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
                 font.glyph_atlas_width_in_pixels * glyph_cell_y * font.glyph_atlas_cell_height_in_pixels +
                 glyph_cell_x * font.glyph_atlas_cell_width_in_pixels;
 
-            #if FONT_SUBPIXEL {
+            #if SUBPIXEL {
                 assert(glyph_bitmap.pixel_mode == cast(u8, FT_Pixel_Mode.LCD), "Pixel mode is: %", glyph_bitmap.pixel_mode);
                 clear_glyph_cell_subpixel(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels);
                 copy_glyph_cell_subpixel(dest, font.glyph_atlas_cell_width_in_pixels, font.glyph_atlas_cell_height_in_pixels, font.glyph_atlas_width_in_pixels,
@@ -727,8 +726,8 @@ clear_glyph_cell_subpixel :: (dest: *u32, width: s32, height: s32, pitch: s32) {
 copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
     ProfileZone("copy_glyph_cell");
 
-    sanity_assert(dest_width >= source_width);
-    sanity_assert(dest_height >= source_height);
+    sanity_assert(dest_width >= source_width, "source_width (%) does not fit in dest_width (%)", source_width, dest_width);
+    sanity_assert(dest_height >= source_height, "source_height (%) does not fit in dest_height (%)", source_height, dest_height);
     w := min(dest_width, source_width);
     h := min(dest_height, source_height);
     for y: 0..h - 1 {
@@ -744,8 +743,8 @@ copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest
     ProfileZone("copy_glyph_cell_subpixel");
 
     // See :SubpixelDivideByThree.
-    sanity_assert(dest_width >= source_width / 3);
-    sanity_assert(dest_height >= source_height);
+    sanity_assert(dest_width >= source_width / 3, "source_width/3 (%) does not fit in dest_width (%)", source_width / 3, dest_width);
+    sanity_assert(dest_height >= source_height, "source_height (%) does not fit in dest_height (%)", source_height, dest_height);
     w := min(dest_width, source_width / 3);
     h := min(dest_height, source_height);
     for y: 0..h - 1 {
@@ -764,7 +763,7 @@ copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest
     }
 }
 
-#if FONT_SUBPIXEL {
+#if SUBPIXEL {
     FT_LOAD_TARGET :: FT_Load_Target.LCD;
     PIXEL_TYPE     :: u32;
 } else {
