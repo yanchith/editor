@@ -183,7 +183,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         assert(mini_panel.item_index >= 0);
 
         userdata: *Switch_View_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
-        if #complete userdata.kind ==  {
+        if #complete userdata.kind == {
             case .DOCUMENT; {
                 document: *Document = userdata.pointer;
                 panel_set_document(panel, editor, document);
