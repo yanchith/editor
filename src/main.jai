@@ -178,7 +178,6 @@ main :: () {
             arguments := Process.break_command_into_strings(args,, temp);
 
             result, output, error := Process.run_command(..arguments, working_directory = working_directory, capture_and_return_output = true);
-
             if result.type != .EXITED {
                 log_error("Process result is %, exit code: %", result.type, result.exit_code);
             }

@@ -31,10 +31,11 @@ TODO(jt): Roadmap:
 - [X] Watch opened files for changes on disk
 - [~] Panel tiling
 - [X] FreeType subpixel rendering
-- [ ] Directory Lister panel
+- [~] Directory Lister panel
+- [~] *compilation* buffer
+- [~] DIRECTORY_SEARCH
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
-- [ ] *compilation* buffer
 - [ ] Mode defined comments
 - [ ] Themes
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
@@ -138,6 +139,7 @@ operator==     :: Math.operator==;
 #load "parentheses.jai";
 #load "color.jai";
 #load "mini_panel_search.jai";
+#load "mini_panel_search_directory.jai";
 #load "mini_panel_open_file.jai";
 #load "mini_panel_switch_view.jai";
 #load "mini_panel_close_view.jai";
@@ -1326,6 +1328,32 @@ get_panel_for_inactive_view :: (editor: Editor) -> *Panel, panel_index: s64 {
     return panel, index;
 }
 
+get_panel_directory :: (editor: Editor, panel: Panel) -> /* Pointing to underlying thing or Static */ string {
+    directory: string;
+
+    if #complete panel.view.kind == {
+        case .DOCUMENT; {
+            view := *panel.view._document;
+            document := view.document;
+
+            if document.backing_file_path.count {
+                directory = String.path_strip_filename(document.backing_file_path);
+            }
+        }
+
+        case .LISTING; {
+            view := *panel.view._listing;
+            listing := view.listing;
+
+            if listing.backing_directory_path.count {
+                directory = listing.backing_directory_path;
+            }
+        }
+    }
+
+    return directory;
+}
+
 get_panel_rect :: (editor: Editor, panel_index: s64) -> Rect, content_rect: Rect {
     window_w := cast(f32, editor.input_state.window_size.x);
     window_h := cast(f32, editor.input_state.window_size.y);
@@ -1866,7 +1894,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
 
         case .SHOW_COMMANDS;     open_mini_panel(editor, platform, input, mini_panel_show_commands_procs);
         case .SEARCH;            open_mini_panel(editor, platform, input, mini_panel_search_procs);
-        case .SEARCH_DIRECTORY;  // open_mini_panel(editor, platform, input, mini_panel_search_directory_procs); nocheckin
+        case .SEARCH_DIRECTORY;  open_mini_panel(editor, platform, input, mini_panel_search_directory_procs);
 
         case .OPEN_FILE; {
             path := "./";
