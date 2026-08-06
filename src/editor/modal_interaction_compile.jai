@@ -36,37 +36,8 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
     // TODO(jt): @Incomplete Remember the last compile command and pre-fill it.
     // TODO(jt): @Incomplete Actually spawn a *compilation* buffer with its own key_map, highlighting, etc.
 
-    wd: string;
-
-    if #complete panel.view.kind == {
-        case .DOCUMENT; {
-            view := *panel.view._document;
-            document := view.document;
-
-            if document.backing_file_path.count {
-                wd = String.path_strip_filename(document.backing_file_path);
-            }
-        }
-
-        case .LISTING; {
-            view := *panel.view._listing;
-            listing := view.listing;
-
-            if listing.backing_directory_path.count {
-                wd = listing.backing_directory_path;
-            }
-        }
-    }
-
-    if wd.count == 0 {
-        // TODO(jt): Default to project directory, once we have something like projects.
-        success:, wd = platform.get_absolute_path(".",, temp);
-        if !success {
-            wd = "";
-        }
-    }
-
-    if wd.count == 0 {
+    working_directory := get_panel_directory(editor, panel);
+    if working_directory.count == 0 {
         close_modal_interaction(editor, platform, input);
         editor_log(editor, "Failed to get working directory for *compilation*");
         return;
@@ -74,7 +45,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
 
     args := text_buffer_make_view_for_line(modal_interaction.buffer, 0,, temp);
 
-    exit_code, output, error := platform.run_in_process(args, wd);
+    exit_code, output, error := platform.run_in_process(args, working_directory);
 
     scratch_document, scratch_panel := get_scratch(editor);
     cursors := ifx scratch_panel then *scratch_panel.view._document.cursors else *scratch_document.cursors_cold;

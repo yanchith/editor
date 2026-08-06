@@ -42,7 +42,7 @@ Search_And_Replace_Userdata :: struct {
     }
 }
 
-get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Potentially Temporary_Storage*/ string {
+get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage or Static */ string {
     modal_interaction := *editor.modal_interaction;
     sanity_assert(modal_interaction.open);
     if !modal_interaction.open {
