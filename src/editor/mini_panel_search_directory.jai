@@ -105,17 +105,27 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 }
 
                 // Already splitting our memory, so path_overwrite_separators doesn't need to run twice.
-                success, file_path, line_number_and_match := String.split_from_left(s, ":");
+                success, file_path, numbers_and_match := String.split_from_left(s, ":");
                 if !success {
                     continue;
                 }
 
-                success=, _line_number, match := String.split_from_left(line_number_and_match, ":");
+                success=, _line_number, column_number_and_match := String.split_from_left(numbers_and_match, ":");
+                if !success {
+                    continue;
+                }
+
+                success=, _column_number, match := String.split_from_left(column_number_and_match, ":");
                 if !success {
                     continue;
                 }
 
                 line_number:, success = string_to_int(_line_number, T = s64);
+                if !success {
+                    continue;
+                }
+
+                column_number:, success = string_to_int(_column_number, T = s64);
                 if !success {
                     continue;
                 }
@@ -132,8 +142,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 userdata := arena_push(mini_panel.items_arena, Search_Directory_Item_Userdata);
                 userdata.file_path = file_path;
                 userdata.line_number = line_number;
-                userdata.column_number = 0; // nocheckin Get the column number!
-                // userdata.column_number = count_utf8_chars()
+                userdata.column_number = column_number;
 
                 item.userdata = userdata;
             }

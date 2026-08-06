@@ -637,6 +637,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "M-x",     .SHOW_COMMANDS);
         key_map_add(key_map, "C-S-p",   .SHOW_COMMANDS);
         key_map_add(key_map, "C-s",     .SEARCH);
+        key_map_add(key_map, "C-c s r", .SEARCH_DIRECTORY);
 
         key_map_add(key_map, "C-x C-f", .OPEN_FILE);
 
