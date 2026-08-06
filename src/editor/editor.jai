@@ -3342,7 +3342,7 @@ update_syntax_highlights :: (editor: *Editor, document: *Document, platform: Pla
     }
 }
 
-open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: string, open_in_panel: *Panel = null) {
+open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: string, open_in_panel: *Panel = null) -> opened_in_panel: *Panel {
     panel: *Panel;
     if open_in_panel {
         panel = open_in_panel;
@@ -3351,7 +3351,7 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
     }
     sanity_assert(panel != null);
     if !panel {
-        return;
+        return panel;
     }
 
     file_exists       := platform.file_exists(file_path);
@@ -3428,6 +3428,8 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
             panel_set_document(panel, editor, document);
         }
     }
+
+    return panel;
 }
 
 find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, added: bool {
