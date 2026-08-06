@@ -15,6 +15,8 @@ MIN_SEARCH_TEXT_COUNT :: 3;
 
 Search_Directory_Item_Userdata :: struct {
     file_path: string;
+    line_number: s64;
+    column_number: s64;
 }
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
@@ -71,13 +73,16 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             // TODO(jt): Add multiple backends, so people can choose what they usually have
             // installed: git grep, baregrep, GNU grep.
 
+            // Make sure RG outputs something we can parse easily: <filename>:<line-number>:<line-content>
+            RG_BASE_COMMAND :: "rg --max-columns 500 --with-filename --no-heading --line-number --column --color never";
+
             // ripgrep doesn't normally need the search directory explicitly, but if we don't
             // provide, it will detect stdin on Windows and try to read stuff from there, never
             // returning. This is some weird interaction between JAI's run_command (with
             // capture_and_return_output=true) and ripgrep. I should probably debug that.
             //
             //     -jt, 6 August 2026
-            args := tprint("rg % ./", search_text);
+            args := tprint("% % ./", RG_BASE_COMMAND, search_text);
 
             exit_code, output, error := platform.run_in_process(args, working_directory); // nocheckin output in temp?
             if exit_code != 0 {
@@ -89,31 +94,48 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             // Easier to parse the human readable output than json. How the turntables.
             found, line, rest := String.split_from_left(output, "\n");
             while found {
+                defer {
+                    found, line, rest = String.split_from_left(rest, "\n");
+                }
+
                 s := "";
                 if line.count {
-                    // We sort of assume success and proactively copy to our memory.
+                    // Assume success and proactively copy to our memory, so that we can run splits on that.
                     s = arena_push_string(mini_panel.items_arena, line);
                 }
 
                 // Already splitting our memory, so path_overwrite_separators doesn't need to run twice.
-                success, file_path, match := String.split_from_left(s, ":");
-                if success {
-                    String.path_overwrite_separators(file_path, #char "/");
-
-                    item := array_add(*mini_panel.items);
-                    item.text = s;
-                    item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
-                    // TODO(jt): @Incomplete Scan output to find highlights.
-                    item.highlight_x0 = 0;
-                    item.highlight_x1 = 0;
-
-                    userdata := arena_push(mini_panel.items_arena, Search_Directory_Item_Userdata);
-                    userdata.file_path = file_path;
-
-                    item.userdata = userdata;
+                success, file_path, line_number_and_match := String.split_from_left(s, ":");
+                if !success {
+                    continue;
                 }
 
-                found, line, rest = String.split_from_left(rest, "\n");
+                success=, _line_number, match := String.split_from_left(line_number_and_match, ":");
+                if !success {
+                    continue;
+                }
+
+                line_number:, success = string_to_int(_line_number, T = s64);
+                if !success {
+                    continue;
+                }
+
+                String.path_overwrite_separators(file_path, #char "/");
+
+                item := array_add(*mini_panel.items);
+                item.text = s;
+                item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
+                // TODO(jt): @Incomplete Scan output to find highlights.
+                item.highlight_x0 = 0;
+                item.highlight_x1 = 0;
+
+                userdata := arena_push(mini_panel.items_arena, Search_Directory_Item_Userdata);
+                userdata.file_path = file_path;
+                userdata.line_number = line_number;
+                userdata.column_number = 0; // nocheckin Get the column number!
+                // userdata.column_number = count_utf8_chars()
+
+                item.userdata = userdata;
             }
         }
     }
@@ -150,7 +172,21 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         assert(mini_panel.item_index >= 0);
 
         userdata: *Search_Directory_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
-        open_file(editor, platform, input, userdata.file_path);
+        panel := open_file(editor, platform, input, userdata.file_path);
+
+        if panel {
+            sanity_assert(panel.view.kind == .DOCUMENT);
+            if panel.view.kind == .DOCUMENT {
+                view := *panel.view._document;
+                document := view.document;
+
+                x := userdata.column_number - 1;
+                y := userdata.line_number - 1;
+
+                text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
+                view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            }
+        }
     }
 
     close_mini_panel(editor, platform, input);
