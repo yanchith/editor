@@ -1,57 +1,23 @@
-make_hello_text :: (arena: *Arena, approx_size_in_bytes: s64) -> string {
-    // TODO(jt): @CompilerBug (or Temporary_Storage bug) When we were making hello text more naively
-    // (String_Builder + temp), we got crashes on macOS (Windows wasn't tested). Since then we
-    // started making it in its own virtual memory arena.
-    //
-    // 2GB hello text crashed with:
-    //
-    // Got signal 10. Stack trace:
-    // 0   editor                              0x0000000104d2109c handle_signal_b000001d9 + 1592
-    // 1   libsystem_platform.dylib            0x000000019cc416a4 _sigtramp + 56
-    // 2   editor                              0x0000000104d2e14c __procedure_1100000296 + 356
-    // 3   editor                              0x0000000104d30470 init_700000380 + 1644
-    // 4   editor                              0x0000000104d34778 __program_main + 1140
-    // 5   editor                              0x0000000104d1e2d4 main + 608
-    // 6   dyld                                0x000000019c866b98 start + 6076
-    //
-    // 3GB crashed with this message after showing the window and running a few frames.
-    //
-    // editor(52377,0x20aba2240) malloc: Region cookie corrupted for region 0xb6c000000 (value is 0)[0xb6c0081fc]
-    // editor(52377,0x20aba2240) malloc: *** set a breakpoint in malloc_error_break to debug
+load_large_text :: (view: *Document_View, approx_size_in_bytes: s64) {
+    text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1);
 
-    result_bytes: s64 = 0;
+    while view.document.buffer.gb.count < approx_size_in_bytes {
+        SEPARATOR :: "\n========================================================\n\n";
 
-    s := arena_push_string(arena, HELLO_TEXT);
-    assert(s.count > 0);
-    assert(s.data != null);
-
-    result_bytes += s.count;
-
-    while result_bytes < approx_size_in_bytes {
-        _s: string;
-
-        _s = arena_push_string(arena, HELLO_SEPARATOR);
-        assert(_s.count > 0);
-        assert(_s.data != null);
-        result_bytes += HELLO_SEPARATOR.count;
-
-        _s = arena_push_string(arena, HELLO_TEXT);
-        assert(_s.count > 0);
-        assert(_s.data != null);
-        result_bytes += HELLO_TEXT.count;
+        text_buffer_insert(*view.document.buffer, *view.cursors, SEPARATOR);
+        text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1);
     }
 
-    result: string;
-    result.count = result_bytes;
-    result.data = s.data;
-
-    return result;
+    view.cursors.c0 = { 0, 0 };
+    view.cursors.c1 = { 0, 0 };
 }
 
-HELLO_SEPARATOR :: "\n========================================================\n\n";
+#scope_file
 
-HELLO_TEXT :: #string DONE
+INFINITE_JEST_CHAPTER1 :: #string DONE
+
 YEAR OF GLAD
+
 I am seated in an office, surrounded by heads and bodies. My posture is consciously congruent to the shape of my hard chair.
 This is a cold room in University Administration, wood-walled, Remington-hung, double-windowed against the November heat,
 insulated from Administrative sounds by the reception area outside, at which Uncle Charles, Mr. deLint and I were lately received.

@@ -1,4 +1,4 @@
-modal_interaction_build_procs: Modal_Interaction_Procs = {
+modal_interaction_compile_procs: Modal_Interaction_Procs = {
     get_action_text,
     init,
     handle_event,

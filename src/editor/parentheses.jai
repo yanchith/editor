@@ -1,8 +1,11 @@
 DEFAULT_INDENTATION_STEP :: 4;
 
-// TODO(jt): @Speed When we indent 10000 lines, this takes ~8 seconds. Even if we SIMD this, it will
-// traverse the whole document contents too many times. We need an incremental version, or perhaps
-// some cooperative version that can work well with indenting large regions.
+// TODO(jt): @Speed When we indent the entirety of a 10000 document, this takes ~8 seconds. Even if
+// we SIMD this, it will traverse the whole document contents too many times. We need an incremental
+// version, or perhaps some cooperative version that can work well with indenting large regions.
+//
+// UPDATE: For documents above ~2MB, this also causes us to miss frames for every edit. So need that
+// incremental version for this reason also.
 update_parenthesized_scopes :: (document: *Document) {
     ProfileZone("update_parenthesized_scopes");
 
