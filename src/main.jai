@@ -1119,7 +1119,7 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
         source_prefix = temp_right_pad(source_prefix, PAD_LENGTH);
     }
 
-    write_strings(time_prefix, log_level_prefix, source_prefix, ": ", message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
+    write_strings(time_prefix, log_level_prefix, source_prefix, " ", message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
 }
 
 //
