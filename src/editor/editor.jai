@@ -671,8 +671,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-f",     .MOVE_RIGHT);
         key_map_add(key_map, "<right>", .MOVE_RIGHT);
 
-        // TODO(jt): @Cleanup In Emacs, SEARCH_AND_REPLACE is C-M-%, but our platform layer sucks, so we just bound it to something else for now.
-        key_map_add(key_map, "C-r",     .SEARCH_AND_REPLACE);
+        key_map_add(key_map, "M-%",     .SEARCH_AND_REPLACE);
 
         key_map_add(key_map, "C-x C-s", .SAVE_DOCUMENT);
         key_map_add(key_map, "C-x C-r", .RELOAD_DOCUMENT);
