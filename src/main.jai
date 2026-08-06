@@ -179,7 +179,7 @@ main :: () {
 
             result, output, error := Process.run_command(..arguments, working_directory = working_directory, capture_and_return_output = true);
             if result.type != .EXITED {
-                log_error("Process result is %, exit code: %", result.type, result.exit_code);
+                log_error("Process result is %, exit code: %. Command was: %", result.type, result.exit_code, args);
             }
 
             return result.exit_code, output, error;
@@ -1104,7 +1104,7 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
     // Add source file.
     source_prefix: string;
     {
-        LENGTH :: 30;
+        PAD_LENGTH :: 30;
         MODULES :: "modules/";
 
         path := info.location.fully_pathed_filename;
@@ -1116,10 +1116,10 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
             source_prefix = filename;
         }
 
-        source_prefix = temp_right_pad(source_prefix, LENGTH + 1);
+        source_prefix = temp_right_pad(source_prefix, PAD_LENGTH);
     }
 
-    write_strings(time_prefix, log_level_prefix, source_prefix, message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
+    write_strings(time_prefix, log_level_prefix, source_prefix, ": ", message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
 }
 
 //
