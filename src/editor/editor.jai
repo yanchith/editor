@@ -53,6 +53,7 @@ TODO(jt): Roadmap:
 TODO(jt): @Stream Interesting side-projects to do:
 
 - [ ] Visual profiler triggered by an F-key
+- [ ] Visual memory profiler triggered by an F-key
 
 TODO(jt): @Stream Small things to do:
 
@@ -648,10 +649,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<prior>", .SCROLL_UP);
         key_map_add(key_map, "<next>",  .SCROLL_DOWN);
 
-        key_map_add(key_map, "C-x 3",   .SPLIT_VIEW_HORIZONTALLY);
-        key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_VIEW);
-        key_map_add(key_map, "C-x 1",   .CLOSE_OTHER_VIEWS);
-        key_map_add(key_map, "C-x o",   .GO_TO_NEXT_VIEW);
+        key_map_add(key_map, "C-x 3",   .SPLIT_PANEL_HORIZONTALLY);
+        key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_PANEL);
+        key_map_add(key_map, "C-x 1",   .CLOSE_OTHER_PANELS);
+        key_map_add(key_map, "C-x o",   .GO_TO_NEXT_PANEL);
 
         key_map_add(key_map, "C-M-b",   .COMPILE);
     }
@@ -1638,6 +1639,7 @@ Panel_Action :: enum {
 
     SHOW_COMMANDS;
     SEARCH;
+    SEARCH_DIRECTORY;
 
     OPEN_FILE;
 
@@ -1648,10 +1650,10 @@ Panel_Action :: enum {
     SCROLL_UP;
     SCROLL_DOWN;
 
-    SPLIT_VIEW_HORIZONTALLY;
-    CLOSE_CURRENT_VIEW;
-    CLOSE_OTHER_VIEWS;
-    GO_TO_NEXT_VIEW;
+    SPLIT_PANEL_HORIZONTALLY;
+    CLOSE_CURRENT_PANEL;
+    CLOSE_OTHER_PANELS;
+    GO_TO_NEXT_PANEL;
 
     COMPILE;
 }
@@ -1862,8 +1864,9 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
     if #complete action == {
         case .NONE;           return false;
 
-        case .SHOW_COMMANDS;  open_mini_panel(editor, platform, input, mini_panel_show_commands_procs);
-        case .SEARCH;         open_mini_panel(editor, platform, input, mini_panel_search_procs);
+        case .SHOW_COMMANDS;     open_mini_panel(editor, platform, input, mini_panel_show_commands_procs);
+        case .SEARCH;            open_mini_panel(editor, platform, input, mini_panel_search_procs);
+        case .SEARCH_DIRECTORY;  // open_mini_panel(editor, platform, input, mini_panel_search_directory_procs); nocheckin
 
         case .OPEN_FILE; {
             path := "./";
@@ -1895,7 +1898,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .SCROLL_UP;    scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
         case .SCROLL_DOWN;  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
 
-        case .SPLIT_VIEW_HORIZONTALLY; {
+        case .SPLIT_PANEL_HORIZONTALLY; {
             if editor.active_view == .FULL {
                 assert(editor.panels.count == 1);
 
@@ -1924,7 +1927,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                 editor.active_view = .LEFT;
             }
         }
-        case .CLOSE_CURRENT_VIEW; {
+        case .CLOSE_CURRENT_PANEL; {
             if #complete editor.active_view == {
                 case .FULL; // No-op
                 case .LEFT; {
@@ -1947,7 +1950,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                 }
             }
         }
-        case .CLOSE_OTHER_VIEWS; {
+        case .CLOSE_OTHER_PANELS; {
             if #complete editor.active_view == {
                 case .FULL; // No-op
                 case .LEFT; {
@@ -1970,7 +1973,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                 }
             }
         }
-        case .GO_TO_NEXT_VIEW; {
+        case .GO_TO_NEXT_PANEL; {
             if #complete editor.active_view == {
                 case .FULL; // No-op
                 case .LEFT;   editor.active_view = .RIGHT;
@@ -1984,7 +1987,6 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
     return true;
 }
 
-// nocheckin cursor movement does not clamp scroll here?
 // Panel, view and document correspond to each other here. Not sure if I like this amount aliasing, but eh?
 execute_document_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, view: *Document_View, document: *Document, action: Document_Action) -> executed: bool, cursor_moved: bool, buffer_changed: bool {
     cursor_moved   := false;

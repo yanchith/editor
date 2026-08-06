@@ -62,9 +62,15 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         actions_to_search_values: [..] s64;
         actions_to_search_values.allocator = temp;
 
-        // nocheckin skip NONE
-        array_add(*actions_to_search_names, ..PANEL_ACTION_NAMES);
-        array_add(*actions_to_search_values, ..PANEL_ACTION_VALUES);
+        array_reserve(*actions_to_search_names, actions_to_search_names.count + PANEL_ACTION_NAMES.count);
+        array_reserve(*actions_to_search_values, actions_to_search_values.count + PANEL_ACTION_NAMES.count);
+        for PANEL_ACTION_NAMES {
+            if it != "NONE" {
+                array_add(*actions_to_search_names, it);
+                array_add(*actions_to_search_values, PANEL_ACTION_VALUES[it_index]);
+            }
+        }
+        assert(actions_to_search_names.count == actions_to_search_values.count);
 
         panel_actions_low:  s64 = 0;
         panel_actions_high: s64 = actions_to_search_names.count;
@@ -77,14 +83,28 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
         if panel.view.kind == {
             case .DOCUMENT; {
-                array_add(*actions_to_search_names, ..DOCUMENT_ACTION_NAMES);
-                array_add(*actions_to_search_values, ..DOCUMENT_ACTION_VALUES);
+                array_reserve(*actions_to_search_names, actions_to_search_names.count + DOCUMENT_ACTION_NAMES.count);
+                array_reserve(*actions_to_search_values, actions_to_search_values.count + DOCUMENT_ACTION_NAMES.count);
+                for DOCUMENT_ACTION_NAMES {
+                    if it != "NONE" {
+                        array_add(*actions_to_search_names, it);
+                        array_add(*actions_to_search_values, DOCUMENT_ACTION_VALUES[it_index]);
+                    }
+                }
+                assert(actions_to_search_names.count == actions_to_search_values.count);
 
                 document_actions_high = actions_to_search_names.count;
             }
             case .LISTING; {
-                array_add(*actions_to_search_names, ..LISTING_ACTION_NAMES);
-                array_add(*actions_to_search_values, ..LISTING_ACTION_VALUES);
+                array_reserve(*actions_to_search_names, actions_to_search_names.count + LISTING_ACTION_NAMES.count);
+                array_reserve(*actions_to_search_values, actions_to_search_values.count + LISTING_ACTION_NAMES.count);
+                for LISTING_ACTION_NAMES {
+                    if it != "NONE" {
+                        array_add(*actions_to_search_names, it);
+                        array_add(*actions_to_search_values, LISTING_ACTION_VALUES[it_index]);
+                    }
+                }
+                assert(actions_to_search_names.count == actions_to_search_values.count);
 
                 listing_actions_high = actions_to_search_names.count;
             }
