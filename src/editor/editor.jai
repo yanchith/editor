@@ -3203,7 +3203,11 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
     mini_panel.open = true;
 
     procs.init(editor, platform, input);
-    procs.update(editor, platform, input, true, true);
+
+    // init is allowed to close the mini_panel, so we have to check whether it didn't do so.
+    if mini_panel.open {
+        procs.update(editor, platform, input, true, true);
+    }
 }
 
 #scope_module

@@ -13,6 +13,10 @@ mini_panel_search_directory_procs: Mini_Panel_Procs = {
 
 MIN_SEARCH_TEXT_COUNT :: 3;
 
+Search_Directory_Userdata :: struct {
+    working_directory: string;
+}
+
 Search_Directory_Item_Userdata :: struct {
     file_path: string;
     line_number: s64;
@@ -40,7 +44,31 @@ can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> b
     return false;
 }
 
-init :: (editor: *Editor, platform: Platform, input: Input) {}
+init :: (editor: *Editor, platform: Platform, input: Input) {
+    mini_panel := *editor.mini_panel;
+    sanity_assert(mini_panel.open);
+    if !mini_panel.open {
+        return;
+    }
+
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
+        return;
+    }
+
+    working_directory := get_panel_directory(editor, panel);
+    if working_directory.count == 0 {
+        close_mini_panel(editor, platform, input);
+        editor_log(editor, "Failed to get directory for search");
+        return;
+    }
+
+    userdata := arena_push(mini_panel.userdata_arena, Search_Directory_Userdata);
+    userdata.working_directory = arena_push_string(mini_panel.userdata_arena, working_directory);
+
+    mini_panel.userdata = userdata;
+}
 
 update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
     mini_panel := *editor.mini_panel;
@@ -63,13 +91,6 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         search_text_char_count := mini_panel.buffer.line_chars[0];
 
         if search_text_char_count >= MIN_SEARCH_TEXT_COUNT {
-            working_directory := get_panel_directory(editor, panel);
-            if working_directory.count == 0 {
-                close_mini_panel(editor, platform, input);
-                editor_log(editor, "Failed to get directory for search");
-                return;
-            }
-
             // TODO(jt): Add multiple backends, so people can choose what they usually have
             // installed: git grep, baregrep, GNU grep.
 
@@ -82,12 +103,14 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             // capture_and_return_output=true) and ripgrep. I should probably debug that.
             //
             //     -jt, 6 August 2026
-            args := tprint("% % ./", RG_BASE_COMMAND, search_text);
+            args := tprint("% \"%\" ./", RG_BASE_COMMAND, search_text);
+
+            userdata: *Search_Directory_Userdata = mini_panel.userdata;
+            working_directory := userdata.working_directory;
 
             exit_code, output, error := platform.run_in_process(args, working_directory); // nocheckin output in temp?
             if exit_code != 0 {
-                editor_log(editor, "Command % failed with code: %", args, exit_code);
-                close_mini_panel(editor, platform, input);
+                // It can fail because it didn't find anything. Not necessarily an error.
                 return;
             }
 
@@ -180,17 +203,23 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
     if mini_panel.items.count {
         assert(mini_panel.item_index >= 0);
 
-        userdata: *Search_Directory_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
-        panel := open_file(editor, platform, input, userdata.file_path);
+        userdata: *Search_Directory_Userdata = mini_panel.userdata;
+        working_directory := userdata.working_directory;
 
+        item_userdata: *Search_Directory_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
+        relative_path := item_userdata.file_path;
+
+        file_path := String.path_join(working_directory, relative_path,, temp);
+
+        panel := open_file(editor, platform, input, file_path);
         if panel {
             sanity_assert(panel.view.kind == .DOCUMENT);
             if panel.view.kind == .DOCUMENT {
                 view := *panel.view._document;
                 document := view.document;
 
-                x := userdata.column_number - 1;
-                y := userdata.line_number - 1;
+                x := item_userdata.column_number - 1;
+                y := item_userdata.line_number - 1;
 
                 text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
                 view.flags |= .CLAMP_SCROLL_TO_CURSOR;
