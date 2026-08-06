@@ -42,7 +42,7 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    userdata := arena_push(editor.mini_panel.userdata_arena, Search_Userdata);
+    userdata := arena_push(mini_panel.userdata_arena, Search_Userdata);
 
     if #complete panel.view.kind == {
         case .DOCUMENT; {
