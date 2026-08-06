@@ -124,7 +124,7 @@ gap_buffer_insert :: (gb: *Gap_Buffer, value: u8, count: s64) {
 }
 
 // Deletes at the gap, moving forward. Returns view of deleted bytes.
-gap_buffer_delete_forward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* Pointing to this buffer */ {
+gap_buffer_delete_forward :: (gb: *Gap_Buffer, _delete_count: s64) -> /* Pointing to this buffer */ [] u8  {
     ProfileZone("gap_buffer_delete_forward");
 
     assert_valid(gb);
@@ -143,7 +143,7 @@ gap_buffer_delete_forward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* P
 }
 
 // Deletes at the gap, moving backward. Returns number of actually deleted bytes.
-gap_buffer_delete_backward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* Pointing to this buffer */ {
+gap_buffer_delete_backward :: (gb: *Gap_Buffer, _delete_count: s64) -> /* Pointing to this buffer */ [] u8  {
     ProfileZone("gap_buffer_delete_backward");
 
     assert_valid(gb);
@@ -169,7 +169,7 @@ gap_buffer_delete_backward :: (gb: *Gap_Buffer, _delete_count: s64) -> [] u8 /* 
 // The assert_no_allocations is here if you first made sure that the section of data you are
 // requesting does not cross the gap. You can move the gap to the beginning, if you want to be sure
 // you don't cross it.
-gap_buffer_make_view :: (gb: Gap_Buffer, index: s64, count: s64, force_allocate := false, assert_no_allocations := false) -> [] u8 /* Pointing to this buffer, or allocated with context.allocator */ {
+gap_buffer_make_view :: (gb: Gap_Buffer, index: s64, count: s64, force_allocate := false, assert_no_allocations := false) -> /* Pointing to this buffer, or context.allocator */ [] u8  {
     ProfileZone("gap_buffer_make_view");
 
     assert(!(force_allocate && assert_no_allocations), "You can't have both, duh!");
