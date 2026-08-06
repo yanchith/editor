@@ -45,7 +45,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
 
     args := text_buffer_make_view_for_line(modal_interaction.buffer, 0,, temp);
 
-    exit_code, output, error := platform.run_in_process(args, working_directory);
+    exit_code, output, error := platform.run_in_process(args, working_directory); // nocheckin output in temp?
 
     scratch_document, scratch_panel := get_scratch(editor);
     cursors := ifx scratch_panel then *scratch_panel.view._document.cursors else *scratch_document.cursors_cold;

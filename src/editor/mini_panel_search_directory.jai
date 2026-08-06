@@ -13,6 +13,10 @@ mini_panel_search_directory_procs: Mini_Panel_Procs = {
 
 MIN_SEARCH_TEXT_COUNT :: 3;
 
+Search_Directory_Item_Userdata :: struct {
+    file_path: string;
+}
+
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
     mini_panel := *editor.mini_panel;
     sanity_assert(mini_panel.open);
@@ -50,6 +54,9 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
     }
 
     if buffer_changed {
+        array_reset(*mini_panel.items);
+        arena_reset(mini_panel.items_arena);
+
         search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
         search_text_char_count := mini_panel.buffer.line_chars[0];
 
@@ -61,11 +68,53 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 return;
             }
 
-            args := tprint("rg %", search_text);
+            // TODO(jt): Add multiple backends, so people can choose what they usually have
+            // installed: git grep, baregrep, GNU grep.
 
-            log("nocheckin running '%' in '%'", args, working_directory);
-            exit_code, output, error := platform.run_in_process(args, working_directory);
-            log("nocheckin exit: %, OUTPUT: %, ERROR: %", exit_code, output, error);
+            // ripgrep doesn't normally need the search directory explicitly, but if we don't
+            // provide, it will detect stdin on Windows and try to read stuff from there, never
+            // returning. This is some weird interaction between JAI's run_command (with
+            // capture_and_return_output=true) and ripgrep. I should probably debug that.
+            //
+            //     -jt, 6 August 2026
+            args := tprint("rg % ./", search_text);
+
+            exit_code, output, error := platform.run_in_process(args, working_directory); // nocheckin output in temp?
+            if exit_code != 0 {
+                editor_log(editor, "Command % failed with code: %", args, exit_code);
+                close_mini_panel(editor, platform, input);
+                return;
+            }
+
+            // Easier to parse the human readable output than json. How the turntables.
+            found, line, rest := String.split_from_left(output, "\n");
+            while found {
+                s := "";
+                if line.count {
+                    // We sort of assume success and proactively copy to our memory.
+                    s = arena_push_string(mini_panel.items_arena, line);
+                }
+
+                // Already splitting our memory, so path_overwrite_separators doesn't need to run twice.
+                success, file_path, match := String.split_from_left(s, ":");
+                if success {
+                    String.path_overwrite_separators(file_path, #char "/");
+
+                    item := array_add(*mini_panel.items);
+                    item.text = s;
+                    item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
+                    // TODO(jt): @Incomplete Scan output to find highlights.
+                    item.highlight_x0 = 0;
+                    item.highlight_x1 = 0;
+
+                    userdata := arena_push(mini_panel.items_arena, Search_Directory_Item_Userdata);
+                    userdata.file_path = file_path;
+
+                    item.userdata = userdata;
+                }
+
+                found, line, rest = String.split_from_left(rest, "\n");
+            }
         }
     }
 }
@@ -91,8 +140,21 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
 }
 
 confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
+    mini_panel := *editor.mini_panel;
+    sanity_assert(mini_panel.open);
+    if !mini_panel.open {
+        return false;
+    }
+
+    if mini_panel.items.count {
+        assert(mini_panel.item_index >= 0);
+
+        userdata: *Search_Directory_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
+        open_file(editor, platform, input, userdata.file_path);
+    }
+
     close_mini_panel(editor, platform, input);
-    return false; // nocheckin
+    return false;
 }
 
 cancel :: (editor: *Editor, platform: Platform, input: Input) {
