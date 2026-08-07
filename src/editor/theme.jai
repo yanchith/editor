@@ -135,9 +135,9 @@ handmade_theme :: () -> Theme {
     t.cursor_color               = cursor_color;
     t.cursor_color_active        = unpack_srgba(0xffffffff);
     t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
-    t.line_color                 = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.050);
+    t.line_color                 = { 0, 0, 0, 0 };
     t.hover_color                = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
-    t.selection_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.150);
+    t.selection_color            = unpack_srgba(0x0000ffff);
     t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
     t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
