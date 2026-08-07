@@ -16,6 +16,19 @@ f64 :: float64;
 }
 
 #if OS == .WINDOWS {
+    #if #exists(__WINDOWS_CONSOLE) {
+        WINDOWS_CONSOLE :: __WINDOWS_CONSOLE;
+    } else {
+        WINDOWS_CONSOLE :: false;
+    }
+
+    #if !WINDOWS_CONSOLE {
+        Windows_Resources :: #import "Windows_Resources";
+        #run Windows_Resources.disable_runtime_console();
+    }
+}
+
+#if OS == .WINDOWS {
     #import "Windows";
     #import "Windows_Utf8";
 
