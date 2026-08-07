@@ -1666,6 +1666,8 @@ Panel_Action :: enum {
 
     ABULAFIA_THEME;
     NAYSAYER_THEME;
+    HANDMADE_THEME;
+    ZENBURN_THEME;
 }
 
 Document_Action :: enum {
@@ -1992,8 +1994,11 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         }
 
         case .COMPILE;         open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
+        // TODO(jt): @Bug Stale cursor color stays in view.cursor_flash after switching themes!
         case .ABULAFIA_THEME;  editor.theme = abulafia_theme();
         case .NAYSAYER_THEME;  editor.theme = naysayer_theme();
+        case .HANDMADE_THEME;  editor.theme = handmade_theme();
+        case .ZENBURN_THEME;   editor.theme = zenburn_theme();
     }
 
     return true;
