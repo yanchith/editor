@@ -157,7 +157,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
                 item := array_add(*mini_panel.items);
                 item.text = s;
-                item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
+                item.text_color = editor.theme.mini_panel_item_text_color;
                 // TODO(jt): @Incomplete Scan output to find highlights.
                 item.highlight_x0 = 0;
                 item.highlight_x1 = 0;
