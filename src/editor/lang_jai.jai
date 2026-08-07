@@ -66,17 +66,17 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
         if token.type == {
             case .IDENT; {
                 if last_token_is_pound || last_token_is_dollar {
-                    highlight_token.type = .PREPROCESSOR_DIRECTIVE;
+                    highlight_token.type = .DIRECTIVE;
                     highlight_token.loc0.x -= 1;
                 } else if last_token_is_double_dollar {
-                    highlight_token.type = .PREPROCESSOR_DIRECTIVE;
+                    highlight_token.type = .DIRECTIVE;
                     highlight_token.loc0.x -= 2;
                 }
             }
 
-            case .NUMBER;               highlight_token.type = .NUMBER_LITERAL;
-            case .STRING;               highlight_token.type = .STRING_LITERAL;
-            case .TRIPLE_MINUS;         highlight_token.type = .PREPROCESSOR_DIRECTIVE;
+            case .NUMBER;        highlight_token.type = .NUMBER_LITERAL;
+            case .STRING;        highlight_token.type = .STRING_LITERAL;
+            case .TRIPLE_MINUS;  highlight_token.type = .DIRECTIVE;
 
             case .NOTE; {
                 highlight_token.type = .ATTRIBUTE;
@@ -89,7 +89,7 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
             case; {
                 if token.type >= .__FIRST_KEYWORD && token.type <= .__LAST_KEYWORD {
                     if last_token_is_pound {
-                        highlight_token.type = .PREPROCESSOR_DIRECTIVE;
+                        highlight_token.type = .DIRECTIVE;
                         highlight_token.loc0.x -= 1;
                     } else {
                         highlight_token.type = .KEYWORD;
