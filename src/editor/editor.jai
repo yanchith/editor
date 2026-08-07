@@ -414,7 +414,7 @@ Document :: struct {
             // TYPE;
             // IDENTIFIER; (variable, parameter, global...)
 
-            PREPROCESSOR_DIRECTIVE;
+            DIRECTIVE; // Preprocessor directive in C. Compiler directive in JAI. Macro invocation in Rust.
             ATTRIBUTE; // [[attribute]] or __attribute__() in C. @Note in JAI, #[attribute] in Rust, [Attribute] in C#;
 
             COMMENT;
@@ -713,8 +713,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-o",     .OPEN_IN_OTHER_PANEL);
     }
 
-    // editor.theme = abu_theme();
-    editor.theme = naysayer_theme();
+    editor.theme = abulafia_theme();
+    // editor.theme = naysayer_theme();
 
     editor.watched_files.allocator = arena_allocator(editor.perm_arena);
     editor.documents.allocator     = arena_allocator(editor.perm_arena);
@@ -1663,6 +1663,9 @@ Panel_Action :: enum {
     GO_TO_NEXT_PANEL;
 
     COMPILE;
+
+    ABULAFIA_THEME;
+    NAYSAYER_THEME;
 }
 
 Document_Action :: enum {
@@ -1988,7 +1991,9 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
             }
         }
 
-        case .COMPILE;  open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
+        case .COMPILE;         open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
+        case .ABULAFIA_THEME;  editor.theme = abulafia_theme();
+        case .NAYSAYER_THEME;  editor.theme = naysayer_theme();
     }
 
     return true;
@@ -2965,6 +2970,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 found := false;
                 highlight_loc: Text_Location;
 
+                // TODO(jt): @Bug This doesn't find sibling scopes!
                 scope := find_parenthesized_scope_for_location(document, view.cursors.c0);
                 if scope && scope.parent_index != -1 {
                     if scope.loc0 == view.cursors.c0 {
@@ -3050,12 +3056,12 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                             // TODO(jt): @Cleanup While we sort of define color constants for things, we
                             // also can modify bold/italic, for which we have no way of customization
                             // yet. :Config
-                            case .KEYWORD;                 r.color = editor.theme.keyword_color;
-                            case .ATTRIBUTE;               r.color = editor.theme.attribute_color; r.variant = .BOLD;
-                            case .PREPROCESSOR_DIRECTIVE;  r.color = editor.theme.preprocessor_directive_color; r.variant = .BOLD;
-                            case .STRING_LITERAL;          r.color = editor.theme.string_literal_color;
-                            case .NUMBER_LITERAL;          r.color = editor.theme.number_literal_color;
-                            case .COMMENT;                 r.color = editor.theme.comment_color;
+                            case .KEYWORD;         r.color = editor.theme.keyword_color; r.variant = editor.theme.keyword_variant;
+                            case .ATTRIBUTE;       r.color = editor.theme.attribute_color; r.variant = editor.theme.attribute_variant;
+                            case .DIRECTIVE;       r.color = editor.theme.directive_color; r.variant = editor.theme.directive_variant;
+                            case .STRING_LITERAL;  r.color = editor.theme.string_literal_color; r.variant = editor.theme.string_literal_variant;
+                            case .NUMBER_LITERAL;  r.color = editor.theme.number_literal_color; r.variant = editor.theme.number_literal_variant;
+                            case .COMMENT;         r.color = editor.theme.comment_color; r.variant = editor.theme.comment_variant;
 
                             case; continue;
                         }

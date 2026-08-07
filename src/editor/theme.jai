@@ -20,13 +20,21 @@ Theme :: struct {
     listing_item_color: Vector4;
 
     system_text_color: Vector4;
+    system_text_variant: Font_Variant;
     text_color: Vector4;
+    text_variant: Font_Variant;
     keyword_color: Vector4;
+    keyword_variant: Font_Variant;
     attribute_color: Vector4;
-    preprocessor_directive_color: Vector4;
+    attribute_variant: Font_Variant;
+    directive_color: Vector4;
+    directive_variant: Font_Variant;
     string_literal_color: Vector4;
+    string_literal_variant: Font_Variant;
     number_literal_color: Vector4;
+    number_literal_variant: Font_Variant;
     comment_color: Vector4;
+    comment_variant: Font_Variant;
 
     mini_panel_line_color: Vector4;
     mini_panel_item_text_color: Vector4;
@@ -59,14 +67,16 @@ abulafia_theme :: () -> Theme {
 
     t.listing_item_color = text_color;
 
-    t.system_text_color            = unpack_srgba(0xb0b0b0ff);
-    t.text_color                   = text_color;
-    t.keyword_color                = keyword_color;
-    t.attribute_color              = keyword_color;
-    t.preprocessor_directive_color = keyword_color;
-    t.string_literal_color         = unpack_srgba(0x98c379ff);
-    t.number_literal_color         = unpack_srgba(0x759fbfff);
-    t.comment_color                = unpack_srgba(0xa0a0a0ff);
+    t.system_text_color    = unpack_srgba(0xb0b0b0ff);
+    t.text_color           = text_color;
+    t.keyword_color        = keyword_color;
+    t.attribute_color      = keyword_color;
+    t.attribute_variant    = .BOLD;
+    t.directive_color      = keyword_color;
+    t.directive_variant    = .BOLD;
+    t.string_literal_color = unpack_srgba(0x98c379ff);
+    t.number_literal_color = unpack_srgba(0x759fbfff);
+    t.comment_color        = unpack_srgba(0xa0a0a0ff);
 
     t.mini_panel_line_color      = set_alpha(adjust_saturation_and_value(cursor_color, 0.5, 1.2), 0.1);
     t.mini_panel_item_text_color = text_color;
@@ -99,14 +109,14 @@ naysayer_theme :: () -> Theme {
 
     t.listing_item_color = text_color;
 
-    t.system_text_color            = unpack_srgba(0x000000ff);
-    t.text_color                   = text_color;
-    t.keyword_color                = unpack_srgba(0xffffffff);
-    t.attribute_color              = unpack_srgba(0x9bdfa5ff); // Jon also uses this for known types, like s8, bool, int.
-    t.preprocessor_directive_color = unpack_srgba(0x9bdfa5ff); // Jon also uses this for known types, like s8, bool, int.
-    t.string_literal_color         = unpack_srgba(0x0fdfafff);
-    t.number_literal_color         = unpack_srgba(0x92e5cfff); // Jon also uses this for boolean literals
-    t.comment_color                = unpack_srgba(0x3ddf23ff);
+    t.system_text_color    = unpack_srgba(0x000000ff);
+    t.text_color           = text_color;
+    t.keyword_color        = unpack_srgba(0xffffffff);
+    t.attribute_color      = unpack_srgba(0x9bdfa5ff); // Jon also uses this for known types, like s8, bool, int.
+    t.directive_color      = unpack_srgba(0x9bdfa5ff); // Jon also uses this for known types, like s8, bool, int.
+    t.string_literal_color = unpack_srgba(0x0fdfafff);
+    t.number_literal_color = unpack_srgba(0x92e5cfff); // Jon also uses this for boolean literals
+    t.comment_color        = unpack_srgba(0x3ddf23ff);
 
     t.mini_panel_line_color      = set_alpha(adjust_saturation_and_value(cursor_color, 0.5, 1.2), 0.1);
     t.mini_panel_item_text_color = text_color;
