@@ -125,6 +125,91 @@ naysayer_theme :: () -> Theme {
     return t;
 }
 
+handmade_theme :: () -> Theme {
+    cursor_color          := unpack_srgba(0x40ff40ff);
+    text_color            := unpack_srgba(0xcdaa7dff);
+    background_color      := unpack_srgba(0x191919ff);
+    modeline_color_active := unpack_srgba(0x090909ff);
+
+    t: Theme;
+    t.cursor_color               = cursor_color;
+    t.cursor_color_active        = unpack_srgba(0xffffffff);
+    t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
+    t.line_color                 = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.050);
+    t.hover_color                = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
+    t.selection_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.150);
+    t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
+    t.highlight_color_active     = unpack_srgba(0xd09090c0);
+    t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
+    t.modeline_color             = unpack_srgba(0x111111ff);
+    t.modeline_color_active      = modeline_color_active;
+
+    t.background_color           = background_color;
+    t.gutter_color               = background_color;
+    t.separator_color            = modeline_color_active;
+
+    t.listing_item_color = text_color;
+
+    t.system_text_color    = unpack_srgba(0xb0b0b0ff);
+    t.text_color           = text_color;
+    t.keyword_color        = unpack_srgba(0xc38d03ff);
+    t.attribute_color      = unpack_srgba(0xdab98fff);
+    t.directive_color      = unpack_srgba(0xdab98fff);
+    t.string_literal_color = unpack_srgba(0x6b8e23ff);
+    t.number_literal_color = unpack_srgba(0x759fbfff);
+    t.comment_color        = unpack_srgba(0xa0a0a0ff);
+
+    t.mini_panel_line_color      = set_alpha(adjust_saturation_and_value(cursor_color, 0.5, 1.2), 0.1);
+    t.mini_panel_item_text_color = text_color;
+    t.mini_panel_item_warning_text_color = unpack_srgba(0xe95410ff);
+
+    return t;
+}
+
+zenburn_theme :: () -> Theme {
+    cursor_color          := unpack_srgba(0x8faf9fff);
+    text_color            := unpack_srgba(0xdcdccdff);
+    keyword_color         := unpack_srgba(0xf0dfafff);
+    background_color      := unpack_srgba(0x3f3f3fff);
+
+    t: Theme;
+    t.cursor_color               = cursor_color;
+    t.cursor_color_active        = unpack_srgba(0xffffffff);
+    t.cursor_color_readonly      = unpack_srgba(0xcc9393ff);
+    t.line_color                 = { 0, 0, 0, 0 };
+    t.hover_color                = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
+    t.selection_color            = unpack_srgba(0x2b2b2bff);
+    t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
+    t.highlight_color_active     = unpack_srgba(0xd09090c0);
+    t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
+    t.modeline_color             = unpack_srgba(0x2b2b2bff);
+    t.modeline_color_active      = unpack_srgba(0x2b2b2bff); // Make a different color for active.
+
+    t.background_color           = background_color;
+    t.gutter_color               = background_color;
+    t.separator_color            = unpack_srgba(0x000000ff);
+
+    t.listing_item_color = text_color;
+
+    t.system_text_color    = keyword_color;
+    t.text_color           = text_color;
+    t.keyword_color        = keyword_color;
+    t.keyword_variant      = .BOLD;
+    t.attribute_color      = text_color;
+    t.attribute_variant    = .BOLD;
+    t.directive_color      = unpack_srgba(0xf0dfafff);
+    t.directive_variant    = .BOLD;
+    t.string_literal_color = unpack_srgba(0xcc9393ff);
+    t.number_literal_color = unpack_srgba(0x8cd0d3ff);
+    t.comment_color        = unpack_srgba(0x859e82ff);
+
+    t.mini_panel_line_color      = set_alpha(adjust_saturation_and_value(cursor_color, 0.5, 1.2), 0.1);
+    t.mini_panel_item_text_color = text_color;
+    t.mini_panel_item_warning_text_color = unpack_srgba(0xecb3b3ff);
+
+    return t;
+}
+
 #scope_file
 
 set_alpha :: (_rgba: Vector4, a: f32) -> Vector4 {
