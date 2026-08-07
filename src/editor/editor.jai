@@ -4,6 +4,19 @@ TODO(jt): Known serious bugs:
 
 (none currently)
 
+TODO(jt): Usage self-feedback:
+
+- open file in a directory lister should prepare the path so that it ends with "/" and we list the directory contents
+- open file should list . and .. (btw so should directory listers)
+- finish the compilation buffer thing
+- project-wide file open
+- project-wide search
+
+- strip whitespace on save
+
+- some editing problems, but I forgot what they are
+- undo being too aggressive sometimes, but I forgot when
+
 TODO(jt): Roadmap:
 
 - [X] Implement Arena, or use Flat_Pool.
@@ -723,17 +736,26 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     // Create *scratch* document
     scratch_document := find_or_add_document(editor, platform, .SCRATCH, "");
 
+    text_buffer_insert(*scratch_document.buffer, *scratch_document.cursors_cold, WELCOME);
+    text_buffer_move_cursor_to(scratch_document.buffer, *scratch_document.cursors_cold, 0, 0, false);
+
     // Create first panel.
     panel := array_add(*editor.panels);
     panel_init_with_document(panel, editor, platform, scratch_document);
 
-    // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
-    // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
-    //
-    // UPDATE: The prior is true if we exclude update_parethesized_scopes, which now completely
-    // dominates every frame where an edit happened.
-    BENCHMARK_TEXT_SIZE: s64 : 128 << 10;
-    load_large_text(*panel.view._document, BENCHMARK_TEXT_SIZE);
+
+
+    // nocheckin make this a command!
+    {
+        // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
+        // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
+        //
+        // UPDATE: The prior is true if we exclude update_parethesized_scopes, which now completely
+        // dominates every frame where an edit happened.
+
+        // BENCHMARK_TEXT_SIZE: s64 : 128 << 10;
+        // load_large_text(*panel.view._document, BENCHMARK_TEXT_SIZE);
+    }
 
     //
     // Init mini panel
@@ -1989,7 +2011,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         }
         case .GO_TO_NEXT_PANEL; {
             if #complete editor.active_view == {
-                case .FULL; // No-op
+                case .FULL;   // No-op
                 case .LEFT;   editor.active_view = .RIGHT;
                 case .RIGHT;  editor.active_view = .LEFT;
             }
@@ -3914,3 +3936,12 @@ toggle_dev_view :: (dev_view: *Editor.Dev_View, value: Editor.Dev_View) {
         dev_view.* = value;
     }
 }
+
+WELCOME :: #string DONE
+
+
+
+
+    Welcome to the untitled text editor!
+
+DONE;
