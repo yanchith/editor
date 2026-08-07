@@ -2,8 +2,10 @@
 #import "Basic";
 #import "File";
 
-Check    :: #import "Check";
-Profiler :: #import "Profiler"()(IMPORT_MODE = .METAPROGRAM);
+// Metaprogram plugins
+Check_Plugin    :: #import "Check";
+Profiler_Plugin :: #import "Profiler"()(IMPORT_MODE = .METAPROGRAM);
+Icon_Plugin     :: #import "Icon";
 
 build :: () {
     is_optimized_build := false;
@@ -12,6 +14,7 @@ build :: () {
     do_profile  := false;
     do_sanity   := true;
     do_subpixel := true;
+    do_windows_console := true;
 
     for get_toplevel_command_line() {
         if it == {
@@ -24,14 +27,16 @@ build :: () {
 
     for get_build_options().compile_time_command_line {
         if it == {
-            case "-check";        do_check = true;
-            case "-no-check";     do_check = false;
-            case "-profile";      do_profile = true;
-            case "-no-profile";   do_profile = false;
-            case "-sanity";       do_sanity = true;
-            case "-no-sanity";    do_sanity = false;
-            case "-subpixel";     do_subpixel = true;
-            case "-no-subpixel";  do_subpixel = false;
+            case "-check";            do_check = true;
+            case "-no-check";         do_check = false;
+            case "-profile";          do_profile = true;
+            case "-no-profile";       do_profile = false;
+            case "-sanity";           do_sanity = true;
+            case "-no-sanity";        do_sanity = false;
+            case "-subpixel";         do_subpixel = true;
+            case "-no-subpixel";      do_subpixel = false;
+            case "-windows-console";  do_windows_console = true;
+            case "-no-windows-console";  do_windows_console = false;
             case; {
                 log_error("Unknown argument '%'.\nExiting.", it);
                 exit(1);
@@ -59,11 +64,10 @@ build :: () {
 
     set_build_options(options, w);
 
-    require_message_loop := do_profile || do_check;
+    icon_plugin: Icon_Plugin.My_Plugin;
+    icon_plugin.icon_filename = "./data/icon.ico";
 
-    if require_message_loop {
-        compiler_begin_intercept(w);
-    }
+    compiler_begin_intercept(w);
 
     if do_sanity {
         add_build_string("__SANITY :: true;\n", w);
@@ -73,25 +77,26 @@ build :: () {
         add_build_string("__SUBPIXEL :: true;\n", w);
     }
 
+    if do_windows_console {
+        add_build_string("__WINDOWS_CONSOLE :: true;\n", w);
+    }
+
     add_build_file("src/main.jai", w);
 
-    if require_message_loop {
-        while true {
-            message := compiler_wait_for_message();
+    while true {
+        message := compiler_wait_for_message();
 
-            // The plugins we currently support (Profiler and Check) do not need any initialization,
-            // and their message routines do not use the *Metaprogram_Plugin argument.
+        if do_profile  Profiler_Plugin.message(null, message);
+        if do_check    Check_Plugin.do_error_checking(null, message);
 
-            if do_profile  Profiler.message(null, message);
-            if do_check    Check.do_error_checking(null, message);
+        Icon_Plugin.message(*icon_plugin, message);
 
-            if message.kind == .COMPLETE {
-                break;
-            }
+        if message.kind == .COMPLETE {
+            break;
         }
-
-        compiler_end_intercept(w);
     }
+
+    compiler_end_intercept(w);
 
     // Do not output anything for this workspace.
     set_build_options_dc({ do_output = false });
