@@ -1873,8 +1873,10 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 #scope_module
 
 execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, action: Panel_Action) -> executed: bool {
+    theme_changed := false;
+
     if #complete action == {
-        case .NONE;           return false;
+        case .NONE;  return false;
 
         case .SHOW_COMMANDS;     open_mini_panel(editor, platform, input, mini_panel_show_commands_procs);
         case .SEARCH;            open_mini_panel(editor, platform, input, mini_panel_search_procs);
@@ -1994,11 +1996,20 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         }
 
         case .COMPILE;         open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
-        // TODO(jt): @Bug Stale cursor color stays in view.cursor_flash after switching themes!
-        case .ABULAFIA_THEME;  editor.theme = abulafia_theme();
-        case .NAYSAYER_THEME;  editor.theme = naysayer_theme();
-        case .HANDMADE_THEME;  editor.theme = handmade_theme();
-        case .ZENBURN_THEME;   editor.theme = zenburn_theme();
+
+        case .ABULAFIA_THEME;  editor.theme = abulafia_theme(); theme_changed = true;
+        case .NAYSAYER_THEME;  editor.theme = naysayer_theme(); theme_changed = true;
+        case .HANDMADE_THEME;  editor.theme = handmade_theme(); theme_changed = true;
+        case .ZENBURN_THEME;   editor.theme = zenburn_theme();  theme_changed = true;
+    }
+
+    if theme_changed {
+        for * panel: editor.panels {
+            if panel.view.kind == .DOCUMENT {
+                view := *panel.view._document;
+                interpolation_init(*view.cursor_flash, editor.theme.cursor_color);
+            }
+        }
     }
 
     return true;
