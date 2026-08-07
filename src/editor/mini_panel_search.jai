@@ -141,7 +141,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             item_index := mini_panel.items.count;
                             item := array_add(*mini_panel.items);
                             item.text = s;
-                            item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
+                            item.text_color = editor.theme.mini_panel_item_text_color;
                             if document.buffer.binary_mode {
                                 item.flags |= .BINARY;
                             }
@@ -209,7 +209,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             item_index := mini_panel.items.count;
                             item := array_add(*mini_panel.items);
                             item.text = s;
-                            item.text_color = MINI_PANEL_ITEM_TEXT_COLOR;
+                            item.text_color = editor.theme.mini_panel_item_text_color;
                             item.highlight_x0 = line_number_prefix_length + x0;
                             item.highlight_x1 = line_number_prefix_length + x1;
 

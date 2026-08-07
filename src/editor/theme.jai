@@ -1,0 +1,129 @@
+// TODO(jt): Make themes configurable. :Config
+Theme :: struct {
+    cursor_color: Vector4;
+    cursor_color_active: Vector4;
+    cursor_color_readonly: Vector4;
+    line_color: Vector4;
+    hover_color: Vector4;
+    selection_color: Vector4;
+    highlight_color: Vector4;
+    highlight_color_active: Vector4;
+    matching_parenthesis_color: Vector4;
+
+    modeline_color: Vector4;
+    modeline_color_active: Vector4;
+
+    background_color: Vector4;
+    gutter_color: Vector4;
+    separator_color: Vector4;
+
+    listing_item_color: Vector4;
+
+    system_text_color: Vector4;
+    text_color: Vector4;
+    keyword_color: Vector4;
+    attribute_color: Vector4;
+    preprocessor_directive_color: Vector4;
+    string_literal_color: Vector4;
+    number_literal_color: Vector4;
+    comment_color: Vector4;
+
+    mini_panel_line_color: Vector4;
+    mini_panel_item_text_color: Vector4;
+    mini_panel_item_warning_text_color: Vector4;
+}
+
+
+make_abu_theme :: () -> Theme {
+    cursor_color          := unpack_srgba(0x50ffa0ff);
+    text_color            := unpack_srgba(0xcdaa7dff);
+    background_color      := unpack_srgba(0x191919ff);
+    modeline_color_active := unpack_srgba(0x090909ff);
+    keyword_color         := unpack_srgba(0xe95410ff);
+
+    t: Theme;
+    t.cursor_color               = cursor_color;
+    t.cursor_color_active        = unpack_srgba(0xffffffff);
+    t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
+    t.line_color                 = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.050);
+    t.hover_color                = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
+    t.selection_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.150);
+    t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
+    t.highlight_color_active     = unpack_srgba(0xd09090c0);
+    t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
+    t.modeline_color             = unpack_srgba(0x111111ff);
+    t.modeline_color_active      = modeline_color_active;
+
+    t.background_color           = background_color;
+    t.gutter_color               = background_color;
+    t.separator_color            = modeline_color_active;
+
+    t.listing_item_color = text_color;
+
+    t.system_text_color            = unpack_srgba(0xb0b0b0ff);
+    t.text_color                   = text_color;
+    t.keyword_color                = keyword_color;
+    t.attribute_color              = keyword_color;
+    t.preprocessor_directive_color = keyword_color;
+    t.string_literal_color         = unpack_srgba(0x98c379ff);
+    t.number_literal_color         = unpack_srgba(0x759fbfff);
+    t.comment_color                = unpack_srgba(0xa0a0a0ff);
+
+    t.mini_panel_line_color      = set_alpha(adjust_saturation_and_value(cursor_color, 0.5, 1.2), 0.1);
+    t.mini_panel_item_text_color = text_color;
+    t.mini_panel_item_warning_text_color = unpack_srgba(0xe95410ff);
+
+    return t;
+}
+
+// nocheckin finish
+make_naysayer_theme :: () -> Theme {
+    cursor_color          := unpack_srgba(0x50ffa0ff); //
+    text_color            := unpack_srgba(0xc4b58dff);
+    background_color      := unpack_srgba(0x072626ff);
+    modeline_color_active := unpack_srgba(0x090909ff);
+    keyword_color         := unpack_srgba(0xffffffff);
+
+    t: Theme;
+    t.cursor_color               = cursor_color; //
+    t.cursor_color_active        = unpack_srgba(0xffffffff); //
+    t.cursor_color_readonly      = unpack_srgba(0xff0000ff); //
+    t.line_color                 = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.050); //
+    t.hover_color                = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100); //
+    t.selection_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.150); //
+    t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200); //
+    t.highlight_color_active     = unpack_srgba(0xd09090c0); //
+    t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff); //
+    t.modeline_color             = unpack_srgba(0x111111ff); //
+    t.modeline_color_active      = modeline_color_active;
+
+    t.background_color           = background_color;
+    t.gutter_color               = background_color;
+    t.separator_color            = modeline_color_active;
+
+    t.listing_item_color = text_color;
+
+    t.system_text_color            = unpack_srgba(0xb0b0b0ff);
+    t.text_color                   = text_color;
+    t.keyword_color                = keyword_color;
+    t.attribute_color              = keyword_color; //
+    t.preprocessor_directive_color = unpack_srgba(0xc67d74ff);
+    t.string_literal_color         = unpack_srgba(0x0fdfafff);
+    t.number_literal_color         = unpack_srgba(0xd699b5ff);
+    t.comment_color                = unpack_srgba(0x3ddf23ff);
+
+    t.mini_panel_line_color      = set_alpha(adjust_saturation_and_value(cursor_color, 0.5, 1.2), 0.1); //
+    t.mini_panel_item_text_color = text_color;
+    t.mini_panel_item_warning_text_color = unpack_srgba(0xe95410ff); //
+
+    return t;
+}
+
+#scope_file
+
+set_alpha :: (_rgba: Vector4, a: f32) -> Vector4 {
+    rgba := _rgba;
+    rgba.w = a;
+
+    return rgba;
+}
