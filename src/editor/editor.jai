@@ -713,8 +713,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-o",     .OPEN_IN_OTHER_PANEL);
     }
 
-    // editor.theme = make_abu_theme(); nocheckin
-    editor.theme = make_naysayer_theme();
+    // editor.theme = abu_theme();
+    editor.theme = naysayer_theme();
 
     editor.watched_files.allocator = arena_allocator(editor.perm_arena);
     editor.documents.allocator     = arena_allocator(editor.perm_arena);
