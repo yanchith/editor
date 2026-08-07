@@ -1083,6 +1083,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         wants_this_frame, wants_next_frame |= update_panel(editor, platform, input, panel, panel_index, dt);
     }
 
+    for * document: editor.documents {
+        document.flags &= ~.TRANSIENT;
+    }
+
     // Only draw, if we have to output this frame. According to the Windows (TM) Task Manager, this
     // reduces our power usage from Very High to Moderate. CPU fans seem to agree.
     //
@@ -2693,7 +2697,6 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
             }
 
             view.flags     &= ~.TRANSIENT;
-            document.flags &= ~.TRANSIENT;
         }
 
         case .LISTING; {
