@@ -8,7 +8,6 @@ TODO(jt): Known serious bugs:
 
 TODO(jt): Usage self-feedback:
 
-- open file in a directory lister should prepare the path so that it ends with "/" and we list the directory contents
 - open file should list . and .. (btw so should directory listers)
 - finish the compilation buffer thing
 - project-wide file open
@@ -1929,6 +1928,13 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                     listing := view.listing;
                     if listing && listing.kind == .DIRECTORY && listing.backing_directory_path.count {
                         path = listing.backing_directory_path;
+             
+                        // Because we normalize backing_directory_path, this should always happen.
+                        // Maybe instead we want some kind of convention that our directory paths always end
+                        // with trailing / and file paths never do.  -jt, 8 August 2026
+                        if !String.ends_with(path, "/") {
+                            path = tprint("%/", path);
+                        }
                     }
                 }
             }
