@@ -1,4 +1,10 @@
-Interpolation :: struct (T: Type) {
+// A value we interpolate over time.
+//
+// SNAPPY means we assume we got the input during the previous frame and the value was
+// already at source at that point, so we fast-forward by 1/2 of frame time.
+//
+// ROUND means we snap the floating point value to an integer after every operation.
+Interpolation :: struct (T: Type, SNAPPY: bool, ROUND: bool) {
     source: T;
     target: T;
     value: T;
@@ -7,7 +13,12 @@ Interpolation :: struct (T: Type) {
     duration: f32;
 }
 
-interpolation_init :: (interpolation: *Interpolation($T), target: T) {
+interpolation_init :: (interpolation: *Interpolation, _target: interpolation.T) {
+    target := _target;
+    #if interpolation.ROUND {
+        target = round(target);
+    }
+    
     interpolation.source = target;
     interpolation.target = target;
     interpolation.value = target;
@@ -16,7 +27,14 @@ interpolation_init :: (interpolation: *Interpolation($T), target: T) {
     interpolation.duration = 0.0;
 }
 
-interpolation_start :: (interpolation: *Interpolation($T), source: T, target: T, now: Apollo_Time, duration: f32) {
+interpolation_start :: (interpolation: *Interpolation, _source: interpolation.T, _target: interpolation.T, now: Apollo_Time, duration: f32) {
+    source := _source;
+    target := _target;
+    #if interpolation.ROUND {
+        source = round(source);
+        target = round(target);
+    }
+    
     interpolation.source = source;
     interpolation.target = target;
     interpolation.value = source;
@@ -25,7 +43,12 @@ interpolation_start :: (interpolation: *Interpolation($T), source: T, target: T,
     interpolation.duration = duration;
 }
 
-interpolation_chain :: (interpolation: *Interpolation($T), target: T, now: Apollo_Time, duration: f32) {
+interpolation_chain :: (interpolation: *Interpolation, _target: interpolation.T, now: Apollo_Time, duration: f32) {
+    target := _target;
+    #if interpolation.ROUND {
+         target = round(target);
+    }
+
     elapsed := to_float64_seconds(now - interpolation.start);
     if elapsed >= interpolation.duration {
         source := interpolation.target;
@@ -54,12 +77,12 @@ interpolation_chain :: (interpolation: *Interpolation($T), target: T, now: Apoll
     }
 }
 
-interpolation_update :: (interpolation: *Interpolation, now: Apollo_Time, snappy := false) -> running: bool {
+interpolation_update :: (interpolation: *Interpolation, now: Apollo_Time) -> running: bool {
     t: f32;
     if interpolation.duration == 0.0 {
         t = 1.0;
     } else {
-        a := ifx snappy then 0.5 * USUAL_DELTA_TIME else 0.0;
+        a := #ifx interpolation.SNAPPY then 0.5 * USUAL_DELTA_TIME else 0.0;
         t = cast(f32, to_float64_seconds(now) + a - to_float64_seconds(interpolation.start)) / interpolation.duration;
     }
 
@@ -67,6 +90,9 @@ interpolation_update :: (interpolation: *Interpolation, now: Apollo_Time, snappy
     t = smoothstep(0.0, 1.0, t);
 
     interpolation.value = lerp(interpolation.source, interpolation.target, t);
+    if interpolation.ROUND {
+        interpolation.value = round(interpolation.value);
+    }
 
     return t < 1.0;
 }
