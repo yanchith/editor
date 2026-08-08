@@ -20,7 +20,7 @@ TODO(jt): Usage self-feedback:
 
 - lister doesn't clamp to index when it changes
 
-- allow spaces in mini panel buffer and loosen the search
+- allow spaces in mini panel buffer and loosen the search, also maybe be smarter about the nocase? maybe we want a fuzzy search?
 
 - some editing problems, but I forgot what they are
 - undo being too aggressive sometimes, but I forgot when
