@@ -1696,6 +1696,7 @@ Panel_Action :: enum {
     ABULAFIA_THEME;
     NAYSAYER_THEME;
     HANDMADE_THEME;
+    STB_THEME;
     ZENBURN_THEME;
 }
 
@@ -2048,6 +2049,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .ABULAFIA_THEME;  editor.theme = abulafia_theme(); theme_changed = true;
         case .NAYSAYER_THEME;  editor.theme = naysayer_theme(); theme_changed = true;
         case .HANDMADE_THEME;  editor.theme = handmade_theme(); theme_changed = true;
+        case .STB_THEME;       editor.theme = stb_theme(); theme_changed = true;
         case .ZENBURN_THEME;   editor.theme = zenburn_theme();  theme_changed = true;
     }
 

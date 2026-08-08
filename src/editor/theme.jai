@@ -212,6 +212,45 @@ zenburn_theme :: () -> Theme {
     return t;
 }
 
+stb_theme :: () -> Theme {
+    foreground_color := Vector4.{ 0, 0, 0, 1 };
+    background_color := Vector4.{ 1, 1, 1, 1 };
+
+    // TODO(jt): @Incomplete need to invert color under cursor/selection for this to make sense.
+    
+    t: Theme;
+    t.cursor_color               = foreground_color;
+    t.cursor_color_active        = foreground_color;
+    t.cursor_color_readonly      = unpack_srgba(0xa0a0a0ff);
+    t.line_color                 = { 0, 0, 0, 0 };
+    t.hover_color                = { 0, 0, 0, 0 };
+    t.selection_color            = foreground_color;
+    t.highlight_color            = foreground_color;
+    t.highlight_color_active     = foreground_color;
+    t.matching_parenthesis_color = { 0, 0, 0, 0 };
+    t.modeline_color             = unpack_srgba(0xa0a0a0ff);
+    t.modeline_color_active      = unpack_srgba(0xa0a0a0ff);
+
+    t.background_color           = background_color;
+    t.gutter_color               = background_color;
+    t.separator_color            = foreground_color;
+
+    t.system_text_color    = foreground_color;
+    t.text_color           = foreground_color;
+    t.keyword_color        = foreground_color;
+    t.attribute_color      = foreground_color;
+    t.directive_color      = foreground_color;
+    t.string_literal_color = foreground_color;
+    t.number_literal_color = foreground_color;
+    t.comment_color        = foreground_color;
+
+    t.mini_panel_line_color      = foreground_color;
+    t.mini_panel_item_text_color = foreground_color;
+    t.mini_panel_item_warning_text_color = foreground_color;
+    
+    return t;
+}
+
 #scope_file
 
 set_alpha :: (_rgba: Vector4, a: f32) -> Vector4 {
