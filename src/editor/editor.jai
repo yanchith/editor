@@ -1938,12 +1938,12 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
             }
             
             if path.count == 0 {
-                success, _path := platform.get_absolute_path("./",, temp);
+                success, _path := platform.get_absolute_path(".",, temp);
                 if success {
                     String.path_overwrite_separators(_path, "/");
                     
                     if !String.ends_with(_path, "/") {
-                        _path = tprint("%/", path);
+                        _path = tprint("%/", _path);
                     }
                     
                     path = _path;
