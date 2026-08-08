@@ -54,24 +54,21 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         filename_char_count := count_utf8_chars(filename);
         
         if String.ends_with(path_text, "/") || filename == "." {
-            success, full_file_path := platform.get_absolute_path(".",, arena_allocator(mini_panel.items_arena));
-            if success {
-                self_dir := array_add(*mini_panel.items);
-                self_dir.text = ".";
-                self_dir.text_color = editor.theme.mini_panel_item_text_color;
-                self_dir.highlight_x0 = 0;
-                self_dir.highlight_x1 = filename.count;
+            self_dir := array_add(*mini_panel.items);
+            self_dir.text = ".";
+            self_dir.text_color = editor.theme.mini_panel_item_text_color;
+            self_dir.highlight_x0 = 0;
+            self_dir.highlight_x1 = filename.count;
                 
-                userdata := arena_push(mini_panel.items_arena, Open_File_Item_Userdata);
-                userdata.full_file_path = full_file_path;
-                userdata.file_is_directory = true;
+            userdata := arena_push(mini_panel.items_arena, Open_File_Item_Userdata);
+            userdata.full_file_path = path_prefix;
+            userdata.file_is_directory = true;
                 
-                self_dir.userdata = userdata;
-            }
+            self_dir.userdata = userdata;
         }
         
         if String.ends_with(path_text, "/") || filename == "." || filename == ".." {
-            success, full_file_path := platform.get_absolute_path("..",, arena_allocator(mini_panel.items_arena));
+            success, full_file_path := platform.get_absolute_path(tprint("%/..", path_prefix),, arena_allocator(mini_panel.items_arena));
             if success {
                 parent_dir := array_add(*mini_panel.items);
                 parent_dir.text = "..";
