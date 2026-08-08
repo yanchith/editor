@@ -465,7 +465,6 @@ Listing :: struct {
 
     Item :: struct {
         text: string;
-        text_color: Vector4;
     }
 }
 
@@ -495,7 +494,6 @@ Mini_Panel :: struct {
 
     Item :: struct {
         text: string;
-        text_color: Vector4;
         flags: Flags;
         highlight_x0: s64;
         highlight_x1: s64;
@@ -507,7 +505,8 @@ Mini_Panel :: struct {
         Flags :: enum_flags u64 {
             NONE :: 0;
 
-            BINARY :: 0x01;
+            BINARY  :: 0x01;
+            WARNING :: 0x02;
         }
     }
 }
@@ -1182,7 +1181,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
 
                 offset_y: f64 = mini_panel_y + (it_index + 1) * cell_h;
-                font_layout_and_draw_text(*editor.font, item.text, *render_commands, *atlas_update_regions, { 0, offset_y }, { 0, 0, window_w, window_h }, item.text_color, .[], binary = cast(bool, item.flags & .BINARY));
+                color := editor.theme.mini_panel_item_text_color;
+                if item.flags & .WARNING {
+                    color = editor.theme.mini_panel_item_warning_text_color;
+                }
+
+                font_layout_and_draw_text(*editor.font, item.text, *render_commands, *atlas_update_regions, { 0, offset_y }, { 0, 0, window_w, window_h }, color, .[], binary = cast(bool, item.flags & .BINARY));
 
                 it_index += 1;
             }
@@ -1927,7 +1931,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                     listing := view.listing;
                     if listing && listing.kind == .DIRECTORY && listing.backing_directory_path.count {
                         path = listing.backing_directory_path;
-             
+
                         // Because we normalize backing_directory_path, this should always happen.
                         // Maybe instead we want some kind of convention that our directory paths always end
                         // with trailing / and file paths never do.  -jt, 8 August 2026
@@ -1937,16 +1941,16 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                     }
                 }
             }
-            
+
             if path.count == 0 {
                 success, _path := platform.get_absolute_path(".",, temp);
                 if success {
                     String.path_overwrite_separators(_path, "/");
-                    
+
                     if !String.ends_with(_path, "/") {
                         _path = tprint("%/", _path);
                     }
-                    
+
                     path = _path;
                 }
             }
@@ -3203,7 +3207,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 scissor_rect := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
 
-                _font_layout_and_draw_text(*editor.font, item.text, render_commands, atlas_update_regions, offset, scissor_rect, item.text_color, .[], binary = false);
+                _font_layout_and_draw_text(*editor.font, item.text, render_commands, atlas_update_regions, offset, scissor_rect, editor.theme.listing_item_text_color, .[], binary = false);
             }
 
             //
@@ -3422,19 +3426,17 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
 
             if listing_added {
                 file_list := platform.list_directory(file_absolute_path,, temp);
-                
+
                 {
                     self_dir := array_add(*listing.items);
                     self_dir.text = ".";
-                    self_dir.text_color = editor.theme.listing_item_color;
                 }
-                
+
                 {
                     parent_dir := array_add(*listing.items);
                     parent_dir.text = "..";
-                    parent_dir.text_color = editor.theme.listing_item_color;
                 }
-                                
+
                 for file_list {
                     listed_file_path := it.name;
                     listed_filename := String.path_filename(it.name);
@@ -3445,7 +3447,6 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
 
                         item := array_add(*listing.items);
                         item.text = s;
-                        item.text_color = editor.theme.listing_item_color;
                     }
                 }
             }
