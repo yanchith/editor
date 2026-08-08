@@ -435,6 +435,42 @@ round :: (x: f32) -> f32 {
     return result;
 }
 
+round :: (x: f64) -> f64 {
+    result := floor(x + 0.5);
+    return result;
+}
+
+round :: (v: Vector2) -> Vector2 {
+    result: Vector2 = ---;
+    result.x = round(v.x);
+    result.y = round(v.y);
+    return result;
+}
+
+round :: (v: Vector3) -> Vector3 {
+    result: Vector3 = ---;
+    result.x = round(v.x);
+    result.y = round(v.y);
+    result.z = round(v.z);
+    return result;
+}
+
+round :: (v: Vector4) -> Vector4 {
+    result: Vector4 = ---;
+    result.x = round(v.x);
+    result.y = round(v.y);
+    result.z = round(v.z);
+    result.w = round(v.w);
+    return result;
+}
+
+round :: (v: DVector2) -> DVector2 {
+    result: DVector2 = ---;
+    result.x = round(v.x);
+    result.y = round(v.y);
+    return result;
+}
+
 smoothstep :: (edge0: f32, edge1: f32, x: f32) -> f32 {
     t := clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
