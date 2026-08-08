@@ -17,7 +17,7 @@ Theme :: struct {
     gutter_color: Vector4;
     separator_color: Vector4;
 
-    listing_item_color: Vector4;
+    listing_item_text_color: Vector4;
 
     system_text_color: Vector4;
     system_text_variant: Font_Variant;
@@ -65,7 +65,7 @@ abulafia_theme :: () -> Theme {
     t.gutter_color               = background_color;
     t.separator_color            = modeline_color_active;
 
-    t.listing_item_color = text_color;
+    t.listing_item_text_color = text_color;
 
     t.system_text_color    = unpack_srgba(0xb0b0b0ff);
     t.text_color           = text_color;
@@ -107,7 +107,7 @@ naysayer_theme :: () -> Theme {
     t.gutter_color               = background_color;
     t.separator_color            = unpack_srgba(0x000000ff);
 
-    t.listing_item_color = text_color;
+    t.listing_item_text_color = text_color;
 
     t.system_text_color    = unpack_srgba(0x000000ff);
     t.text_color           = text_color;
@@ -148,7 +148,7 @@ handmade_theme :: () -> Theme {
     t.gutter_color               = background_color;
     t.separator_color            = modeline_color_active;
 
-    t.listing_item_color = text_color;
+    t.listing_item_text_color = text_color;
 
     t.system_text_color    = unpack_srgba(0xb0b0b0ff);
     t.text_color           = text_color;
@@ -191,7 +191,7 @@ zenburn_theme :: () -> Theme {
     t.gutter_color               = background_color;
     t.separator_color            = unpack_srgba(0x000000ff);
 
-    t.listing_item_color = text_color;
+    t.listing_item_text_color = text_color;
 
     t.system_text_color    = keyword_color;
     t.text_color           = text_color;
@@ -217,7 +217,7 @@ stb_theme :: () -> Theme {
     background_color := Vector4.{ 1, 1, 1, 1 };
 
     // TODO(jt): @Incomplete need to invert color under cursor/selection for this to make sense.
-    
+
     t: Theme;
     t.cursor_color               = foreground_color;
     t.cursor_color_active        = foreground_color;
@@ -235,6 +235,8 @@ stb_theme :: () -> Theme {
     t.gutter_color               = background_color;
     t.separator_color            = foreground_color;
 
+    t.listing_item_text_color = foreground_color;
+
     t.system_text_color    = foreground_color;
     t.text_color           = foreground_color;
     t.keyword_color        = foreground_color;
@@ -247,7 +249,7 @@ stb_theme :: () -> Theme {
     t.mini_panel_line_color      = foreground_color;
     t.mini_panel_item_text_color = foreground_color;
     t.mini_panel_item_warning_text_color = foreground_color;
-    
+
     return t;
 }
 
