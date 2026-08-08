@@ -154,7 +154,9 @@ handmade_theme :: () -> Theme {
     t.text_color           = text_color;
     t.keyword_color        = unpack_srgba(0xc38d03ff);
     t.attribute_color      = unpack_srgba(0xdab98fff);
+    t.attribute_variant    = .BOLD;
     t.directive_color      = unpack_srgba(0xdab98fff);
+    t.directive_variant    = .BOLD;
     t.string_literal_color = unpack_srgba(0x6b8e23ff);
     t.number_literal_color = unpack_srgba(0x759fbfff);
     t.comment_color        = unpack_srgba(0xa0a0a0ff);
