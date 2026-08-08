@@ -5,9 +5,10 @@ TODO(jt): Known serious bugs:
 - run_in_process causes us to miss frames and (and events), which makes the input state invalid,
   e.g. sometimes view.selecting stays true, or we start inserting weird characters. (Windows)
 
+- search_and_replace does not update syntax highlights ?! (set the modified flag)
+
 TODO(jt): Usage self-feedback:
 
-- directory listers should list . and ..
 - finish the compilation buffer thing
 - project-wide file open
 - project-wide search
@@ -3420,6 +3421,19 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
 
             if listing_added {
                 file_list := platform.list_directory(file_absolute_path,, temp);
+                
+                {
+                    self_dir := array_add(*listing.items);
+                    self_dir.text = ".";
+                    self_dir.text_color = editor.theme.listing_item_color;
+                }
+                
+                {
+                    parent_dir := array_add(*listing.items);
+                    parent_dir.text = "..";
+                    parent_dir.text_color = editor.theme.listing_item_color;
+                }
+                                
                 for file_list {
                     listed_file_path := it.name;
                     listed_filename := String.path_filename(it.name);
