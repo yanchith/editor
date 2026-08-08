@@ -2,9 +2,8 @@
 
 TODO(jt): Known serious bugs:
 
-- run_in_process causes us to miss frames and (and potentially events),
-  which makes the editor input state invalid, e.g. sometimes view.selecting stays true,
-  or we start inserting weird characters
+- run_in_process causes us to miss frames and (and events), which makes the input state invalid,
+  e.g. sometimes view.selecting stays true, or we start inserting weird characters. (Windows)
 
 TODO(jt): Usage self-feedback:
 
@@ -1913,8 +1912,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .SEARCH_DIRECTORY;  open_mini_panel(editor, platform, input, mini_panel_search_directory_procs);
 
         case .OPEN_FILE; {
-            path := "./";
-
+            path: string;
             if panel.view.kind == {
                 case .DOCUMENT; {
                     view := *panel.view._document;
@@ -1936,6 +1934,19 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                             path = tprint("%/", path);
                         }
                     }
+                }
+            }
+            
+            if path.count == 0 {
+                success, _path := platform.get_absolute_path("./",, temp);
+                if success {
+                    String.path_overwrite_separators(_path, "/");
+                    
+                    if !String.ends_with(_path, "/") {
+                        _path = tprint("%/", path);
+                    }
+                    
+                    path = _path;
                 }
             }
 
