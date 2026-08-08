@@ -2,7 +2,9 @@
 
 TODO(jt): Known serious bugs:
 
-(none currently)
+- run_in_process causes us to miss frames and (and potentially events),
+  which makes the editor input state invalid, e.g. sometimes view.selecting stays true,
+  or we start inserting weird characters
 
 TODO(jt): Usage self-feedback:
 
@@ -15,6 +17,7 @@ TODO(jt): Usage self-feedback:
 - strip whitespace on save
 
 - delete inside () should delete both parens (maybe also delete after)
+- typing a closing paren when cursor is just before a (balanced) closing paren should just move the cursor
 
 - allow spaces in mini panel buffer and loosen the search
 
@@ -256,14 +259,8 @@ Panel :: struct {
     //
     // Scroll vectors are f64, because buffers can be large and we actually ran into precision
     // issues with f32 vectors. Doubles suffice for now (verified up to 4GB of prose), but maybe we
-    // should do our own numeric type eventually (either 58:6 fixed point or maybe s64 + f32 offset)?
-    //
-    // TODO(jt): Snap scroll_target to integers, so we don't blur the font. (At least LiberationMono
-    // actually takes care to advance in integer amount of pixels when laying out the line.)
-    
-    // TODO(jt): @Bug Snap this to whole pixels, so that we don't blur text. (Sometimes we can find
-    // a pathologic misalignment vere thin lines disappear.)
-    scroll: Interpolation(DVector2);
+    // should do our own numeric type eventually, like 58:6 fixed point?
+    scroll: Interpolation(DVector2, SNAPPY = true, ROUND = true);
 
     Highlight :: struct {
         x0: s64;
@@ -299,8 +296,8 @@ Document_View :: struct {
     old_cursor: Text_Location;
     old_cursor_position: DVector2;
 
-    cursor_position: Interpolation(DVector2);
-    cursor_flash:    Interpolation(Vector4);
+    cursor_position: Interpolation(DVector2, SNAPPY = true, ROUND = false);
+    cursor_flash:    Interpolation(Vector4, SNAPPY = false, ROUND = false);
 
     // TODO(jt): @Cleanup Maybe some of these flags are useful to Listing_View as well, we could unify.
     Flags :: enum_flags u32 {
@@ -2741,7 +2738,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 }
 
                 interpolation_running := false;
-                interpolation_running |= interpolation_update(*view.cursor_position, input.time, snappy = true);
+                interpolation_running |= interpolation_update(*view.cursor_position, input.time);
                 interpolation_running |= interpolation_update(*view.cursor_flash, input.time);
                 if interpolation_running {
                     wants_this_frame = true;
@@ -2820,7 +2817,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
     // Animate Scroll
     //
     {
-        interpolation_running := interpolation_update(*panel.scroll, input.time, snappy = true);
+        interpolation_running := interpolation_update(*panel.scroll, input.time);
         if interpolation_running {
             wants_this_frame = true;
             wants_next_frame = true;
