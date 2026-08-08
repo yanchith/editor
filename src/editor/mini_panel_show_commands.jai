@@ -26,8 +26,7 @@ Show_Commands_Item_Userdata :: struct {
 }
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
-    TOTAL_COUNT :: PANEL_ACTION_NAMES.count + DOCUMENT_ACTION_NAMES.count + LISTING_ACTION_NAMES.count;
-    return tprint("% Show commands: ", temp_right_pad(tprint("%", TOTAL_COUNT), 4));
+    return tprint("% Show commands: ", temp_right_pad(tprint("%", editor.mini_panel.items.count), 4));
 }
 
 can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> bool {
