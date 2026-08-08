@@ -19,6 +19,8 @@ TODO(jt): Usage self-feedback:
 - delete inside () should delete both parens (maybe also delete after)
 - typing a closing paren when cursor is just before a (balanced) closing paren should just move the cursor
 
+- lister doesn't clamp to index when it changes
+
 - allow spaces in mini panel buffer and loosen the search
 
 - some editing problems, but I forgot what they are
@@ -3142,7 +3144,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 percent_string := temp_right_pad(tprint("%\%", percent), 4);
 
-                s := tprint("    % % (%,%)", temp_right_pad(document_name, 15), percent_string, cursor.y + 1, cursor.x);
+                s := tprint("    % % L% C%", temp_right_pad(document_name, 15), percent_string, cursor.y + 1, cursor.x + 1);
                 _font_layout_and_draw_text(*editor.font, s, render_commands, atlas_update_regions, modeline_offset, modeline_rect, editor.theme.system_text_color, .[], binary = false);
             }
         }
