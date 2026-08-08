@@ -16,6 +16,8 @@ TODO(jt): Usage self-feedback:
 
 - delete inside () should delete both parens (maybe also delete after)
 
+- allow spaces in mini panel buffer and loosen the search
+
 - some editing problems, but I forgot what they are
 - undo being too aggressive sometimes, but I forgot when
 
