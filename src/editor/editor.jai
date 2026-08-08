@@ -8,7 +8,7 @@ TODO(jt): Known serious bugs:
 
 TODO(jt): Usage self-feedback:
 
-- open file should list . and .. (btw so should directory listers)
+- directory listers should list . and ..
 - finish the compilation buffer thing
 - project-wide file open
 - project-wide search
@@ -57,7 +57,7 @@ TODO(jt): Roadmap:
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
 - [ ] Mode defined comments
-- [~] Themes (got some basic ones, could have more, could have custom defined themes)
+- [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme), could have custom defined themes)
 - [ ] Support for dropping files into the window
 - [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
 - [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
