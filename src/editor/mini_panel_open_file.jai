@@ -52,38 +52,36 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         path_prefix = String.trim_right(path_prefix, "/");
 
         filename_char_count := count_utf8_chars(filename);
-        
+
         if String.ends_with(path_text, "/") || filename == "." {
             self_dir := array_add(*mini_panel.items);
             self_dir.text = ".";
-            self_dir.text_color = editor.theme.mini_panel_item_text_color;
             self_dir.highlight_x0 = 0;
             self_dir.highlight_x1 = filename.count;
-                
+
             userdata := arena_push(mini_panel.items_arena, Open_File_Item_Userdata);
             userdata.full_file_path = path_prefix;
             userdata.file_is_directory = true;
-                
+
             self_dir.userdata = userdata;
         }
-        
+
         if String.ends_with(path_text, "/") || filename == "." || filename == ".." {
             success, full_file_path := platform.get_absolute_path(tprint("%/..", path_prefix),, arena_allocator(mini_panel.items_arena));
             if success {
                 parent_dir := array_add(*mini_panel.items);
                 parent_dir.text = "..";
-                parent_dir.text_color = editor.theme.mini_panel_item_text_color;
                 parent_dir.highlight_x0 = 0;
                 parent_dir.highlight_x1 = filename.count;
-                
+
                 userdata := arena_push(mini_panel.items_arena, Open_File_Item_Userdata);
                 userdata.full_file_path = full_file_path;
                 userdata.file_is_directory = true;
-                
+
                 parent_dir.userdata = userdata;
             }
         }
-        
+
         // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
         file_list := platform.list_directory(path_prefix,, temp);
         for file_list {
@@ -101,7 +99,6 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
                 item := array_add(*mini_panel.items);
                 item.text = s;
-                item.text_color = editor.theme.mini_panel_item_text_color;
                 item.highlight_x0 = x0;
                 item.highlight_x1 = x0 + filename_char_count;
                 item.userdata = null;
