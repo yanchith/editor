@@ -3,9 +3,9 @@
 TODO(jt): Known serious bugs:
 
 - run_in_process causes us to miss frames and (and events), which makes the input state invalid,
-  e.g. sometimes view.selecting stays true, or we start inserting weird characters. (Windows)
-
-- search_and_replace does not update syntax highlights ?! (set the modified flag)
+  e.g. sometimes view.selecting stays true, or we start inserting weird characters. (Windows,
+  but doesn't happen if we are in the console subsystem, so maybe spawning the process console
+  defocuses us?)
 
 TODO(jt): Usage self-feedback:
 
@@ -22,7 +22,6 @@ TODO(jt): Usage self-feedback:
 
 - allow spaces in mini panel buffer and loosen the search, also maybe be smarter about the nocase? maybe we want a fuzzy search?
 
-- some editing problems, but I forgot what they are
 - undo being too aggressive sometimes, but I forgot when
 
 TODO(jt): Roadmap:
