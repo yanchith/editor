@@ -191,6 +191,8 @@ PANEL_SCROLL_PADDING_CELLS_Y :: 5;    // TODO(jt): Make this configurable. :Conf
 
 MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 
+STRIP_WHITESPACE_ON_SAVE :: true; // TODO(jt): Make this configurable. :Config
+
 PANEL_SCROLL_DURATION:                  f32 : 0.15; // TODO(jt): Make this configurable. :Config
 CURSOR_FLASH_DURATION:                  f32 : 0.20; // TODO(jt): Make flash time configurable. :Config
 CURSOR_ANIM_DURATION_KEYBOARD_DIRECT:   f32 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
@@ -2114,6 +2116,15 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             if document.backing_file_path.count {
                 if document.flags & .MODIFIED {
                     buffer := *document.buffer;
+                    
+                    if STRIP_WHITESPACE_ON_SAVE {
+                        if !document.buffer.binary_mode {
+                            trimmed := false;
+                            for 0..document.buffer.line_count - 1 {
+                                trimmed |= text_buffer_trim_line(buffer, *view.cursors, ifx trimmed then .FUSE else .NONE);
+                            }
+                        }
+                    }
 
                     gap_buffer_move_gap_to(*buffer.gb, 0);
                     contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
