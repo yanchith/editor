@@ -14,14 +14,15 @@ TODO(jt): Usage self-feedback:
 
 - strip whitespace on save
 
+- delete inside () should delete both parens (maybe also delete after)
+
 - some editing problems, but I forgot what they are
 - undo being too aggressive sometimes, but I forgot when
 
 TODO(jt): Roadmap:
 
-- [X] Implement Arena, or use Flat_Pool.
 - [X] Display text on screen
-- [X] Nice font rendering.
+- [X] Nice font rendering
 - [X] Gap Buffer (or other text datastructure)
 - [X] Basic file navigation
 - [X] Basic file editing
@@ -31,12 +32,11 @@ TODO(jt): Roadmap:
 - [X] Find in mini panel
 - [X] Cut/Copy/Paste
 - [X] Undo!
-- [X] Messages
+- [~] Messages (still need to do a messages view)
 - [X] Modeline
 - [X] Keymap support
 - [X] Find/replace and modal/interactive commands.
 - [X] Open non-utf8 text buffers and binary files.
-
 - [X] Syntax Highlighting
 - [X] Mode defined parentheses (surround, autoclose)
 - [X] Matching parentheses highlight
@@ -47,10 +47,15 @@ TODO(jt): Roadmap:
 - [~] Directory Lister panel
 - [~] *compilation* buffer
 - [~] DIRECTORY_SEARCH
+- [X] SHOW_COMMANDS
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
 - [ ] Mode defined comments
-- [ ] Themes
+- [~] Themes (got some basic ones, could have more, could have custom defined themes)
+- [ ] Support for dropping files into the window
+- [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
+- [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
+- [ ] Rotated session logs
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode Panel
 - [ ] Multiple Cursors
@@ -253,6 +258,9 @@ Panel :: struct {
     //
     // TODO(jt): Snap scroll_target to integers, so we don't blur the font. (At least LiberationMono
     // actually takes care to advance in integer amount of pixels when laying out the line.)
+    
+    // TODO(jt): @Bug Snap this to whole pixels, so that we don't blur text. (Sometimes we can find
+    // a pathologic misalignment vere thin lines disappear.)
     scroll: Interpolation(DVector2);
 
     Highlight :: struct {
