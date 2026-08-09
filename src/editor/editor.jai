@@ -3834,10 +3834,13 @@ strip_trailing_whitespace :: (view: *Document_View) -> buffer_changed: bool {
             end_line_index   = document.buffer.line_count - 1;
         }
 
+        line_gb_index := text_buffer_get_gap_buffer_index_for_line(document.buffer, start_line_index);
         for start_line_index..end_line_index {
             view.cursors.c0 = { 0, it };
             view.cursors.c1 = { 0, it };
-            trimmed |= text_buffer_trim_line(*document.buffer, *view.cursors, ifx trimmed then .FUSE else .NONE);
+            trimmed |= text_buffer_trim_line(*document.buffer, *view.cursors, ifx trimmed then .FUSE else .NONE, __line_gb_index = line_gb_index);
+
+            line_gb_index += document.buffer.line_bytes[it];
         }
 
         view.cursors.c0 = cursor0;

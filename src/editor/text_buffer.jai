@@ -643,7 +643,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
             break;
         }
     }
-    
+
     if is_only_whitespace && !is_only_newline {
         // Delete the newline also, if any. We do this by telling the gap buffer to delete
         // additional 1 or 2 bytes (depending CRLF or LF), and then modifying our deleted array. We
@@ -687,15 +687,17 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
     return deleted;
 }
 
-// TODO(jt): @Speed We call this for every line in a for loop. Make a batch version. See :IncrementalGapBufferIndices.
-text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier_For_Trim.NONE) -> changed: bool {
+// __line_gb_index is a trusted parameter. If you set it, it better be right! See :IncrementalGapBufferIndices.
+text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier_For_Trim.NONE, __line_gb_index: s64 = -1) -> changed: bool {
     ProfileZone("text_buffer_trim_line");
-    
-    assert_valid(buffer, cursors);
 
-    line_gb_index := text_buffer_get_gap_buffer_index_for_line(buffer, cursors.c0.y);
+    // TODO(jt): @Cleanup This was too slow for every save, and I want to keep sanity enabled for now.
+    // assert_valid(buffer, cursors);
+    assert_valid_cursors(buffer, cursors);
+
+    line_gb_index := ifx __line_gb_index == -1 then text_buffer_get_gap_buffer_index_for_line(buffer, cursors.c0.y) else __line_gb_index;
     line_view     := gap_buffer_make_view(buffer.gb, line_gb_index, buffer.line_bytes[cursors.c0.y]);
-    
+
     newline_length := string_ends_with_newline(line_view, binary = buffer.binary_mode);
 
     trailing_space_count := 0;
@@ -705,7 +707,7 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
         }
         trailing_space_count += 1;
     }
-    
+
     if trailing_space_count {
         original_cursor0 := cursors.c0;
         original_cursor1 := cursors.c1;
@@ -713,15 +715,15 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
         // Okay to sutract bytes from chars, because all the whitespace is single-byte.
         cursors.c0.x = buffer.line_chars[cursors.c0.y] - trailing_space_count - newline_length;
         cursors.c1 = cursors.c0;
-        
+
         gb_index := line_gb_index + line_view.count - trailing_space_count - newline_length;
 
         gap_buffer_move_gap_to(*buffer.gb, gb_index);
         deleted_bytes := gap_buffer_delete_forward(*buffer.gb, trailing_space_count);
         deleted       := cast(string, deleted_bytes);
-        
+
         discard_unapplied_edits(buffer);
-        
+
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_FORWARD;
         edit.flags = .BARRIER;
@@ -729,7 +731,7 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
         edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-        
+
         edit.cursor0_for_edit_before = cursors.c0;
         edit.cursor0_for_edit_after = cursors.c0;
         edit.cursor0_for_display_before = original_cursor0;
@@ -745,14 +747,14 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
             previous_edit := *buffer.edits[buffer.edits.count - 2];
             previous_edit.flags |= .FUSED_WITH_NEXT;
         }
-        
+
         buffer.applied_edit_count = buffer.edits.count;
-        
+
         update_index_for_delete_forward(buffer, cursors, deleted);
-        
+
         assert_valid(buffer, cursors);
     }
-    
+
     return cast(bool, trailing_space_count);
 }
 
