@@ -6,6 +6,11 @@ f64 :: float64;
 #import "Basic";
 #import "File";
 
+       // Here's a text thing
+  // Here's another text thing
+
+
+
 Building :: struct @Serialize {
     VERSION :: 3;
 
@@ -159,9 +164,9 @@ main :: () {
 
     /* Here is a test block comment! */ a := cast(s32, 42); /* And here is another one! */
 
-    /* And 
-here 
-  is a 
+    /* And
+here
+  is a
     multiline block comment */ thingo := 1;
 
     print("Read (%) building 1. Data is %\n", success1, b1);

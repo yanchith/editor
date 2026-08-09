@@ -13,8 +13,6 @@ TODO(jt): Usage self-feedback:
 - project-wide file open
 - project-wide search
 
-- strip whitespace on save
-
 - delete inside () should delete both parens (maybe also delete after)
 - typing a closing paren when cursor is just before a (balanced) closing paren should just move the cursor
 
@@ -191,7 +189,7 @@ PANEL_SCROLL_PADDING_CELLS_Y :: 5;    // TODO(jt): Make this configurable. :Conf
 
 MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 
-STRIP_WHITESPACE_ON_SAVE :: true; // TODO(jt): Make this configurable. :Config
+STRIP_TRAILING_WHITESPACE_ON_SAVE :: true; // TODO(jt): Make this configurable. :Config
 
 PANEL_SCROLL_DURATION:                  f32 : 0.15; // TODO(jt): Make this configurable. :Config
 CURSOR_FLASH_DURATION:                  f32 : 0.20; // TODO(jt): Make flash time configurable. :Config
@@ -607,7 +605,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         // TODO(jt): None of the text editors seem to agree on what font size actually is, at least
         // Emacs, VS Code and this editor have completely different ideas. Figure this out and match
         // a standard, if that's even possible.
-        FONT_SIZE :: 18; // 15 for use, 18 for streaming
+        FONT_SIZE :: 16; // 16 for use, 20 for streaming
 
         want_pixel_height := cast(s32, ceil(FONT_SIZE * input.window_scale_factor));
 
@@ -1755,6 +1753,8 @@ Document_Action :: enum {
     COPY;
     CUT;
     PASTE;
+    
+    STRIP_TRAILING_WHITESPACE;
 }
 
 Listing_Action :: enum {
@@ -2117,13 +2117,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 if document.flags & .MODIFIED {
                     buffer := *document.buffer;
                     
-                    if STRIP_WHITESPACE_ON_SAVE {
-                        if !document.buffer.binary_mode {
-                            trimmed := false;
-                            for 0..document.buffer.line_count - 1 {
-                                trimmed |= text_buffer_trim_line(buffer, *view.cursors, ifx trimmed then .FUSE else .NONE);
-                            }
-                        }
+                    if STRIP_TRAILING_WHITESPACE_ON_SAVE {
+                        strip_trailing_whitespace(view);
                     }
 
                     gap_buffer_move_gap_to(*buffer.gb, 0);
@@ -2345,6 +2340,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, text, .BARRIER);
             }
         }
+        
+        case .STRIP_TRAILING_WHITESPACE;  buffer_changed |= strip_trailing_whitespace(view);
     }
 
     if cursor_moved || buffer_changed {
@@ -3812,7 +3809,35 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
     listing.time_of_last_interaction = editor.input_state.time;
 }
 
-#scope_module
+                         // TODO(jt): @Bug This is where this comment indents.
+strip_trailing_whitespace :: (view: *Document_View) -> buffer_changed: bool {
+    document := view.document;
+
+    trimmed := false;
+    if !document.buffer.binary_mode {
+        cursor0 := view.cursors.c0;
+        cursor1 := view.cursors.c1;
+        
+        start_line_index := cursor0.y;
+        end_line_index   := cursor1.y;
+        if cursor0 == cursor1 {
+            start_line_index = 0;
+            end_line_index   = document.buffer.line_count - 1;
+        }
+        
+        for start_line_index..end_line_index {
+            view.cursors.c0 = { 0, it };
+            view.cursors.c1 = { 0, it };
+            trimmed |= text_buffer_trim_line(*document.buffer, *view.cursors, ifx trimmed then .FUSE else .NONE);
+        }
+        
+        view.cursors.c0 = cursor0;
+        view.cursors.c1 = cursor1;
+        text_buffer_clamp_cursors(document.buffer, *view.cursors);
+    }
+    
+    return trimmed;
+}
 
 // TODO(jt): The user experience of this kind of sucks. The first C-l should always recenter. But
 // then we need to remember if it is the first press.
