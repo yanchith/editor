@@ -734,7 +734,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     }
 
     editor.theme = abulafia_theme();
-    // editor.theme = naysayer_theme();
 
     editor.watched_files.allocator = arena_allocator(editor.perm_arena);
     editor.documents.allocator     = arena_allocator(editor.perm_arena);
