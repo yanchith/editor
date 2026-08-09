@@ -7,6 +7,8 @@ TODO(jt): Known serious bugs:
   but doesn't happen if we are in the console subsystem, so maybe spawning the process console
   defocuses us?)
 
+- On macOS, C-` (iterm) also causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab.
+
 TODO(jt): Usage self-feedback:
 
 - finish the compilation buffer thing
