@@ -687,15 +687,14 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
     return deleted;
 }
 
-// TODO(jt): @Speed We call this for every line in a for loop. See :IncrementalGapBufferIndices.
+// TODO(jt): @Speed We call this for every line in a for loop. Make a batch version. See :IncrementalGapBufferIndices.
 text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier_For_Trim.NONE) -> changed: bool {
     ProfileZone("text_buffer_trim_line");
     
     assert_valid(buffer, cursors);
 
     line_gb_index := text_buffer_get_gap_buffer_index_for_line(buffer, cursors.c0.y);
-    
-    line_view := gap_buffer_make_view(buffer.gb, line_gb_index, buffer.line_bytes[cursors.c0.y]);
+    line_view     := gap_buffer_make_view(buffer.gb, line_gb_index, buffer.line_bytes[cursors.c0.y]);
     
     newline_length := string_ends_with_newline(line_view, binary = buffer.binary_mode);
 
@@ -708,6 +707,13 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
     }
     
     if trailing_space_count {
+        original_cursor0 := cursors.c0;
+        original_cursor1 := cursors.c1;
+
+        // Okay to sutract bytes from chars, because all the whitespace is single-byte.
+        cursors.c0.x = buffer.line_chars[cursors.c0.y] - trailing_space_count - newline_length;
+        cursors.c1 = cursors.c0;
+        
         gb_index := line_gb_index + line_view.count - trailing_space_count - newline_length;
 
         gap_buffer_move_gap_to(*buffer.gb, gb_index);
@@ -724,12 +730,11 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
         edit.gb_index_before = gb_index;
         edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
         
-        // nocheckin compute cursor positions!
         edit.cursor0_for_edit_before = cursors.c0;
         edit.cursor0_for_edit_after = cursors.c0;
-        edit.cursor0_for_display_before = cursors.c0;
+        edit.cursor0_for_display_before = original_cursor0;
         edit.cursor0_for_display_after = cursors.c0;
-        edit.cursor1_for_display_before = cursors.c1;
+        edit.cursor1_for_display_before = original_cursor1;
         edit.cursor1_for_display_after = cursors.c0;
 
         // The caller does not know whether we already have something in our undo buffer, so let's
