@@ -821,6 +821,9 @@ platform_wait_for_events :: () {
         // TODO(jt): WaitMessage does not wake us for overlapped IO completion. We could signal
         // ourselves by posting onto our message queue from a callback, but we can also use
         // MsgWaitForMultipleObjectsEx().
+        //
+        // TODO(jt): @Bug Sometimes we keep receiving events (or for some other reason WaitMessage does not sleep),
+        // if our window is defocused and we use a lot of battery power.
         WaitMessage();
     } else #if OS == .MACOS {
         // On macOS, we wait for events by checking the queue with nextEventMatchingMask
