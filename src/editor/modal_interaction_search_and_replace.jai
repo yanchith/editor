@@ -124,7 +124,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         view.cursors.c0 = { x0, y };
                         view.cursors.c1 = { x1, y };
                         text_buffer_insert(*document.buffer, *view.cursors, userdata.input_to_replace, .BARRIER);
-                        
+
                         document.flags |= .MODIFIED_THIS_FRAME;
 
                         // Instead of advancing the index we contract the array.
@@ -329,7 +329,6 @@ cancel :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    // nocheckin Should the panel really own the highlights?
     array_reset_keeping_memory(*panel.highlights);
     panel.highlight_index = -1;
 
