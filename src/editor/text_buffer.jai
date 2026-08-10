@@ -149,6 +149,11 @@ Undo_Modifier_For_Insert :: enum {
     BARRIER; // Supress automatic fusing (either with .THROUGH or edit patching) of this edit with previous ones.
 }
 
+Undo_Modifier_For_Delete :: enum {
+    NONE;
+    FUSE; // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
+}
+
 Undo_Modifier_For_Trim :: enum {
     NONE;
     FUSE; // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
@@ -276,17 +281,13 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
         edit.cursor0_for_display_before = cursors.c0;
         edit.cursor1_for_display_before = cursors.c1;
 
-        // The caller does not know whether we already have something in our undo buffer, so let's
-        // only do the fusing if there already is something present there.
-        if buffer.edits.count > 1 && undo_modifier == .FUSE || insert_caused_delete_selection {
+        if insert_caused_delete_selection {
             // insert_caused_delete_selection *should* always mean the there is already something in
             // the undo buffer, hence the assert.
             assert(buffer.edits.count > 1);
-
-            edit.flags |= .FUSED_WITH_PREVIOUS;
-
-            previous_edit := *buffer.edits[buffer.edits.count - 2];
-            previous_edit.flags |= .FUSED_WITH_NEXT;
+            maybe_fuse_last_edits(buffer.edits);
+        } else if undo_modifier == .FUSE {
+            maybe_fuse_last_edits(buffer.edits);
         }
 
         buffer.applied_edit_count = buffer.edits.count;
@@ -379,7 +380,7 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -
 
 // TODO(jt): @Cleanup Take a parameter to specify the count to delete. Do delete in batch, like
 // text_buffer_delete_selection does. There's also an update index function we can call.
-text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> changed: bool {
+text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier_For_Delete.NONE) -> changed: bool {
     ProfileZone("text_buffer_delete_forward");
 
     assert_valid(buffer, cursors);
@@ -435,6 +436,10 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> 
         edit.cursor1_for_display_before = cursors.c0;
         edit.cursor1_for_display_after = cursors.c0;
 
+        if undo_modifier == .FUSE {
+            maybe_fuse_last_edits(buffer.edits);
+        }
+
         buffer.applied_edit_count = buffer.edits.count;
     } else {
         codepoint_advance: s64 = 1;
@@ -468,6 +473,10 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> 
             edit.cursor1_for_display_before = cursors.c0;
             edit.cursor1_for_display_after = cursors.c0;
 
+            if undo_modifier == .FUSE {
+                maybe_fuse_last_edits(buffer.edits);
+            }
+
             buffer.applied_edit_count = buffer.edits.count;
         }
     }
@@ -481,7 +490,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> 
 
 // TODO(jt): @Cleanup Take a second parameter to specify the count to delete. Do delete in batch, like
 // text_buffer_delete_selection does. There's also an update index function we can call.
-text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> changed: bool {
+text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier_For_Delete.NONE) -> changed: bool {
     ProfileZone("text_buffer_delete_backward");
 
     assert_valid(buffer, cursors);
@@ -543,6 +552,10 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors) ->
         edit.cursor1_for_display_before = old_cursor;
         edit.cursor1_for_display_after = cursors.c0;
 
+        if undo_modifier == .FUSE {
+            maybe_fuse_last_edits(buffer.edits);
+        }
+
         buffer.applied_edit_count = buffer.edits.count;
     } else {
         codepoint_advance: s64 = 1;
@@ -579,6 +592,10 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors) ->
             edit.cursor0_for_display_after = cursors.c0;
             edit.cursor1_for_display_before = old_cursor;
             edit.cursor1_for_display_after = cursors.c0;
+
+            if undo_modifier == .FUSE {
+                maybe_fuse_last_edits(buffer.edits);
+            }
 
             buffer.applied_edit_count = buffer.edits.count;
         }
@@ -739,13 +756,8 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
         edit.cursor1_for_display_before = original_cursor1;
         edit.cursor1_for_display_after = cursors.c0;
 
-        // The caller does not know whether we already have something in our undo buffer, so let's
-        // only do the fusing if there already is something present there.
-        if buffer.edits.count > 1 && undo_modifier == .FUSE {
-            edit.flags |= .FUSED_WITH_PREVIOUS;
-
-            previous_edit := *buffer.edits[buffer.edits.count - 2];
-            previous_edit.flags |= .FUSED_WITH_NEXT;
+        if undo_modifier == .FUSE {
+            maybe_fuse_last_edits(buffer.edits);
         }
 
         buffer.applied_edit_count = buffer.edits.count;
@@ -830,13 +842,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
         edit.cursor1_for_display_before = original_cursor1;
         edit.cursor1_for_display_after = display_cursor_after;
 
-        // The caller does not know whether we already have something in our undo buffer, so let's
-        // only do the fusing if there already is something present there.
-        if buffer.edits.count > 1 && undo_modifier == .FUSE {
-            edit.flags |= .FUSED_WITH_PREVIOUS;
-
-            previous_edit := *buffer.edits[buffer.edits.count - 2];
-            previous_edit.flags |= .FUSED_WITH_NEXT;
+        if undo_modifier == .FUSE {
+            maybe_fuse_last_edits(buffer.edits);
         }
 
         buffer.applied_edit_count = buffer.edits.count;
@@ -885,13 +892,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
         edit.cursor1_for_display_before = original_cursor1;
         edit.cursor1_for_display_after = display_cursor_after;
 
-        // The caller does not know whether we already have something in our undo buffer, so let's
-        // only do the fusing if there already is something present there.
-        if buffer.edits.count > 1 && undo_modifier == .FUSE {
-            edit.flags |= .FUSED_WITH_PREVIOUS;
-
-            previous_edit := *buffer.edits[buffer.edits.count - 2];
-            previous_edit.flags |= .FUSED_WITH_NEXT;
+        if undo_modifier == .FUSE {
+            maybe_fuse_last_edits(buffer.edits);
         }
 
         buffer.applied_edit_count = buffer.edits.count;
@@ -2221,6 +2223,18 @@ remove_line :: (buffer: *Text_Buffer, index: s64) {
     array_ordered_remove_by_index(*buffer.line_bytes, index);
     array_ordered_remove_by_index(*buffer.line_chars, index);
     buffer.line_count -= 1;
+}
+
+maybe_fuse_last_edits :: (edits: [] Edit) {
+    // The caller does not know whether we already have something in our undo buffer, so let's only
+    // do the fusing there's at least two things.
+    if edits.count > 1 {
+        current  := *edits[edits.count - 1];
+        previous := *edits[edits.count - 2];
+
+        current.flags  |= .FUSED_WITH_PREVIOUS;
+        previous.flags |= .FUSED_WITH_NEXT;
+    }
 }
 
 is_through_edit :: (text: string) -> bool {
