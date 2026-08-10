@@ -254,6 +254,9 @@ Editor :: struct {
 }
 
 Panel :: struct {
+    // Highlights are owned by the panel, but they are usually cleared/added by various minipanel and modals.
+    // It could be argued that they should also own it, but then the renderer does't have a good access.
+    // Let's see about this once we have more experience using this.  -jt, 10 August 2026
     highlights_arena: *Arena;
     highlights: [..] Highlight;
     highlight_index: s64 = -1;
