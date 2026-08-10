@@ -104,6 +104,7 @@ TODO(jt): @Stream Small things to do:
 - [ ] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
 - [ ] C-u C-<space> and cursor undo.
 - [ ] M-q (reflow)
+- [ ] Kill ring
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Flash cursor with typing (needs tuning)
 - [ ] Flash pasted text
@@ -171,8 +172,8 @@ operator==     :: Math.operator==;
 #load "mini_panel_show_commands.jai";
 #load "modal_interaction_search_and_replace.jai";
 #load "modal_interaction_compile.jai";
+#load "modal_interaction_benchgen.jai";
 #load "lang_jai.jai";
-#load "benchgen.jai";
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
 // if the texture wasn't uploaded (we don't upload TEXTURE_ID_NONE). We could also reserve a few
@@ -1766,6 +1767,8 @@ Document_Action :: enum {
     PASTE;
 
     STRIP_TRAILING_WHITESPACE;
+
+    INSERT_BENCHMARK_TEXT;
 }
 
 Listing_Action :: enum {
@@ -2353,6 +2356,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         }
 
         case .STRIP_TRAILING_WHITESPACE;  buffer_changed |= strip_trailing_whitespace(view);
+
+        case .INSERT_BENCHMARK_TEXT;  open_modal_interaction(editor, platform, input, modal_interaction_benchgen_procs);
     }
 
     if cursor_moved || buffer_changed {

@@ -270,7 +270,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     view.item_index = clamp(y, 0, listing.items.count);
 
                     view.flags |= .CLAMP_SCROLL_TO_ITEM_INDEX;
-                    // view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION; nocheckin
+                    // TODO(jt): @Incomplete Allow the selected lister line to animate:
+                    // view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
                 }
             }
         }

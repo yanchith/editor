@@ -1,18 +1,72 @@
+modal_interaction_benchgen_procs: Modal_Interaction_Procs = {
+    get_action_text,
+    init,
+    handle_event,
+    advance,
+    cancel,
+};
+
 load_large_text :: (view: *Document_View, approx_size_in_bytes: s64) {
     text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1);
 
+    // nocheckin undo fuse
     while view.document.buffer.gb.count < approx_size_in_bytes {
         SEPARATOR :: "\n========================================================\n\n";
 
         text_buffer_insert(*view.document.buffer, *view.cursors, SEPARATOR);
         text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1);
     }
-
-    view.cursors.c0 = { 0, 0 };
-    view.cursors.c1 = { 0, 0 };
 }
 
 #scope_file
+
+get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* static */ string {
+    return "Insert benchmark text of size: ";
+}
+
+init :: (editor: *Editor, platform: Platform, input: Input) {
+
+}
+
+handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) -> handled: bool {
+    return false;
+}
+
+advance :: (editor: *Editor, platform: Platform, input: Input) {
+    modal_interaction := *editor.modal_interaction;
+    sanity_assert(modal_interaction.open);
+    if !modal_interaction.open {
+        return;
+    }
+
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
+        return;
+    }
+
+    if panel.view.kind != .DOCUMENT {
+        return;
+    }
+
+    input_text := text_buffer_make_view_for_line(modal_interaction.buffer, 0,, temp);
+    gen_size, success := string_to_int(input_text, T = s64);
+
+    if !success {
+        editor_log(editor, "Can't parse benchmark text size.");
+        close_modal_interaction(editor, platform, input);
+        return;
+    }
+
+    view := *panel.view._document;
+    load_large_text(view, gen_size);
+
+    close_modal_interaction(editor, platform, input);
+}
+
+cancel :: (editor: *Editor, platform: Platform, input: Input) {
+    close_modal_interaction(editor, platform, input);
+}
 
 INFINITE_JEST_CHAPTER1 :: #string DONE
 
