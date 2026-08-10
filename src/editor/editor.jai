@@ -220,6 +220,8 @@ Editor :: struct {
     documents: Bucket_Array(Document, 16);
     listings:  Bucket_Array(Listing, 16);
 
+    project_root: string;
+
     // This is a simple hardcoded version of the view tree. We can replace it with fully K-d tree
     // layout out in an array, once we do arbitrary panel splitting.
     active_view: enum u8 {
@@ -634,6 +636,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-c s r", .SEARCH_DIRECTORY);
 
         key_map_add(key_map, "C-x C-f", .OPEN_FILE);
+        key_map_add(key_map, "C-c p f", .OPEN_FILE_IN_PROJECT);
 
         key_map_add(key_map, "C-x b",   .SWITCH_VIEW);
         key_map_add(key_map, "C-x k",   .CLOSE_VIEW);
@@ -650,8 +653,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_PANEL);
         key_map_add(key_map, "C-x 1",   .CLOSE_OTHER_PANELS);
         key_map_add(key_map, "C-x o",   .GO_TO_NEXT_PANEL);
-
-        key_map_add(key_map, "C-M-b",   .COMPILE);
     }
 
     {
@@ -1678,7 +1679,10 @@ Panel_Action :: enum {
     SEARCH;
     SEARCH_DIRECTORY;
 
+    COMPILE_DIRECTORY;
+
     OPEN_FILE;
+    OPEN_FILE_IN_PROJECT;
 
     SWITCH_VIEW;
     CLOSE_VIEW;
@@ -1692,7 +1696,10 @@ Panel_Action :: enum {
     CLOSE_OTHER_PANELS;
     GO_TO_NEXT_PANEL;
 
-    COMPILE;
+    // TODO(jt): @Cleanup Move things below to the Global_Action, because they don't need a panel to do their thing.
+
+    SEARCH_PROJECT;
+    COMPILE_PROJECT;
 
     ABULAFIA_THEME;
     NAYSAYER_THEME;
@@ -1764,6 +1771,8 @@ Listing_Action :: enum {
 
     OPEN;
     OPEN_IN_OTHER_PANEL;
+
+    SET_AS_PROJECT_ROOT;
 }
 
 #scope_file
@@ -1921,9 +1930,11 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
     if #complete action == {
         case .NONE;  return false;
 
-        case .SHOW_COMMANDS;     open_mini_panel(editor, platform, input, mini_panel_show_commands_procs);
-        case .SEARCH;            open_mini_panel(editor, platform, input, mini_panel_search_procs);
-        case .SEARCH_DIRECTORY;  open_mini_panel(editor, platform, input, mini_panel_search_directory_procs);
+        case .SHOW_COMMANDS;      open_mini_panel(editor, platform, input, mini_panel_show_commands_procs);
+        case .SEARCH;             open_mini_panel(editor, platform, input, mini_panel_search_procs);
+        case .SEARCH_DIRECTORY;   open_mini_panel(editor, platform, input, mini_panel_search_directory_procs);
+
+        case .COMPILE_DIRECTORY;  open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
 
         case .OPEN_FILE; {
             path: string;
@@ -1965,6 +1976,9 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
             }
 
             open_mini_panel(editor, platform, input, mini_panel_open_file_procs, path);
+        }
+        case .OPEN_FILE_IN_PROJECT; {
+            // nocheckin do this!
         }
 
         case .SWITCH_VIEW;  open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
@@ -2057,7 +2071,8 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
             }
         }
 
-        case .COMPILE;         open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
+        case .SEARCH_PROJECT; // nocheckin do this!
+        case .COMPILE_PROJECT; // nocheckin do this!
 
         case .ABULAFIA_THEME;  editor.theme = abulafia_theme(); theme_changed = true;
         case .NAYSAYER_THEME;  editor.theme = naysayer_theme(); theme_changed = true;
@@ -2444,6 +2459,11 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
             full_path := String.path_join(listing.backing_directory_path, item_path, separator = "/",, temp);
 
             open_file(editor, platform, input, full_path, open_in_panel);
+        }
+
+        case .SET_AS_PROJECT_ROOT; {
+            // nocheckin careful, we need to copy this into perm arena or somewhere it won't die.
+            editor.project_root = listing.backing_directory_path;
         }
     }
 
