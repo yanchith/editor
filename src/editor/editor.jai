@@ -157,6 +157,7 @@ operator==     :: Math.operator==;
 #load "gap_buffer.jai";
 #load "text_buffer.jai";
 #load "parentheses.jai";
+#load "line_search.jai";
 #load "color.jai";
 #load "theme.jai";
 #load "mini_panel_search.jai";
