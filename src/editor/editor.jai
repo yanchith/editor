@@ -18,8 +18,6 @@ TODO(jt): Usage self-feedback:
 - delete inside () should delete both parens (maybe also delete after)
 - typing a closing paren when cursor is just before a (balanced) closing paren should just move the cursor
 
-- lister doesn't clamp to index when it changes
-
 - allow spaces in mini panel buffer and loosen the search, also maybe be smarter about the nocase? maybe we want a fuzzy search?
 
 - undo being too aggressive sometimes (need to look for situations when this happens)
@@ -338,6 +336,8 @@ Listing_View :: struct {
 
         CLAMP_ITEM_INDEX_TO_SCROLL :: 0x01;
         CLAMP_SCROLL_TO_ITEM_INDEX :: 0x02;
+
+        TRANSIENT :: CLAMP_ITEM_INDEX_TO_SCROLL | CLAMP_SCROLL_TO_ITEM_INDEX;
     }
 }
 
@@ -2375,6 +2375,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
 // Panel, view and listing correspond to each other here. Not sure if I like this amount aliasing, but eh?
 execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, view: *Listing_View, listing: *Listing, action: Listing_Action) -> executed: bool {
+    original_item_index := view.item_index;
+
     if #complete action == {
         case .NONE;       return false;
 
@@ -2413,6 +2415,10 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
 
             open_file(editor, platform, input, full_path, open_in_panel);
         }
+    }
+
+    if view.item_index != original_item_index {
+        view.flags |= .CLAMP_SCROLL_TO_ITEM_INDEX;
     }
 
     return true;
@@ -2475,21 +2481,20 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                 case .DOCUMENT; {
                     view := *panel.view._document;
                     target.y = clamp(target.y, 0, cell_h * cast(f64, view.document.buffer.line_count - 1));
+
+                    view.flags |= .CLAMP_CURSOR_TO_SCROLL;
+                    view.flags |= .RECEIVED_MOUSE_INTERACTION;
                 }
                 case. LISTING; {
                     view := *panel.view._listing;
                     target.y = clamp(target.y, 0, cell_h * cast(f64, view.listing.items.count - 1));
+
+                    view.flags |= .CLAMP_ITEM_INDEX_TO_SCROLL;
+                    // view.flags |= .RECEIVED_MOUSE_INTERACTION;
                 }
             }
 
             interpolation_init(*panel.scroll, target);
-
-            if panel.view.kind == .DOCUMENT {
-                view := *panel.view._document;
-
-                view.flags |= .CLAMP_CURSOR_TO_SCROLL;
-                view.flags |= .RECEIVED_MOUSE_INTERACTION;
-            }
         }
 
         // TODO(jt): We can in time refine this to a more flexible API, like:
@@ -2784,7 +2789,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 }
             }
 
-            view.flags     &= ~.TRANSIENT;
+            view.flags &= ~.TRANSIENT;
         }
 
         case .LISTING; {
@@ -2848,6 +2853,8 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                     interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
                 }
             }
+
+            view.flags &= ~.TRANSIENT;
         }
     }
 
