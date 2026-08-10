@@ -44,7 +44,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         arena_reset(mini_panel.items_arena);
 
         search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-        search_text_char_count := mini_panel.buffer.line_chars[0];
+        search_parts := line_search_prepare_parts(search_text,, temp);
+        search_part1_char_count := ifx search_parts.count then count_utf8_chars(search_parts[0]) else 0;
 
         max_time_of_last_interaction: Apollo_Time;
 
@@ -65,8 +66,10 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 case .FILE;     document_name = it.backing_file_path; // TODO(jt): Strip path prefix common for all items.
             }
 
-            found_index, found := String.index_of_string_nocase(document_name, search_text);
+            found, found_indices := line_search(document_name, search_parts);
             if found {
+                found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
+
                 // Select the most recent document. (This is hopefully the current view.)
                 if it.time_of_last_interaction > max_time_of_last_interaction {
                     max_time_of_last_interaction = it.time_of_last_interaction;
@@ -84,7 +87,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 item.text = s;
                 item.flags = ifx it.flags & .MODIFIED then .WARNING;
                 item.highlight_x0 = x0;
-                item.highlight_x1 = x0 + search_text_char_count;
+                item.highlight_x1 = x0 + search_part1_char_count;
 
                 userdata := arena_push(mini_panel.items_arena, Close_View_Item_Userdata);
                 userdata.kind = .DOCUMENT;
@@ -102,8 +105,11 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             }
 
             listing_name: string = it.backing_directory_path;
-            found_index, found := String.index_of_string_nocase(listing_name, search_text);
+
+            found, found_indices := line_search(listing_name, search_parts);
             if found {
+                found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
+
                 s := "";
                 if listing_name.count {
                     s = arena_push_string(mini_panel.items_arena, listing_name);
@@ -114,7 +120,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 item := array_add(*mini_panel.items);
                 item.text = s;
                 item.highlight_x0 = x0;
-                item.highlight_x1 = x0 + search_text_char_count;
+                item.highlight_x1 = x0 + search_part1_char_count;
 
                 userdata := arena_push(mini_panel.items_arena, Close_View_Item_Userdata);
                 userdata.kind = .LISTING;
