@@ -22,6 +22,8 @@ TODO(jt): Usage self-feedback:
 
 - allow spaces in mini panel buffer and loosen the search, also maybe be smarter about the nocase? maybe we want a fuzzy search?
 
+- C-v and M-v should move the cursor and clamp the screen
+
 - undo being too aggressive sometimes (need to look for situations when this happens)
 
 TODO(jt): Roadmap:
@@ -752,20 +754,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     // Create first panel.
     panel := array_add(*editor.panels);
     panel_init_with_document(panel, editor, platform, scratch_document);
-
-
-
-    // nocheckin make this a command!
-    {
-        // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
-        // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
-        //
-        // UPDATE: The prior is true if we exclude update_parethesized_scopes, which now completely
-        // dominates every frame where an edit happened.
-
-        // BENCHMARK_TEXT_SIZE: s64 : 128 << 10;
-        // load_large_text(*panel.view._document, BENCHMARK_TEXT_SIZE);
-    }
 
     //
     // Init mini panel
@@ -1768,7 +1756,7 @@ Document_Action :: enum {
 
     STRIP_TRAILING_WHITESPACE;
 
-    INSERT_BENCHMARK_TEXT;
+    BENCHGEN_TEXT;
 }
 
 Listing_Action :: enum {
@@ -2357,7 +2345,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
         case .STRIP_TRAILING_WHITESPACE;  buffer_changed |= strip_trailing_whitespace(view);
 
-        case .INSERT_BENCHMARK_TEXT;  open_modal_interaction(editor, platform, input, modal_interaction_benchgen_procs);
+        case .BENCHGEN_TEXT;              open_modal_interaction(editor, platform, input, modal_interaction_benchgen_procs);
     }
 
     if cursor_moved || buffer_changed {
