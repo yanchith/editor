@@ -1081,8 +1081,18 @@ layout(location = 0, index = 1) out vec4 f_blend;
 
 uniform sampler2D diffuse_texture;
 
+const float COVERAGE_ADJUSTMENT = 0.1; // TODO(jt): Make this configurable? :Config
+
 void main () {
     vec3 coverage = texture(diffuse_texture, v_tex_coords).rgb;
+
+    // Coverage adjustment taken from:
+    // https://arkanis.de/weblog/2023-08-14-simple-good-quality-subpixel-text-rendering-in-opengl-with-stb-truetype-and-dual-source-blending/
+    if (COVERAGE_ADJUSTMENT > 0.0) {
+        coverage = min(coverage * (1.0 + COVERAGE_ADJUSTMENT), 1.0);
+    } else if (COVERAGE_ADJUSTMENT < 0.0) {
+        coverage = max((1.0 - (1.0 - coverage) * (1.0 - COVERAGE_ADJUSTMENT)), 0.0);
+    }
 
     f_color = v_color;
     f_blend = vec4(coverage, 1.0);
