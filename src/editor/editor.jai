@@ -22,8 +22,6 @@ TODO(jt): Usage self-feedback:
 
 - allow spaces in mini panel buffer and loosen the search, also maybe be smarter about the nocase? maybe we want a fuzzy search?
 
-- C-v and M-v should move the cursor and clamp the screen
-
 - undo being too aggressive sometimes (need to look for situations when this happens)
 
 TODO(jt): Roadmap:
@@ -642,12 +640,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-x k",   .CLOSE_VIEW);
 
         key_map_add(key_map, "C-l",     .RECENTER);
-        key_map_add(key_map, "M-v",     .SCROLL_UP);
-        key_map_add(key_map, "C-v",     .SCROLL_DOWN);
-        key_map_add(key_map, "<pageup>", .SCROLL_UP);
-        key_map_add(key_map, "<pagedown>", .SCROLL_DOWN);
-        key_map_add(key_map, "<prior>", .SCROLL_UP);
-        key_map_add(key_map, "<next>",  .SCROLL_DOWN);
+        key_map_add(key_map, "M-v",     .MOVE_UP_ONE_SCREEN);
+        key_map_add(key_map, "C-v",     .MOVE_DOWN_ONE_SCREEN);
+        key_map_add(key_map, "<pageup>", .MOVE_UP_ONE_SCREEN);
+        key_map_add(key_map, "<pagedown>", .MOVE_DOWN_ONE_SCREEN);
+        key_map_add(key_map, "<prior>", .MOVE_UP_ONE_SCREEN);
+        key_map_add(key_map, "<next>",  .MOVE_DOWN_ONE_SCREEN);
 
         key_map_add(key_map, "C-x 3",   .SPLIT_PANEL_HORIZONTALLY);
         key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_PANEL);
@@ -785,8 +783,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
         key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
 
-        key_map_add(key_map, "M-v",         .SCROLL_UP);
-        key_map_add(key_map, "C-v",         .SCROLL_DOWN);
+        key_map_add(key_map, "M-v",         .MOVE_UP_ONE_SCREEN);
+        key_map_add(key_map, "C-v",         .MOVE_DOWN_ONE_SCREEN);
 
         key_map_add(key_map, "C-<space>",   .START_SELECTING);
 
@@ -1535,8 +1533,8 @@ Mini_Panel_Action :: enum {
     DELETE_FORWARD;
     DELETE_BACKWARD;
 
-    SCROLL_UP;
-    SCROLL_DOWN;
+    MOVE_UP_ONE_SCREEN;
+    MOVE_DOWN_ONE_SCREEN;
 
     START_SELECTING;
 
@@ -1570,8 +1568,8 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .DELETE_FORWARD;          text_buffer_delete_forward(*mini_panel.buffer, *mini_panel.cursors); buffer_changed = true;
         case .DELETE_BACKWARD;         buffer_changed |= mini_panel.procs.delete_backward(editor, platform, input);
 
-        case .SCROLL_UP;               mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
-        case .SCROLL_DOWN;             mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+        case .MOVE_UP_ONE_SCREEN;      mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+        case .MOVE_DOWN_ONE_SCREEN;    mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
 
         case .START_SELECTING;         mini_panel.selecting = true; text_cursors_join(*mini_panel.cursors);
 
@@ -1687,8 +1685,8 @@ Panel_Action :: enum {
     CLOSE_VIEW;
 
     RECENTER;
-    SCROLL_UP;
-    SCROLL_DOWN;
+    MOVE_UP_ONE_SCREEN;
+    MOVE_DOWN_ONE_SCREEN;
 
     SPLIT_PANEL_HORIZONTALLY;
     CLOSE_CURRENT_PANEL;
@@ -1966,8 +1964,8 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .CLOSE_VIEW;   open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
 
         case .RECENTER;     recenter_panel(panel, editor, input);
-        case .SCROLL_UP;    scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
-        case .SCROLL_DOWN;  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
+        case .MOVE_UP_ONE_SCREEN;    scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
+        case .MOVE_DOWN_ONE_SCREEN;  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
 
         case .SPLIT_PANEL_HORIZONTALLY; {
             if editor.active_view == .FULL {
@@ -3891,39 +3889,42 @@ recenter_panel :: (panel: *Panel, editor: Editor, input: Input, force_center := 
 }
 
 scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
-    delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
-
-    target := panel.scroll.target;
-    target.y -= delta;
-    target.y = max(target.y, 0);
-    interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
+    // -2 for mode line and message line
+    delta := cast(s64, floor(input.window_size.y / cell_h) - 2 - PANEL_SCROLL_PADDING_CELLS_Y);
 
     if panel.view.kind == {
-        case .DOCUMENT;  panel.view._document.flags |= .CLAMP_CURSOR_TO_SCROLL;
-        case .LISTING;   panel.view._listing.flags |= .CLAMP_ITEM_INDEX_TO_SCROLL;
+        case .DOCUMENT; {
+            view := *panel.view._document;
+            text_buffer_move_cursor_y(view.document.buffer, *view.cursors, -delta, view.selecting);
+
+            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        }
+        case .LISTING; {
+            view := *panel.view._listing;
+            view.item_index = clamp(view.item_index - delta, 0, view.listing.items.count - 1);
+
+            view.flags |= .CLAMP_SCROLL_TO_ITEM_INDEX;
+        }
     }
 }
 
 scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
-    line_count: s64;
-    if #complete panel.view.kind == {
-        case .DOCUMENT;  line_count = panel.view._document.document.buffer.line_count;
-        case .LISTING;   line_count = panel.view._listing.listing.items.count;
-    }
-
-    bottom := cast(f64, line_count) * cell_h;
-    sanity_assert(bottom >= panel.scroll.target.y);
-
-    delta := cast(f64, input.window_size.y) - 3 * cell_h; // -2 for mode line and message line, another -1 to not scroll to a partially visible line.
-
-    target := panel.scroll.target;
-    target.y += delta;
-    target.y = min(target.y, max(bottom - delta, 0));
-    interpolation_chain(*panel.scroll, target, input.time, PANEL_SCROLL_DURATION);
+    // -2 for mode line and message line
+    delta := cast(s64, floor(input.window_size.y / cell_h) - 2 - PANEL_SCROLL_PADDING_CELLS_Y);
 
     if panel.view.kind == {
-        case .DOCUMENT;  panel.view._document.flags |= .CLAMP_CURSOR_TO_SCROLL;
-        case .LISTING;   panel.view._listing.flags |= .CLAMP_ITEM_INDEX_TO_SCROLL;
+        case .DOCUMENT; {
+            view := *panel.view._document;
+            text_buffer_move_cursor_y(view.document.buffer, *view.cursors, delta, view.selecting);
+
+            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+        }
+        case .LISTING; {
+            view := *panel.view._listing;
+            view.item_index = clamp(view.item_index + delta, 0, view.listing.items.count - 1);
+
+            view.flags |= .CLAMP_SCROLL_TO_ITEM_INDEX;
+        }
     }
 }
 
