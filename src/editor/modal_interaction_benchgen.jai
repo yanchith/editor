@@ -6,16 +6,22 @@ modal_interaction_benchgen_procs: Modal_Interaction_Procs = {
     cancel,
 };
 
-load_large_text :: (view: *Document_View, approx_size_in_bytes: s64) {
+// For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
+// For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
+//
+// UPDATE: The prior is true if we exclude update_parethesized_scopes, which now completely
+// dominates every frame where an edit happened.
+benchgen_text :: (view: *Document_View, approx_size_in_bytes: s64) {
     text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1);
 
-    // nocheckin undo fuse
     while view.document.buffer.gb.count < approx_size_in_bytes {
         SEPARATOR :: "\n========================================================\n\n";
 
-        text_buffer_insert(*view.document.buffer, *view.cursors, SEPARATOR);
-        text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1);
+        text_buffer_insert(*view.document.buffer, *view.cursors, SEPARATOR, .FUSE);
+        text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1, .FUSE);
     }
+
+    view.flags |= .CLAMP_SCROLL_TO_CURSOR;
 }
 
 #scope_file
@@ -59,7 +65,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
     }
 
     view := *panel.view._document;
-    load_large_text(view, gen_size);
+    benchgen_text(view, gen_size);
 
     close_modal_interaction(editor, platform, input);
 }
