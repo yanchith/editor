@@ -22,7 +22,7 @@ TODO(jt): Usage self-feedback:
 
 - allow spaces in mini panel buffer and loosen the search, also maybe be smarter about the nocase? maybe we want a fuzzy search?
 
-- undo being too aggressive sometimes, but I forgot when
+- undo being too aggressive sometimes (need to look for situations when this happens)
 
 TODO(jt): Roadmap:
 
@@ -59,6 +59,7 @@ TODO(jt): Roadmap:
 - [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme), could have custom defined themes)
 - [ ] Support for dropping files into the window
 - [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
+- [ ] CRLF
 - [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
 - [ ] Rotated session logs
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
