@@ -1817,10 +1817,12 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         if closes {
                             if view.cursors.c0 == view.cursors.c1 {
                                 c0 := view.cursors.c0;
-                                curr_byte := text_buffer_get_byte_at_location(document.buffer, c0);
-                                if char == curr_byte {
-                                    text_buffer_move_cursor_x(document.buffer, *view.cursors, 1, false);
-                                    handled = true;
+                                if text_buffer_can_read_at_location(document.buffer, c0) {
+                                    curr_byte := text_buffer_get_byte_at_location(document.buffer, c0);
+                                    if char == curr_byte {
+                                        text_buffer_move_cursor_x(document.buffer, *view.cursors, 1, false);
+                                        handled = true;
+                                    }
                                 }
                             } else {
                                 // Surrounding selection never cares for unbalanced parentheses
@@ -2230,15 +2232,17 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 prev_loc := view.cursors.c0;
                 prev_loc.x -= 1;
 
-                prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
-                curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
+                if text_buffer_can_read_at_location(document.buffer, curr_loc) {
+                    prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
+                    curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
 
-                opens, closes, paired_char := is_part_of_surround_pair(document, prev_byte);
-                if opens && paired_char == curr_byte {
-                    buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors, .NONE);
-                    buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors, .FUSE);
+                    opens, closes, paired_char := is_part_of_surround_pair(document, prev_byte);
+                    if opens && paired_char == curr_byte {
+                        buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors, .NONE);
+                        buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors, .FUSE);
 
-                    handled = true;
+                        handled = true;
+                    }
                 }
             }
 
