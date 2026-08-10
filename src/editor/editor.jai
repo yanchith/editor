@@ -15,9 +15,6 @@ TODO(jt): Usage self-feedback:
 - project-wide file open
 - project-wide search
 
-- delete inside () should delete both parens (maybe also delete after)
-- typing a closing paren when cursor is just before a (balanced) closing paren should just move the cursor
-
 - allow spaces in mini panel buffer and loosen the search, also maybe be smarter about the nocase? maybe we want a fuzzy search?
 
 - undo being too aggressive sometimes (need to look for situations when this happens)
@@ -1818,7 +1815,14 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         opens, closes, paired_char := is_part_of_surround_pair(document, char);
 
                         if closes {
-                            if view.cursors.c0 != view.cursors.c1 {
+                            if view.cursors.c0 == view.cursors.c1 {
+                                c0 := view.cursors.c0;
+                                curr_byte := text_buffer_get_byte_at_location(document.buffer, c0);
+                                if char == curr_byte {
+                                    text_buffer_move_cursor_x(document.buffer, *view.cursors, 1, false);
+                                    handled = true;
+                                }
+                            } else {
                                 // Surrounding selection never cares for unbalanced parentheses
                                 c0 := view.cursors.c0;
                                 c1 := view.cursors.c1;
@@ -1839,7 +1843,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                         if opens && !handled {
                             if view.cursors.c0 == view.cursors.c1 {
-                                // TODO(jt): handle balancing?
                                 text_buffer_insert_char(*document.buffer, *view.cursors, char, /*.BARRIER*/);
                                 text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .FUSE);
                                 text_buffer_move_cursor_x(document.buffer, *view.cursors, -1, false);
@@ -2219,7 +2222,31 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
         case .DELETE_FORWARD;               view.selecting = false; buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors);
-        case .DELETE_BACKWARD;              view.selecting = false; buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors);
+        case .DELETE_BACKWARD; {
+            handled := false;
+
+            if view.cursors.c0 == view.cursors.c1 && view.cursors.c0.x > 0 {
+                curr_loc := view.cursors.c0;
+                prev_loc := view.cursors.c0;
+                prev_loc.x -= 1;
+
+                prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
+                curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
+
+                opens, closes, paired_char := is_part_of_surround_pair(document, prev_byte);
+                if opens && paired_char == curr_byte {
+                    buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors, .NONE);
+                    buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors, .FUSE);
+
+                    handled = true;
+                }
+            }
+
+            if !handled {
+                view.selecting = false;
+                buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors);
+            }
+        }
 
         case .DELETE_FORWARD_WORD;          // TODO(jt): text_buffer_delete_until_next_word_boundary
         case .DELETE_BACKWARD_WORD;         // TODO(jt): text_buffer_delete_until_previous_word_boundary
