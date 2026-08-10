@@ -82,8 +82,9 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         array_reset_keeping_memory(*panel.highlights);
         panel.highlight_index = -1;
 
-        search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-        search_text_char_count := mini_panel.buffer.line_chars[0];
+        search_text  := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
+        search_parts := line_search_prepare_parts(search_text,, temp);
+        search_part1_char_count := ifx search_parts.count then count_utf8_chars(search_parts[0]) else 0;
 
         if panel.view.kind == {
             case .DOCUMENT; {
@@ -115,8 +116,10 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                         line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
                         line_text  := cast(string, line_bytes);
 
-                        found_index := find_index_from_left_nocase(line_text, search_text);
-                        if found_index != -1 {
+                        found, found_indices := line_search(line_text, search_parts);
+                        if found {
+                            found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
+
                             s := "";
                             line_number_prefix_length := 0;
 
@@ -131,7 +134,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             if !document.buffer.binary_mode {
                                 x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
                             }
-                            x1 := x0 + search_text_char_count;
+                            x1 := x0 + search_part1_char_count;
 
                             highlight := array_add(*panel.highlights);
                             highlight.x0 = x0;
@@ -185,8 +188,10 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     new_item_index := -1;
 
                     for listing.items {
-                        found_index := find_index_from_left_nocase(it.text, search_text);
-                        if found_index != -1 {
+                        found, found_indices := line_search(it.text, search_parts);
+                        if found {
+                            found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
+
                             s := "";
                             line_number_prefix_length := 0;
 
@@ -198,7 +203,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             }
 
                             x0 := found_index;
-                            x1 := x0 + search_text_char_count;
+                            x1 := x0 + search_part1_char_count;
 
                             highlight := array_add(*panel.highlights);
                             highlight.x0 = x0;
