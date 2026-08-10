@@ -2496,16 +2496,6 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
 
             interpolation_init(*panel.scroll, target);
         }
-
-        // TODO(jt): We can in time refine this to a more flexible API, like:
-        //
-        //     panel_wants_to_interact_with_mouse_hover(panel, input);
-        //
-        if panel.view.kind == .LISTING {
-            // See :DrawHoveredSelection and :BatterySaver.
-            wants_this_frame = true;
-            wants_next_frame = true; // Because we have to give the hover one frame to disappear.
-        }
     }
 
     //
@@ -3209,14 +3199,6 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 if it == view.item_index {
                     draw_rect(render_commands, line_rect_screen, editor.theme.selection_color);
-                }
-
-                // :DrawHoveredSelection
-                //
-                // We draw a rectangle over a hovered item. However, For this to be actually drawn,
-                // we must make sure we decided to actually render this frame (see :BatterySaver).
-                if rect_contains_point(line_rect_screen, input.mouse_position) {
-                    draw_rect(render_commands, line_rect_screen, editor.theme.hover_color);
                 }
 
                 // Because we start the layout just before the current viewport, the rendering scroll Y offset
