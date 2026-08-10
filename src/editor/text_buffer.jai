@@ -1109,7 +1109,7 @@ text_buffer_can_read_at_location :: (buffer: Text_Buffer, loc: Text_Location) ->
 }
 
 // Unwinds for OOB accesses.
-// TODO(jt): Also do a text_buffer_get_char_at_cursor that would decode the byte.
+// TODO(jt): Also do a text_buffer_get_char_at_location that would decode the byte.
 text_buffer_get_byte_at_location :: (buffer: Text_Buffer, loc: Text_Location) -> u8 {
     assert_location_valid_for_reads(buffer, loc);
 
@@ -1909,9 +1909,6 @@ assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
     assert(is_line_valid(buffer, line_index));
 }
 
-// TODO(jt): @Audit location_valid_for_{reads,writes}. They don't match up with how we clamp the
-// cursor when moving it around. Either fix or explain better.
-
 assert_location_valid_for_reads :: (buffer: Text_Buffer, loc: Text_Location) {
     assert(is_location_valid_for_reads(buffer, loc));
 }
@@ -1932,7 +1929,8 @@ is_location_valid_for_reads :: (buffer: Text_Buffer, loc: Text_Location) -> bool
 
 is_location_valid_for_writes :: (buffer: Text_Buffer, loc: Text_Location) -> bool {
     // For writing, the location can go past the last non-newline character, or past the last
-    // character on the last line, where there is no newline at the end.
+    // character on the last line, where there is no newline at the end. This is analogous to
+    // array_insert at the end not being an error.
     return loc.y >= 0 && loc.y < buffer.line_count && loc.x >= 0 && loc.x <= buffer.line_chars[loc.y];
 }
 
