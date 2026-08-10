@@ -15,8 +15,6 @@ TODO(jt): Usage self-feedback:
 - project-wide file open
 - project-wide search
 
-- allow spaces in mini panel buffer and loosen the search, also maybe be smarter about the nocase? maybe we want a fuzzy search?
-
 - undo being too aggressive sometimes (need to look for situations when this happens)
 
 TODO(jt): Roadmap:

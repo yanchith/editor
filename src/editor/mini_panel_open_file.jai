@@ -51,7 +51,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         path_prefix, _, _, filename := String.path_decomp(path_text);
         path_prefix = String.trim_right(path_prefix, "/");
 
-        filename_char_count := count_utf8_chars(filename);
+        filename_parts := line_search_prepare_parts(filename,, temp);
+        filename_part1_char_count := ifx filename_parts.count then count_utf8_chars(filename_parts[0]) else 0;
 
         if String.ends_with(path_text, "/") || filename == "." {
             self_dir := array_add(*mini_panel.items);
@@ -88,8 +89,10 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             listed_file_path := it.name;
             listed_filename := String.path_filename(it.name);
 
-            found_index, found := String.index_of_string_nocase(listed_filename, filename);
+            found, found_indices := line_search(listed_filename, filename_parts);
             if found {
+                found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
+
                 s := "";
                 if it.name.count {
                     s = arena_push_string(mini_panel.items_arena, listed_filename);
@@ -100,7 +103,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 item := array_add(*mini_panel.items);
                 item.text = s;
                 item.highlight_x0 = x0;
-                item.highlight_x1 = x0 + filename_char_count;
+                item.highlight_x1 = x0 + filename_part1_char_count;
                 item.userdata = null;
 
                 if it.name.count {

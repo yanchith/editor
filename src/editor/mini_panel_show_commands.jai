@@ -53,7 +53,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         arena_reset(mini_panel.items_arena);
 
         search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-        search_text_char_count := mini_panel.buffer.line_chars[0];
+        search_parts := line_search_prepare_parts(search_text,, temp);
+        search_part1_char_count := ifx search_parts.count then count_utf8_chars(search_parts[0]) else 0;
 
         actions_to_search_names: [..] string;
         actions_to_search_names.allocator = temp;
@@ -110,8 +111,10 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         }
 
         for actions_to_search_names {
-            found_index, found := String.index_of_string_nocase(it, search_text);
+            found, found_indices := line_search(it, search_parts);
             if found {
+                found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
+
                 x0 := count_utf8_chars(String.slice(it, 0, found_index));
 
                 s := arena_push_string(mini_panel.items_arena, it);
@@ -120,7 +123,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 item := array_add(*mini_panel.items);
                 item.text = s;
                 item.highlight_x0 = x0;
-                item.highlight_x1 = x0 + search_text_char_count;
+                item.highlight_x1 = x0 + search_part1_char_count;
 
                 userdata := arena_push(mini_panel.items_arena, Show_Commands_Item_Userdata);
                 userdata.kind = .UNINITIALIZED;
