@@ -4,7 +4,6 @@ Theme :: struct {
     cursor_color_active: Vector4;
     cursor_color_readonly: Vector4;
     line_color: Vector4;
-    hover_color: Vector4;
     selection_color: Vector4;
     highlight_color: Vector4;
     highlight_color_active: Vector4;
@@ -53,7 +52,6 @@ abulafia_theme :: () -> Theme {
     t.cursor_color_active        = unpack_srgba(0xffffffff);
     t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
     t.line_color                 = { 0, 0, 0, 0 };
-    t.hover_color                = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
     t.selection_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.150);
     t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
@@ -95,7 +93,6 @@ naysayer_theme :: () -> Theme {
     t.cursor_color_active        = unpack_srgba(0xffffffff);
     t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
     t.line_color                 = { 0, 0, 0, 0 };
-    t.hover_color                = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
     t.selection_color            = unpack_srgba(0x0000ffff);
     t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
@@ -136,7 +133,6 @@ handmade_theme :: () -> Theme {
     t.cursor_color_active        = unpack_srgba(0xffffffff);
     t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
     t.line_color                 = { 0, 0, 0, 0 };
-    t.hover_color                = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
     t.selection_color            = unpack_srgba(0x0000ffff);
     t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
@@ -179,7 +175,6 @@ zenburn_theme :: () -> Theme {
     t.cursor_color_active        = unpack_srgba(0xffffffff);
     t.cursor_color_readonly      = unpack_srgba(0xcc9393ff);
     t.line_color                 = { 0, 0, 0, 0 };
-    t.hover_color                = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
     t.selection_color            = unpack_srgba(0x2b2b2bff);
     t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
@@ -223,7 +218,6 @@ stb_theme :: () -> Theme {
     t.cursor_color_active        = foreground_color;
     t.cursor_color_readonly      = unpack_srgba(0xa0a0a0ff);
     t.line_color                 = { 0, 0, 0, 0 };
-    t.hover_color                = { 0, 0, 0, 0 };
     t.selection_color            = foreground_color;
     t.highlight_color            = foreground_color;
     t.highlight_color_active     = foreground_color;
