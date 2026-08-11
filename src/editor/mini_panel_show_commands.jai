@@ -17,6 +17,9 @@ PANEL_ACTION_VALUES :: #run enum_values_as_s64(Panel_Action);
 DOCUMENT_ACTION_NAMES  :: #run enum_names(Document_Action);
 DOCUMENT_ACTION_VALUES :: #run enum_values_as_s64(Document_Action);
 
+COMPILATION_ACTION_NAMES  :: #run enum_names(Compilation_Action);
+COMPILATION_ACTION_VALUES :: #run enum_values_as_s64(Compilation_Action);
+
 LISTING_ACTION_NAMES  :: #run enum_names(Listing_Action);
 LISTING_ACTION_VALUES :: #run enum_values_as_s64(Listing_Action);
 
@@ -78,22 +81,39 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         document_actions_low:  s64 = actions_to_search_names.count;
         document_actions_high: s64 = actions_to_search_names.count;
 
+        compilation_actions_low:  s64 = actions_to_search_names.count;
+        compilation_actions_high: s64 = actions_to_search_names.count;
+
         listing_actions_low:  s64 = actions_to_search_names.count;
         listing_actions_high: s64 = actions_to_search_names.count;
 
         if panel.view.kind == {
             case .DOCUMENT; {
-                array_reserve(*actions_to_search_names, actions_to_search_names.count + DOCUMENT_ACTION_NAMES.count);
-                array_reserve(*actions_to_search_values, actions_to_search_values.count + DOCUMENT_ACTION_NAMES.count);
-                for DOCUMENT_ACTION_NAMES {
-                    if it != "NONE" {
-                        array_add(*actions_to_search_names, it);
-                        array_add(*actions_to_search_values, DOCUMENT_ACTION_VALUES[it_index]);
+                if panel.view._document.document.kind == .COMPILATION {
+                    array_reserve(*actions_to_search_names, actions_to_search_names.count + COMPILATION_ACTION_NAMES.count);
+                    array_reserve(*actions_to_search_values, actions_to_search_values.count + COMPILATION_ACTION_NAMES.count);
+                    for COMPILATION_ACTION_NAMES {
+                        if it != "NONE" {
+                            array_add(*actions_to_search_names, it);
+                            array_add(*actions_to_search_values, COMPILATION_ACTION_VALUES[it_index]);
+                        }
                     }
-                }
-                assert(actions_to_search_names.count == actions_to_search_values.count);
+                    assert(actions_to_search_names.count == actions_to_search_values.count);
 
-                document_actions_high = actions_to_search_names.count;
+                    compilation_actions_high = actions_to_search_names.count;
+                } else {
+                    array_reserve(*actions_to_search_names, actions_to_search_names.count + DOCUMENT_ACTION_NAMES.count);
+                    array_reserve(*actions_to_search_values, actions_to_search_values.count + DOCUMENT_ACTION_NAMES.count);
+                    for DOCUMENT_ACTION_NAMES {
+                        if it != "NONE" {
+                            array_add(*actions_to_search_names, it);
+                            array_add(*actions_to_search_values, DOCUMENT_ACTION_VALUES[it_index]);
+                        }
+                    }
+                    assert(actions_to_search_names.count == actions_to_search_values.count);
+
+                    document_actions_high = actions_to_search_names.count;
+                }
             }
             case .LISTING; {
                 array_reserve(*actions_to_search_names, actions_to_search_names.count + LISTING_ACTION_NAMES.count);
@@ -218,13 +238,17 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
             }
 
             case .DOCUMENT; {
-                action := cast(Document_Action, userdata.value);
-
                 sanity_assert(panel.view.kind == .DOCUMENT);
                 view := *panel.view._document;
                 document := view.document;
 
-                execute_document_action(editor, platform, input, panel, view, document, action);
+                if document.kind == .COMPILATION {
+                    action := cast(Compilation_Action, userdata.value);
+                    execute_compilation_action(editor, platform, input, panel, view, document, action);
+                } else {
+                    action := cast(Document_Action, userdata.value);
+                    execute_document_action(editor, platform, input, panel, view, document, action);
+                }
             }
 
             case .LISTING; {

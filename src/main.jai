@@ -185,6 +185,10 @@ main :: () {
             }
         }
 
+        platform.get_current_time_monotonic = () -> Apollo_Time {
+            return current_time_monotonic();
+        }
+
         platform.run_in_process = (args: string, working_directory: string) -> exit_code: s32, output: string, error: string {
             // break_command_into_string always temps the result, so our context override is just futureproofing.
             arguments := Process.break_command_into_strings(args,, temp);

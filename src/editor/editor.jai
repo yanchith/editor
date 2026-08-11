@@ -9,6 +9,8 @@ TODO(jt): Known serious bugs:
 
 - On macOS, C-` (iterm) also causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab.
 
+- find and replace does not mark the document as modified!
+
 TODO(jt): Usage self-feedback:
 
 - finish the compilation buffer thing
@@ -204,9 +206,10 @@ Editor :: struct {
 
     input_state: Input_State;
 
-    panel_key_map:    Key_Map(Panel_Action);
-    document_key_map: Key_Map(Document_Action);
-    listing_key_map:  Key_Map(Listing_Action);
+    panel_key_map:       Key_Map(Panel_Action);
+    document_key_map:    Key_Map(Document_Action);
+    compilation_key_map: Key_Map(Compilation_Action);
+    listing_key_map:     Key_Map(Listing_Action);
     theme: Theme;
 
     watched_files: [..] string;
@@ -350,7 +353,14 @@ Document :: struct {
     cursors_cold: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
     buffer: Text_Buffer;
 
-    arena: *Arena; // For backing_file_path and syntax_highlight_tokens.
+    arena: *Arena; // For compilation_args, backing_file_directory, backing_file_path and syntax_highlight_tokens.
+
+    compilation_args: string; // Empty if this is not a .COMPILATION document.
+
+    backing_directory_path: string;
+
+    // TODO(jt): @Cleanup Now that we have backing_directory_path, should backing_file_path be
+    // an absolute path? Maybe it can just be a filename that we append.
 
     // Newly created documents (and scratch documents) do not have a backing file until saved, at
     // which point a backing file path is assigned and file created. A document with a
@@ -373,7 +383,7 @@ Document :: struct {
 
     Kind :: enum u32 {
         SCRATCH;
-        // COMPILATION;
+        COMPILATION;
         FILE;
     }
 
@@ -720,6 +730,47 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     }
 
     {
+        key_map := *editor.compilation_key_map;
+        key_map.allocator = arena_allocator(editor.perm_arena);
+
+        key_map_reserve(key_map, 128);
+
+        key_map_add(key_map, "C-p",     .MOVE_UP);
+        key_map_add(key_map, "<up>",    .MOVE_UP);
+        key_map_add(key_map, "C-n",     .MOVE_DOWN);
+        key_map_add(key_map, "<down>",  .MOVE_DOWN);
+        key_map_add(key_map, "C-b",     .MOVE_LEFT);
+        key_map_add(key_map, "<left>",  .MOVE_LEFT);
+        key_map_add(key_map, "C-f",     .MOVE_RIGHT);
+        key_map_add(key_map, "<right>", .MOVE_RIGHT);
+
+        key_map_add(key_map, "C-a",     .MOVE_TO_START_OF_LINE);
+        key_map_add(key_map, "C-e",     .MOVE_TO_END_OF_LINE);
+
+        key_map_add(key_map, "M-<",     .MOVE_TO_START);
+        key_map_add(key_map, "<home>",  .MOVE_TO_START);
+        key_map_add(key_map, "M->",     .MOVE_TO_END);
+        key_map_add(key_map, "<end>",   .MOVE_TO_END);
+
+        key_map_add(key_map, "M-p",     .MOVE_TO_PREVIOUS_BLANK_LINE);
+        key_map_add(key_map, "M-n",     .MOVE_TO_NEXT_BLANK_LINE);
+
+        key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
+        key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
+
+        key_map_add(key_map, "C-<space>", .START_SELECTING);
+        key_map_add(key_map, "C-g",     .STOP_SELECTING);
+
+        key_map_add(key_map, "M-w",     .COPY);
+        key_map_add(key_map, "C-w",     .COPY);
+
+        key_map_add(key_map, "p",       .MOVE_TO_PREVIOUS_ERROR);
+        key_map_add(key_map, "n",       .MOVE_TO_NEXT_ERROR);
+
+        key_map_add(key_map, "g",       .REFRESH);
+    }
+
+    {
         key_map := *editor.listing_key_map;
         key_map.allocator = arena_allocator(editor.perm_arena);
 
@@ -744,7 +795,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.panels.allocator        = arena_allocator(editor.perm_arena);
 
     // Create *scratch* document
-    scratch_document := find_or_add_document(editor, platform, .SCRATCH, "");
+    scratch_document: *Document;
+    {
+        success, working_directory := platform.get_absolute_path(".");
+        scratch_document = find_or_add_document(editor, platform, .SCRATCH, working_directory, "");
+    }
 
     text_buffer_insert(*scratch_document.buffer, *scratch_document.cursors_cold, WELCOME);
     text_buffer_move_cursor_to(scratch_document.buffer, *scratch_document.cursors_cold, 0, 0, false);
@@ -1274,6 +1329,7 @@ editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #call
 }
 
 // Returns Panel and panel_index only if *scratch* has a currently assigned panel.
+// TODO(jt): Unify this with find_or_add_compilation_document later.
 get_scratch :: (editor: Editor) -> *Document, *Panel, panel_index: s64 {
     document: *Document;
     panel: *Panel;
@@ -1287,10 +1343,6 @@ get_scratch :: (editor: Editor) -> *Document, *Panel, panel_index: s64 {
         panel = it;
         panel_index = it_index;
 
-        break;
-    }
-
-    if document {
         return document, panel, panel_index;
     }
 
@@ -1302,6 +1354,92 @@ get_scratch :: (editor: Editor) -> *Document, *Panel, panel_index: s64 {
     }
 
     assert(document != null, "We are missing *scratch*"); // Currently, *scratch* can't be closed, right?!
+
+    return document, panel, panel_index;
+}
+
+// Returns Panel and panel_index only if *compilation* has a currently assigned panel,
+// or it was assigned in the function because we provided show=true.
+find_or_add_compilation_document :: (editor: *Editor, platform: Platform, backing_directory_path: string, compilation_args: string, show := true) -> *Document, *Panel, panel_index: s64 {
+    document: *Document;
+    panel: *Panel;
+    panel_index: s64 = -1;
+
+    for * editor.panels {
+        if it.view.kind != .DOCUMENT                        continue;
+        if it.view._document.document.kind != .COMPILATION  continue;
+
+        document = it.view._document.document;
+        panel = it;
+        panel_index = it_index;
+
+        // TODO(jt): @Memory Currently, we repurpose an already existing compilation buffer,
+        // but we need to put the right directory in. If we do this a lot, we "leak" memory.
+        // Should we instead just make another compilation buffer and then the user can deal
+        // with all the open buffers? Same for args.  :HijackCompilationBuffer.
+        if backing_directory_path.count && backing_directory_path != document.backing_directory_path {
+            document.backing_directory_path = arena_push_string(document.arena, backing_directory_path);
+        }
+
+        if compilation_args.count && compilation_args != document.compilation_args {
+            document.compilation_args = arena_push_string(document.arena, compilation_args);
+        }
+
+        return document, panel, panel_index;
+    }
+
+    for * editor.documents {
+        if it.kind == .COMPILATION {
+            document = it;
+
+            // See :HijackCompilationBuffer.
+            if document.backing_directory_path != backing_directory_path {
+                document.backing_directory_path = arena_push_string(document.arena, backing_directory_path);
+            }
+
+            if compilation_args.count && compilation_args != document.compilation_args {
+                document.compilation_args = arena_push_string(document.arena, compilation_args);
+            }
+
+            break;
+        }
+    }
+
+    if !document {
+        document = find_or_add_document(editor, platform, .COMPILATION, backing_directory_path, "");
+        if compilation_args.count {
+            document.compilation_args = arena_push_string(document.arena, compilation_args);
+        }
+    }
+
+    if show {
+        if editor.active_view == {
+            case .FULL; {
+                assert(editor.panels.count == 1);
+
+                panel = array_add(*editor.panels);
+                panel_index = 1;
+
+                panel_init_with_document(panel, editor, platform, document);
+
+                editor.left_view_panel_index  = 0;
+                editor.right_view_panel_index = 1;
+
+                editor.active_view = .RIGHT;
+            }
+            case .LEFT; #through;
+            case .RIGHT; {
+                panel, panel_index = get_panel_for_inactive_view(editor);
+                panel_set_document(panel, editor, document);
+
+                if editor.active_view == {
+                    case .FULL;   // Shouldn't get here.
+                    case .LEFT;   editor.active_view = .RIGHT;
+                    case .RIGHT;  editor.active_view = .LEFT;
+                }
+            }
+        }
+    }
 
     return document, panel, panel_index;
 }
@@ -1338,7 +1476,7 @@ get_panel_for_inactive_view :: (editor: Editor) -> *Panel, panel_index: s64 {
     return panel, index;
 }
 
-get_panel_directory :: (editor: Editor, panel: Panel) -> /* Pointing to underlying thing or Static */ string {
+get_panel_directory :: (editor: Editor, panel: Panel) -> /* Pointing to underlying thing */ string {
     directory: string;
 
     if #complete panel.view.kind == {
@@ -1346,8 +1484,8 @@ get_panel_directory :: (editor: Editor, panel: Panel) -> /* Pointing to underlyi
             view := *panel.view._document;
             document := view.document;
 
-            if document.backing_file_path.count {
-                directory = String.path_strip_filename(document.backing_file_path);
+            if document.backing_directory_path.count {
+                directory = document.backing_directory_path;
             }
         }
 
@@ -1763,6 +1901,37 @@ Document_Action :: enum {
     BENCHGEN_TEXT;
 }
 
+Compilation_Action :: enum {
+    NONE;
+
+    MOVE_UP;
+    MOVE_DOWN;
+    MOVE_LEFT;
+    MOVE_RIGHT;
+
+    MOVE_TO_START_OF_LINE;
+    MOVE_TO_END_OF_LINE;
+
+    MOVE_TO_START;
+    MOVE_TO_END;
+
+    MOVE_TO_PREVIOUS_BLANK_LINE;
+    MOVE_TO_NEXT_BLANK_LINE;
+
+    MOVE_FORWARD_WORD;
+    MOVE_BACKWARD_WORD;
+
+    START_SELECTING;
+    STOP_SELECTING;
+
+    COPY;
+
+    MOVE_TO_PREVIOUS_ERROR;
+    MOVE_TO_NEXT_ERROR;
+
+    REFRESH;
+}
+
 Listing_Action :: enum {
     NONE;
 
@@ -1808,9 +1977,15 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 return;
             }
 
-            buffered, action   := key_map_input(*editor.document_key_map, event, editor.input_state.modifiers);
-            did_buffer_event   |= buffered;
-            did_execute_action |= execute_document_action(editor, platform, input, panel, view, document, action);
+            if document.kind == .COMPILATION {
+                buffered, action   := key_map_input(*editor.compilation_key_map, event, editor.input_state.modifiers);
+                did_buffer_event   |= buffered;
+                did_execute_action |= execute_compilation_action(editor, platform, input, panel, view, document, action);
+            } else {
+                buffered, action   := key_map_input(*editor.document_key_map, event, editor.input_state.modifiers);
+                did_buffer_event   |= buffered;
+                did_execute_action |= execute_document_action(editor, platform, input, panel, view, document, action);
+            }
 
             if !did_buffer_event && !did_execute_action && event.flags & .PRESSED {
                 if event.type == {
@@ -1942,8 +2117,14 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                 case .DOCUMENT; {
                     view := *panel.view._document;
                     document := view.document;
-                    if document && document.kind == .FILE && document.backing_file_path.count {
-                        path = String.path_strip_filename(document.backing_file_path);
+
+                    path = document.backing_directory_path;
+
+                    // Because we normalize backing_directory_path, this should always happen.
+                    // Maybe instead we want some kind of convention that our directory paths always end
+                    // with trailing / and file paths never do.  -jt, 8 August 2026
+                    if !String.ends_with(path, "/") {
+                        path = tprint("%/", path);
                     }
                 }
                 case .LISTING; {
@@ -2095,6 +2276,11 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
 
 // Panel, view and document correspond to each other here. Not sure if I like this amount aliasing, but eh?
 execute_document_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, view: *Document_View, document: *Document, action: Document_Action) -> executed: bool, cursor_moved: bool, buffer_changed: bool {
+    sanity_assert(document.kind != .COMPILATION);
+    if document.kind == .COMPILATION {
+        return false, false, false;
+    }
+
     cursor_moved   := false;
     buffer_changed := false;
 
@@ -2392,6 +2578,119 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .STRIP_TRAILING_WHITESPACE;  buffer_changed |= strip_trailing_whitespace(view);
 
         case .BENCHGEN_TEXT;              open_modal_interaction(editor, platform, input, modal_interaction_benchgen_procs);
+    }
+
+    if cursor_moved || buffer_changed {
+        // The cursor position interpolation gets setup in a centralized place instead of here, because the
+        // cursor can be moved from other places than this one (e.g. mouse, SEARCH mini
+        // panel...).
+        //
+        // :CentralizedCursorInterpolationSetup
+        document.time_of_last_interaction = input.time;
+        view.flags |= .RECEIVED_DIRECT_KEYBOARD_INTERACTION;
+        view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+    }
+
+    if buffer_changed {
+        document.flags |= .MODIFIED_THIS_FRAME;
+        document.flags |= .MODIFIED;
+
+        // We have to update these after every change, because the very next edit could be needing
+        // this. We could start being smarter about this (e.g. by setting a specific dirty flag),
+        // becuase not every subsequent action needs these up to date.  -jt, 22 July 2026.
+        update_parenthesized_scopes(document);
+    }
+
+    return true, cursor_moved, buffer_changed;
+}
+
+// Panel, view and document correspond to each other here. Not sure if I like this amount aliasing, but eh?
+execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, view: *Document_View, document: *Document, action: Compilation_Action) -> executed: bool, cursor_moved: bool, buffer_changed: bool {
+    sanity_assert(document.kind == .COMPILATION);
+    if document.kind != .COMPILATION {
+        return false, false, false;
+    }
+
+    cursor_moved   := false;
+    buffer_changed := false;
+
+    shift_selecting := editor.input_state.modifiers & .SHIFT;
+
+    if #complete action == {
+        case .NONE;  return false, cursor_moved, buffer_changed;
+
+        case .MOVE_UP; {
+            cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
+            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            if shift_selecting {
+                view.selecting = false;
+            }
+        }
+        case .MOVE_DOWN; {
+            cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
+            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            if shift_selecting {
+                view.selecting = false;
+            }
+        }
+        case .MOVE_LEFT; {
+            cursor_moved |= text_buffer_move_cursor_x(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
+            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            if shift_selecting {
+                view.selecting = false;
+            }
+        }
+        case .MOVE_RIGHT; {
+            cursor_moved |= text_buffer_move_cursor_x(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
+            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            if shift_selecting {
+                view.selecting = false;
+            }
+        }
+
+        case .MOVE_TO_START_OF_LINE;        cursor_moved |= text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_END_OF_LINE;          cursor_moved |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, view.selecting);
+
+        case .MOVE_TO_START;                cursor_moved |= text_buffer_move_cursor_to_start(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_END;                  cursor_moved |= text_buffer_move_cursor_to_end(document.buffer, *view.cursors, view.selecting);
+
+        case .MOVE_TO_PREVIOUS_BLANK_LINE;  cursor_moved |= text_buffer_move_cursor_to_previous_blank_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_NEXT_BLANK_LINE;      cursor_moved |= text_buffer_move_cursor_to_next_blank_line(document.buffer, *view.cursors, view.selecting);
+
+        case .MOVE_FORWARD_WORD; {
+            cursor_moved=, cursor_y_moved := text_buffer_move_cursor_to_next_word_boundary(document.buffer, *view.cursors, view.selecting);
+            if cursor_y_moved {
+                view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
+            }
+        }
+        case .MOVE_BACKWARD_WORD; {
+            cursor_moved=, cursor_y_moved := text_buffer_move_cursor_to_previous_word_boundary(document.buffer, *view.cursors, view.selecting);
+            if cursor_y_moved {
+                view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
+            }
+        }
+
+        case .START_SELECTING;              view.selecting = true;  text_cursors_join(*view.cursors);
+        case .STOP_SELECTING;               view.selecting = false; text_cursors_join(*view.cursors);
+
+        case .COPY; {
+            view.selecting = false;
+            text := text_buffer_make_view_for_interval(document.buffer, view.cursors.c0, view.cursors.c1,, temp);
+            if text {
+                platform.set_clipboard_text(text);
+            }
+
+            text_cursors_join(*view.cursors);
+        }
+
+        case .MOVE_TO_PREVIOUS_ERROR; {
+            // nocheckin
+        }
+        case .MOVE_TO_NEXT_ERROR; {
+            // nocheckin
+        }
+
+        case .REFRESH;  run_compilation(editor, platform, panel);
     }
 
     if cursor_moved || buffer_changed {
@@ -3221,8 +3520,9 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 document_name: string;
                 if #complete document.kind == {
-                    case .SCRATCH; document_name = "*scratch*";
-                    case .FILE;    document_name = String.path_filename(document.backing_file_path);
+                    case .SCRATCH;      document_name = "*scratch*";
+                    case .COMPILATION;  document_name = "*compilation*";
+                    case .FILE;         document_name = String.path_filename(document.backing_file_path);
                 }
 
                 percent_string := temp_right_pad(tprint("%\%", percent), 4);
@@ -3511,8 +3811,9 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
         success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
         if success {
             String.path_overwrite_separators(file_absolute_path, "/");
+            directory_absolute_path := String.path_strip_filename(file_absolute_path);
 
-            document, document_added := find_or_add_document(editor, platform, .FILE, file_absolute_path);
+            document, document_added := find_or_add_document(editor, platform, .FILE, directory_absolute_path, file_absolute_path);
             if document_added {
                 if file_exists {
                     editor_log(editor, "Opening file: %", file_absolute_path);
@@ -3552,10 +3853,11 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
     return panel;
 }
 
-find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_file_path: string) -> *Document, added: bool {
+find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_directory_path: string, backing_file_path: string) -> *Document, added: bool {
     for * editor.documents {
-        if it.kind != kind                            continue;
-        if it.backing_file_path != backing_file_path  continue;
+        if it.kind != kind                                      continue;
+        if it.backing_directory_path != backing_directory_path  continue;
+        if it.backing_file_path != backing_file_path            continue;
 
         it.time_of_last_interaction = editor.input_state.time;
 
@@ -3575,6 +3877,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
             document.mode = .JAI;
         }
     }
+
     document.flags = .NONE;
     document.time_of_last_interaction = editor.input_state.time;
 
@@ -3583,6 +3886,10 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
     text_buffer_init(*document.buffer, buffer_arena, buffer_edit_text_arena);
 
     document.arena = document_arena;
+    if backing_directory_path.count {
+        document.backing_directory_path = arena_push_string(document_arena, backing_directory_path);
+    }
+
     if backing_file_path.count {
         document.backing_file_path = arena_push_string(document_arena, backing_file_path);
     }
@@ -3884,6 +4191,52 @@ strip_trailing_whitespace :: (view: *Document_View) -> buffer_changed: bool {
     }
 
     return trimmed;
+}
+
+run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
+    sanity_assert(panel.view.kind == .DOCUMENT);
+    if panel.view.kind != .DOCUMENT {
+        return;
+    }
+
+    view := *panel.view._document;
+    document := view.document;
+
+    sanity_assert(document.kind == .COMPILATION);
+    if document.kind != .COMPILATION {
+        return;
+    }
+
+    working_directory := get_panel_directory(editor, panel);
+    if working_directory.count == 0 {
+        editor_log(editor, "Failed to get working directory for *compilation*");
+        return;
+    }
+
+    args := document.compilation_args;
+
+    view.cursors.c0 = { 0, 0 };
+    view.cursors.c1 = { 0, 0 };
+    text_buffer_reset(*document.buffer);
+    text_buffer_insert(*document.buffer, *view.cursors, "Compiling with args: ", undo_modifier = .OMIT);
+    text_buffer_insert(*document.buffer, *view.cursors, args, undo_modifier = .OMIT);
+    text_buffer_insert(*document.buffer, *view.cursors, "\n", undo_modifier = .OMIT );
+
+    time_before := platform.get_current_time_monotonic();
+    exit_code, output, error := platform.run_in_process(args, working_directory,, temp);
+    time_after  := platform.get_current_time_monotonic();
+
+    time_elapsed := time_after - time_before;
+
+    // TODO(jt): We should probably try to interleave stdout and stderr, because we don't know what
+    // the particular compiler does.
+    if exit_code == 0 {
+        text_buffer_insert(*document.buffer, *view.cursors, output, undo_modifier = .OMIT);
+    } else {
+        text_buffer_insert(*document.buffer, *view.cursors, error, undo_modifier = .OMIT);
+    }
+
+    text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: %\n\n", to_float64_seconds(time_elapsed), exit_code), undo_modifier = .OMIT);
 }
 
 // TODO(jt): The user experience of this kind of sucks. The first C-l should always recenter. But
