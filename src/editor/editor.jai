@@ -15,8 +15,6 @@ TODO(jt): Usage self-feedback:
 - project-wide file open
 - project-wide search
 
-- undo is usually too aggressive. Make .THROUGH time and type dependent dependent.
-
 TODO(jt): Roadmap:
 
 - [X] Display text on screen
