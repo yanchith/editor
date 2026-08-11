@@ -9,17 +9,11 @@ TODO(jt): Known serious bugs:
 
 - On macOS, C-` (iterm) also causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab.
 
-- find and replace does not mark the document as modified!
-
-- separators are not overwritten when we launch OPEN_FILE from *scratch*
-
 TODO(jt): Usage self-feedback:
 
 - finish the compilation buffer thing
 - project-wide file open
 - project-wide search
-
-- undo being too aggressive sometimes (need to look for situations when this happens)
 
 TODO(jt): Roadmap:
 
@@ -184,6 +178,8 @@ USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 
 FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(5000); // The maximum amount of time after which the polling fallback for file detection happens.
 FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(250);  // The amount of time we for which we disregard reported changes for a directory after a write.
+
+UNDO_MERGE_ELIGIBLE_PERIOD: Apollo_Time : #run milliseconds_to_apollo(500);
 
 GUTTER_PIXELS :: 10.0; // TODO(jt): Make this configurable. :Config
 
@@ -799,11 +795,17 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     // Create *scratch* document
     scratch_document: *Document;
     {
-        success, working_directory := platform.get_absolute_path(".");
+        success, working_directory := platform.get_absolute_path(".",, temp);
+        if !success {
+            working_directory = "";
+        }
+
+        String.path_overwrite_separators(working_directory, "/");
+
         scratch_document = find_or_add_document(editor, platform, .SCRATCH, working_directory, "");
     }
 
-    text_buffer_insert(*scratch_document.buffer, *scratch_document.cursors_cold, WELCOME);
+    text_buffer_insert(*scratch_document.buffer, *scratch_document.cursors_cold, WELCOME, .OMIT);
     text_buffer_move_cursor_to(scratch_document.buffer, *scratch_document.cursors_cold, 0, 0, false);
 
     // Create first panel.
@@ -2030,7 +2032,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                         if opens && !handled {
                             if view.cursors.c0 == view.cursors.c1 {
-                                text_buffer_insert_char(*document.buffer, *view.cursors, char, /*.BARRIER*/);
+                                text_buffer_insert_char(*document.buffer, *view.cursors, char, .BARRIER);
                                 text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .FUSE);
                                 text_buffer_move_cursor_x(document.buffer, *view.cursors, -1, false);
 
@@ -2054,7 +2056,16 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         }
 
                         if !handled {
-                            text_buffer_insert_char(*document.buffer, *view.cursors, char);
+                            // TODO(jt): ELIGIBLE_FOR_THROUGH_FLAG does not work super well when undoing, only redoing.
+                            // The problem is that the first insertion actually doesn't get THROUGH, so undo stops one edit short.
+                            // Can we design something a little better?
+
+                            undo_modifier: Undo_Modifier_For_Insert = .NONE;
+                            if input.time - document.time_of_last_interaction < UNDO_MERGE_ELIGIBLE_PERIOD {
+                                undo_modifier = .ELIGIBLE_FOR_THROUGH_FLAG;
+                            }
+
+                            text_buffer_insert_char(*document.buffer, *view.cursors, char, undo_modifier);
                         }
 
                         //
@@ -2544,7 +2555,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 }
             } else {
                 if view.cursors.c0 == view.cursors.c1 {
-                    buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "    ");
+                    buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "    ", .BARRIER);
                 }
             }
         }
