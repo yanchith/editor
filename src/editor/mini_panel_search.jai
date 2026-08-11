@@ -82,8 +82,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         array_reset_keeping_memory(*panel.highlights);
         panel.highlight_index = -1;
 
-        search_text  := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-        search_parts := line_search_prepare_parts(search_text,, temp);
+        search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
+        search_parts, smartcase := line_search_prepare_parts(search_text,, temp);
         search_part1_char_count := ifx search_parts.count then count_utf8_chars(search_parts[0]) else 0;
 
         if panel.view.kind == {
@@ -116,7 +116,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                         line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
                         line_text  := cast(string, line_bytes);
 
-                        found, found_indices := line_search(line_text, search_parts);
+                        found, found_indices := line_search(line_text, search_parts, smartcase);
                         if found {
                             found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
@@ -188,7 +188,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     new_item_index := -1;
 
                     for listing.items {
-                        found, found_indices := line_search(it.text, search_parts);
+                        found, found_indices := line_search(it.text, search_parts, smartcase);
                         if found {
                             found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 

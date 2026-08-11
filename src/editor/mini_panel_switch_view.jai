@@ -44,7 +44,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         arena_reset(mini_panel.items_arena);
 
         search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-        search_parts := line_search_prepare_parts(search_text,, temp);
+        search_parts, smartcase := line_search_prepare_parts(search_text,, temp);
         search_part1_char_count := ifx search_parts.count then count_utf8_chars(search_parts[0]) else 0;
 
         max_time_of_last_interaction: Apollo_Time;
@@ -63,7 +63,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 case .FILE;         document_name = it.backing_file_path; // TODO(jt): Strip path prefix common for all items.
             }
 
-            found, found_indices := line_search(document_name, search_parts);
+            found, found_indices := line_search(document_name, search_parts, smartcase);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
@@ -97,7 +97,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         for * editor.listings {
             listing_name: string = it.backing_directory_path;
 
-            found, found_indices := line_search(listing_name, search_parts);
+            found, found_indices := line_search(listing_name, search_parts, smartcase);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
