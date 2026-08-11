@@ -51,7 +51,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         path_prefix, _, _, filename := String.path_decomp(path_text);
         path_prefix = String.trim_right(path_prefix, "/");
 
-        filename_parts := line_search_prepare_parts(filename,, temp);
+        filename_parts, smartcase := line_search_prepare_parts(filename,, temp);
         filename_part1_char_count := ifx filename_parts.count then count_utf8_chars(filename_parts[0]) else 0;
 
         if String.ends_with(path_text, "/") || filename == "." {
@@ -89,7 +89,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             listed_file_path := it.name;
             listed_filename := String.path_filename(it.name);
 
-            found, found_indices := line_search(listed_filename, filename_parts);
+            found, found_indices := line_search(listed_filename, filename_parts, smartcase);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
