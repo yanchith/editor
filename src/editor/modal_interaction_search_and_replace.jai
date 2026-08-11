@@ -126,6 +126,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         text_buffer_insert(*document.buffer, *view.cursors, userdata.input_to_replace, .BARRIER);
 
                         document.flags |= .MODIFIED_THIS_FRAME;
+                        document.flags |= .MODIFIED;
 
                         // Instead of advancing the index we contract the array.
                         array_ordered_remove_by_index(*panel.highlights, panel.highlight_index);

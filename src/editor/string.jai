@@ -53,21 +53,23 @@ string_ends_with_newline :: (s: string, binary: bool) -> newline_byte_length: u3
     return 0;
 }
 
-// TODO(jt): @Speed @Cleanup This temporarily exists, because we want to see it on profiles (and we
-// don't want to put a profiling block around every callsite). Also, the JAI version is deprecated
-// and slow, and will eventually be replaced with something faster, but maybe we will have to
-// optimize this before that happens.
-find_index_from_left_nocase :: (s: string, substring: string) -> s64 {
+// TODO(jt): @Speed @Cleanup This is a deprecated routine from the String module,
+// called index_of_string_nocase, slightly modified with find_index_from_left.
+// it is very slow, so either pick up the thing that's going to replace it in modules,
+// or optimize it yourself.
+find_index_from_left_nocase :: (s: string, substring: string, start_index := 0) -> s64 {
     ProfileZone("find_index_from_left_nocase");
-    found_index, found := String.index_of_string_nocase(s, substring);
 
-    if !found {
-        return -1;
+    if !substring return -1;
+
+    // This is SO SLOW! @Cleanup.
+    for i: start_index..s.count-substring.count {
+        t := String.slice(s, i, substring.count);
+        if String.equal_nocase(t, substring) return i;
     }
 
-    return found_index;
+    return -1;
 }
-
 
 count_leading_whitespace_chars :: (bytes: [] u8) -> s64 {
     return inline count_leading_whitespace_chars(cast(string, bytes));

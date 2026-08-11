@@ -1,7 +1,6 @@
 // TODO(jt): Support regular expressions to be on par with external search tools.
-// TODO(jt): Support equivalent of ripgrep's --smart-case to match behavior with directory search.
 
-line_search :: (line_to_search: string, parts: [] string) -> found: bool, found_indices: [..] s64 {
+line_search :: (line_to_search: string, parts: [] string, smartcase: bool) -> found: bool, found_indices: [..] s64 {
     ProfileZone("line_search");
 
     found_indices: [..] s64;
@@ -11,30 +10,49 @@ line_search :: (line_to_search: string, parts: [] string) -> found: bool, found_
         return true, found_indices; // No queries? We found them all!
     }
 
-    for parts {
-        found_index := find_index_from_left_nocase(line_to_search, it);
+    start_index: s64 = 0;
+
+    for part: parts {
+        found_index: s64;
+        if smartcase {
+            found_index = find_index_from_left_nocase(line_to_search, part, start_index);
+        } else {
+            found_index = String.find_index_from_left(line_to_search, part, start_index);
+        }
+
         if found_index == -1 {
             arr: [..] s64;
             return false, arr;
         }
 
-        array_add(*found_indices, found_index);
-        advance(*line_to_search, found_index);
+        array_add(*found_indices, start_index + found_index);
+
+        start_index = found_index + part.count;
     }
 
     return true, found_indices;
 }
 
-line_search_prepare_parts :: (line_query: string) -> [] string {
+line_search_prepare_parts :: (line_query: string) -> parts: [] string, smartcase: bool {
+    smartcase := true;
+
     parts := String.split(line_query, " ");
-    for * parts {
-        it.* = String.trim(it.*);
-        if it.* == "" {
-            remove it;
+    for * part: parts {
+        part.* = String.trim(part.*);
+        if part.* == "" {
+            remove part;
+        }
+
+        // TODO(jt): Do unicode based smartcase detection.
+        for byte: part.* {
+            if byte >= #char "A" && byte <= #char "Z" {
+                smartcase = false;
+                break;
+            }
         }
     }
 
-    return parts;
+    return parts, smartcase;
 }
 
 // Rebuilds "part1 part2 part3 part4" into a regular expression that searches for part1, then part2, etc.

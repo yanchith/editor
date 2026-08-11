@@ -27,15 +27,15 @@ build :: () {
 
     for get_build_options().compile_time_command_line {
         if it == {
-            case "-check";            do_check = true;
-            case "-no-check";         do_check = false;
-            case "-profile";          do_profile = true;
-            case "-no-profile";       do_profile = false;
-            case "-sanity";           do_sanity = true;
-            case "-no-sanity";        do_sanity = false;
-            case "-subpixel";         do_subpixel = true;
-            case "-no-subpixel";      do_subpixel = false;
-            case "-windows-console";  do_windows_console = true;
+            case "-check";               do_check = true;
+            case "-no-check";            do_check = false;
+            case "-profile";             do_profile = true;
+            case "-no-profile";          do_profile = false;
+            case "-sanity";              do_sanity = true;
+            case "-no-sanity";           do_sanity = false;
+            case "-subpixel";            do_subpixel = true;
+            case "-no-subpixel";         do_subpixel = false;
+            case "-windows-console";     do_windows_console = true;
             case "-no-windows-console";  do_windows_console = false;
             case; {
                 log_error("Unknown argument '%'.\nExiting.", it);

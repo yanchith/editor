@@ -56,7 +56,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         arena_reset(mini_panel.items_arena);
 
         search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-        search_parts := line_search_prepare_parts(search_text,, temp);
+        search_parts, smartcase := line_search_prepare_parts(search_text,, temp);
         search_part1_char_count := ifx search_parts.count then count_utf8_chars(search_parts[0]) else 0;
 
         actions_to_search_names: [..] string;
@@ -131,7 +131,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         }
 
         for actions_to_search_names {
-            found, found_indices := line_search(it, search_parts);
+            found, found_indices := line_search(it, search_parts, smartcase);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 

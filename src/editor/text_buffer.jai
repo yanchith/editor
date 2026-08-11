@@ -144,13 +144,19 @@ Edit :: struct {
 
 Undo_Modifier_For_Insert :: enum {
     NONE;
-    OMIT;    // Do not record history for this edit. This is only valid before there are any recorded edits.
+
+    ELIGIBLE_FOR_THROUGH_FLAG;
+
     FUSE;    // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
     BARRIER; // Supress automatic fusing (either with .THROUGH or edit patching) of this edit with previous ones.
+    OMIT;    // Do not record history for this edit. This is only valid before there are any recorded edits.
 }
 
 Undo_Modifier_For_Delete :: enum {
     NONE;
+
+    ELIGIBLE_FOR_THROUGH_FLAG;
+
     FUSE; // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
 }
 
@@ -268,8 +274,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
         edit.flags = .NONE;
         if undo_modifier == .BARRIER {
             edit.flags |= .BARRIER;
-        } else if is_through_edit(text) {
-            // TODO(jt): Also don't add through, if the edit timestamps were too far apart.
+        } else if undo_modifier == .ELIGIBLE_FOR_THROUGH_FLAG && is_through_edit(text) {
             edit.flags |= .THROUGH;
         }
         edit.text = arena_push_string(buffer.edit_text_arena, text);
@@ -422,7 +427,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, und
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_FORWARD;
         edit.flags = .NONE;
-        if is_through_edit(cast(string, deleted)) {
+        if undo_modifier == .ELIGIBLE_FOR_THROUGH_FLAG && is_through_edit(cast(string, deleted)) {
             edit.flags |= .THROUGH;
         }
         edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
@@ -459,7 +464,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, und
             edit := array_add(*buffer.edits);
             edit.type = .DELETE_FORWARD;
             edit.flags = .NONE;
-            if is_through_edit(cast(string, deleted)) {
+            if undo_modifier == .ELIGIBLE_FOR_THROUGH_FLAG && is_through_edit(cast(string, deleted)) {
                 edit.flags |= .THROUGH;
             }
             edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
@@ -538,7 +543,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_BACKWARD;
         edit.flags = .NONE;
-        if is_through_edit(cast(string, deleted)) {
+        if undo_modifier == .ELIGIBLE_FOR_THROUGH_FLAG && is_through_edit(cast(string, deleted)) {
             edit.flags |= .THROUGH;
         }
         edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
@@ -579,7 +584,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
             edit := array_add(*buffer.edits);
             edit.type = .DELETE_BACKWARD;
             edit.flags = .NONE;
-            if is_through_edit(cast(string, deleted)) {
+            if undo_modifier == .ELIGIBLE_FOR_THROUGH_FLAG && is_through_edit(cast(string, deleted)) {
                 edit.flags |= .THROUGH;
             }
             edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
