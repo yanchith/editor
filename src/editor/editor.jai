@@ -9,8 +9,6 @@ TODO(jt): Known serious bugs:
 
 - On macOS, C-` (iterm) also causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab.
 
-- find and replace does not mark the document as modified!
-
 TODO(jt): Usage self-feedback:
 
 - finish the compilation buffer thing
