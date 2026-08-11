@@ -15,6 +15,8 @@ Platform :: struct {
     mem_commit:                      (pointer: *void, size: s64) -> bool;
     mem_decommit:                    (pointer: *void, size: s64);
 
+    get_current_time_monotonic:      () -> Apollo_Time;
+
     // TODO(jt): Also make a long-running version of this that we can poll for new bytes, exit code, etc.
     run_in_process:                  (args: string, working_directory: string) -> exit_code: s32, output: string, error: string;
 

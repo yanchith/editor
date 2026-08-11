@@ -56,14 +56,11 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         }
 
         for * editor.documents {
-            if it.kind == .SCRATCH {
-                continue;
-            }
-
             document_name: string;
-            if it.kind == {
-                case .SCRATCH;  document_name = "*scratch*"; // Should not happen, though!
-                case .FILE;     document_name = it.backing_file_path; // TODO(jt): Strip path prefix common for all items.
+            if #complete it.kind == {
+                case .SCRATCH;  continue;
+                case .COMPILATION;  document_name = "*compilation*";
+                case .FILE;         document_name = it.backing_file_path; // TODO(jt): Strip path prefix common for all items.
             }
 
             found, found_indices := line_search(document_name, search_parts);

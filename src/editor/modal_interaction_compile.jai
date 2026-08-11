@@ -33,34 +33,23 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    // TODO(jt): @Incomplete Remember the last compile command and pre-fill it.
-    // TODO(jt): @Incomplete Actually spawn a *compilation* buffer with its own key_map, highlighting, etc.
-
     working_directory := get_panel_directory(editor, panel);
     if working_directory.count == 0 {
-        close_modal_interaction(editor, platform, input);
         editor_log(editor, "Failed to get working directory for *compilation*");
+        close_modal_interaction(editor, platform, input);
         return;
     }
 
     args := text_buffer_make_view_for_line(modal_interaction.buffer, 0,, temp);
 
-    exit_code, output, error := platform.run_in_process(args, working_directory,, temp);
+    // TODO(jt): @Incomplete Remember the last compile command and pre-fill it.
 
-    scratch_document, scratch_panel := get_scratch(editor);
-    cursors := ifx scratch_panel then *scratch_panel.view._document.cursors else *scratch_document.cursors_cold;
+    compilation_document, compilation_panel := find_or_add_compilation_document(editor, platform, working_directory, args, show = true);
+    assert(compilation_panel.view.kind == .DOCUMENT);
+    compilation_view := *compilation_panel.view._document;
 
-    text_buffer_delete_all(*scratch_document.buffer, cursors);
-
-    // TODO(jt): We should probably try to interleave stdout and stderr, because we don't know what
-    // the particular compiler does.
-    if exit_code == 0 {
-        text_buffer_insert(*scratch_document.buffer, cursors, output);
-    } else {
-        text_buffer_insert(*scratch_document.buffer, cursors, error);
-    }
-
-    text_buffer_insert(*scratch_document.buffer, cursors, tprint("\nCompilation exited with code: %\n\n", exit_code));
+    // TODO(jt): @Cleanup We got the document only to forget it and now run_compilation has to get it again...
+    run_compilation(editor, platform, compilation_panel);
 
     close_modal_interaction(editor, platform, input);
 }
