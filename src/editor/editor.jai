@@ -17,7 +17,7 @@ TODO(jt): Usage self-feedback:
 - project-wide file open
 - project-wide search
 
-- undo being too aggressive sometimes (need to look for situations when this happens)
+- undo is usually too aggressive. Make .THROUGH time and type dependent dependent.
 
 TODO(jt): Roadmap:
 
@@ -797,7 +797,13 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     // Create *scratch* document
     scratch_document: *Document;
     {
-        success, working_directory := platform.get_absolute_path(".");
+        success, working_directory := platform.get_absolute_path(".",, temp);
+        if !success {
+            working_directory = "";
+        }
+
+        String.path_overwrite_separators(working_directory, "/");
+
         scratch_document = find_or_add_document(editor, platform, .SCRATCH, working_directory, "");
     }
 
