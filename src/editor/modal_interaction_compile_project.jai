@@ -1,4 +1,6 @@
-modal_interaction_compile_procs: Modal_Interaction_Procs = {
+// TODO(jt): @Cleanup This is almost 1:1 copypasta from modal_interaction_compile_directory.
+
+modal_interaction_compile_project_procs: Modal_Interaction_Procs = {
     get_action_text,
     init,
     handle_event,
@@ -27,13 +29,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    panel := get_panel_for_active_view(editor);
-    sanity_assert(panel != null);
-    if !panel {
-        return;
-    }
-
-    working_directory := get_panel_directory(editor, panel);
+    working_directory := editor.project_root;
     if working_directory.count == 0 {
         editor_log(editor, "Failed to get working directory for *compilation*");
         close_modal_interaction(editor, platform, input);

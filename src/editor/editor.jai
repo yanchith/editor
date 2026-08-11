@@ -163,7 +163,8 @@ operator==     :: Math.operator==;
 #load "mini_panel_close_view.jai";
 #load "mini_panel_show_commands.jai";
 #load "modal_interaction_search_and_replace.jai";
-#load "modal_interaction_compile.jai";
+#load "modal_interaction_compile_directory.jai";
+#load "modal_interaction_compile_project.jai";
 #load "modal_interaction_benchgen.jai";
 #load "lang_jai.jai";
 
@@ -2122,7 +2123,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .SEARCH;             open_mini_panel(editor, platform, input, mini_panel_search_procs);
         case .SEARCH_DIRECTORY;   open_mini_panel(editor, platform, input, mini_panel_search_directory_procs);
 
-        case .COMPILE_DIRECTORY;  open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
+        case .COMPILE_DIRECTORY;  open_modal_interaction(editor, platform, input, modal_interaction_compile_directory_procs);
 
         case .OPEN_FILE; {
             path: string;
@@ -2265,14 +2266,14 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
             }
         }
 
-        case .SEARCH_PROJECT; // nocheckin do this!
-        case .COMPILE_PROJECT; // nocheckin do this!
+        case .SEARCH_PROJECT;   // nocheckin do this!
+        case .COMPILE_PROJECT;  open_modal_interaction(editor, platform, input, modal_interaction_compile_project_procs);
 
-        case .ABULAFIA_THEME;  editor.theme = abulafia_theme(); theme_changed = true;
-        case .NAYSAYER_THEME;  editor.theme = naysayer_theme(); theme_changed = true;
-        case .HANDMADE_THEME;  editor.theme = handmade_theme(); theme_changed = true;
-        case .STB_THEME;       editor.theme = stb_theme(); theme_changed = true;
-        case .ZENBURN_THEME;   editor.theme = zenburn_theme();  theme_changed = true;
+        case .ABULAFIA_THEME;   editor.theme = abulafia_theme(); theme_changed = true;
+        case .NAYSAYER_THEME;   editor.theme = naysayer_theme(); theme_changed = true;
+        case .HANDMADE_THEME;   editor.theme = handmade_theme(); theme_changed = true;
+        case .STB_THEME;        editor.theme = stb_theme(); theme_changed = true;
+        case .ZENBURN_THEME;    editor.theme = zenburn_theme();  theme_changed = true;
     }
 
     if theme_changed {
@@ -2774,8 +2775,8 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
         }
 
         case .SET_AS_PROJECT_ROOT; {
-            // nocheckin careful, we need to copy this into perm arena or somewhere it won't die.
-            editor.project_root = listing.backing_directory_path;
+            // TODO(jt): @Leak Not a big problem, but still a leak.
+            editor.project_root = arena_push_string(editor.perm_arena, listing.backing_directory_path);
         }
     }
 
@@ -4231,9 +4232,12 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     view.cursors.c0 = { 0, 0 };
     view.cursors.c1 = { 0, 0 };
     text_buffer_reset(*document.buffer);
-    text_buffer_insert(*document.buffer, *view.cursors, "Compiling with args: ", undo_modifier = .OMIT);
-    text_buffer_insert(*document.buffer, *view.cursors, args, undo_modifier = .OMIT);
-    text_buffer_insert(*document.buffer, *view.cursors, "\n", undo_modifier = .OMIT );
+    text_buffer_insert(*document.buffer, *view.cursors, "Compilation directory: ", .OMIT);
+    text_buffer_insert(*document.buffer, *view.cursors, working_directory, .OMIT);
+    text_buffer_insert(*document.buffer, *view.cursors, "\n", .OMIT );
+    text_buffer_insert(*document.buffer, *view.cursors, "Compiling with args: ", .OMIT);
+    text_buffer_insert(*document.buffer, *view.cursors, args, .OMIT);
+    text_buffer_insert(*document.buffer, *view.cursors, "\n", .OMIT );
 
     time_before := platform.get_current_time_monotonic();
     exit_code, output, error := platform.run_in_process(args, working_directory,, temp);
@@ -4241,11 +4245,14 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
 
     time_elapsed := time_after - time_before;
 
-    // TODO(jt): We should probably try to interleave stdout and stderr, because we don't know what
-    // the particular compiler does.
-    if exit_code == 0 {
+    // TODO(jt): Interleave stdout and stderr as the process writes to them.
+    if error.count == 0 {
         text_buffer_insert(*document.buffer, *view.cursors, output, undo_modifier = .OMIT);
+    } else if output.count == 0 {
+        text_buffer_insert(*document.buffer, *view.cursors, error, undo_modifier = .OMIT);
     } else {
+        text_buffer_insert(*document.buffer, *view.cursors, output, undo_modifier = .OMIT);
+        text_buffer_insert(*document.buffer, *view.cursors, "Compilation also wrote to standard error (this will eventually be properly interleaved):\n\n", .OMIT);
         text_buffer_insert(*document.buffer, *view.cursors, error, undo_modifier = .OMIT);
     }
 
