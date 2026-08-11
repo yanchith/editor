@@ -11,6 +11,8 @@ TODO(jt): Known serious bugs:
 
 - find and replace does not mark the document as modified!
 
+- separators are not overwritten when we launch OPEN_FILE from *scratch*
+
 TODO(jt): Usage self-feedback:
 
 - finish the compilation buffer thing
