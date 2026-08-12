@@ -668,7 +668,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-x p f", .OPEN_PROJECT_FILE);
         key_map_add(key_map, "C-c s r", .SEARCH_PROJECT); // For my muscle memory.
         key_map_add(key_map, "C-x p s", .SEARCH_PROJECT);
-        key_map_add(key_map, "C-x p b", .COMPILE_PROJECT);
+        key_map_add(key_map, "C-x p c", .COMPILE_PROJECT);
     }
 
     {
