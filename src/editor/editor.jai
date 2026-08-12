@@ -157,13 +157,12 @@ operator==     :: Math.operator==;
 #load "color.jai";
 #load "theme.jai";
 #load "mini_panel_search.jai";
-#load "mini_panel_search_directory.jai";
+#load "mini_panel_search_project.jai";
 #load "mini_panel_open_file.jai";
 #load "mini_panel_switch_view.jai";
 #load "mini_panel_close_view.jai";
 #load "mini_panel_show_commands.jai";
 #load "modal_interaction_search_and_replace.jai";
-#load "modal_interaction_compile_directory.jai";
 #load "modal_interaction_compile_project.jai";
 #load "modal_interaction_benchgen.jai";
 #load "lang_jai.jai";
@@ -222,7 +221,7 @@ Editor :: struct {
     documents: Bucket_Array(Document, 16);
     listings:  Bucket_Array(Listing, 16);
 
-    project_root: string;
+    project_directory: string;
 
     // This is a simple hardcoded version of the view tree. We can replace it with fully K-d tree
     // layout out in an array, once we do arbitrary panel splitting.
@@ -642,7 +641,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "M-x",     .SHOW_COMMANDS);
         key_map_add(key_map, "C-S-p",   .SHOW_COMMANDS);
         key_map_add(key_map, "C-s",     .SEARCH);
-        key_map_add(key_map, "C-c s r", .SEARCH_DIRECTORY);
+
+        key_map_add(key_map, "C-c s r", .SEARCH_PROJECT);
 
         key_map_add(key_map, "C-x C-f", .OPEN_FILE);
         key_map_add(key_map, "C-c p f", .OPEN_FILE_IN_PROJECT);
@@ -1820,9 +1820,6 @@ Panel_Action :: enum {
 
     SHOW_COMMANDS;
     SEARCH;
-    SEARCH_DIRECTORY;
-
-    COMPILE_DIRECTORY;
 
     OPEN_FILE;
     OPEN_FILE_IN_PROJECT;
@@ -1946,7 +1943,8 @@ Listing_Action :: enum {
     OPEN;
     OPEN_IN_OTHER_PANEL;
 
-    SET_AS_PROJECT_ROOT;
+    SET_PROJECT_DIRECTORY;
+    UNSET_PROJECT_DIRECTORY;
 }
 
 #scope_file
@@ -2121,9 +2119,6 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
 
         case .SHOW_COMMANDS;      open_mini_panel(editor, platform, input, mini_panel_show_commands_procs);
         case .SEARCH;             open_mini_panel(editor, platform, input, mini_panel_search_procs);
-        case .SEARCH_DIRECTORY;   open_mini_panel(editor, platform, input, mini_panel_search_directory_procs);
-
-        case .COMPILE_DIRECTORY;  open_modal_interaction(editor, platform, input, modal_interaction_compile_directory_procs);
 
         case .OPEN_FILE; {
             path: string;
@@ -2266,7 +2261,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
             }
         }
 
-        case .SEARCH_PROJECT;   // nocheckin do this!
+        case .SEARCH_PROJECT;   open_mini_panel(editor, platform, input, mini_panel_search_project_procs);
         case .COMPILE_PROJECT;  open_modal_interaction(editor, platform, input, modal_interaction_compile_project_procs);
 
         case .ABULAFIA_THEME;   editor.theme = abulafia_theme(); theme_changed = true;
@@ -2774,9 +2769,14 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
             open_file(editor, platform, input, full_path, open_in_panel);
         }
 
-        case .SET_AS_PROJECT_ROOT; {
+        case .SET_PROJECT_DIRECTORY; {
             // TODO(jt): @Leak Not a big problem, but still a leak.
-            editor.project_root = arena_push_string(editor.perm_arena, listing.backing_directory_path);
+            editor.project_directory = arena_push_string(editor.perm_arena, listing.backing_directory_path);
+            editor_log(editor, "Project directory set to %", editor.project_directory);
+        }
+        case .UNSET_PROJECT_DIRECTORY; {
+            editor.project_directory = "";
+            editor_log(editor, "Project directory unset");
         }
     }
 
@@ -4094,7 +4094,7 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
     //
     // Analogous for listing-viewing panel and item_index.
     //
-    // TODO(jt): @Cleanup This is a copypasta between document/listing code.
+    // TODO(jt): @Cleanup @Copypasta This is a copypasta between document/listing code.
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
@@ -4144,7 +4144,7 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
     //
     // Analogous for listing-viewing panel and item_index.
     //
-    // TODO(jt): @Cleanup This is a copypasta between document/listing code.
+    // TODO(jt): @Cleanup @Copypasta This is a copypasta between document/listing code.
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;

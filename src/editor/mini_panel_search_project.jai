@@ -1,4 +1,4 @@
-mini_panel_search_directory_procs: Mini_Panel_Procs = {
+mini_panel_search_project_procs: Mini_Panel_Procs = {
     get_action_text,
     can_select_text_line,
     init,
@@ -13,11 +13,12 @@ mini_panel_search_directory_procs: Mini_Panel_Procs = {
 
 MIN_SEARCH_TEXT_COUNT :: 3;
 
-Search_Directory_Userdata :: struct {
+Search_Project_Userdata :: struct {
     working_directory: string;
+    working_directory_is_project: bool;
 }
 
-Search_Directory_Item_Userdata :: struct {
+Search_Project_Item_Userdata :: struct {
     file_path: string;
     line_number: s64;
     column_number: s64;
@@ -37,7 +38,10 @@ get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Tem
         help_text = tprint(" (type % more)", MIN_SEARCH_TEXT_COUNT - search_text_char_count);
     }
 
-    return tprint("%  Search directory%: ", temp_right_pad(tprint("%", editor.mini_panel.items.count), 4), help_text);
+    userdata: *Search_Project_Userdata = mini_panel.userdata;
+    is_project := userdata.working_directory_is_project;
+
+    return tprint("%  Search %%: ", temp_right_pad(tprint("%", editor.mini_panel.items.count), 4), ifx is_project then "project" else "directory" ,help_text);
 }
 
 can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> bool {
@@ -51,21 +55,34 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    panel := get_panel_for_active_view(editor);
-    sanity_assert(panel != null);
-    if !panel {
-        return;
-    }
 
-    working_directory := get_panel_directory(editor, panel);
+    working_directory := editor.project_directory;
+    working_directory_is_project := true;
+
     if working_directory.count == 0 {
+        panel := get_panel_for_active_view(editor);
+        sanity_assert(panel != null);
+        if !panel {
+            return;
+        }
+
+        if #complete panel.view.kind == {
+            case .DOCUMENT;  working_directory = panel.view._document.document.backing_directory_path;
+            case .LISTING;   working_directory = panel.view._listing.listing.backing_directory_path;
+        }
+
+        working_directory_is_project = false;
+    }
+
+    if working_directory.count == 0 {
+        editor_log(editor, "Failed to get working directory to search");
         close_mini_panel(editor, platform, input);
-        editor_log(editor, "Failed to get directory for search");
         return;
     }
 
-    userdata := arena_push(mini_panel.userdata_arena, Search_Directory_Userdata);
+    userdata := arena_push(mini_panel.userdata_arena, Search_Project_Userdata);
     userdata.working_directory = arena_push_string(mini_panel.userdata_arena, working_directory);
+    userdata.working_directory_is_project = working_directory_is_project;
 
     mini_panel.userdata = userdata;
 }
@@ -110,7 +127,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             //     -jt, 6 August 2026
             args := tprint("% \"%\" ./", RG_BASE_COMMAND, search_regexp);
 
-            userdata: *Search_Directory_Userdata = mini_panel.userdata;
+            userdata: *Search_Project_Userdata = mini_panel.userdata;
             working_directory := userdata.working_directory;
 
             exit_code, output, error := platform.run_in_process(args, working_directory,, temp);
@@ -166,7 +183,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 item.highlight_x0 = 0;
                 item.highlight_x1 = 0;
 
-                userdata := arena_push(mini_panel.items_arena, Search_Directory_Item_Userdata);
+                userdata := arena_push(mini_panel.items_arena, Search_Project_Item_Userdata);
                 userdata.file_path = file_path;
                 userdata.line_number = line_number;
                 userdata.column_number = column_number;
@@ -207,10 +224,10 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
     if mini_panel.items.count {
         assert(mini_panel.item_index >= 0);
 
-        userdata: *Search_Directory_Userdata = mini_panel.userdata;
+        userdata: *Search_Project_Userdata = mini_panel.userdata;
         working_directory := userdata.working_directory;
 
-        item_userdata: *Search_Directory_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
+        item_userdata: *Search_Project_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
         relative_path := item_userdata.file_path;
 
         file_path := String.path_join(working_directory, relative_path,, temp);
