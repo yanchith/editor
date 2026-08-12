@@ -80,6 +80,7 @@ TODO(jt): @Stream Small things to do:
 - [X] OPEN_FILE completion also completes, if we are on the text line but there is only one item in the list.
 - [X] Selection in mini panel text buffer.
 - [ ] Selection in modal interaction text buffer.
+- [ ] MOVE_TO_START and MOVE_TO_END in mini panel.
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
 - [ ] SEARCH should allow words separated by spaces
@@ -95,7 +96,6 @@ TODO(jt): @Stream Small things to do:
 - [ ] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
 - [ ] C-u C-<space> and cursor undo.
 - [ ] M-q (reflow)
-- [ ] Kill ring
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Flash cursor with typing (needs tuning)
 - [ ] Flash pasted text
