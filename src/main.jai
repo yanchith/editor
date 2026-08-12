@@ -261,12 +261,12 @@ main :: () {
 
         // TODO(jt): platform.make_directory
         // TODO(jt): platform.delete_directory
-        platform.list_directory = (path: string) -> [] Editor.File_Info /* Allocated with context.allocator */ {
-            file_infos: [..] Editor.File_Info; // context.allocator
+        platform.list_directory = (path: string, recursive: bool, files: bool, directories: bool) -> [] Editor.File_Info /* context.allocator */ {
+            file_infos: [..] Editor.File_Info;
 
             visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] Editor.File_Info) {
                 file_info := array_add(userdata);
-                file_info.name = copy_string(visit_info.full_name); // context.allocator
+                file_info.name = copy_string(visit_info.full_name);
                 file_info.size = visit_info.size;
 
                 file_info.modification_time = visit_info.modification_time;
@@ -275,7 +275,7 @@ main :: () {
                 file_info.is_directory = visit_info.is_directory;
             }
 
-            File_Utilities.visit_files(path, false, *file_infos, visitor, visit_files = true, visit_directories = true, visit_symlinks = true, follow_directory_symlinks = true);
+            File_Utilities.visit_files(path, recursive, *file_infos, visitor, visit_files = files, visit_directories = directories, visit_symlinks = true, follow_directory_symlinks = true);
 
             return file_infos;
         }
