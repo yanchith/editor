@@ -180,7 +180,7 @@ zenburn_theme :: () -> Theme {
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
     t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
     t.modeline_color             = unpack_srgba(0x2b2b2bff);
-    t.modeline_color_active      = unpack_srgba(0xfffffbff);
+    t.modeline_color_active      = unpack_srgba(0x202020ff);
 
     t.background_color           = background_color;
     t.gutter_color               = background_color;
