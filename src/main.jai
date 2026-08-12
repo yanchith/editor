@@ -266,8 +266,8 @@ main :: () {
 
             visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] Editor.File_Info) {
                 file_info := array_add(userdata);
-                file_info.name = copy_string(visit_info.full_name);
-                file_info.size = visit_info.size;
+                file_info.absolute_path = copy_string(visit_info.full_name);
+                file_info.size          = visit_info.size;
 
                 file_info.modification_time = visit_info.modification_time;
 

@@ -137,18 +137,17 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             }
         }
 
-        // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
         file_list := platform.list_directory(path_prefix, recursive = false, files = true, directories = true,, temp);
         for file_list {
-            listed_file_path := it.name;
-            listed_filename := String.path_filename(it.name);
+            listed_file_path := it.absolute_path;
+            listed_filename := String.path_filename(it.absolute_path);
 
             found, found_indices := line_search(listed_filename, filename_parts, smartcase);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
                 s := "";
-                if it.name.count {
+                if listed_filename.count {
                     s = arena_push_string(mini_panel.items_arena, listed_filename);
                 }
 
@@ -160,8 +159,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 item.highlight_x1 = x0 + filename_part1_char_count;
                 item.userdata = null;
 
-                if it.name.count {
-                    full_file_path := arena_push_string(mini_panel.items_arena, it.name);
+                if it.absolute_path.count {
+                    full_file_path := arena_push_string(mini_panel.items_arena, it.absolute_path);
 
                     userdata := arena_push(mini_panel.items_arena, Open_File_Item_Userdata);
                     userdata.full_file_path = full_file_path;

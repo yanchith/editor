@@ -188,8 +188,6 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
         return false;
     }
 
-    // TODO(jt): The reset also nukes the edit history of the mini panel buffer... maybe
-    // we don't want that?
     if mini_panel.items.count == 1 {
         text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursors);
         text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, mini_panel.items[0].text);
