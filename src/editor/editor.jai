@@ -2117,64 +2117,16 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
     if #complete action == {
         case .NONE;  return false;
 
-        case .SHOW_COMMANDS;      open_mini_panel(editor, platform, input, mini_panel_show_commands_procs);
-        case .SEARCH;             open_mini_panel(editor, platform, input, mini_panel_search_procs);
+        case .SHOW_COMMANDS;         open_mini_panel(editor, platform, input, mini_panel_show_commands_procs);
+        case .SEARCH;                open_mini_panel(editor, platform, input, mini_panel_search_procs);
 
-        case .OPEN_FILE; {
-            path: string;
-            if panel.view.kind == {
-                case .DOCUMENT; {
-                    view := *panel.view._document;
-                    document := view.document;
+        case .OPEN_FILE;             open_mini_panel(editor, platform, input, mini_panel_open_file_procs);
+        case .OPEN_FILE_IN_PROJECT;  // nocheckin do this!
 
-                    path = document.backing_directory_path;
+        case .SWITCH_VIEW;           open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
+        case .CLOSE_VIEW;            open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
 
-                    // Because we normalize backing_directory_path, this should always happen.
-                    // Maybe instead we want some kind of convention that our directory paths always end
-                    // with trailing / and file paths never do.  -jt, 8 August 2026
-                    if !String.ends_with(path, "/") {
-                        path = tprint("%/", path);
-                    }
-                }
-                case .LISTING; {
-                    view := *panel.view._listing;
-                    listing := view.listing;
-                    if listing && listing.kind == .DIRECTORY && listing.backing_directory_path.count {
-                        path = listing.backing_directory_path;
-
-                        // Because we normalize backing_directory_path, this should always happen.
-                        // Maybe instead we want some kind of convention that our directory paths always end
-                        // with trailing / and file paths never do.  -jt, 8 August 2026
-                        if !String.ends_with(path, "/") {
-                            path = tprint("%/", path);
-                        }
-                    }
-                }
-            }
-
-            if path.count == 0 {
-                success, _path := platform.get_absolute_path(".",, temp);
-                if success {
-                    String.path_overwrite_separators(_path, "/");
-
-                    if !String.ends_with(_path, "/") {
-                        _path = tprint("%/", _path);
-                    }
-
-                    path = _path;
-                }
-            }
-
-            open_mini_panel(editor, platform, input, mini_panel_open_file_procs, path);
-        }
-        case .OPEN_FILE_IN_PROJECT; {
-            // nocheckin do this!
-        }
-
-        case .SWITCH_VIEW;  open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
-        case .CLOSE_VIEW;   open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
-
-        case .RECENTER;     recenter_panel(panel, editor, input);
+        case .RECENTER;              recenter_panel(panel, editor, input);
         case .MOVE_UP_ONE_SCREEN;    scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
         case .MOVE_DOWN_ONE_SCREEN;  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
 
@@ -3611,12 +3563,10 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
     draw_rect(render_commands, rect_from_point_and_size(panel_x + GUTTER_PIXELS + panel_content_w, panel_y, GUTTER_PIXELS, panel_h), editor.theme.gutter_color);
 }
 
-open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mini_Panel_Procs, initial_text := "") {
+open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mini_Panel_Procs) {
     mini_panel := *editor.mini_panel;
 
     assert(!mini_panel.open);
-
-    text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, initial_text);
 
     mini_panel.procs = procs;
     mini_panel.open = true;
@@ -3655,7 +3605,7 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 
 #scope_file
 
-open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, procs: Modal_Interaction_Procs, initial_text := "") {
+open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, procs: Modal_Interaction_Procs) {
     modal_interaction := *editor.modal_interaction;
 
     assert(!modal_interaction.open);
@@ -3683,8 +3633,6 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, pr
     key_map_add(key_map, "<enter>",     .CONFIRM);
     key_map_add(key_map, "C-m",         .CONFIRM);
     key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
-
-    text_buffer_insert(*modal_interaction.buffer, *modal_interaction.cursors, initial_text);
 
     modal_interaction.procs = procs;
     modal_interaction.open = true;
@@ -3791,7 +3739,7 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
             editor_log(editor, "Opening directory: %", file_absolute_path);
 
             if listing_added {
-                file_list := platform.list_directory(file_absolute_path,, temp);
+                file_list := platform.list_directory(file_absolute_path, recursive = false, files = true, directories = true,, temp);
 
                 {
                     self_dir := array_add(*listing.items);
