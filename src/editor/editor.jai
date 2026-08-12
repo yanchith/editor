@@ -9,11 +9,11 @@ TODO(jt): Known serious bugs:
 
 - On macOS, C-` (iterm) also causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab.
 
+- newly created files aren't marked as MODIFIED, so they can't be saved withot typing something
+
 TODO(jt): Usage self-feedback:
 
 - finish the compilation buffer thing
-- project-wide file open
-- project-wide search
 
 TODO(jt): Roadmap:
 
@@ -159,6 +159,7 @@ operator==     :: Math.operator==;
 #load "mini_panel_search.jai";
 #load "mini_panel_search_project.jai";
 #load "mini_panel_open_file.jai";
+#load "mini_panel_open_project_file.jai";
 #load "mini_panel_switch_view.jai";
 #load "mini_panel_close_view.jai";
 #load "mini_panel_show_commands.jai";
@@ -642,10 +643,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-S-p",   .SHOW_COMMANDS);
         key_map_add(key_map, "C-s",     .SEARCH);
 
-        key_map_add(key_map, "C-c s r", .SEARCH_PROJECT);
-
         key_map_add(key_map, "C-x C-f", .OPEN_FILE);
-        key_map_add(key_map, "C-c p f", .OPEN_FILE_IN_PROJECT);
 
         key_map_add(key_map, "C-x b",   .SWITCH_VIEW);
         key_map_add(key_map, "C-x k",   .CLOSE_VIEW);
@@ -662,6 +660,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_PANEL);
         key_map_add(key_map, "C-x 1",   .CLOSE_OTHER_PANELS);
         key_map_add(key_map, "C-x o",   .GO_TO_NEXT_PANEL);
+
+        key_map_add(key_map, "C-x p f", .OPEN_PROJECT_FILE);
+        key_map_add(key_map, "C-c s r", .SEARCH_PROJECT); // For my muscle memory.
+        key_map_add(key_map, "C-x p s", .SEARCH_PROJECT);
+        key_map_add(key_map, "C-x p b", .COMPILE_PROJECT);
     }
 
     {
@@ -1822,7 +1825,6 @@ Panel_Action :: enum {
     SEARCH;
 
     OPEN_FILE;
-    OPEN_FILE_IN_PROJECT;
 
     SWITCH_VIEW;
     CLOSE_VIEW;
@@ -1838,6 +1840,7 @@ Panel_Action :: enum {
 
     // TODO(jt): @Cleanup Move things below to the Global_Action, because they don't need a panel to do their thing.
 
+    OPEN_PROJECT_FILE;
     SEARCH_PROJECT;
     COMPILE_PROJECT;
 
@@ -2121,7 +2124,6 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .SEARCH;                open_mini_panel(editor, platform, input, mini_panel_search_procs);
 
         case .OPEN_FILE;             open_mini_panel(editor, platform, input, mini_panel_open_file_procs);
-        case .OPEN_FILE_IN_PROJECT;  // nocheckin do this!
 
         case .SWITCH_VIEW;           open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
         case .CLOSE_VIEW;            open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
@@ -2213,14 +2215,15 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
             }
         }
 
-        case .SEARCH_PROJECT;   open_mini_panel(editor, platform, input, mini_panel_search_project_procs);
-        case .COMPILE_PROJECT;  open_modal_interaction(editor, platform, input, modal_interaction_compile_project_procs);
+        case .OPEN_PROJECT_FILE;  open_mini_panel(editor, platform, input, mini_panel_open_project_file_procs);
+        case .SEARCH_PROJECT;     open_mini_panel(editor, platform, input, mini_panel_search_project_procs);
+        case .COMPILE_PROJECT;    open_modal_interaction(editor, platform, input, modal_interaction_compile_project_procs);
 
-        case .ABULAFIA_THEME;   editor.theme = abulafia_theme(); theme_changed = true;
-        case .NAYSAYER_THEME;   editor.theme = naysayer_theme(); theme_changed = true;
-        case .HANDMADE_THEME;   editor.theme = handmade_theme(); theme_changed = true;
-        case .STB_THEME;        editor.theme = stb_theme(); theme_changed = true;
-        case .ZENBURN_THEME;    editor.theme = zenburn_theme();  theme_changed = true;
+        case .ABULAFIA_THEME;     editor.theme = abulafia_theme(); theme_changed = true;
+        case .NAYSAYER_THEME;     editor.theme = naysayer_theme(); theme_changed = true;
+        case .HANDMADE_THEME;     editor.theme = handmade_theme(); theme_changed = true;
+        case .STB_THEME;          editor.theme = stb_theme(); theme_changed = true;
+        case .ZENBURN_THEME;      editor.theme = zenburn_theme();  theme_changed = true;
     }
 
     if theme_changed {
@@ -3752,8 +3755,8 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
                 }
 
                 for file_list {
-                    listed_file_path := it.name;
-                    listed_filename := String.path_filename(it.name);
+                    listed_file_path := it.absolute_path;
+                    listed_filename := String.path_filename(it.absolute_path);
 
                     s := "";
                     if listed_filename.count {
