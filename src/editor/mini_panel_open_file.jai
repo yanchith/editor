@@ -24,7 +24,61 @@ can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> b
     return true;
 }
 
-init :: (editor: *Editor, platform: Platform, input: Input) {}
+init :: (editor: *Editor, platform: Platform, input: Input) {
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
+        return;
+    }
+
+    starting_path: string;
+    if panel.view.kind == {
+        case .DOCUMENT; {
+            view := *panel.view._document;
+            document := view.document;
+
+            starting_path = document.backing_directory_path;
+
+            // Because we normalize backing_directory_path, this should always happen.
+            // Maybe instead we want some kind of convention that our directory paths always end
+            // with trailing / and file paths never do.  -jt, 8 August 2026
+            if !String.ends_with(starting_path, "/") {
+                starting_path = tprint("%/", starting_path);
+            }
+        }
+        case .LISTING; {
+            view := *panel.view._listing;
+            listing := view.listing;
+            if listing && listing.kind == .DIRECTORY && listing.backing_directory_path.count {
+                starting_path = listing.backing_directory_path;
+
+                // Because we normalize backing_directory_path, this should always happen.
+                // Maybe instead we want some kind of convention that our directory paths always end
+                // with trailing / and file paths never do.  -jt, 8 August 2026
+                if !String.ends_with(starting_path, "/") {
+                    starting_path = tprint("%/", starting_path);
+                }
+            }
+        }
+    }
+
+    if starting_path.count == 0 {
+        success, path := platform.get_absolute_path(".",, temp);
+        if success {
+            String.path_overwrite_separators(path, "/");
+
+            if !String.ends_with(path, "/") {
+                path = tprint("%/", path);
+            }
+
+            starting_path = path;
+        }
+    }
+
+    mini_panel := *editor.mini_panel;
+
+    text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, starting_path);
+}
 
 update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
     ProfileZone("mini_panel_open_file_update_proc");
@@ -84,7 +138,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         }
 
         // TODO(jt): @Speed Consider not listing these again unless the prefix changed?
-        file_list := platform.list_directory(path_prefix,, temp);
+        file_list := platform.list_directory(path_prefix, recursive = false, files = true, directories = true,, temp);
         for file_list {
             listed_file_path := it.name;
             listed_filename := String.path_filename(it.name);
