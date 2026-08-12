@@ -19,6 +19,7 @@ Font :: struct {
 
     // These options can be reset with reset_for_options.
     pixel_height: s32;
+    line_height_multiplier: f32;
 
     //
     // Font info stuff. Does not change once we have loaded a font.
@@ -36,13 +37,13 @@ Font :: struct {
 
     ascender: s64;
     descender: s64;
-    line_height: s64;
+    line_height: s64; // line_height_multiplier not applied.
 
     //
     // Scaled metrics for currently set pixel_height in pixels.
     //
 
-    line_height_in_pixels: f32;
+    line_height_in_pixels: f32; // line_height_multiplier applied.
     max_glyph_width_in_pixels: f32;
     max_glyph_height_in_pixels: f32;
     max_glyph_width_in_integer_pixels: s32;
@@ -105,7 +106,7 @@ Glyph_Entry :: struct {
 // some allocations, they won't be popped, but you should not use it after passing it to the font.
 //
 // TOOD(jt): Also be able to load font variants from a font collection.
-make_font :: (arena: *Arena, ttf_regular: [] u8, ttf_bold: [] u8, ttf_italic: [] u8, ttf_bold_italic: [] u8, texture_id: Texture_ID, pixel_height: s32) -> Font {
+make_font :: (arena: *Arena, ttf_regular: [] u8, ttf_bold: [] u8, ttf_italic: [] u8, ttf_bold_italic: [] u8, texture_id: Texture_ID, pixel_height: s32, line_height_multiplier: f32) -> Font {
     font: Font;
     font.arena      = arena;
     font.arena_mark = arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
@@ -152,15 +153,14 @@ make_font :: (arena: *Arena, ttf_regular: [] u8, ttf_bold: [] u8, ttf_italic: []
         }
     }
 
-    font_reset_for_options(*font, pixel_height);
+    font_reset_for_options(*font, pixel_height, line_height_multiplier);
 
     return font;
 }
 
 // Reset all font structures for new options. Implies font_new_frame, so don't do this in the middle of the frame.
-font_reset_for_options :: (font: *Font, pixel_height: s32) {
+font_reset_for_options :: (font: *Font, pixel_height: s32, line_height_multiplier: f32) {
     arena_pop_to_mark(font.arena, font.arena_mark);
-
 
     error: FT_Error;
     error = FT_Set_Pixel_Sizes(font.ft_face_for_regular, 0, cast(u32, pixel_height));
@@ -194,13 +194,14 @@ font_reset_for_options :: (font: *Font, pixel_height: s32) {
         }
     }
 
-    font.pixel_height = pixel_height;
+    font.pixel_height           = pixel_height;
+    font.line_height_multiplier = line_height_multiplier;
 
     font.ascender    = font.ft_face_for_regular.size.metrics.ascender;
     font.descender   = font.ft_face_for_regular.size.metrics.descender;
     font.line_height = font.ft_face_for_regular.size.metrics.height;
 
-    font.line_height_in_pixels = cast(f32, font.ft_face_for_regular.size.metrics.height) * R64;
+    font.line_height_in_pixels = cast(f32, font.ft_face_for_regular.size.metrics.height) * R64 * line_height_multiplier;
     font.max_glyph_width_in_pixels  = cast(f32, font.ft_face_for_regular.size.metrics.max_advance) * R64;
     font.max_glyph_height_in_pixels = cast(f32, font.ft_face_for_regular.size.metrics.height) * R64;
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
@@ -514,7 +515,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
         // Order of operations here is somewhat important. Cursor and offset can be big, so
         // we subtract those first, so that the small glyph offset doesn't get destroyed.
         rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
-        ry := cast(f64, cursor_y) * R64 + offset.y + glyph_offset_y;
+        ry := cast(f64, cursor_y) * R64 * font.line_height_multiplier + offset.y + glyph_offset_y;
 
         r := rect_from_point_and_size(
             cast(f32, rx),
