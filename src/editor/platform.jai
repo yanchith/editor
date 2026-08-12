@@ -31,7 +31,7 @@ Platform :: struct {
 
     make_directory:                  (path: string) -> success: bool;
     delete_directory:                (path: string) -> success: bool;
-    list_directory:                  (path: string) -> [] File_Info;
+    list_directory:                  (path: string, recursive: bool, files: bool, directories: bool) -> [] File_Info;
     watch_directory:                 (path: string) -> success: bool;
     unwatch_directory:               (path: string);
 
