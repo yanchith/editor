@@ -512,10 +512,11 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
             sanity_assert(font.glyph_entries_tail == entry_index);
         }
 
-        // Order of operations here is somewhat important. Cursor and offset can be big, so
-        // we subtract those first, so that the small glyph offset doesn't get destroyed.
+        // Order of operations here is to make sure we are in f64 before converting to local coordinates.
+        // We round after multiplying with line_height_multiplier, so we make sure we don't destroy whole-pixel snapping,
+        // if the caller is aligned to pixels.
         rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
-        ry := cast(f64, cursor_y) * R64 * font.line_height_multiplier + offset.y + glyph_offset_y;
+        ry := round(cast(f64, cursor_y) * R64 * font.line_height_multiplier) + offset.y + glyph_offset_y;
 
         r := rect_from_point_and_size(
             cast(f32, rx),
