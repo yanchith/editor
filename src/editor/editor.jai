@@ -202,6 +202,13 @@ FONT_LINE_HEIGHT_MULTIPLIER: f32 : 1.1;
 FONT :: "LiberationMono";
 // FONT :: "FiraCode";
 
+// TODO(jt): None of the text editors seem to agree on what font size actually is, at least
+// Emacs, VS Code and this editor have completely different ideas. Figure this out and match
+// a standard, if that's even possible.
+//
+// UPDATE: Focus editor does the same thing as us, at least for the FiraCode font.
+FONT_SIZE :: 15; // 15 for use, 20 for streaming
+
 Editor :: struct {
     perm_arena: *Arena;
 
@@ -618,11 +625,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
                 ttf_bold_italic = _ttf_bold_italic;
             }
         }
-
-        // TODO(jt): None of the text editors seem to agree on what font size actually is, at least
-        // Emacs, VS Code and this editor have completely different ideas. Figure this out and match
-        // a standard, if that's even possible.
-        FONT_SIZE :: 15; // 15 for use, 20 for streaming
 
         want_pixel_height := cast(s32, ceil(FONT_SIZE * input.window_scale_factor));
 
