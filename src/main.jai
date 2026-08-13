@@ -193,7 +193,7 @@ main :: () {
             // break_command_into_string always temps the result, so our context override is just futureproofing.
             arguments := Process.break_command_into_strings(args,, temp);
 
-            result, output, error := Process.run_command(..arguments, working_directory = working_directory, capture_and_return_output = true);
+            result, output, error := Process.run_command(..arguments, working_directory = working_directory, capture_and_return_output = true, create_no_window = true);
             if result.type != .EXITED {
                 log_error("Process result is %, exit code: %. Command was: %", result.type, result.exit_code, args);
             }

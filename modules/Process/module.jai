@@ -6,7 +6,7 @@
 //
 // Changes (also search for the tag):
 //
-// On Windows, we pass the CREATE_NO_CONSOLE creation flag despite the documentation
+// On Windows, we pass the CREATE_NO_CONSOLE creation flag if the caller requests it, despite the documentation
 // saying that this creates problem with inheriting stdin/stdout. We noticed no such problems yet.
 //
 // Deleted examples.
@@ -99,9 +99,18 @@ break_command_into_strings :: (input: string) -> [..] string { // Array in tempo
     return result;
 }
 
-run_command :: (args: .. string, working_directory := "", capture_and_return_output := false, print_captured_output := false, timeout_ms := -1, arg_quoting := Process_Argument_Quoting.QUOTE_IF_NEEDED) -> (process_result: Process_Result, output_string := "", error_string := "", timeout_reached := false) {
+// :ModifiedProcessModule
+//
+// create_no_window only does something on Windows. If you set it to true, you should also set capture_and_return_output to true, to create explicit named pipes.
+// Otherwise there will be no pipe handle inheritance.
+run_command :: (args: .. string, working_directory := "", capture_and_return_output := false, print_captured_output := false, timeout_ms := -1, arg_quoting := Process_Argument_Quoting.QUOTE_IF_NEEDED, create_no_window := false) -> (process_result: Process_Result, output_string := "", error_string := "", timeout_reached := false) {
     process: Process;
-    success := create_process(*process, .. args, working_directory, capture_and_return_output, arg_quoting);
+    #if OS == .WINDOWS {
+        success := create_process(*process, .. args, working_directory, capture_and_return_output, arg_quoting, create_no_window = create_no_window);
+    } else {
+        success := create_process(*process, .. args, working_directory, capture_and_return_output, arg_quoting);
+    }
+
     if !success    return .{type = .FAILED_TO_LAUNCH};
 
     defer deinit(*process);
