@@ -735,7 +735,8 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
         original_cursor1 := cursors.c1;
 
         // Okay to sutract bytes from chars, because all the whitespace is single-byte.
-        cursors.c0.x = buffer.line_chars[cursors.c0.y] - trailing_space_count - newline_length;
+        // However, we count CRLF newline as a single character: clamp so that we don't end up with x: -1.
+        cursors.c0.x = buffer.line_chars[cursors.c0.y] - trailing_space_count - min(newline_length, 0);
         cursors.c1 = cursors.c0;
 
         gb_index := line_gb_index + line_view.count - trailing_space_count - newline_length;
