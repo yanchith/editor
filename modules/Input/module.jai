@@ -1,4 +1,10 @@
-// This modules/Input is slighly modified.
+//
+// :ModifiedInputModule
+//
+// This modules/Input is modified compared to what ships with the compiler.
+// Pull fixes from the original ocasionally.
+//
+// Changes (also search for the tag):
 //
 // On macOS, we make a text event from a key event using NSEvent.charactersIgnoringModifiers instead
 // of NSEvent.characters, because we need to receive the original character before macOS modifies it
@@ -9,7 +15,7 @@
 //
 // For now, also X11 and Android backends are deleted.
 //
-// :ModifiedInputModule
+
 
 
 // Input handler routines, platform-independent.

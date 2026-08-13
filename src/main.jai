@@ -66,9 +66,9 @@ String         :: #import "String";
 System         :: #import "System";
 File           :: #import "File";
 File_Utilities :: #import "File_Utilities";
-Process        :: #import "Process";
 Window         :: #import "Window_Creation";
-Input          :: #import "Input"; // This is our modified version. See :ModifiedInputModule.
+Input          :: #import "Input";   // This is our modified version. See :ModifiedInputModule.
+Process        :: #import "Process"; // This is our modified version. See :ModifiedProcessModule.
 Clipboard      :: #import "Clipboard";
 Simp           :: #import "Simp";
 Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY, SUBPIXEL = SUBPIXEL);
@@ -516,6 +516,8 @@ main :: () {
 
         renderer.begin_frame = (clear_color: Vector4) {
             ProfileZone("renderer.begin_frame");
+
+            // TODO(jt): @Bug On Windows, when a window is resized, we clear the the old surface here.
             Simp.clear_render_target(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
         }
         renderer.submit_frame = () {
