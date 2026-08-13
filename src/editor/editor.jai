@@ -2504,7 +2504,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     if document.parenthesized_scopes.count {
                         update_parenthesized_scopes(document);
 
-                        level := find_indentation_level(document, view.cursors.c0);
+                        level := find_indentation_level_for_location(document, view.cursors.c0);
                         buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .FUSE);
                     }
                     cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, 1, false);
@@ -2513,7 +2513,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 if document.parenthesized_scopes.count {
                     update_parenthesized_scopes(document);
 
-                    level := find_indentation_level(document, view.cursors.c0);
+                    level := find_indentation_level_for_location(document, view.cursors.c0);
                     buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .FUSE);
                 }
 
@@ -2550,9 +2550,9 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
                     first := true;
                     for y0..y1 {
-                        indentation_level := find_indentation_level(document, { 0, it });
+                        level := find_indentation_level_for_location(document, { 0, it });
                         text_buffer_move_cursor_to(document.buffer, *view.cursors, { 0, it }, false);
-                        changed := text_buffer_indent_line(*document.buffer, *view.cursors, indentation_level, ifx first then .NONE else .FUSE);
+                        changed := text_buffer_indent_line(*document.buffer, *view.cursors, level, ifx first then .NONE else .FUSE);
 
                         if changed {
                             update_parenthesized_scopes(document);

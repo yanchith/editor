@@ -135,16 +135,16 @@ find_parenthesized_scope_for_location :: (document: Document, loc: Text_Location
         return null;
     }
 
-    current := *scopes[0];
+    scope := *scopes[0];
 
-    while current.first_child_index != -1 {
-        sibling_index := current.first_child_index;
+    while scope.first_child_index != -1 {
+        sibling_index := scope.first_child_index;
 
         while sibling_index != -1 {
             sibling := *scopes[sibling_index];
             if contains(sibling, loc, start_x_inclusive, end_x_inclusive, start_y_inclusive, end_y_inclusive) {
-                // We found a sibling that contains our location. Set it as current, so that we nest to it.
-                current = sibling;
+                // We found a sibling that contains our location. Set it as the current scope, so that we nest to it.
+                scope = sibling;
                 break;
             }
 
@@ -157,48 +157,24 @@ find_parenthesized_scope_for_location :: (document: Document, loc: Text_Location
         }
     }
 
-    return current;
+    return scope;
 }
 
-// TODO(jt): @Cleanup Can we reasonably reuse find_parenthesized_scope instead of doing our own traversal?
-find_indentation_level :: (document: Document, loc: Text_Location) -> s64 {
-    ProfileZone("find_indentation_level");
+find_indentation_level_for_location :: (document: Document, loc: Text_Location) -> s64 {
+    // The Y range check is start-exclusive and end-inclusive by design: we indent the line of
+    // the closing paren depending on whether the scope has REGULAR or HANGING indentation,
+    // while the opening paren always belongs to its parent scope, so we exclude it.
+    scope := find_parenthesized_scope_for_location(document, loc, start_y_inclusive = false);
 
-    indentation_level := 0;
-    current_index     := 0;
-    while current_index != -1 {
-        current := *document.parenthesized_scopes[current_index];
-        indentation_level = current.indentation_level;
+    level := scope.indentation_level;
+    if scope.loc1.y == loc.y && !(scope.indentation_flags & .HANGING) {
+        level -= DEFAULT_INDENTATION_STEP;
 
-        // Indent to match opening paren.
-        if current.loc1.y == loc.y && !(current.indentation_flags & .HANGING) {
-            indentation_level = current.indentation_level - DEFAULT_INDENTATION_STEP;
-        }
-
-        // In the loop below, we the range check is start-exclusive and end-inclusive by design: we
-        // indent the closing paren specially (depending on whether the scope has REGULAR or HANGING
-        // indentation), while the opening paren always just belongs to its parent scope, so we want
-        // to exclude it.
-        current_index = -1;
-        if current.first_child_index != -1 {
-            child := *document.parenthesized_scopes[current.first_child_index];
-
-            if loc.y > child.loc0.y && loc.y <= child.loc1.y {
-                current_index = current.first_child_index;
-            }
-
-            while current_index == -1 && child.next_sibling_index != -1 {
-                index := child.next_sibling_index;
-                child = *document.parenthesized_scopes[index];
-
-                if loc.y > child.loc0.y && loc.y <= child.loc1.y {
-                    current_index = index;
-                }
-            }
-        }
+        sanity_assert(level >= 0);
+        level = max(level, 0);
     }
 
-    return indentation_level;
+    return level;
 }
 
 #scope_file
