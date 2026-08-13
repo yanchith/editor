@@ -2541,8 +2541,6 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 if document.parenthesized_scopes.count {
                     view.selecting = false;
 
-                    // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
-
                     original_y0 := view.cursors.c0.y;
                     original_y1 := view.cursors.c1.y;
                     y0 := min(view.cursors.c0.y, view.cursors.c1.y);
@@ -4215,7 +4213,6 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
     listing.time_of_last_interaction = editor.input_state.time;
 }
 
-                         // TODO(jt): @Bug This is where this comment indents.
 strip_trailing_whitespace :: (view: *Document_View) -> buffer_changed: bool {
     document := view.document;
 
