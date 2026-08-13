@@ -1,4 +1,4 @@
-DEFAULT_INDENTATION_STEP :: 4;
+DEFAULT_INDENTATION_STEP :: 4; // TODO(jt): Make this configurable (also per project). :Config
 
 // TODO(jt): @Speed When we indent the entirety of a 10000 document, this takes ~8 seconds. Even if
 // we SIMD this, it will traverse the whole document contents too many times. We need an incremental
@@ -128,42 +128,31 @@ update_parenthesized_scopes :: (document: *Document) {
 }
 
 find_parenthesized_scope_for_location :: (document: Document, loc: Text_Location, start_x_inclusive := true, end_x_inclusive := true, start_y_inclusive := true, end_y_inclusive := true) -> *Document.Parenthesized_Scope {
-    ProfileZone("find_parenthesized_scope");
+    ProfileZone("find_parenthesized_scope_for_location");
 
-    if !document.parenthesized_scopes.count {
+    scopes := document.parenthesized_scopes;
+    if !scopes.count {
         return null;
     }
 
-    current := *document.parenthesized_scopes[0];
+    current := *scopes[0];
 
-    while true {
-        child_index := current.first_child_index;
-        if child_index != -1 {
-            child := *document.parenthesized_scopes[child_index];
+    while current.first_child_index != -1 {
+        sibling_index := current.first_child_index;
 
-            if contains(child, loc, start_x_inclusive, end_x_inclusive, start_y_inclusive, end_y_inclusive) {
-                current = child;
-                continue;
-            }
-        }
-
-        // If we get here, we did not find a child we can nest into.
-
-        sibling_index := current.next_sibling_index;
-        sibling_found := false;
         while sibling_index != -1 {
-            sibling := *document.parenthesized_scopes[sibling_index];
-
+            sibling := *scopes[sibling_index];
             if contains(sibling, loc, start_x_inclusive, end_x_inclusive, start_y_inclusive, end_y_inclusive) {
+                // We found a sibling that contains our location. Set it as current, so that we nest to it.
                 current = sibling;
-                sibling_found = true;
                 break;
             }
 
             sibling_index = sibling.next_sibling_index;
         }
 
-        if !sibling_found {
+        if sibling_index == -1 {
+            // We did not find any sibling that contains our location. End.
             break;
         }
     }
