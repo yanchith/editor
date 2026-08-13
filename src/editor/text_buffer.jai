@@ -198,6 +198,7 @@ text_buffer_init :: (buffer: *Text_Buffer, arena: *Arena, _edit_text_arena: *Are
     assert_valid_buffer(buffer);
 }
 
+// Note that if you have cursors, you have to zero them yourself.
 text_buffer_reset :: (buffer: *Text_Buffer) {
     assert_valid_buffer(buffer);
 
