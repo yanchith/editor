@@ -70,7 +70,7 @@ init_named_pipe_pair :: (pipe: *Process.Pipe, is_input: bool) -> success: bool, 
     return true, client_handle;
 }
 
-create_process :: (process: *Process, args: .. string, working_directory := "", capture_and_return_output := false, arg_quoting := Process_Argument_Quoting.QUOTE_IF_NEEDED, kill_process_if_parent_exits := true) -> success: bool {
+create_process :: (process: *Process, args: .. string, working_directory := "", capture_and_return_output := false, arg_quoting := Process_Argument_Quoting.QUOTE_IF_NEEDED, kill_process_if_parent_exits := true, create_no_window := false) -> success: bool {
     startup_info: STARTUPINFOW;
     startup_info.cb = size_of(type_of(startup_info));
 
@@ -140,9 +140,9 @@ create_process :: (process: *Process, args: .. string, working_directory := "", 
 
     // :ModifiedProcessModule
     //
-    // NOTE(jt): We pass in CREATE_NO_WINODW. Otherwise, the process created a window for the console
-    // unless it was spawned from a console-subsystem parent process. We are not yet experiencing
-    // the issues from the comment below.
+    // NOTE(jt): We pass in CREATE_NO_WINODW, if the caller requested it. Otherwise, the process created
+    // a window for the console unless it was spawned from a console-subsystem parent process. We are not
+    // yet experiencing the issues from the (original) comment below.
     //
     // Do not use CREATE_NO_WINDOW in dwCreationFlags, because if you do, it will mysteriously make the process not inherit
     // console handles. The documentation did not appear to say anything about this, but then again
@@ -150,7 +150,9 @@ create_process :: (process: *Process, args: .. string, working_directory := "", 
     // on some other page, it tells you this is not a good idea. Yeah well. Okay.
 
     creation_flags: Creation_Flags;
-    creation_flags |= CREATE_NO_WINDOW;
+    if create_no_window {
+        creation_flags |= CREATE_NO_WINDOW;
+    }
 
     success := CreateProcessW(null, utf8_to_wide(args_string,, allocator=temp), null, null, cast(BOOL) 1, creation_flags, null, utf8_to_wide(working_directory,, allocator=temp), *startup_info, *process.info);
     if !success {
