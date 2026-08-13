@@ -2,12 +2,7 @@
 
 TODO(jt): Known serious bugs:
 
-- run_in_process causes us to miss frames and (and events), which makes the input state invalid,
-  e.g. sometimes view.selecting stays true, or we start inserting weird characters. (Windows,
-  but doesn't happen if we are in the console subsystem, so maybe spawning the process console
-  defocuses us?)
-
-- On macOS, C-` (iterm) also causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab.
+- On macOS, C-` (iterm) causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab.
 
 TODO(jt): Usage self-feedback:
 
