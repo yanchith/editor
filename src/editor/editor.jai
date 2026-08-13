@@ -9,8 +9,6 @@ TODO(jt): Known serious bugs:
 
 - On macOS, C-` (iterm) also causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab.
 
-- newly created files aren't marked as MODIFIED, so they can't be saved withot typing something
-
 TODO(jt): Usage self-feedback:
 
 - finish the compilation buffer thing
@@ -412,10 +410,11 @@ Document :: struct {
         // INCONSISTENT_INDENTATION  0x04;
         // INCONSISTENT_NEWLINES     0x08;
 
-        READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT :: 0x10;
-        READONLY_BECAUSE_OF_MANUAL_LOCK         :: 0x20;
+        READONLY_BY_NATURE                      :: 0x10;
+        READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT :: 0x20;
+        READONLY_BECAUSE_OF_MANUAL_LOCK         :: 0x40;
 
-        READONLY :: READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT | READONLY_BECAUSE_OF_MANUAL_LOCK;
+        READONLY :: READONLY_BY_NATURE | READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT | READONLY_BECAUSE_OF_MANUAL_LOCK;
 
         // These get set during event processing and unset after update for this document's panel is done.
         TRANSIENT :: MODIFIED_THIS_FRAME;
@@ -1425,6 +1424,7 @@ find_or_add_compilation_document :: (editor: *Editor, platform: Platform, backin
 
     if !document {
         document = find_or_add_document(editor, platform, .COMPILATION, backing_directory_path, "");
+        document.flags |= .READONLY_BY_NATURE;
         if compilation_args.count {
             document.compilation_args = arena_push_string(document.arena, compilation_args);
         }
@@ -2003,7 +2003,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 did_execute_action |= execute_document_action(editor, platform, input, panel, view, document, action);
             }
 
-            if !did_buffer_event && !did_execute_action && event.flags & .PRESSED {
+            if !(document.flags & .READONLY) && !did_buffer_event && !did_execute_action && event.flags & .PRESSED {
                 if event.type == {
                     case .CODEPOINT; {
                         view.selecting = false;
@@ -2296,7 +2296,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
         case .SAVE_DOCUMENT; {
             if document.backing_file_path.count {
-                if document.flags & .MODIFIED {
+                if !document.backing_file_exists || document.flags & .MODIFIED {
                     buffer := *document.buffer;
 
                     if STRIP_TRAILING_WHITESPACE_ON_SAVE {
@@ -2307,7 +2307,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
                     success := platform.write_file(document.backing_file_path, contents);
                     if success {
-                        editor_log(editor, "Wrote file %", document.backing_file_path);
+                        editor_log(editor, "Saved file %", document.backing_file_path);
 
                         document.flags &= ~.MODIFIED;
                         document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
