@@ -182,7 +182,7 @@ FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(250);  // The
 
 UNDO_MERGE_ELIGIBLE_PERIOD: Apollo_Time : #run milliseconds_to_apollo(500);
 
-GUTTER_PIXELS :: 10.0; // TODO(jt): Make this configurable. :Config
+GUTTER_PIXELS :: 20.0; // TODO(jt): Make this configurable. :Config
 
 PANEL_SCROLL_PADDING_CELLS_X :: 5;    // TODO(jt): Make this configurable. :Config
 PANEL_SCROLL_PADDING_CELLS_Y :: 5;    // TODO(jt): Make this configurable. :Config
@@ -1275,11 +1275,17 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             _font_layout_and_draw_text(*editor.font, main_line, *render_commands, *atlas_update_regions, offset, scissor, editor.theme.text_color, .[], binary = false);
         } else {
             message_line_y := window_h - cell_h;
-            draw_rect(*render_commands, 0, message_line_y, window_w, window_h, editor.theme.background_color);
+            message_line_x0 := GUTTER_PIXELS;
+            message_line_x1 := window_w - GUTTER_PIXELS;
+
+            draw_rect(*render_commands, message_line_x0, message_line_y, window_w, window_h, editor.theme.background_color);
 
             if editor.messages.count && !editor.last_message_seen {
                 message := editor.messages[editor.messages.count - 1];
-                _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, { 0, message_line_y }, { 0, 0, window_w, window_h }, editor.theme.text_color, .[], binary = false);
+
+                offset  := DVector2.{ message_line_x0, message_line_y };
+                scissor := Rect.{ message_line_x0, message_line_y, message_line_x1, window_h };
+                _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, editor.theme.text_color, .[], binary = false);
             }
         }
 
@@ -3566,6 +3572,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
     //
     // Draw gutters
     //
+    set_scissor(render_commands, panel_rect);
     draw_rect(render_commands, rect_from_point_and_size(panel_x, panel_y, GUTTER_PIXELS, panel_h), editor.theme.gutter_color);
     draw_rect(render_commands, rect_from_point_and_size(panel_x + GUTTER_PIXELS + panel_content_w, panel_y, GUTTER_PIXELS, panel_h), editor.theme.gutter_color);
 }
