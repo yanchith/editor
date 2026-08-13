@@ -15,9 +15,22 @@ update_parenthesized_scopes :: (document: *Document) {
     }
 
     indentation_pairs: [] Paren_Pair;
+    line_comment            := "";
+    block_comment_start     := "";
+    block_comment_end       := "";
+    block_comments_can_nest := false;
+
     if #complete document.mode == {
-        case .PLAIN_TEXT;  indentation_pairs = PLAIN_TEXT_INDENTATION_PAREN_PAIRS;
-        case .JAI;         indentation_pairs = LANG_JAI_INDENTATION_PAREN_PAIRS;
+        case .PLAIN_TEXT; {
+            indentation_pairs = PLAIN_TEXT_INDENTATION_PAREN_PAIRS;
+        }
+        case .JAI; {
+            indentation_pairs       = LANG_JAI_INDENTATION_PAREN_PAIRS;
+            line_comment            = LANG_JAI_LINE_COMMENT;
+            block_comment_start     = LANG_JAI_BLOCK_COMMENT_START;
+            block_comment_end       = LANG_JAI_BLOCK_COMMENT_END;
+            block_comments_can_nest = LANG_JAI_BLOCK_COMMENTS_CAN_NEST;
+        }
     }
 
     array_reset_keeping_memory(*document.parenthesized_scopes);
@@ -34,14 +47,66 @@ update_parenthesized_scopes :: (document: *Document) {
         scope.indentation_level = 0;
     }
 
+    block_comment_depth := 0;
+
     // See :IncrementalGapBufferIndices
     gb_index := 0;
     for line_index: 0..document.buffer.line_bytes.count - 1 {
         gb_count := document.buffer.line_bytes[line_index];
+        defer {
+            gb_index += gb_count;
+        }
 
-        // TODO(jt): @Speed SIMDify looking for parentheses!
-        line := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
+        // TODO(jt): @Cleanup @Speed This loop became a little gnarly. Also probably slow. Clean it up, so we can SIMD later.
+        line := cast(string, gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp));
+        skip := 0; // TODO(jt): @Cleanup This would normally just be a string advance, but our loop is structured unfortunately.
+
         for byte, byte_index: line {
+            if skip > 0 {
+                skip -= 1;
+                continue;
+            }
+
+            //
+            // Comment detection
+            //
+
+            // Note that we are comparing bytes with bytes in the comment detection code, but it shouldn't matter!
+            is_line_comment := block_comment_depth == 0 && String.starts_with(String.slice(line, byte_index, line.count - byte_index), line_comment);
+            if is_line_comment {
+                continue line_index;
+            }
+
+            is_block_comment_start := (block_comment_depth == 0 || block_comments_can_nest) && String.starts_with(String.slice(line, byte_index, line.count - byte_index), block_comment_start);
+            if is_block_comment_start {
+                block_comment_depth += 1;
+
+                skip = block_comment_start.count - 1;
+                continue;
+            }
+
+            is_block_comment_end := block_comment_depth > 0 && String.starts_with(String.slice(line, byte_index, line.count - byte_index), block_comment_end);
+            if is_block_comment_end {
+                if block_comments_can_nest {
+                    block_comment_depth -= 1;
+                    sanity_assert(block_comment_depth >= 0);
+                    block_comment_depth = max(block_comment_depth, 0);
+                } else {
+                    block_comment_depth = 0;
+                }
+
+                skip = block_comment_end.count - 1;
+                continue;
+            }
+
+            if block_comment_depth > 0 {
+                continue;
+            }
+
+            //
+            // Parentheses detection
+            //
+
             for paren_pair: indentation_pairs {
                 if byte == paren_pair.open {
                     index := document.parenthesized_scopes.count;
@@ -122,8 +187,6 @@ update_parenthesized_scopes :: (document: *Document) {
                 }
             }
         }
-
-        gb_index += gb_count;
     }
 }
 
