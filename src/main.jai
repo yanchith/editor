@@ -529,8 +529,7 @@ main :: () {
 
             // TODO(jt): @Speed Realistically, they all point to the same texture, so maybe we want
             // to shape the API such that there is only one texture binding followed by an instanced
-            // draw command instead of looping and binding per iteration. If they for some reason
-            // don't fit into one texture, we'd flush thhe pipeline.
+            // draw command instead of looping and binding per iteration.
             for render_commands {
                 if #complete it.type == {
                     case .DRAW_RECT; {
