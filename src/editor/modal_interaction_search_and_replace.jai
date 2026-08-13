@@ -1,3 +1,4 @@
+// TODO(jt): @Bug @Incomplete respect READONLY.
 // TODO(jt): @Bug In the X/Y text Y counts every match, even ones above the cursor when we started the search.
 
 // TODO(jt): Preserve capitalization when replacing - our match text can be all lowercase, which

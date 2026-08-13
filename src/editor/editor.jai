@@ -308,7 +308,7 @@ Document_View :: struct {
     old_cursor_position: DVector2;
 
     cursor_position: Interpolation(DVector2, SNAPPY = true, ROUND = false);
-    cursor_flash:    Interpolation(Vector4, SNAPPY = false, ROUND = false);
+    cursor_color:    Interpolation(Vector4, SNAPPY = false, ROUND = false);
 
     // TODO(jt): @Cleanup Maybe some of these flags are useful to Listing_View as well, we could unify.
     Flags :: enum_flags u32 {
@@ -399,8 +399,9 @@ Document :: struct {
     Flags :: enum_flags u32 {
         NONE :: 0;
 
-        MODIFIED_THIS_FRAME :: 0x01;
-        MODIFIED            :: 0x02; // Also see backing_file_exists
+        MODIFIED_THIS_FRAME       :: 0x01;
+        MODIFY_ATTEMPT_THIS_FRAME :: 0x02;
+        MODIFIED                  :: 0x04; // Also see backing_file_exists
 
         // INCONSISTENT_INDENTATION  0x04;
         // INCONSISTENT_NEWLINES     0x08;
@@ -412,7 +413,7 @@ Document :: struct {
         READONLY :: READONLY_BY_NATURE | READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT | READONLY_BECAUSE_OF_MANUAL_LOCK;
 
         // These get set during event processing and unset after update for this document's panel is done.
-        TRANSIENT :: MODIFIED_THIS_FRAME;
+        TRANSIENT :: MODIFIED_THIS_FRAME | MODIFY_ATTEMPT_THIS_FRAME;
     }
 
     Parenthesized_Scope :: struct {
@@ -1632,6 +1633,19 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                     if document.flags & .MODIFIED {
                         document.flags |= .READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
 
+                        // If the document is displayed by a panel, flash the cursor.
+                        // (This also sets the cursor_color to the readonly color.)
+                        for * editor.panels {
+                            if it.view.kind == .DOCUMENT {
+                                view := *it.view._document;
+                                if view.document == document {
+                                    interpolation_start(*view.cursor_color,
+                                                        editor.theme.cursor_color_active, editor.theme.cursor_color_readonly,
+                                                        input.time, CURSOR_FLASH_DURATION);
+                                }
+                            }
+                        }
+
                         save_shortcut := shortcut_sprint(key_map_find_shortcut(editor.document_key_map, .SAVE_DOCUMENT),, temp);
                         reload_shortcut := shortcut_sprint(key_map_find_shortcut(editor.document_key_map, .RELOAD_DOCUMENT),, temp);
                         editor_log(editor, "% modified, but file changed on filesystem. % or % to exit read only mode", String.path_filename(document.backing_file_path), save_shortcut, reload_shortcut);
@@ -1998,9 +2012,10 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 did_execute_action |= execute_document_action(editor, platform, input, panel, view, document, action);
             }
 
-            if !(document.flags & .READONLY) && !did_buffer_event && !did_execute_action && event.flags & .PRESSED {
-                if event.type == {
-                    case .CODEPOINT; {
+            if !did_buffer_event && !did_execute_action && event.flags & .PRESSED {
+                if event.type == .CODEPOINT {
+                    document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+                    if !(document.flags & .READONLY) {
                         view.selecting = false;
 
                         char := cast(u32, event.codepoint);
@@ -2086,8 +2101,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         document.flags |= .MODIFIED;
 
                         // The cursor position interpolation gets setup in a centralized place instead of here, because the
-                        // cursor can be moved from other places than this one (e.g. mouse, SEARCH mini
-                        // panel...).
+                        // cursor can be moved from other places than this one (e.g. mouse, SEARCH minipanel...).
                         //
                         // :CentralizedCursorInterpolationSetup
                         view.flags |= .RECEIVED_DIRECT_KEYBOARD_INTERACTION;
@@ -2235,7 +2249,10 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         for * panel: editor.panels {
             if panel.view.kind == .DOCUMENT {
                 view := *panel.view._document;
-                interpolation_init(*view.cursor_flash, editor.theme.cursor_color);
+                document := view.document;
+
+                color := ifx document.flags & .READONLY then editor.theme.cursor_color_readonly else editor.theme.cursor_color;
+                interpolation_init(*view.cursor_color, color);
             }
         }
     }
@@ -2287,7 +2304,12 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .SEARCH_AND_REPLACE;  open_modal_interaction(editor, platform, input, modal_interaction_search_and_replace_procs);
+        case .SEARCH_AND_REPLACE; {
+            document.flags &= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                open_modal_interaction(editor, platform, input, modal_interaction_search_and_replace_procs);
+            }
+        }
 
         case .SAVE_DOCUMENT; {
             if document.backing_file_path.count {
@@ -2306,6 +2328,11 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
                         document.flags &= ~.MODIFIED;
                         document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
+
+                        interpolation_start(*view.cursor_color,
+                                            editor.theme.cursor_color_active, editor.theme.cursor_color,
+                                            input.time, CURSOR_FLASH_DURATION);
+
 
                         if !document.backing_file_exists {
                             watch_file(editor, platform, input, document.backing_file_path);
@@ -2344,9 +2371,19 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     document.backing_file_last_synced_size = size;
                     document.backing_file_last_synced_hash = hash_file_contents(file_contents);
 
-                    text_buffer_delete_all(*document.buffer, *view.cursors);
+                    view.cursors.c0 = { 0, 0 };
+                    view.cursors.c1 = { 0, 0 };
+                    text_buffer_reset(*document.buffer);
+
                     text_buffer_insert(*document.buffer, *view.cursors, file_contents, .OMIT);
                     text_buffer_move_cursor_to(document.buffer, *view.cursors, 0, 0, false);
+
+                    document.flags &= ~.MODIFIED;
+                    document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
+
+                    interpolation_start(*view.cursor_color,
+                                        editor.theme.cursor_color_active, editor.theme.cursor_color,
+                                        input.time, CURSOR_FLASH_DURATION);
 
                     update_parenthesized_scopes(document);
                     update_syntax_highlights(editor, document, platform, input);
@@ -2385,139 +2422,169 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .STOP_SELECTING;               view.selecting = false; text_cursors_join(*view.cursors);
 
         case .DELETE_LINE; {
-            view.selecting = false;
-            text := text_buffer_delete_line(*document.buffer, *view.cursors);
-            if text {
-                buffer_changed = true;
-                platform.set_clipboard_text(text);
-            }
-        }
-        case .DELETE_FORWARD;               view.selecting = false; buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors);
-        case .DELETE_BACKWARD; {
-            handled := false;
-
-            if view.cursors.c0 == view.cursors.c1 && view.cursors.c0.x > 0 {
-                curr_loc := view.cursors.c0;
-                prev_loc := view.cursors.c0;
-                prev_loc.x -= 1;
-
-                if text_buffer_can_read_at_location(document.buffer, curr_loc) {
-                    prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
-                    curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
-
-                    opens, closes, paired_char := is_part_of_surround_pair(document, prev_byte);
-                    if opens && paired_char == curr_byte {
-                        buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors, .NONE);
-                        buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors, .FUSE);
-
-                        handled = true;
-                    }
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                view.selecting = false;
+                text := text_buffer_delete_line(*document.buffer, *view.cursors);
+                if text {
+                    buffer_changed = true;
+                    platform.set_clipboard_text(text);
                 }
             }
+        }
+        case .DELETE_FORWARD; {
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                view.selecting = false; buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors);
+            }
+        }
+        case .DELETE_BACKWARD; {
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                handled := false;
 
-            if !handled {
-                view.selecting = false;
-                buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors);
+                if view.cursors.c0 == view.cursors.c1 && view.cursors.c0.x > 0 {
+                    curr_loc := view.cursors.c0;
+                    prev_loc := view.cursors.c0;
+                    prev_loc.x -= 1;
+
+                    if text_buffer_can_read_at_location(document.buffer, curr_loc) {
+                        prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
+                        curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
+
+                        opens, closes, paired_char := is_part_of_surround_pair(document, prev_byte);
+                        if opens && paired_char == curr_byte {
+                            buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors, .NONE);
+                            buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors, .FUSE);
+
+                            handled = true;
+                        }
+                    }
+                }
+
+                if !handled {
+                    view.selecting = false;
+                    buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors);
+                }
             }
         }
 
-        case .DELETE_FORWARD_WORD;          // TODO(jt): text_buffer_delete_until_next_word_boundary
-        case .DELETE_BACKWARD_WORD;         // TODO(jt): text_buffer_delete_until_previous_word_boundary
+        case .DELETE_FORWARD_WORD;   // TODO(jt): text_buffer_delete_until_next_word_boundary
+        case .DELETE_BACKWARD_WORD;  // TODO(jt): text_buffer_delete_until_previous_word_boundary
 
         case .INSERT_LINE_BEFORE; {
-            should_make_space_for_block := false;
-            if view.cursors.c0.x > 0 {
-                curr_loc := view.cursors.c0;
-                prev_loc := curr_loc;
-                prev_loc.x -= 1;
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                should_make_space_for_block := false;
+                if view.cursors.c0.x > 0 {
+                    curr_loc := view.cursors.c0;
+                    prev_loc := curr_loc;
+                    prev_loc.x -= 1;
 
-                if text_buffer_can_read_at_location(document.buffer, curr_loc) {
-                    prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
-                    curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
+                    if text_buffer_can_read_at_location(document.buffer, curr_loc) {
+                        prev_byte := text_buffer_get_byte_at_location(document.buffer, prev_loc);
+                        curr_byte := text_buffer_get_byte_at_location(document.buffer, curr_loc);
 
-                    opens, _, paired_char := is_part_of_surround_pair(document, prev_byte);
-                    if opens && paired_char == curr_byte {
-                        should_make_space_for_block = true;
+                        opens, _, paired_char := is_part_of_surround_pair(document, prev_byte);
+                        if opens && paired_char == curr_byte {
+                            should_make_space_for_block = true;
+                        }
                     }
                 }
-            }
 
-            // TODO(jt): Preserve CRLF in CRLF-only documents.
-            view.selecting = false;
-            buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .BARRIER);
+                // TODO(jt): Preserve CRLF in CRLF-only documents.
+                view.selecting = false;
+                buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .BARRIER);
 
-            if should_make_space_for_block {
-                buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .FUSE);
+                if should_make_space_for_block {
+                    buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .FUSE);
 
-                cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
+                    cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
+                    if document.parenthesized_scopes.count {
+                        update_parenthesized_scopes(document);
+
+                        level := find_indentation_level(document, view.cursors.c0);
+                        buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .FUSE);
+                    }
+                    cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, 1, false);
+                }
+
                 if document.parenthesized_scopes.count {
                     update_parenthesized_scopes(document);
 
                     level := find_indentation_level(document, view.cursors.c0);
                     buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .FUSE);
                 }
-                cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, 1, false);
-            }
 
-            if document.parenthesized_scopes.count {
-                update_parenthesized_scopes(document);
-
-                level := find_indentation_level(document, view.cursors.c0);
-                buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .FUSE);
-            }
-
-            if should_make_space_for_block {
-                cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
-                cursor_moved |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, false);
+                if should_make_space_for_block {
+                    cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
+                    cursor_moved |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, false);
+                }
             }
         }
         case .INSERT_LINE_AFTER; {
-            // TODO(jt): Preserve CRLF in CRLF-only documents.
-            view.selecting = false;
-            buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .BARRIER);
-            cursor_moved   |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
-            cursor_moved   |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, false);
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                // TODO(jt): Preserve CRLF in CRLF-only documents.
+                view.selecting = false;
+                buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .BARRIER);
+                cursor_moved   |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
+                cursor_moved   |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, false);
+            }
         }
 
         // TODO(jt): Preserve tabness in tab-only documents.
         case .INDENT_OR_AUTOCOMPLETE; {
-            if document.parenthesized_scopes.count {
-                view.selecting = false;
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                if document.parenthesized_scopes.count {
+                    view.selecting = false;
 
-                // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
+                    // TODO(jt): @Bug Our parentheses parser does not skip comments. Should it?
 
-                original_y0 := view.cursors.c0.y;
-                original_y1 := view.cursors.c1.y;
-                y0 := min(view.cursors.c0.y, view.cursors.c1.y);
-                y1 := max(view.cursors.c0.y, view.cursors.c1.y);
+                    original_y0 := view.cursors.c0.y;
+                    original_y1 := view.cursors.c1.y;
+                    y0 := min(view.cursors.c0.y, view.cursors.c1.y);
+                    y1 := max(view.cursors.c0.y, view.cursors.c1.y);
 
-                first := true;
-                for y0..y1 {
-                    indentation_level := find_indentation_level(document, { 0, it });
-                    text_buffer_move_cursor_to(document.buffer, *view.cursors, { 0, it }, false);
-                    changed := text_buffer_indent_line(*document.buffer, *view.cursors, indentation_level, ifx first then .NONE else .FUSE);
+                    first := true;
+                    for y0..y1 {
+                        indentation_level := find_indentation_level(document, { 0, it });
+                        text_buffer_move_cursor_to(document.buffer, *view.cursors, { 0, it }, false);
+                        changed := text_buffer_indent_line(*document.buffer, *view.cursors, indentation_level, ifx first then .NONE else .FUSE);
 
-                    if changed {
-                        update_parenthesized_scopes(document);
-                        first = false;
+                        if changed {
+                            update_parenthesized_scopes(document);
+                            first = false;
+                        }
+
+                        buffer_changed |= changed;
                     }
 
-                    buffer_changed |= changed;
-                }
-
-                // Restore cursor's vertical position if the selection is backwards.
-                if original_y0 < original_y1 {
-                    text_buffer_move_cursor_to(document.buffer, *view.cursors, view.cursors.c0.x, original_y0, false);
-                }
-            } else {
-                if view.cursors.c0 == view.cursors.c1 {
-                    buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "    ", .BARRIER);
+                    // Restore cursor's vertical position if the selection is backwards.
+                    if original_y0 < original_y1 {
+                        text_buffer_move_cursor_to(document.buffer, *view.cursors, view.cursors.c0.x, original_y0, false);
+                    }
+                } else {
+                    if view.cursors.c0 == view.cursors.c1 {
+                        buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "    ", .BARRIER);
+                    }
                 }
             }
         }
 
-        case .UNDO_EDIT;  buffer_changed |= text_buffer_undo_edit(*document.buffer, *view.cursors);
-        case .REDO_EDIT;  buffer_changed |= text_buffer_redo_edit(*document.buffer, *view.cursors);
+        case .UNDO_EDIT; {
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                buffer_changed |= text_buffer_undo_edit(*document.buffer, *view.cursors);
+            }
+        }
+        case .REDO_EDIT; {
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                buffer_changed |= text_buffer_redo_edit(*document.buffer, *view.cursors);
+            }
+        }
 
         case .COPY; {
             view.selecting = false;
@@ -2529,24 +2596,40 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             text_cursors_join(*view.cursors);
         }
         case .CUT; {
-            view.selecting = false;
-            deleted := text_buffer_delete_selection(*document.buffer, *view.cursors);
-            if deleted {
-                buffer_changed = true;
-                platform.set_clipboard_text(deleted);
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                view.selecting = false;
+                deleted := text_buffer_delete_selection(*document.buffer, *view.cursors);
+                if deleted {
+                    buffer_changed = true;
+                    platform.set_clipboard_text(deleted);
+                }
             }
         }
         case .PASTE; {
-            view.selecting = false;
-            text := platform.get_clipboard_text(,, temp);
-            if text {
-                buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, text, .BARRIER);
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                view.selecting = false;
+                text := platform.get_clipboard_text(,, temp);
+                if text {
+                    buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, text, .BARRIER);
+                }
             }
         }
 
-        case .STRIP_TRAILING_WHITESPACE;  buffer_changed |= strip_trailing_whitespace(view);
+        case .STRIP_TRAILING_WHITESPACE; {
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                buffer_changed |= strip_trailing_whitespace(view);
+            }
+        }
 
-        case .BENCHGEN_TEXT;              open_modal_interaction(editor, platform, input, modal_interaction_benchgen_procs);
+        case .BENCHGEN_TEXT; {
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                open_modal_interaction(editor, platform, input, modal_interaction_benchgen_procs);
+            }
+        }
     }
 
     if cursor_moved || buffer_changed {
@@ -3089,13 +3172,14 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                     interpolation_start(*view.cursor_position, view.old_cursor_position, new_cursor_position, input.time, anim_duration);
                 }
 
-                if document.flags & .MODIFIED_THIS_FRAME {
-                    interpolation_start(*view.cursor_flash, editor.theme.cursor_color_active, editor.theme.cursor_color, input.time, CURSOR_FLASH_DURATION);
+                if document.flags & (.MODIFIED_THIS_FRAME | .MODIFY_ATTEMPT_THIS_FRAME) {
+                    color := ifx document.flags & .READONLY then editor.theme.cursor_color_readonly else editor.theme.cursor_color;
+                    interpolation_start(*view.cursor_color, editor.theme.cursor_color_active, color, input.time, CURSOR_FLASH_DURATION);
                 }
 
                 interpolation_running := false;
                 interpolation_running |= interpolation_update(*view.cursor_position, input.time);
-                interpolation_running |= interpolation_update(*view.cursor_flash, input.time);
+                interpolation_running |= interpolation_update(*view.cursor_color, input.time);
                 if interpolation_running {
                     wants_this_frame = true;
                     wants_next_frame = true;
@@ -3415,7 +3499,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 cursor_rect := drect_to_rect(r);
                 cursor_rect = rect_clamp(cursor_rect, panel_content_rect);
 
-                draw_rect(render_commands, cursor_rect, ifx document.flags & .READONLY then editor.theme.cursor_color_readonly else view.cursor_flash.value);
+                draw_rect(render_commands, cursor_rect, view.cursor_color.value);
             }
 
             //
@@ -4084,7 +4168,7 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
     view.old_cursor_position = cursor_position;
 
     interpolation_init(*view.cursor_position, cursor_position);
-    interpolation_init(*view.cursor_flash, editor.theme.cursor_color);
+    interpolation_init(*view.cursor_color, ifx document.flags & .READONLY then editor.theme.cursor_color_readonly else editor.theme.cursor_color);
 
     interpolation_init(*panel.scroll, { 0, 0 });
 
