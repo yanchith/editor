@@ -1,5 +1,10 @@
 JL :: #import "Jai_Lexer";
 
+LANG_JAI_LINE_COMMENT        :: "//";
+LANG_JAI_BLOCK_COMMENT_START :: "/*";
+LANG_JAI_BLOCK_COMMENT_END   :: "*/";
+LANG_JAI_BLOCK_COMMENTS_CAN_NEST :: true;
+
 LANG_JAI_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
