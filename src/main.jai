@@ -534,7 +534,11 @@ main :: () {
             for render_commands {
                 if #complete it.type == {
                     case .DRAW_RECT; {
-                        texture := table_find_pointer(*renderer_state.textures, it.texture_id);
+                        texture: *Simp.Texture;
+                        if it.texture_id != Editor.TEXTURE_ID_NONE {
+                            texture = table_find_pointer(*renderer_state.textures, it.texture_id);
+                        }
+
                         if texture {
                             if renderer_state.current_pipeline != .TEXT {
                                 renderer_state.current_pipeline = .TEXT;
@@ -581,8 +585,8 @@ main :: () {
                             { it.texture_rect.x1, it.texture_rect.y0 },
                         );
                     }
+
                     case .SET_SCISSOR; {
-                        Simp.immediate_flush();
                         Simp.set_scissor(it.rect.p0, it.rect.p1);
                     }
                 }
