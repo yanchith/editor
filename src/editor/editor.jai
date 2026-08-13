@@ -7,6 +7,7 @@ TODO(jt): Known serious bugs:
 TODO(jt): Usage self-feedback:
 
 - finish the compilation buffer thing
+- indent line should move the cursor to the indentation level always
 
 TODO(jt): Roadmap:
 
@@ -3457,7 +3458,6 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 found := false;
                 highlight_loc: Text_Location;
 
-                // TODO(jt): @Bug This doesn't find sibling scopes!
                 scope := find_parenthesized_scope_for_location(document, view.cursors.c0);
                 if scope && scope.parent_index != -1 {
                     if scope.loc0 == view.cursors.c0 {
