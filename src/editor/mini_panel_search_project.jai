@@ -149,7 +149,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     s = arena_push_string(mini_panel.items_arena, line);
                 }
 
-                // Already splitting our memory, so path_overwrite_separators doesn't need to run twice.
+                // Already splitting our memory, so canonicalize_path doesn't need to run twice.
                 success, file_path, numbers_and_match := String.split_from_left(s, ":");
                 if !success {
                     continue;
@@ -175,7 +175,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     continue;
                 }
 
-                String.path_overwrite_separators(file_path, #char "/");
+                canonicalize_path(*file_path);
 
                 item := array_add(*mini_panel.items);
                 item.text = s;
@@ -184,7 +184,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 item.highlight_x1 = 0;
 
                 userdata := arena_push(mini_panel.items_arena, Search_Project_Item_Userdata);
-                userdata.file_path = file_path;
+                userdata.file_path = file_path; // Same allocation as s.
                 userdata.line_number = line_number;
                 userdata.column_number = column_number;
 
