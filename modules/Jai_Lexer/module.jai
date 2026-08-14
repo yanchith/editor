@@ -1648,12 +1648,29 @@ compose_new_token :: (lexer: *Lexer) -> *Token {
             next := peek_next_token(lexer);
             lexer.token_array_cursor -= 1;
             if (next.type == .IDENT) && (next.ident_value.name == "string") {
+                // We might fail to parse the here string. If we do, let's pretend this was a normal directive and
+                // emit the # as we normally would. However, we preserve the fact that we reported a parse error,
+                // so the caller doesn't continue.
+                //
+                // TODO(jt): @Speed Backup just the things we really need to!
+                backup := lexer.*;
+
                 // In the C++ version of the Lexer, the Parser actually invokes lexing of
                 // a here-string when it sees '%' followed by 'string'. Since we don't
                 // have a Parser here, we do this ourselves.
                 eat_token(lexer);  // Eat the "string".
+
                 result = parse_here_string(lexer);
-                lexer.previous_token_line_number = result.l1;  // @Cleanup @Hack
+                if result {
+                    lexer.previous_token_line_number = result.l1;  // @Cleanup @Hack
+                } else {
+                    reported_error := lexer.reported_error; // Let's not roll this one back, so the caller knows to stop.
+
+                    lexer.* = backup;
+                    lexer.reported_error = reported_error;
+
+                    result = potential_result;
+                }
             } else {
                 result = potential_result;
             }
