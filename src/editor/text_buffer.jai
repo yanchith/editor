@@ -140,7 +140,7 @@ Edit :: struct {
 Undo_Modifier_For_Insert :: enum {
     NONE;
 
-    CAN_AUTOFUSE;
+    CAN_AUTOFUSE; // Think about applying FUSE, then maybe do it.
 
     FUSE;    // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
     OMIT;    // Do not record history for this edit. This is only valid before there are any recorded edits.
@@ -149,7 +149,7 @@ Undo_Modifier_For_Insert :: enum {
 Undo_Modifier_For_Delete :: enum {
     NONE;
 
-    CAN_AUTOFUSE;
+    CAN_AUTOFUSE; // Think about applying FUSE, then maybe do it.
 
     FUSE; // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
 }
