@@ -1652,7 +1652,7 @@ compose_new_token :: (lexer: *Lexer) -> *Token {
                 // emit the # as we normally would. However, we preserve the fact that we reported a parse error,
                 // so the caller doesn't continue.
                 //
-                // TODO(jt): @Speed Backup just the things we really need to!
+                // We could back up just the fields that get modified, but that would be more brittle.
                 backup := lexer.*;
 
                 // In the C++ version of the Lexer, the Parser actually invokes lexing of
@@ -1664,7 +1664,7 @@ compose_new_token :: (lexer: *Lexer) -> *Token {
                 if result {
                     lexer.previous_token_line_number = result.l1;  // @Cleanup @Hack
                 } else {
-                    reported_error := lexer.reported_error; // Let's not roll this one back, so the caller knows to stop.
+                    reported_error := lexer.reported_error; // Let's not roll back reported_error, so the caller knows to stop.
 
                     lexer.* = backup;
                     lexer.reported_error = reported_error;
