@@ -95,6 +95,7 @@ TODO(jt): @Stream Small things to do:
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Flash cursor with typing (needs tuning)
 - [ ] Flash pasted text
+- [ ] Flash text inserted by undo/redo
 - [X] When switching/closing view, sort by recency.
 - [ ] Read-only mode for documents.
 - [ ] Dark text color under bright rectangles (cursor, selection, line)
@@ -2437,7 +2438,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .DELETE_FORWARD; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
-                view.selecting = false; buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors);
+                view.selecting = false;
+                buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors, .CAN_AUTOFUSE);
             }
         }
         case .DELETE_BACKWARD; {
@@ -2466,7 +2468,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
                 if !handled {
                     view.selecting = false;
-                    buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors);
+                    buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors, .CAN_AUTOFUSE);
                 }
             }
         }
