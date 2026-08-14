@@ -37,27 +37,18 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
             view := *panel.view._document;
             document := view.document;
 
-            starting_path = document.backing_directory_path;
-
-            // Because we normalize backing_directory_path, this should always happen.
-            // Maybe instead we want some kind of convention that our directory paths always end
-            // with trailing / and file paths never do.  -jt, 8 August 2026
-            if !String.ends_with(starting_path, "/") {
-                starting_path = tprint("%/", starting_path);
+            if document.backing_directory_path.count {
+                sanity_assert(!String.ends_with(document.backing_directory_path, "/"));
+                starting_path = tprint("%/", document.backing_directory_path);
             }
         }
         case .LISTING; {
             view := *panel.view._listing;
             listing := view.listing;
-            if listing && listing.kind == .DIRECTORY && listing.backing_directory_path.count {
-                starting_path = listing.backing_directory_path;
 
-                // Because we normalize backing_directory_path, this should always happen.
-                // Maybe instead we want some kind of convention that our directory paths always end
-                // with trailing / and file paths never do.  -jt, 8 August 2026
-                if !String.ends_with(starting_path, "/") {
-                    starting_path = tprint("%/", starting_path);
-                }
+            if listing.backing_directory_path.count {
+                sanity_assert(!String.ends_with(listing.backing_directory_path, "/"));
+                starting_path = tprint("%/", listing.backing_directory_path);
             }
         }
     }
@@ -66,7 +57,6 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
         success, path := platform.get_absolute_path(".",, temp);
         if success {
             String.path_overwrite_separators(path, "/");
-
             if !String.ends_with(path, "/") {
                 path = tprint("%/", path);
             }
