@@ -132,8 +132,8 @@ Edit :: struct {
     Flags :: enum_flags u32 {
         NONE :: 0;
 
-        FUSED_WITH_PREVIOUS :: 0x01; // When undoing, also apply previous edit, regardless of current edit's BARRIER.
-        FUSED_WITH_NEXT     :: 0x02; // When redoing, also apply next edit, regardless of current edit's BARRIER.
+        FUSED_WITH_PREVIOUS :: 0x01; // When applying/undoing, also apply previous edit.
+        FUSED_WITH_NEXT     :: 0x02; // When applying/redoing, also apply next edit.
     }
 }
 
