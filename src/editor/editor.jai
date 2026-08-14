@@ -41,6 +41,8 @@ TODO(jt): Roadmap:
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
 - [ ] Mode defined comments
+- [ ] Double click to select word (expand region)
+- [ ] Triple click to select line.
 - [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme), could have custom defined themes)
 - [ ] Support for dropping files into the window
 - [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
@@ -362,7 +364,7 @@ Document :: struct {
 
     compilation_args: string; // Empty if this is not a .COMPILATION document.
 
-    backing_directory_path: string;
+    backing_directory_path: string; // In canonical format (see canonicalize_path).
 
     // TODO(jt): @Cleanup Now that we have backing_directory_path, should backing_file_path be
     // an absolute path? Maybe it can just be a filename that we append.
@@ -370,7 +372,7 @@ Document :: struct {
     // Newly created documents (and scratch documents) do not have a backing file until saved, at
     // which point a backing file path is assigned and file created. A document with a
     // backing_file_path can also be created without the file already existing.
-    backing_file_path: string;
+    backing_file_path: string; // In canonical format (see canonicalize_path).
     backing_file_exists: bool;
     backing_file_time_of_last_save: Apollo_Time; // Used to filter out modifications from the filesystem done by us.
     backing_file_time_of_last_sync: Apollo_Time;
@@ -474,7 +476,7 @@ Listing :: struct {
 
     arena: *Arena; // For backing_directory_path and items.
 
-    backing_directory_path: string;
+    backing_directory_path: string; // In canonical format (see canonicalize_path).
 
     items: [..] Item;
     item_index_cold: s64; // Used to restore item_index in panel view, if the listing was in the background. Otherwise, the view's item_index takes precedence.
@@ -804,7 +806,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
             working_directory = "";
         }
 
-        String.path_overwrite_separators(working_directory, "/");
+        canonicalize_path(*working_directory);
 
         scratch_document = find_or_add_document(editor, platform, .SCRATCH, working_directory, "");
     }
@@ -1374,7 +1376,10 @@ get_scratch :: (editor: Editor) -> *Document, *Panel, panel_index: s64 {
 
 // Returns Panel and panel_index only if *compilation* has a currently assigned panel,
 // or it was assigned in the function because we provided show=true.
-find_or_add_compilation_document :: (editor: *Editor, platform: Platform, backing_directory_path: string, compilation_args: string, show := true) -> *Document, *Panel, panel_index: s64 {
+find_or_add_compilation_document :: (editor: *Editor, platform: Platform, _backing_directory_path: string, compilation_args: string, show := true) -> *Document, *Panel, panel_index: s64 {
+    sanity_assert(!String.ends_with(_backing_directory_path, "/"));
+    backing_directory_path := String.trim_right(_backing_directory_path, "/");
+
     document: *Document;
     panel: *Panel;
     panel_index: s64 = -1;
@@ -2908,9 +2913,6 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
     //
     // Unlike wheel scrolling, mouse selection is sticky to the panel where it started.
     //
-    // TODO(jt): Double click to select word.
-    // TODO(jt): Triple click to select line.
-    //
     if panel_is_active && editor.input_state.keys[Key.MB_LEFT] & .DOWN {
         if #complete panel.view.kind == {
             case .DOCUMENT; {
@@ -3823,8 +3825,7 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
     if file_is_directory {
         success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
         if success {
-            String.path_overwrite_separators(file_absolute_path, "/");
-            file_absolute_path = String.trim_right(file_absolute_path, "/");
+            canonicalize_path(*file_absolute_path);
 
             listing, listing_added := find_or_add_listing(editor, platform, .DIRECTORY, file_absolute_path);
             editor_log(editor, "Opening directory: %", file_absolute_path);
@@ -3863,8 +3864,10 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
     } else {
         success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
         if success {
-            String.path_overwrite_separators(file_absolute_path, "/");
+            canonicalize_path(*file_absolute_path);
+
             directory_absolute_path := String.path_strip_filename(file_absolute_path);
+            canonicalize_path(*directory_absolute_path);
 
             document, document_added := find_or_add_document(editor, platform, .FILE, directory_absolute_path, file_absolute_path);
             if document_added {
@@ -3906,7 +3909,13 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
     return panel;
 }
 
-find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, backing_directory_path: string, backing_file_path: string) -> *Document, added: bool {
+find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, _backing_directory_path: string, _backing_file_path: string) -> *Document, added: bool {
+    sanity_assert(!String.ends_with(_backing_directory_path, "/"));
+    sanity_assert(!String.ends_with(_backing_file_path, "/"));
+
+    backing_directory_path := String.trim_right(_backing_directory_path, "/");
+    backing_file_path      := String.trim_right(_backing_file_path, "/");
+
     for * editor.documents {
         if it.kind != kind                                      continue;
         if it.backing_directory_path != backing_directory_path  continue;
@@ -3956,7 +3965,10 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
     return pointer, true;
 }
 
-find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind, backing_directory_path: string) -> *Listing, added: bool {
+find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind, _backing_directory_path: string) -> *Listing, added: bool {
+    sanity_assert(!String.ends_with(_backing_directory_path, "/"));
+    backing_directory_path := String.trim_right(_backing_directory_path, "/");
+
     for * editor.listings {
         if it.kind != kind                                      continue;
         if it.backing_directory_path != backing_directory_path  continue;
@@ -4422,6 +4434,11 @@ get_line_length_for_line_index :: (document: Document, font: Font, line_index: s
     line_length := font_compute_line_length(font, line_view, binary = document.buffer.binary_mode);
 
     return line_length;
+}
+
+canonicalize_path :: (path: *string) {
+    String.path_overwrite_separators(path.*, "/");
+    path.* = String.trim_right(path.*, "/");
 }
 
 #scope_file
