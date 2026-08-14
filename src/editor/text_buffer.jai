@@ -132,30 +132,24 @@ Edit :: struct {
     Flags :: enum_flags u32 {
         NONE :: 0;
 
-        // TODO(jt): @Memory Instead of tracking THROUGH, just patch previous edit. Should also
-        // remove the need for BARRIER from Edit.Flags (not necessarily from Undo_Flags).
-        THROUGH :: 0x01; // When undoing/redoing an edit (with or without THROUGH), also process subsequent edits with THROUGH.
-        BARRIER :: 0x02; // Suppresses looking for THROUGH.
-
-        FUSED_WITH_PREVIOUS :: 0x04; // When undoing, also apply previous edit, regardless of current edit's BARRIER.
-        FUSED_WITH_NEXT     :: 0x08; // When redoing, also apply next edit, regardless of current edit's BARRIER.
+        FUSED_WITH_PREVIOUS :: 0x01; // When undoing, also apply previous edit, regardless of current edit's BARRIER.
+        FUSED_WITH_NEXT     :: 0x02; // When redoing, also apply next edit, regardless of current edit's BARRIER.
     }
 }
 
 Undo_Modifier_For_Insert :: enum {
     NONE;
 
-    ELIGIBLE_FOR_THROUGH_FLAG;
+    CAN_AUTOFUSE;
 
     FUSE;    // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
-    BARRIER; // Supress automatic fusing (either with .THROUGH or edit patching) of this edit with previous ones.
     OMIT;    // Do not record history for this edit. This is only valid before there are any recorded edits.
 }
 
 Undo_Modifier_For_Delete :: enum {
     NONE;
 
-    ELIGIBLE_FOR_THROUGH_FLAG;
+    CAN_AUTOFUSE;
 
     FUSE; // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
 }
@@ -273,11 +267,6 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
         edit = array_add(*buffer.edits);
         edit.type = .INSERT_FORWARD;
         edit.flags = .NONE;
-        if undo_modifier == .BARRIER {
-            edit.flags |= .BARRIER;
-        } else if undo_modifier == .ELIGIBLE_FOR_THROUGH_FLAG && is_through_edit(text) {
-            edit.flags |= .THROUGH;
-        }
         edit.text = arena_push_string(buffer.edit_text_arena, text);
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
@@ -294,6 +283,8 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
             maybe_fuse_last_edits(buffer.edits);
         } else if undo_modifier == .FUSE {
             maybe_fuse_last_edits(buffer.edits);
+        } else if undo_modifier == .CAN_AUTOFUSE {
+            maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
         }
 
         buffer.applied_edit_count = buffer.edits.count;
@@ -362,7 +353,7 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -
 
     edit := array_add(*buffer.edits);
     edit.type = .DELETE_FORWARD;
-    edit.flags = .BARRIER;
+    edit.flags = .NONE;
     edit.text = arena_push_string(buffer.edit_text_arena, deleted);
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = start_gb_index;
@@ -428,9 +419,6 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, und
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_FORWARD;
         edit.flags = .NONE;
-        if undo_modifier == .ELIGIBLE_FOR_THROUGH_FLAG && is_through_edit(cast(string, deleted)) {
-            edit.flags |= .THROUGH;
-        }
         edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
@@ -444,6 +432,8 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, und
 
         if undo_modifier == .FUSE {
             maybe_fuse_last_edits(buffer.edits);
+        } else if undo_modifier == .CAN_AUTOFUSE {
+            maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
         }
 
         buffer.applied_edit_count = buffer.edits.count;
@@ -465,9 +455,6 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, und
             edit := array_add(*buffer.edits);
             edit.type = .DELETE_FORWARD;
             edit.flags = .NONE;
-            if undo_modifier == .ELIGIBLE_FOR_THROUGH_FLAG && is_through_edit(cast(string, deleted)) {
-                edit.flags |= .THROUGH;
-            }
             edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
             edit.text_mark = arena_get_mark(buffer.edit_text_arena);
             edit.gb_index_before = gb_index;
@@ -481,6 +468,8 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, und
 
             if undo_modifier == .FUSE {
                 maybe_fuse_last_edits(buffer.edits);
+            } else if undo_modifier == .CAN_AUTOFUSE {
+                maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
             }
 
             buffer.applied_edit_count = buffer.edits.count;
@@ -544,9 +533,6 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_BACKWARD;
         edit.flags = .NONE;
-        if undo_modifier == .ELIGIBLE_FOR_THROUGH_FLAG && is_through_edit(cast(string, deleted)) {
-            edit.flags |= .THROUGH;
-        }
         edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
@@ -560,6 +546,8 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
 
         if undo_modifier == .FUSE {
             maybe_fuse_last_edits(buffer.edits);
+        } else if undo_modifier == .CAN_AUTOFUSE {
+            maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
         }
 
         buffer.applied_edit_count = buffer.edits.count;
@@ -585,9 +573,6 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
             edit := array_add(*buffer.edits);
             edit.type = .DELETE_BACKWARD;
             edit.flags = .NONE;
-            if undo_modifier == .ELIGIBLE_FOR_THROUGH_FLAG && is_through_edit(cast(string, deleted)) {
-                edit.flags |= .THROUGH;
-            }
             edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
             edit.text_mark = arena_get_mark(buffer.edit_text_arena);
             edit.gb_index_before = gb_index;
@@ -601,6 +586,8 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
 
             if undo_modifier == .FUSE {
                 maybe_fuse_last_edits(buffer.edits);
+            } else if undo_modifier == .CAN_AUTOFUSE {
+                maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
             }
 
             buffer.applied_edit_count = buffer.edits.count;
@@ -687,7 +674,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
 
     edit := array_add(*buffer.edits);
     edit.type = .DELETE_FORWARD;
-    edit.flags = .BARRIER;
+    edit.flags = .NONE;
     edit.text = arena_push_string(buffer.edit_text_arena, deleted);
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = start_gb_index;
@@ -750,7 +737,7 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
 
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_FORWARD;
-        edit.flags = .BARRIER;
+        edit.flags = .NONE;
         edit.text = arena_push_string(buffer.edit_text_arena, deleted);
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
@@ -837,7 +824,7 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
 
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_BACKWARD_MEMSET;
-        edit.flags = .BARRIER;
+        edit.flags = .NONE;
         edit.memset_value = INDENTATION_VALUE;
         edit.memset_count = delete_count;
         edit.gb_index_before = gb_index_before;
@@ -887,7 +874,7 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
 
         edit := array_add(*buffer.edits);
         edit.type = .INSERT_FORWARD_MEMSET;
-        edit.flags = .BARRIER;
+        edit.flags = .NONE;
         edit.memset_value = INDENTATION_VALUE;
         edit.memset_count = insert_count;
         edit.gb_index_before = gb_index_before;
@@ -992,22 +979,7 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> chang
         applied_count += 1;
 
         if !(edit.flags & .FUSED_WITH_PREVIOUS) {
-            stop_undoing := cast(bool, edit.flags & .BARRIER);
-            if !stop_undoing && it > 0 {
-                previous_edit := buffer.edits[it - 1];
-
-                if !(previous_edit.flags & .THROUGH) {
-                    stop_undoing = true;
-                }
-
-                if previous_edit.type != edit.type {
-                    stop_undoing = true;
-                }
-            }
-
-            if stop_undoing {
-                break;
-            }
+            break;
         }
     }
 
@@ -1085,22 +1057,7 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> chang
         applied_count += 1;
 
         if !(edit.flags & .FUSED_WITH_NEXT) {
-            stop_redoing := cast(bool, edit.flags & .BARRIER);
-            if !stop_redoing && it < buffer.edits.count - 1 {
-                next_edit := buffer.edits[it + 1];
-
-                if !(next_edit.flags & .THROUGH) {
-                    stop_redoing = true;
-                }
-
-                if next_edit.type != edit.type {
-                    stop_redoing = true;
-                }
-            }
-
-            if stop_redoing {
-                break;
-            }
+            break;
         }
     }
 
@@ -2230,19 +2187,31 @@ remove_line :: (buffer: *Text_Buffer, index: s64) {
     buffer.line_count -= 1;
 }
 
-maybe_fuse_last_edits :: (edits: [] Edit) {
+maybe_fuse_last_edits :: (edits: [] Edit, same_type_only := false, simple_only := false) {
     // The caller does not know whether we already have something in our undo buffer, so let's only
     // do the fusing there's at least two things.
     if edits.count > 1 {
         current  := *edits[edits.count - 1];
         previous := *edits[edits.count - 2];
 
+        if same_type_only {
+            if current.type != previous.type {
+                return;
+            }
+        }
+
+        if simple_only {
+            // We could theoretically count memset edits here.
+            if !is_simple_edit(current.text)   return;
+            if !is_simple_edit(previous.text)  return;
+        }
+
         current.flags  |= .FUSED_WITH_PREVIOUS;
         previous.flags |= .FUSED_WITH_NEXT;
     }
 }
 
-is_through_edit :: (text: string) -> bool {
+is_simple_edit :: (text: string) -> bool {
     if text != " " && text != "\n" && text != "\r\n" {
         if text.count && text.count == UTF8_LENGTH_FOR_STARTING_BYTE[text[0]] {
             return true;

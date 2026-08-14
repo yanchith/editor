@@ -176,7 +176,7 @@ USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
 FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(5000); // The maximum amount of time after which the polling fallback for file detection happens.
 FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(250);  // The amount of time we for which we disregard reported changes for a directory after a write.
 
-UNDO_MERGE_ELIGIBLE_PERIOD: Apollo_Time : #run milliseconds_to_apollo(500);
+UNDO_AUTOFUSE_PERIOD: Apollo_Time : #run milliseconds_to_apollo(500);
 
 GUTTER_PIXELS :: 20.0; // TODO(jt): Make this configurable. :Config
 
@@ -2048,7 +2048,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                                 text_cursors_join(*view.cursors);
 
                                 text_buffer_move_cursor_to(document.buffer, *view.cursors, c0, false);
-                                text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .BARRIER);
+                                text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .NONE);
 
                                 c1.x += 1; // Because we just inserted the starting paren.
                                 text_buffer_move_cursor_to(document.buffer, *view.cursors, c1, false);
@@ -2060,7 +2060,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                         if opens && !handled {
                             if view.cursors.c0 == view.cursors.c1 {
-                                text_buffer_insert_char(*document.buffer, *view.cursors, char, .BARRIER);
+                                text_buffer_insert_char(*document.buffer, *view.cursors, char, .NONE);
                                 text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .FUSE);
                                 text_buffer_move_cursor_x(document.buffer, *view.cursors, -1, false);
 
@@ -2074,7 +2074,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                                 text_cursors_join(*view.cursors);
 
                                 text_buffer_move_cursor_to(document.buffer, *view.cursors, c1, false);
-                                text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .BARRIER);
+                                text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .NONE);
 
                                 text_buffer_move_cursor_to(document.buffer, *view.cursors, c0, false);
                                 text_buffer_insert_char(*document.buffer, *view.cursors, char, .FUSE);
@@ -2084,13 +2084,9 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         }
 
                         if !handled {
-                            // TODO(jt): ELIGIBLE_FOR_THROUGH_FLAG does not work super well when undoing, only redoing.
-                            // The problem is that the first insertion actually doesn't get THROUGH, so undo stops one edit short.
-                            // Can we design something a little better?
-
                             undo_modifier: Undo_Modifier_For_Insert = .NONE;
-                            if input.time - document.time_of_last_interaction < UNDO_MERGE_ELIGIBLE_PERIOD {
-                                undo_modifier = .ELIGIBLE_FOR_THROUGH_FLAG;
+                            if input.time - document.time_of_last_interaction < UNDO_AUTOFUSE_PERIOD {
+                                undo_modifier = .CAN_AUTOFUSE;
                             }
 
                             text_buffer_insert_char(*document.buffer, *view.cursors, char, undo_modifier);
@@ -2500,7 +2496,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
                 // TODO(jt): Preserve CRLF in CRLF-only documents.
                 view.selecting = false;
-                buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .BARRIER);
+                buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .NONE);
 
                 if should_make_space_for_block {
                     buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .FUSE);
@@ -2533,7 +2529,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             if !(document.flags & .READONLY) {
                 // TODO(jt): Preserve CRLF in CRLF-only documents.
                 view.selecting = false;
-                buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .BARRIER);
+                buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .NONE);
                 cursor_moved   |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
                 cursor_moved   |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, false);
             }
@@ -2571,7 +2567,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     }
                 } else {
                     if view.cursors.c0 == view.cursors.c1 {
-                        buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "    ", .BARRIER);
+                        buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "    ", .NONE);
                     }
                 }
             }
@@ -2616,7 +2612,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 view.selecting = false;
                 text := platform.get_clipboard_text(,, temp);
                 if text {
-                    buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, text, .BARRIER);
+                    buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, text, .NONE);
                 }
             }
         }

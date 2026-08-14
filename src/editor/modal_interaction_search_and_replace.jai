@@ -124,7 +124,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         // this, nothing like that exists in the editor.
                         view.cursors.c0 = { x0, y };
                         view.cursors.c1 = { x1, y };
-                        text_buffer_insert(*document.buffer, *view.cursors, userdata.input_to_replace, .BARRIER);
+                        text_buffer_insert(*document.buffer, *view.cursors, userdata.input_to_replace, .NONE);
 
                         document.flags |= .MODIFIED_THIS_FRAME;
                         document.flags |= .MODIFIED;
