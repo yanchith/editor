@@ -228,13 +228,22 @@ find_indentation_level_for_location :: (document: Document, loc: Text_Location) 
     // the closing paren depending on whether the scope has REGULAR or HANGING indentation,
     // while the opening paren always belongs to its parent scope, so we exclude it.
     scope := find_parenthesized_scope_for_location(document, loc, start_y_inclusive = false);
+    if !scope {
+        return 0;
+    }
 
+    sanity_assert(scope.indentation_level >= 0);
     level := scope.indentation_level;
-    if scope.loc1.y == loc.y && !(scope.indentation_flags & .HANGING) {
-        level -= DEFAULT_INDENTATION_STEP;
 
-        sanity_assert(level >= 0);
-        level = max(level, 0);
+    // If this is the last line of the scope (and it is not a HANGING indentation style),
+    // indent to the parent scope's level, if it exists.
+    if scope.loc1.y == loc.y && !(scope.indentation_flags & .HANGING) {
+        if scope.parent_index >= 0 {
+            parent := *document.parenthesized_scopes[scope.parent_index];
+            sanity_assert(parent.indentation_level >= 0);
+
+            level = parent.indentation_level;
+        }
     }
 
     return level;
