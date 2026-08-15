@@ -56,12 +56,11 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         }
 
         for * editor.documents {
-            document_name: string;
-            if #complete it.kind == {
-                case .SCRATCH;  continue;
-                case .COMPILATION;  document_name = "*compilation*";
-                case .FILE;         document_name = it.backing_file_path; // TODO(jt): Strip path prefix common for all items.
+            if it.kind == .SCRATCH {
+                continue;
             }
+
+            document_name := get_document_name(it); // TODO(jt): Add path prefix to disambiguate.
 
             found, found_indices := line_search(document_name, search_parts, smartcase);
             if found {
@@ -101,7 +100,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 mini_panel.item_index = mini_panel.items.count;
             }
 
-            listing_name: string = it.backing_directory_path;
+            listing_name := get_listing_name(it);
 
             found, found_indices := line_search(listing_name, search_parts, smartcase);
             if found {
