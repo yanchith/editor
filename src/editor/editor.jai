@@ -44,7 +44,8 @@ TODO(jt): Roadmap:
 - [X] Map-like zoom
 - [X] Read-only mode for documents.
 - [X] Selection in mini panel text buffer.
-- [ ] Selection in modal interaction text buffer.
+- [X] Selection in modal interaction text buffer.
+- [ ] COPY, CUT and PASTE in mini panel and modal interaction.
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
 - [ ] Mode defined comments
@@ -555,10 +556,12 @@ Modal_Interaction :: struct {
     open: bool;
     procs: Modal_Interaction_Procs;
 
-    key_map: Key_Map(Modal_Interaction_Action); // In the permanent arena. Unlike mini panel, this key_map gets reset (keeping memory) and re-initialized each time we open.
+    key_map: Key_Map(Modal_Interaction_Action);
 
     cursors: Text_Cursors;
-    buffer: Text_Buffer;                        // Has its own arena, because buffers are special snowflakes (for now).
+    selecting: bool;
+
+    buffer: Text_Buffer;
 
     userdata_arena: *Arena;
     userdata: *void;
@@ -876,6 +879,31 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map.allocator = arena_allocator(editor.perm_arena);
         key_map_reserve(key_map, 128);
 
+        key_map_add(key_map, "C-b",         .MOVE_LEFT);
+        key_map_add(key_map, "C-f",         .MOVE_RIGHT);
+        key_map_add(key_map, "<left>",      .MOVE_LEFT);
+        key_map_add(key_map, "<right>",     .MOVE_RIGHT);
+
+        key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
+        key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
+
+        key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
+        key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
+
+        key_map_add(key_map, "C-d",         .DELETE_FORWARD);
+        key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
+        key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
+
+        key_map_add(key_map, "<tab>",       .INDENT_OR_AUTOCOMPLETE);
+        key_map_add(key_map, "C-i",         .INDENT_OR_AUTOCOMPLETE);
+
+        key_map_add(key_map, "C-<space>",   .START_SELECTING);
+
+        key_map_add(key_map, "<enter>",     .CONFIRM);
+        key_map_add(key_map, "C-m",         .CONFIRM);
+        key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
+
+        // Modal text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*modal_interaction.buffer, make_arena(platform, .SMALL));
 
         modal_interaction.userdata_arena = make_arena(platform, .SMALL);
@@ -1202,12 +1230,18 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             line_view := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
 
-            line_x    := cast(f32, _font_compute_position_on_line(editor.font, action_text, action_text.count, binary = false));
-            cursor0_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, mini_panel.cursors.c0.x, binary = false));
-            cursor1_x := line_x + cast(f32, _font_compute_position_on_line(editor.font, line_view, mini_panel.cursors.c1.x, binary = false));
+            line_x    := _font_compute_line_length(editor.font, action_text, binary = false);
+            cursor0_x := line_x + _font_compute_position_on_line(editor.font, line_view, mini_panel.cursors.c0.x, binary = false);
+            cursor1_x := line_x + _font_compute_position_on_line(editor.font, line_view, mini_panel.cursors.c1.x, binary = false);
 
-            draw_rect(*render_commands, mini_panel_x0 + cursor0_x, mini_panel_y, mini_panel_x0 + cursor1_x, mini_panel_y + cell_h, editor.theme.selection_color);
-            draw_rect(*render_commands, mini_panel_x0 + cursor0_x, mini_panel_y, mini_panel_x0 + cursor0_x + cell_w, mini_panel_y + cell_h, editor.theme.cursor_color);
+            draw_rect(*render_commands,
+                      mini_panel_x0 + cast(f32, cursor0_x), mini_panel_y,
+                      mini_panel_x0 + cast(f32, cursor1_x), mini_panel_y + cell_h,
+                      editor.theme.selection_color);
+            draw_rect(*render_commands,
+                      mini_panel_x0 + cast(f32, cursor0_x), mini_panel_y,
+                      mini_panel_x0 + cast(f32, cursor0_x) + cell_w, mini_panel_y + cell_h,
+                      editor.theme.cursor_color);
 
             main_line := tprint("%%", action_text, line_view);
 
@@ -1257,10 +1291,18 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             line_view := text_buffer_make_view_for_line(modal_interaction.buffer, 0,, temp);
 
-            line_x   := cast(f32, _font_compute_position_on_line(editor.font, action_text, action_text.count, binary = false));
-            cursor_x := line_x + _font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.cursors.c0.x, binary = false);
+            line_x    := _font_compute_line_length(editor.font, action_text, binary = false);
+            cursor0_x := line_x + _font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.cursors.c0.x, binary = false);
+            cursor1_x := line_x + _font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.cursors.c1.x, binary = false);
 
-            draw_rect(*render_commands, rect_from_point_and_size(modal_interaction_line_x0 + cast(f32, cursor_x), modal_interaction_line_y, cell_w, cell_h), editor.theme.cursor_color);
+            draw_rect(*render_commands,
+                      modal_interaction_line_x0 + cast(f32, cursor0_x), modal_interaction_line_y,
+                      modal_interaction_line_x0 + cast(f32, cursor1_x), modal_interaction_line_y + cell_h,
+                      editor.theme.selection_color);
+            draw_rect(*render_commands,
+                      modal_interaction_line_x0 + cast(f32, cursor0_x), modal_interaction_line_y,
+                      modal_interaction_line_x0 + cast(f32, cursor0_x) + cell_w, modal_interaction_line_y + cell_h,
+                      editor.theme.cursor_color);
 
             main_line := tprint("%%", action_text, line_view);
 
@@ -1716,44 +1758,43 @@ Mini_Panel_Action :: enum {
 }
 
 route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
-    mini_panel := *editor.mini_panel;
+    mp := *editor.mini_panel;
 
-    min_item_index := ifx mini_panel.procs.can_select_text_line(editor, platform, input) then -1 else 0;
+    min_item_index := ifx mp.procs.can_select_text_line(editor, platform, input) then -1 else 0;
 
     buffer_changed := false;
-    old_item_index := mini_panel.item_index;
+    old_item_index := mp.item_index;
 
-    buffered, action := key_map_input(*mini_panel.key_map, event, editor.input_state.modifiers);
+    buffered, action := key_map_input(*mp.key_map, event, editor.input_state.modifiers);
     if action == {
-        case .MOVE_UP;                 mini_panel.item_index = clamp(mini_panel.item_index - 1, min_item_index, mini_panel.items.count - 1);
-        case .MOVE_DOWN;               mini_panel.item_index = clamp(mini_panel.item_index + 1, min_item_index, mini_panel.items.count - 1);
-        case .MOVE_LEFT;               text_buffer_move_cursor_x(mini_panel.buffer, *mini_panel.cursors, -1, mini_panel.selecting);
-        case .MOVE_RIGHT;              text_buffer_move_cursor_x(mini_panel.buffer, *mini_panel.cursors,  1, mini_panel.selecting);
+        case .MOVE_UP;                 mp.item_index = clamp(mp.item_index - 1, min_item_index, mp.items.count - 1);
+        case .MOVE_DOWN;               mp.item_index = clamp(mp.item_index + 1, min_item_index, mp.items.count - 1);
+        case .MOVE_LEFT;               text_buffer_move_cursor_x(mp.buffer, *mp.cursors, -1, mp.selecting);
+        case .MOVE_RIGHT;              text_buffer_move_cursor_x(mp.buffer, *mp.cursors,  1, mp.selecting);
 
-        case .MOVE_TO_START_OF_LINE;   text_buffer_move_cursor_to_start_of_line(mini_panel.buffer, *mini_panel.cursors, mini_panel.selecting);
-        case .MOVE_TO_END_OF_LINE;     text_buffer_move_cursor_to_end_of_line(mini_panel.buffer, *mini_panel.cursors, mini_panel.selecting);
+        case .MOVE_TO_START_OF_LINE;   text_buffer_move_cursor_to_start_of_line(mp.buffer, *mp.cursors, mp.selecting);
+        case .MOVE_TO_END_OF_LINE;     text_buffer_move_cursor_to_end_of_line(mp.buffer, *mp.cursors, mp.selecting);
 
-        case .MOVE_FORWARD_WORD;       text_buffer_move_cursor_to_next_word_boundary(mini_panel.buffer, *mini_panel.cursors, mini_panel.selecting);
-        case .MOVE_BACKWARD_WORD;      text_buffer_move_cursor_to_previous_word_boundary(mini_panel.buffer, *mini_panel.cursors, mini_panel.selecting);
+        case .MOVE_FORWARD_WORD;       text_buffer_move_cursor_to_next_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
+        case .MOVE_BACKWARD_WORD;      text_buffer_move_cursor_to_previous_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
 
-        case .DELETE_FORWARD;          text_buffer_delete_forward(*mini_panel.buffer, *mini_panel.cursors); buffer_changed = true;
-        case .DELETE_BACKWARD;         buffer_changed |= mini_panel.procs.delete_backward(editor, platform, input);
+        case .DELETE_FORWARD;          text_buffer_delete_forward(*mp.buffer, *mp.cursors); buffer_changed = true;
+        case .DELETE_BACKWARD;         buffer_changed |= mp.procs.delete_backward(editor, platform, input);
 
-        case .MOVE_UP_ONE_SCREEN;      mini_panel.item_index = clamp(mini_panel.item_index - MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
-        case .MOVE_DOWN_ONE_SCREEN;    mini_panel.item_index = clamp(mini_panel.item_index + MINI_PANEL_LINES, min_item_index, mini_panel.items.count - 1);
+        case .MOVE_UP_ONE_SCREEN;      mp.item_index = clamp(mp.item_index - MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
+        case .MOVE_DOWN_ONE_SCREEN;    mp.item_index = clamp(mp.item_index + MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
 
-        case .START_SELECTING;         mini_panel.selecting = true; text_cursors_join(*mini_panel.cursors);
+        case .START_SELECTING;         mp.selecting = true; text_cursors_join(*mp.cursors);
 
-        case .INDENT_OR_AUTOCOMPLETE;  buffer_changed |= mini_panel.procs.autocomplete(editor, platform, input);
+        case .INDENT_OR_AUTOCOMPLETE;  buffer_changed |= mp.procs.autocomplete(editor, platform, input);
 
-        case .CONFIRM;                 buffer_changed |= mini_panel.procs.confirm(editor, platform, input);
-
+        case .CONFIRM;                 buffer_changed |= mp.procs.confirm(editor, platform, input);
         case .CANCEL_OR_STOP_SELECTING; {
-            if mini_panel.selecting {
-                text_cursors_join(*mini_panel.cursors);
-                mini_panel.selecting = false;
+            if mp.selecting {
+                text_cursors_join(*mp.cursors);
+                mp.selecting = false;
             } else {
-                mini_panel.procs.cancel(editor, platform, input);
+                mp.procs.cancel(editor, platform, input);
             }
         }
     }
@@ -1765,17 +1806,17 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         if event.type == .CODEPOINT {
             if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
                 char := cast(u32, event.codepoint);
-                buffer_changed |= text_buffer_insert_char(*mini_panel.buffer, *mini_panel.cursors, char);
+                buffer_changed |= text_buffer_insert_char(*mp.buffer, *mp.cursors, char);
             }
         }
     }
 
-    if mini_panel.open {
+    if mp.open {
         // TODO(jt): @Speed In case we'll be processing multiple events this frame, we want to delay
         // calling this until they have all been processed. Otherwise we'll be doing expensive stuff
         // multiple times per frame. Maybe we need to move this one level up and track the dirty
         // flags on the mini panel itself?
-        mini_panel.procs.update(editor, platform, input, buffer_changed, mini_panel.item_index != old_item_index);
+        mp.procs.update(editor, platform, input, buffer_changed, mp.item_index != old_item_index);
     }
 }
 
@@ -1794,6 +1835,8 @@ Modal_Interaction_Action :: enum {
     DELETE_FORWARD;
     DELETE_BACKWARD;
 
+    START_SELECTING;
+
     INDENT_OR_AUTOCOMPLETE;
 
     CONFIRM;
@@ -1801,41 +1844,49 @@ Modal_Interaction_Action :: enum {
 }
 
 route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
-    modal_interaction := *editor.modal_interaction;
+    mi := *editor.modal_interaction;
 
-    if modal_interaction.procs.handle_event(editor, event, platform, input) {
+    if mi.procs.handle_event(editor, event, platform, input) {
         return;
     }
 
     buffer_changed := false;
 
-    buffered, action := key_map_input(*modal_interaction.key_map, event, editor.input_state.modifiers);
+    buffered, action := key_map_input(*mi.key_map, event, editor.input_state.modifiers);
     if action == {
-        case .MOVE_LEFT;                 text_buffer_move_cursor_x(modal_interaction.buffer, *modal_interaction.cursors, -1, false);
-        case .MOVE_RIGHT;                text_buffer_move_cursor_x(modal_interaction.buffer, *modal_interaction.cursors,  1, false);
+        case .MOVE_LEFT;                 text_buffer_move_cursor_x(mi.buffer, *mi.cursors, -1, mi.selecting);
+        case .MOVE_RIGHT;                text_buffer_move_cursor_x(mi.buffer, *mi.cursors,  1, mi.selecting);
 
-        case .MOVE_TO_START_OF_LINE;     text_buffer_move_cursor_to_start_of_line(modal_interaction.buffer, *modal_interaction.cursors, false);
-        case .MOVE_TO_END_OF_LINE;       text_buffer_move_cursor_to_end_of_line(modal_interaction.buffer, *modal_interaction.cursors, false);
+        case .MOVE_TO_START_OF_LINE;     text_buffer_move_cursor_to_start_of_line(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_TO_END_OF_LINE;       text_buffer_move_cursor_to_end_of_line(mi.buffer, *mi.cursors, mi.selecting);
 
-        case .MOVE_FORWARD_WORD;         text_buffer_move_cursor_to_next_word_boundary(modal_interaction.buffer, *modal_interaction.cursors, false);
-        case .MOVE_BACKWARD_WORD;        text_buffer_move_cursor_to_previous_word_boundary(modal_interaction.buffer, *modal_interaction.cursors, false);
+        case .MOVE_FORWARD_WORD;         text_buffer_move_cursor_to_next_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_BACKWARD_WORD;        text_buffer_move_cursor_to_previous_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
 
-        case .DELETE_FORWARD;            text_buffer_delete_forward(*modal_interaction.buffer, *modal_interaction.cursors); buffer_changed = true;
-        case .DELETE_BACKWARD;           text_buffer_delete_backward(*modal_interaction.buffer, *modal_interaction.cursors); buffer_changed = true;
+        case .DELETE_FORWARD;            text_buffer_delete_forward(*mi.buffer, *mi.cursors); buffer_changed = true;
+        case .DELETE_BACKWARD;           text_buffer_delete_backward(*mi.buffer, *mi.cursors); buffer_changed = true;
+
+        case .START_SELECTING;           mi.selecting = true; text_cursors_join(*mi.cursors);
 
         case .INDENT_OR_AUTOCOMPLETE;    // No-op, we just want to prevent inserting a tab for now.
 
-        case .CONFIRM;                   modal_interaction.procs.advance(editor, platform, input);
-        case .CANCEL_OR_STOP_SELECTING;  modal_interaction.procs.cancel(editor, platform, input);
+        case .CONFIRM;                   mi.procs.advance(editor, platform, input);
+        case .CANCEL_OR_STOP_SELECTING; {
+            if mi.selecting {
+                text_cursors_join(*mi.cursors);
+                mi.selecting = false;
+            } else {
+                mi.procs.cancel(editor, platform, input);
+            }
+        }
     }
 
-    // TODO(jt): Do selecting in modal interaction
     // TODO(jt): Animated cursor in modal interaction
     if !buffered && action == .NONE && event.flags & .PRESSED {
         if event.type == .CODEPOINT {
             if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
                 char := cast(u32, event.codepoint);
-                buffer_changed |= text_buffer_insert_char(*modal_interaction.buffer, *modal_interaction.cursors, char);
+                buffer_changed |= text_buffer_insert_char(*mi.buffer, *mi.cursors, char);
             }
         }
     }
@@ -3727,30 +3778,6 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, pr
 
     assert(!modal_interaction.open);
 
-    key_map := *modal_interaction.key_map;
-
-    key_map_add(key_map, "C-b",         .MOVE_LEFT);
-    key_map_add(key_map, "C-f",         .MOVE_RIGHT);
-    key_map_add(key_map, "<left>",      .MOVE_LEFT);
-    key_map_add(key_map, "<right>",     .MOVE_RIGHT);
-
-    key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
-    key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
-
-    key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
-    key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
-
-    key_map_add(key_map, "C-d",         .DELETE_FORWARD);
-    key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
-    key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
-
-    key_map_add(key_map, "<tab>",       .INDENT_OR_AUTOCOMPLETE);
-    key_map_add(key_map, "C-i",         .INDENT_OR_AUTOCOMPLETE);
-
-    key_map_add(key_map, "<enter>",     .CONFIRM);
-    key_map_add(key_map, "C-m",         .CONFIRM);
-    key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
-
     modal_interaction.procs = procs;
     modal_interaction.open = true;
 
@@ -3763,10 +3790,10 @@ close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
     modal_interaction := *editor.modal_interaction;
     assert(modal_interaction.open);
 
-    key_map_reset_keeping_memory(*modal_interaction.key_map);
-
     modal_interaction.cursors.c0 = { 0, 0 };
     modal_interaction.cursors.c1 = { 0, 0 };
+    modal_interaction.selecting = false;
+
     text_buffer_reset(*modal_interaction.buffer);
 
     arena_reset(modal_interaction.userdata_arena);
