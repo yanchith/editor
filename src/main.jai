@@ -259,8 +259,12 @@ main :: () {
             return File.file_delete(path);
         }
 
-        // TODO(jt): platform.make_directory
-        // TODO(jt): platform.delete_directory
+        platform.make_directory = (path: string) -> success: bool {
+            return File.make_directory_if_it_does_not_exist(path);
+        }
+        platform.delete_directory = (path: string) -> success: bool {
+            return File.delete_directory(path);
+        }
         platform.list_directory = (path: string, recursive: bool, files: bool, directories: bool) -> [] Editor.File_Info /* context.allocator */ {
             file_infos: [..] Editor.File_Info;
 

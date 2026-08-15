@@ -46,12 +46,12 @@ TODO(jt): Roadmap:
 - [X] Selection in mini panel text buffer.
 - [X] Selection in modal interaction text buffer.
 - [X] COPY, CUT and PASTE in mini panel and modal interaction.
-- [ ] Create file in new directories (mkdirp)
+- [~] Create file in new directories (mkdirp) ; verify on macOS!
 - [ ] Delete file
-- [ ] Mode defined comments
+- [ ] Mode defined comments (C-x C-;)
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
-- [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme), could have custom defined themes)
+- [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme)
 - [ ] M-g g (go to line)
 - [ ] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
 - [ ] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
@@ -2464,6 +2464,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                         strip_trailing_whitespace(view);
                     }
 
+                    ensure_directory(editor, platform, document.backing_directory_path);
+
                     gap_buffer_move_gap_to(*buffer.gb, 0);
                     contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
                     success := platform.write_file(document.backing_file_path, contents);
@@ -4039,6 +4041,34 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
     }
 
     return panel;
+}
+
+ensure_directory :: (editor: *Editor, platform: Platform, _path: string) {
+    path := _path;
+
+    // So that the search below finds the last separator and checks the last path segment.
+    if !String.ends_with(path, "/") {
+        path = tprint("%/", path);
+    }
+
+    editor_log(editor, "Ensuring directory: %", path);
+
+    index := String.find_index_from_left(path, #char "/", 0);
+    while index != -1 {
+        directory := String.slice(path, 0, index);
+
+        if !platform.file_is_directory(directory) {
+            if !platform.file_exists(directory) {
+                platform.make_directory(directory);
+                editor_log(editor, "Creating directory: %", directory);
+            } else {
+                editor_log(editor, "Can't create directory %, file already exists", directory);
+                return;
+            }
+        }
+
+        index = String.find_index_from_left(path, #char "/", index + 1);
+    }
 }
 
 find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kind, _backing_directory_path: string, _backing_file_path: string) -> *Document, added: bool {
