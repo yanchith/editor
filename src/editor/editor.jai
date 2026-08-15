@@ -46,17 +46,26 @@ TODO(jt): Roadmap:
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
 - [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme), could have custom defined themes)
-- [ ] Support for dropping files into the window
-- [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
+- [ ] M-g g (go to line)
+- [ ] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
+- [ ] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
+- [ ] C-u C-<space> and cursor undo.
+- [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
+- [ ] M-q (reflow)
+- [ ] M-u, M-l (upcase/downcase word and move cursor)
+- [ ] MOVE_TO_START and MOVE_TO_END in mini panel.
+- [ ] Emacs-like kill ring
 - [ ] CRLF
-- [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
 - [ ] Rotated session logs
+- [ ] Support for dropping files into the window
+
+- [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
+- [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode Panel
 - [ ] Multiple Cursors
-- [ ] Projects (project root, settings, compilations, text search with jumping, find/replace)
+- [ ] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
 - [ ] Emacs-like undo? (If I find out I can't live without)
-- [ ] Emacs-like kill ring (If I find out I can't live without)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
 - [ ] Very nice text rendering (kb_text_shape + Slug)
@@ -78,23 +87,15 @@ TODO(jt): @Stream Small things to do:
 - [X] OPEN_FILE completion also completes, if we are on the text line but there is only one item in the list.
 - [X] Selection in mini panel text buffer.
 - [ ] Selection in modal interaction text buffer.
-- [ ] MOVE_TO_START and MOVE_TO_END in mini panel.
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
-- [ ] SEARCH should allow words separated by spaces
-- [ ] SEARCH items shouold render with syntax highlighting
+- [X] SEARCH should allow words separated by spaces
+- [ ] SEARCH items should render with syntax highlighting
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line. We should also probably add a way to navigate them (C-f, C-n).
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
 - [ ] C-j join-next-line
-- [ ] M-d, C-<backspace> (delete forward/backward word)
-- [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [X] M-x
-- [ ] M-g g (go to line)
-- [ ] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
-- [ ] C-u C-<space> and cursor undo.
-- [ ] M-q (reflow)
-- [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Flash cursor with typing (needs tuning)
 - [ ] Flash pasted text
 - [ ] Flash text inserted by undo/redo
