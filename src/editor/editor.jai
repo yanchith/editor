@@ -45,7 +45,7 @@ TODO(jt): Roadmap:
 - [X] Read-only mode for documents.
 - [X] Selection in mini panel text buffer.
 - [X] Selection in modal interaction text buffer.
-- [ ] COPY, CUT and PASTE in mini panel and modal interaction.
+- [X] COPY, CUT and PASTE in mini panel and modal interaction.
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
 - [ ] Mode defined comments
@@ -72,6 +72,7 @@ TODO(jt): Roadmap:
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
 - [ ] Dark text color under bright rectangles (cursor, selection, line)
+- [ ] Config file
 
 - [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
 - [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
@@ -856,6 +857,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<tab>",       .INDENT_OR_AUTOCOMPLETE);
         key_map_add(key_map, "C-i",         .INDENT_OR_AUTOCOMPLETE);
 
+        key_map_add(key_map, "M-w",         .COPY);
+        key_map_add(key_map, "C-w",         .CUT);
+        key_map_add(key_map, "C-y",         .PASTE);
+
         key_map_add(key_map, "<enter>",     .CONFIRM);
         key_map_add(key_map, "C-m",         .CONFIRM);
         key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
@@ -894,10 +899,14 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
         key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
 
+        key_map_add(key_map, "C-<space>",   .START_SELECTING);
+
         key_map_add(key_map, "<tab>",       .INDENT_OR_AUTOCOMPLETE);
         key_map_add(key_map, "C-i",         .INDENT_OR_AUTOCOMPLETE);
 
-        key_map_add(key_map, "C-<space>",   .START_SELECTING);
+        key_map_add(key_map, "M-w",         .COPY);
+        key_map_add(key_map, "C-w",         .CUT);
+        key_map_add(key_map, "C-y",         .PASTE);
 
         key_map_add(key_map, "<enter>",     .CONFIRM);
         key_map_add(key_map, "C-m",         .CONFIRM);
@@ -1753,6 +1762,10 @@ Mini_Panel_Action :: enum {
 
     INDENT_OR_AUTOCOMPLETE;
 
+    COPY;
+    CUT;
+    PASTE;
+
     CONFIRM;
     CANCEL_OR_STOP_SELECTING;
 }
@@ -1787,6 +1800,31 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .START_SELECTING;         mp.selecting = true; text_cursors_join(*mp.cursors);
 
         case .INDENT_OR_AUTOCOMPLETE;  buffer_changed |= mp.procs.autocomplete(editor, platform, input);
+
+        case .COPY; {
+            mp.selecting = false;
+            text := text_buffer_make_view_for_interval(mp.buffer, mp.cursors.c0, mp.cursors.c1,, temp);
+            if text {
+                platform.set_clipboard_text(text);
+            }
+
+            text_cursors_join(*mp.cursors);
+        }
+        case .CUT; {
+            mp.selecting = false;
+            deleted := text_buffer_delete_selection(*mp.buffer, *mp.cursors);
+            if deleted {
+                buffer_changed = true;
+                platform.set_clipboard_text(deleted);
+            }
+        }
+        case .PASTE; {
+            mp.selecting = false;
+            text := platform.get_clipboard_text(,, temp);
+            if text {
+                buffer_changed |= text_buffer_insert(*mp.buffer, *mp.cursors, text, .NONE);
+            }
+        }
 
         case .CONFIRM;                 buffer_changed |= mp.procs.confirm(editor, platform, input);
         case .CANCEL_OR_STOP_SELECTING; {
@@ -1839,6 +1877,10 @@ Modal_Interaction_Action :: enum {
 
     INDENT_OR_AUTOCOMPLETE;
 
+    COPY;
+    CUT;
+    PASTE;
+
     CONFIRM;
     CANCEL_OR_STOP_SELECTING;
 }
@@ -1869,6 +1911,31 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         case .START_SELECTING;           mi.selecting = true; text_cursors_join(*mi.cursors);
 
         case .INDENT_OR_AUTOCOMPLETE;    // No-op, we just want to prevent inserting a tab for now.
+
+        case .COPY; {
+            mi.selecting = false;
+            text := text_buffer_make_view_for_interval(mi.buffer, mi.cursors.c0, mi.cursors.c1,, temp);
+            if text {
+                platform.set_clipboard_text(text);
+            }
+
+            text_cursors_join(*mi.cursors);
+        }
+        case .CUT; {
+            mi.selecting = false;
+            deleted := text_buffer_delete_selection(*mi.buffer, *mi.cursors);
+            if deleted {
+                buffer_changed = true;
+                platform.set_clipboard_text(deleted);
+            }
+        }
+        case .PASTE; {
+            mi.selecting = false;
+            text := platform.get_clipboard_text(,, temp);
+            if text {
+                buffer_changed |= text_buffer_insert(*mi.buffer, *mi.cursors, text, .NONE);
+            }
+        }
 
         case .CONFIRM;                   mi.procs.advance(editor, platform, input);
         case .CANCEL_OR_STOP_SELECTING; {
