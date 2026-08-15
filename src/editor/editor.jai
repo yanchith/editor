@@ -1607,6 +1607,28 @@ get_panel_rect :: (editor: Editor, panel_index: s64) -> Rect, content_rect: Rect
     return panel_rect, panel_content_rect;
 }
 
+// TODO(jt): Add option to add path prefix to disambiguate.
+get_document_name :: (document: Document) -> string {
+    if #complete document.kind == {
+        case .SCRATCH;      return "*scratch*";
+        case .COMPILATION;  return "*compilation*";
+        case .FILE;         return String.path_filename(document.backing_file_path);
+    }
+}
+
+get_listing_name :: (listing: Listing) -> string {
+    if #complete listing.kind == {
+        case .DIRECTORY; {
+            name := String.path_filename(listing.backing_directory_path);
+            if name.count == 0 {
+                name = listing.backing_directory_path;
+            }
+
+            return name;
+        }
+    }
+}
+
 // For ease of use, the editor talks about watching individual files, but it merely means it is
 // interested in those files. The OS APIs can only watch for changes in a directory, so we do simple
 // refcounting here before calling out to the platform layer. Additionally, the OS APIs can miss
@@ -3725,12 +3747,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 cursor  := view.cursors.c0;
                 percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, document.buffer.line_bytes.count));
 
-                document_name: string;
-                if #complete document.kind == {
-                    case .SCRATCH;      document_name = "*scratch*";
-                    case .COMPILATION;  document_name = "*compilation*";
-                    case .FILE;         document_name = String.path_filename(document.backing_file_path);
-                }
+                document_name := get_document_name(document);
 
                 percent_string := temp_right_pad(tprint("%\%", percent), 4);
 
@@ -3784,10 +3801,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 item_index := view.item_index;
                 percent := cast(s64, 100.0 * cast(f32, item_index) / cast(f32, listing.items.count));
 
-                listing_name: string;
-                if #complete listing.kind == {
-                    case .DIRECTORY;  listing_name = String.path_filename(listing.backing_directory_path);
-                }
+                listing_name := get_listing_name(listing);
 
                 percent_string := temp_right_pad(tprint("%\%", percent), 4);
 
