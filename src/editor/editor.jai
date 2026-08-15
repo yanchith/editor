@@ -283,6 +283,7 @@ Panel :: struct {
 
     Flags :: enum_flags {
         LAST_CLICK_WAS_INSIDE         :: 0x01;
+        LAST_CLICK_WAS_INSIDE_CONTENT :: 0x02;
     }
 
     Highlight :: struct {
@@ -374,9 +375,6 @@ Document :: struct {
     compilation_args: string; // Empty if this is not a .COMPILATION document.
 
     backing_directory_path: string; // In canonical format (see canonicalize_path).
-
-    // TODO(jt): @Cleanup Now that we have backing_directory_path, should backing_file_path be
-    // an absolute path? Maybe it can just be a filename that we append.
 
     // Newly created documents (and scratch documents) do not have a backing file until saved, at
     // which point a backing file path is assigned and file created. A document with a
@@ -476,7 +474,7 @@ Document :: struct {
     }
 }
 
-// TODO(jt): @Cleanup Unify Listing/Listing_View with mini_panel listings!
+// TODO(jt): @Cleanup Unify Listing/Listing_View with mini_panel listings?
 Listing :: struct {
     locator: Bucket_Locator;
 
@@ -1544,23 +1542,26 @@ get_panel_rect :: (editor: Editor, panel_index: s64) -> Rect, content_rect: Rect
     }
 
     panel_y: f32 = 0.0;
+    panel_content_y: f32 = 0.0;
 
     panel_w         := ifx editor.active_view == .FULL then window_w else window_w * 0.5;
     panel_content_w := ifx editor.active_view == .FULL then window_w - 2 * GUTTER_PIXELS else window_w * 0.5 - 2 * GUTTER_PIXELS;
 
-    panel_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
+    panel_h := window_h - cell_h; // cell_h is the message line
+    panel_content_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
     if editor.mini_panel.open {
         // Currently, this only affects culling.
         //
         // TODO(jt): In Emacs, this would also modify the scroll offset, if the cursor would be
         // occluded by the newly visible mini panel. Should we do that?
-        panel_h = window_h - (2 + MINI_PANEL_LINES) * cell_h;
+        panel_h = window_h - (1 + MINI_PANEL_LINES) * cell_h;
+        panel_content_h = window_h - (2 + MINI_PANEL_LINES) * cell_h;
     }
 
     // TODO(jt): @Speed This is slightly wasteful, that we convert xywh into a point rect, only for
     // the callers to convert it back into xywh. Maybe rethink this once we do this too often?
     panel_rect         := rect_from_point_and_size(panel_x, panel_y, panel_w, panel_h);
-    panel_content_rect := rect_from_point_and_size(panel_content_x, panel_y, panel_content_w, panel_h);
+    panel_content_rect := rect_from_point_and_size(panel_content_x, panel_content_y, panel_content_w, panel_content_h);
 
     return panel_rect, panel_content_rect;
 }
@@ -2847,8 +2848,6 @@ update_panel_early :: (editor: *Editor, platform: Platform, input: Input, panel:
 
     mouse := input.mouse_position;
 
-    // TODO(jt): @Cleanup panel_rect should include the modeline. We'll have to carefully fix stuff throughout the editor once we do this.
-
     panel_rect, panel_content_rect := get_panel_rect(editor, panel_index);
 
     //
@@ -2863,8 +2862,15 @@ update_panel_early :: (editor: *Editor, platform: Platform, input: Input, panel:
                 case .LEFT;   if panel_index == editor.right_view_panel_index  editor.active_view = .RIGHT;
                 case .RIGHT;  if panel_index == editor.left_view_panel_index   editor.active_view = .LEFT;
             }
+
+            if rect_contains_point(panel_content_rect, mouse) {
+                panel.flags |= .LAST_CLICK_WAS_INSIDE_CONTENT;
+            } else {
+                panel.flags &= ~.LAST_CLICK_WAS_INSIDE_CONTENT;
+            }
         } else {
             panel.flags &= ~.LAST_CLICK_WAS_INSIDE;
+            panel.flags &= ~.LAST_CLICK_WAS_INSIDE_CONTENT;
         }
     }
 }
@@ -2881,7 +2887,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
     cell_h := editor.font.line_height_in_pixels;
 
     panel_rect, panel_content_rect := get_panel_rect(editor, panel_index);
-    panel_w := rect_width(panel_rect);
+    panel_content_w := rect_width(panel_content_rect);
     panel_is_active := false;
     {
         _, active_panel_index := get_panel_for_active_view(editor);
@@ -2927,7 +2933,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
     //
     // Unlike wheel scrolling, mouse selection is sticky to the panel where it started.
     //
-    if panel_is_active && editor.input_state.keys[Key.MB_LEFT] & .DOWN && panel.flags & .LAST_CLICK_WAS_INSIDE {
+    if panel_is_active && editor.input_state.keys[Key.MB_LEFT] & .DOWN && panel.flags & .LAST_CLICK_WAS_INSIDE_CONTENT {
         if #complete panel.view.kind == {
             case .DOCUMENT; {
                 view     := *panel.view._document;
@@ -2941,10 +2947,10 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                     SCROLL_SPEED: f64 :  10.0;
                     SCROLL_BOOST: f64 :   5.0;
 
-                    left_edge   := panel_rect.x0 + SCROLL_ZONE;
-                    right_edge  := panel_rect.x1 - SCROLL_ZONE;
-                    top_edge    := panel_rect.y0 + SCROLL_ZONE;
-                    bottom_edge := panel_rect.y1 - SCROLL_ZONE;
+                    left_edge   := panel_content_rect.x0 + SCROLL_ZONE;
+                    right_edge  := panel_content_rect.x1 - SCROLL_ZONE;
+                    top_edge    := panel_content_rect.y0 + SCROLL_ZONE;
+                    bottom_edge := panel_content_rect.y1 - SCROLL_ZONE;
 
                     if mouse.x < left_edge {
                         boost := (left_edge - mouse.x) * SCROLL_BOOST;
@@ -2970,7 +2976,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                         // Clamp to zero, so we don't end up scrolling the other way if the line is
                         // short. (Happens if you start scrolling on a long line, but then vertically
                         // scroll to a short line.)
-                        max_x := max(font_compute_line_length(editor.font, line_view, binary = document.buffer.binary_mode) - panel_w + apron, 0);
+                        max_x := max(font_compute_line_length(editor.font, line_view, binary = document.buffer.binary_mode) - panel_content_w + apron, 0);
 
                         target := panel.scroll.target;
                         target.x += SCROLL_SPEED * boost * dt;
@@ -3019,11 +3025,11 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
 
                     // Include newline, so that the cursor can go there.
                     line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
-                    col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
+                    col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
                 } else {
                     // Include newline, so that the cursor can go there.
                     line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
-                    col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
+                    col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
                 }
 
                 text_buffer_move_cursor_to(document.buffer, *view.cursors, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
@@ -3659,13 +3665,6 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             }
         }
     }
-
-    //
-    // Draw gutters
-    //
-    set_scissor(render_commands, panel_rect);
-    draw_rect(render_commands, rect_from_point_and_size(panel_x, panel_y, GUTTER_PIXELS, panel_h), editor.theme.gutter_color);
-    draw_rect(render_commands, rect_from_point_and_size(panel_x + GUTTER_PIXELS + panel_content_w, panel_y, GUTTER_PIXELS, panel_h), editor.theme.gutter_color);
 }
 
 open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mini_Panel_Procs) {
