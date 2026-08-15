@@ -3,10 +3,8 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, C-` (iterm) causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab. Also happens with alfred.
-- On macOS, clicking on the window header causes scrolling up
 - On macOS, launching the app creates a console.
-
-- Clicking on modeline causes scrolling down.
+- On macOS, clicking on the window header causes scrolling up. (probably fixed, confirm)
 
 TODO(jt): Usage self-feedback:
 
@@ -265,6 +263,8 @@ Editor :: struct {
 }
 
 Panel :: struct {
+    flags: Flags;
+
     // Highlights are owned by the panel, but they are usually cleared/added by various minipanel and modals.
     // It could be argued that they should also own it, but then the renderer does't have a good access.
     // Let's see about this once we have more experience using this.  -jt, 10 August 2026
@@ -280,6 +280,10 @@ Panel :: struct {
     // issues with f32 vectors. Doubles suffice for now (verified up to 4GB of prose), but maybe we
     // should do our own numeric type eventually, like 58:6 fixed point?
     scroll: Interpolation(DVector2, SNAPPY = true, ROUND = true);
+
+    Flags :: enum_flags {
+        LAST_CLICK_WAS_INSIDE         :: 0x01;
+    }
 
     Highlight :: struct {
         x0: s64;
@@ -2843,16 +2847,24 @@ update_panel_early :: (editor: *Editor, platform: Platform, input: Input, panel:
 
     mouse := input.mouse_position;
 
-    panel_rect := get_panel_rect(editor, panel_index);
+    // TODO(jt): @Cleanup panel_rect should include the modeline. We'll have to carefully fix stuff throughout the editor once we do this.
+
+    panel_rect, panel_content_rect := get_panel_rect(editor, panel_index);
 
     //
     // Switch active view by clicking
     //
-    if editor.input_state.keys[Key.MB_LEFT] & .PRESSED && rect_contains_point(panel_rect, mouse) {
-        if #complete editor.active_view == {
-            case .FULL; // No-op
-            case .LEFT;   if panel_index == editor.right_view_panel_index  editor.active_view = .RIGHT;
-            case .RIGHT;  if panel_index == editor.left_view_panel_index   editor.active_view = .LEFT;
+    if editor.input_state.keys[Key.MB_LEFT] & .PRESSED {
+        if rect_contains_point(panel_rect, mouse) {
+            panel.flags |= .LAST_CLICK_WAS_INSIDE;
+
+            if #complete editor.active_view == {
+                case .FULL;   // No-op
+                case .LEFT;   if panel_index == editor.right_view_panel_index  editor.active_view = .RIGHT;
+                case .RIGHT;  if panel_index == editor.left_view_panel_index   editor.active_view = .LEFT;
+            }
+        } else {
+            panel.flags &= ~.LAST_CLICK_WAS_INSIDE;
         }
     }
 }
@@ -2915,7 +2927,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
     //
     // Unlike wheel scrolling, mouse selection is sticky to the panel where it started.
     //
-    if panel_is_active && editor.input_state.keys[Key.MB_LEFT] & .DOWN {
+    if panel_is_active && editor.input_state.keys[Key.MB_LEFT] & .DOWN && panel.flags & .LAST_CLICK_WAS_INSIDE {
         if #complete panel.view.kind == {
             case .DOCUMENT; {
                 view     := *panel.view._document;
@@ -3019,9 +3031,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                 view.flags |= .RECEIVED_MOUSE_INTERACTION;
             }
 
-            case .LISTING; {
-
-            }
+            case .LISTING;  // Nothing yet.
         }
     }
 
