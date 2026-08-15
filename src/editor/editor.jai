@@ -3,6 +3,10 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, C-` (iterm) causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab.
+- On macOS, clicking on the window header causes scrolling up
+- On macOS, launching the app creates a console.
+
+- Clicking on modeline causes scrolling down.
 
 TODO(jt): Usage self-feedback:
 
