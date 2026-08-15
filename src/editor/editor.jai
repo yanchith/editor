@@ -2,7 +2,7 @@
 
 TODO(jt): Known serious bugs:
 
-- On macOS, C-` (iterm) causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab.
+- On macOS, C-` (iterm) causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab. Also happens with alfred.
 - On macOS, clicking on the window header causes scrolling up
 - On macOS, launching the app creates a console.
 
