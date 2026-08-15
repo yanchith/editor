@@ -48,6 +48,8 @@ TODO(jt): Roadmap:
 - [X] COPY, CUT and PASTE in mini panel and modal interaction.
 - [~] Create file in new directories (mkdirp) ; verify on macOS!
 - [ ] Delete file
+- [ ] Delete file in lister
+- [ ] Click to open file in lister
 - [ ] Mode defined comments (C-x C-;)
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
