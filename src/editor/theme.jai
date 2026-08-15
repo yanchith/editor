@@ -13,7 +13,6 @@ Theme :: struct {
     modeline_color_active: Vector4;
 
     background_color: Vector4;
-    gutter_color: Vector4;
     separator_color: Vector4;
 
     listing_item_text_color: Vector4;
@@ -60,7 +59,6 @@ abulafia_theme :: () -> Theme {
     t.modeline_color_active      = modeline_color_active;
 
     t.background_color           = background_color;
-    t.gutter_color               = background_color;
     t.separator_color            = modeline_color_active;
 
     t.listing_item_text_color = text_color;
@@ -101,7 +99,6 @@ naysayer_theme :: () -> Theme {
     t.modeline_color_active      = text_color;
 
     t.background_color           = background_color;
-    t.gutter_color               = background_color;
     t.separator_color            = unpack_srgba(0x000000ff);
 
     t.listing_item_text_color = text_color;
@@ -141,7 +138,6 @@ handmade_theme :: () -> Theme {
     t.modeline_color_active      = modeline_color_active;
 
     t.background_color           = background_color;
-    t.gutter_color               = background_color;
     t.separator_color            = modeline_color_active;
 
     t.listing_item_text_color = text_color;
@@ -183,7 +179,6 @@ zenburn_theme :: () -> Theme {
     t.modeline_color_active      = unpack_srgba(0x202020ff);
 
     t.background_color           = background_color;
-    t.gutter_color               = background_color;
     t.separator_color            = unpack_srgba(0x000000ff);
 
     t.listing_item_text_color = text_color;
@@ -226,7 +221,6 @@ stb_theme :: () -> Theme {
     t.modeline_color_active      = unpack_srgba(0xa0a0a0ff);
 
     t.background_color           = background_color;
-    t.gutter_color               = background_color;
     t.separator_color            = foreground_color;
 
     t.listing_item_text_color = foreground_color;
