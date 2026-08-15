@@ -29,6 +29,7 @@ TODO(jt): Roadmap:
 - [X] Keymap support
 - [X] Find/replace and modal/interactive commands.
 - [X] Open non-utf8 text buffers and binary files.
+- [X] Flash cursor with typing (needs tuning)
 - [X] Syntax Highlighting
 - [X] Mode defined parentheses (surround, autoclose)
 - [X] Matching parentheses highlight
@@ -39,7 +40,11 @@ TODO(jt): Roadmap:
 - [~] Directory Lister panel
 - [~] *compilation* buffer
 - [~] DIRECTORY_SEARCH
-- [X] SHOW_COMMANDS
+- [X] SHOW_COMMANDS (M-x)
+- [X] Map-like zoom
+- [X] Read-only mode for documents.
+- [X] Selection in mini panel text buffer.
+- [ ] Selection in modal interaction text buffer.
 - [ ] Create file in new directories (mkdirp)
 - [ ] Delete file
 - [ ] Mode defined comments
@@ -53,23 +58,33 @@ TODO(jt): Roadmap:
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
+- [ ] C-j join-next-line
 - [ ] MOVE_TO_START and MOVE_TO_END in mini panel.
 - [ ] Emacs-like kill ring
 - [ ] CRLF
 - [ ] Rotated session logs
 - [ ] Support for dropping files into the window
+- [ ] SEARCH items should render with syntax highlighting
+- [ ] SEARCH should highlight all matches in the current view, not just the first one on the line. We should also probably add a way to navigate them (C-f, C-n).
+- [ ] Animate scrolling in mini panel.
+- [ ] Animate opening of the mini panel.
+- [ ] Keep displaying (and updating) panel selection while SEARCH is active.
+- [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
+- [ ] Dark text color under bright rectangles (cursor, selection, line)
 
 - [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
 - [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
+- [ ] Flash pasted text
+- [ ] Flash text inserted by undo/redo
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
-- [ ] Hex mode Panel
+- [ ] Hex mode view
 - [ ] Multiple Cursors
 - [ ] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
 - [ ] Emacs-like undo? (If I find out I can't live without)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
-- [ ] Very nice text rendering (kb_text_shape + Slug)
-- [ ] Git integration (via plugin?)
+- [ ] Very nice text rendering + get rid of freetype (kb_text_shape + Slug)
+- [ ] Version control view (Git only?, via plugin interface?)
 - [ ] 4coder style floating annotations? (e.g. name of the function or if statement expresion after closing brace)
 - [ ] Customization and plugins
 
@@ -77,34 +92,6 @@ TODO(jt): @Stream Interesting side-projects to do:
 
 - [ ] Visual profiler triggered by an F-key
 - [ ] Visual memory profiler triggered by an F-key
-
-TODO(jt): @Stream Small things to do:
-
-- [X] Map-like zoom
-- [X] Draw item count and item indices in mini panel (e.g. '(5) Search: my_search_text' and '7: line containing my_search_text and stuff')
-- [X] OPEN_FILE starts in the directory of the currently open document
-- [X] OPEN_FILE, switch to buffer and close buffer get tab completions.
-- [X] OPEN_FILE completion also completes, if we are on the text line but there is only one item in the list.
-- [X] Selection in mini panel text buffer.
-- [ ] Selection in modal interaction text buffer.
-- [ ] Animate scrolling in mini panel.
-- [ ] Animate opening of the mini panel.
-- [X] SEARCH should allow words separated by spaces
-- [ ] SEARCH items should render with syntax highlighting
-- [ ] SEARCH should highlight all matches in the current view, not just the first one on the line. We should also probably add a way to navigate them (C-f, C-n).
-- [ ] Keep displaying (and updating) panel selection while SEARCH is active.
-- [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
-- [ ] C-j join-next-line
-- [X] M-x
-- [X] Flash cursor with typing (needs tuning)
-- [ ] Flash pasted text
-- [ ] Flash text inserted by undo/redo
-- [X] When switching/closing view, sort by recency.
-- [ ] Read-only mode for documents.
-- [ ] Dark text color under bright rectangles (cursor, selection, line)
-- [X] Animate current line highlight the same way we animate cursor.
-- [ ] Cursor trail (requires our own renderer)
-- [ ] editor_log_error
 
 */
 
@@ -739,6 +726,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "M-w",     .COPY);
         key_map_add(key_map, "C-w",     .CUT);
         key_map_add(key_map, "C-y",     .PASTE);
+
+        key_map_add(key_map, "C-x C-q", .TOGGLE_READONLY);
     }
 
     {
@@ -1937,6 +1926,8 @@ Document_Action :: enum {
     CUT;
     PASTE;
 
+    TOGGLE_READONLY;
+
     STRIP_TRAILING_WHITESPACE;
 
     BENCHGEN_TEXT;
@@ -2626,6 +2617,27 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 if text {
                     buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, text, .NONE);
                 }
+            }
+        }
+
+        case .TOGGLE_READONLY; {
+            if document.flags & .READONLY_BECAUSE_OF_MANUAL_LOCK {
+                document.flags &= ~.READONLY_BECAUSE_OF_MANUAL_LOCK;
+                if document.flags & .READONLY {
+                    editor_log(editor, "% is now unlocked; however, it is still read-only for other reasons.", document.backing_file_path);
+                } else {
+                    interpolation_start(*view.cursor_color,
+                                        editor.theme.cursor_color_active, editor.theme.cursor_color,
+                                        input.time, CURSOR_FLASH_DURATION);
+                    editor_log(editor, "% is now unlocked", document.backing_file_path);
+                }
+            } else {
+                document.flags |= .READONLY_BECAUSE_OF_MANUAL_LOCK;
+                interpolation_start(*view.cursor_color,
+                                    editor.theme.cursor_color_active, editor.theme.cursor_color_readonly,
+                                    input.time, CURSOR_FLASH_DURATION);
+
+                editor_log(editor, "% is now locked (read-only)", document.backing_file_path);
             }
         }
 
