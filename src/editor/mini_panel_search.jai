@@ -120,15 +120,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                         if found {
                             found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
-                            s := "";
-                            line_number_prefix_length := 0;
-
-                            if line_text.count {
-                                line_number_prefix := temp_right_pad(tprint("%  ", it + 1), 4);
-
-                                s = sprint("%%", line_number_prefix, line_text,, arena_allocator(mini_panel.items_arena));
-                                line_number_prefix_length = line_number_prefix.count;
-                            }
+                            line_number_prefix := temp_right_pad(tprint("%  ", it + 1), 4);
+                            s := sprint("%%", line_number_prefix, line_text,, arena_allocator(mini_panel.items_arena));
 
                             x0 := found_index;
                             if !document.buffer.binary_mode {
@@ -147,8 +140,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             if document.buffer.binary_mode {
                                 item.flags |= .BINARY;
                             }
-                            item.highlight_x0 = line_number_prefix_length + x0;
-                            item.highlight_x1 = line_number_prefix_length + x1;
+                            item.highlight_x0 = line_number_prefix.count + x0;
+                            item.highlight_x1 = line_number_prefix.count + x1;
 
                             userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
                             userdata.x = x0;
@@ -192,15 +185,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                         if found {
                             found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
-                            s := "";
-                            line_number_prefix_length := 0;
-
-                            if it.text.count {
-                                line_number_prefix := temp_right_pad(tprint("%  ", it_index + 1), 4);
-
-                                s = sprint("%%", line_number_prefix, it.text,, arena_allocator(mini_panel.items_arena));
-                                line_number_prefix_length = line_number_prefix.count;
-                            }
+                            line_number_prefix := temp_right_pad(tprint("%  ", it_index + 1), 4);
+                            s := sprint("%%", line_number_prefix, it.text,, arena_allocator(mini_panel.items_arena));
 
                             x0 := found_index;
                             x1 := x0 + search_part1_char_count;
@@ -213,8 +199,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             item_index := mini_panel.items.count;
                             item := array_add(*mini_panel.items);
                             item.text = s;
-                            item.highlight_x0 = line_number_prefix_length + x0;
-                            item.highlight_x1 = line_number_prefix_length + x1;
+                            item.highlight_x0 = line_number_prefix.count + x0;
+                            item.highlight_x1 = line_number_prefix.count + x1;
 
                             userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
                             userdata.x = 0;
