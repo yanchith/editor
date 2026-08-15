@@ -1,6 +1,12 @@
-// NOTE(jt): This is a slightly modified modules/Jai_Lexer. We added COMMENT and BLOCK_COMMENT
-// tokens. We also removed a little bit of dead code here and there, so we compile less.
-
+//
+// :ModifiedJaiLexerModule
+//
+// This is a slightly modified modules/Jai_Lexer:
+//
+// We added COMMENT and BLOCK_COMMENT tokens.
+// We also removed a little bit of dead code here and there, so we compile less.
+// We fixed a crash when parsing here strings.
+//
 
 // @Cleanup: Explicitly check against end-of-input for all sub-lexers.
 // @Cleanup: We have all these no_checks in here because end-of-input is -1. We probably want to be cleaner about that in some way.

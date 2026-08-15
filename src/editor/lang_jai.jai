@@ -1,4 +1,4 @@
-JL :: #import "Jai_Lexer";
+JL :: #import "Jai_Lexer"; // This is our modified version. See :ModifiedJaiLexerModule.
 
 LANG_JAI_LINE_COMMENT        :: "//";
 LANG_JAI_BLOCK_COMMENT_START :: "/*";
