@@ -44,10 +44,10 @@ TODO(jt): Roadmap:
 - [X] Selection in mini panel text buffer.
 - [X] Selection in modal interaction text buffer.
 - [X] COPY, CUT and PASTE in mini panel and modal interaction.
-- [~] Create file in new directories (mkdirp) ; verify on macOS!
-- [ ] Delete file
+- [~] Create file in new directories (mkdirp) ; Needs to get absolute path of nonexistent directory on macOS!
+- [ ] Refresh lister
 - [ ] Delete file in lister
-- [ ] Click to open file in lister
+- [X] Click to open file in lister
 - [ ] Mode defined comments (C-x C-;)
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
@@ -72,8 +72,8 @@ TODO(jt): Roadmap:
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
 - [ ] Dark text color under bright rectangles (cursor, selection, line)
-- [ ] Config file
 
+- [ ] Config file
 - [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
 - [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
 - [ ] Flash pasted text
@@ -2277,6 +2277,18 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
 #scope_module
 
+//
+// We could try out File Pilot's event buffer architecture, where the front half
+// of the update code fills a buffer of actions to execute and the bottom half executes them.
+//
+// I see a few problems with this, however. Currently, the place where we route events changes based
+// on the previous action we execute, for instance opening the mini panel means the subsequent input event gets
+// interpreted as though it was meant for the mini panel. Similarly, clicking can select a different kind of panel,
+// where the action now means something different. Let's think about this more carefully once we are featureful.
+//
+//    -jt, 16 August 2026.
+//
+
 execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, action: Panel_Action) -> executed: bool {
     theme_changed := false;
 
@@ -3192,7 +3204,16 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                 view.flags |= .RECEIVED_MOUSE_INTERACTION;
             }
 
-            case .LISTING;  // Nothing yet.
+            case .LISTING; {
+                view := *panel.view._listing;
+                listing := view.listing;
+
+                row := cast(s64, floor((mouse.y + panel.scroll.value.y) / cell_h));
+                if row >= 0 && row < listing.items.count {
+                    view.item_index = row;
+                    execute_listing_action(editor, platform, input, panel, view, listing, .OPEN);
+                }
+            }
         }
     }
 
