@@ -41,9 +41,21 @@ Watched_Directory_Change :: struct {
     }
 }
 
+#assert size_of(Input_Event) == 8;
 Input_Event :: struct  {
     type: Type;
     flags: Flags;
+
+    // We previously tracked modifiers ourselves, by processing input events and looking for modifier keys being
+    // pressed and released. However, at least on macOS, this is impossible (?) to do correctly.
+    //
+    // This is because cmd+tab, cmd+` or other hotkeys that defocus the application cause the release event
+    // to never arrive, so the application will think that e.g. the cmd key is always pressed,
+    // until it sees a release event for that key.
+    //
+    // On Windows, the previous approach worked better, but even there it is probably safer to query the OS for
+    // the actual state of the key (modules/Input does that).
+    modifiers: Modifier_Flags;
 
     data: u32;
 
@@ -56,7 +68,7 @@ Input_Event :: struct  {
         CODEPOINT :: 1;
     }
 
-    Flags :: enum_flags u16 {
+    Flags :: enum_flags u8 {
         NONE :: 0;
 
         PRESSED :: 0x01; // Whether the key is right now pressed. Absence of this flag means released.
@@ -64,7 +76,15 @@ Input_Event :: struct  {
     }
 }
 
-#assert size_of(Input_Event) == 8;
+// u8, so that it fits in Input_Event.
+Modifier_Flags :: enum_flags u8 {
+    NONE :: 0;
+
+    CTRL  :: 0x01;
+    ALT   :: 0x02;
+    SHIFT :: 0x04;
+    META  :: 0x08;
+}
 
 KEY_COUNT :: #run enum_highest_value(Key) + 1;
 Key :: enum u32 {
@@ -132,7 +152,7 @@ Input_State :: struct {
     window_size: IVector2;
 
     keys: [KEY_COUNT] Key_State;
-    modifiers: Modifier_Flags;
+    modifiers: Modifier_Flags; // Modifier state as of last event. See Event.modifiers for precise information.
 }
 
 Key_State :: enum_flags u8 {
@@ -141,15 +161,6 @@ Key_State :: enum_flags u8 {
     DOWN     :: 0x01;
     PRESSED  :: 0x02;
     RELEASED :: 0x04;
-}
-
-Modifier_Flags :: enum_flags u8 {
-    NONE :: 0;
-
-    CTRL  :: 0x01;
-    ALT   :: 0x02;
-    SHIFT :: 0x04;
-    META  :: 0x08;
 }
 
 input_state_update_on_frame_start :: (input_state: *Input_State, input: Input) {
@@ -175,24 +186,5 @@ input_state_update_with_event :: (input_state: *Input_State, event: Input_Event)
         }
     }
 
-    modifiers: Modifier_Flags;
-    if #complete event.type == {
-        case .CODEPOINT; // Nothing
-        case .KEY; {
-            if event.key == {
-                case .CTRL;   modifiers |= .CTRL;
-                case .ALT;    modifiers |= .ALT;
-                case .SHIFT;  modifiers |= .SHIFT;
-                case .META;   modifiers |= .META;
-            }
-        }
-    }
-
-    if modifiers != .NONE {
-        if event.flags & .PRESSED {
-            input_state.modifiers |= modifiers;
-        } else {
-            input_state.modifiers &= ~modifiers;
-        }
-    }
+    input_state.modifiers = event.modifiers;
 }

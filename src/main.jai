@@ -658,6 +658,11 @@ main :: () {
                 }
             }
 
+            // modules/Input only sends modifier keys for KEYBOARD events, but we want to send them for CODEPOINT
+            // events (somewhat corresponding to TEXT_INPUT). For this reason, we track the latest state here,
+            // and modify it for when handling KEYBOARD.
+            modifiers: Editor.Modifier_Flags;
+
             for Input.events_this_frame {
                 if it.type == {
                     case .QUIT; {
@@ -673,89 +678,91 @@ main :: () {
                             }
                         }
 
+                        // See comment above the declaration of modifiers.
+                        if it.ctrl_pressed      modifiers |= .CTRL;   else modifiers &= ~.CTRL;
+                        if it.alt_pressed       modifiers |= .ALT;    else modifiers &= ~.ALT;
+                        if it.shift_pressed     modifiers |= .SHIFT;  else modifiers &= ~.SHIFT;
+                        if it.cmd_meta_pressed  modifiers |= .META;   else modifiers &= ~.META;
+
                         flags: Editor.Input_Event.Flags;
-                        if it.key_pressed flags |= .PRESSED;
-                        if it.repeat      flags |= .REPEAT;
+                        if it.key_pressed  flags |= .PRESSED;
+                        if it.repeat       flags |= .REPEAT;
 
                         // The Input module's key_codes mirror ASCII in that range. However, for
                         // control characters outside of the ASCII range we use our own enum.
                         if it.key_code == {
                             // keycodes that are also in ASCII
-                            case .BACKSPACE;            array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .BACKSPACE });
-                            case .TAB;                  array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .TAB });
-                            case .LINEFEED;             array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .LINEFEED });
-                            case .ENTER;                array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .ENTER });
-                            case .ESCAPE;               array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .ESCAPE });
+                            case .BACKSPACE;            array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.BACKSPACE) });
+                            case .TAB;                  array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.TAB) });
+                            case .LINEFEED;             array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.LINEFEED) });
+                            case .ENTER;                array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.ENTER) });
+                            case .ESCAPE;               array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.ESCAPE) });
                             // SPACEBAR also gets sent as a text event, so we capture it there.
-                            case .DELETE;               array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = .DELETE });
+                            case .DELETE;               array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.DELETE) });
 
                             // keycodes that are not in ASCII
-                            case .CTRL;                 array_add(*input_events, { type = .KEY, flags = flags, key = .CTRL });
-                            case .ALT;                  array_add(*input_events, { type = .KEY, flags = flags, key = .ALT });
-                            case .SHIFT;                array_add(*input_events, { type = .KEY, flags = flags, key = .SHIFT });
-                            case .META;                 array_add(*input_events, { type = .KEY, flags = flags, key = .META });
+                            case .CTRL;                 array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.CTRL) });
+                            case .ALT;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.ALT) });
+                            case .SHIFT;                array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.SHIFT) });
+                            case .META;                 array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.META) });
 
-                            case .ARROW_UP;             array_add(*input_events, { type = .KEY, flags = flags, key = .ARROW_UP });
-                            case .ARROW_DOWN;           array_add(*input_events, { type = .KEY, flags = flags, key = .ARROW_DOWN });
-                            case .ARROW_LEFT;           array_add(*input_events, { type = .KEY, flags = flags, key = .ARROW_LEFT });
-                            case .ARROW_RIGHT;          array_add(*input_events, { type = .KEY, flags = flags, key = .ARROW_RIGHT });
+                            case .ARROW_UP;             array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.ARROW_UP) });
+                            case .ARROW_DOWN;           array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.ARROW_DOWN) });
+                            case .ARROW_LEFT;           array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.ARROW_LEFT) });
+                            case .ARROW_RIGHT;          array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.ARROW_RIGHT) });
 
-                            case .PAGE_UP;              array_add(*input_events, { type = .KEY, flags = flags, key = .PAGE_UP });
-                            case .PAGE_DOWN;            array_add(*input_events, { type = .KEY, flags = flags, key = .PAGE_DOWN });
+                            case .PAGE_UP;              array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.PAGE_UP) });
+                            case .PAGE_DOWN;            array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.PAGE_DOWN) });
 
-                            case .HOME;                 array_add(*input_events, { type = .KEY, flags = flags, key = .HOME });
-                            case .END;                  array_add(*input_events, { type = .KEY, flags = flags, key = .END });
+                            case .HOME;                 array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.HOME) });
+                            case .END;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.END) });
 
-                            case .INSERT;               array_add(*input_events, { type = .KEY, flags = flags, key = .INSERT });
+                            case .INSERT;               array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.INSERT) });
 
-                            case .F1;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F1 });
-                            case .F2;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F2 });
-                            case .F3;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F3 });
-                            case .F4;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F4 });
-                            case .F5;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F5 });
-                            case .F6;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F6 });
-                            case .F7;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F7 });
-                            case .F8;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F8 });
-                            case .F9;                   array_add(*input_events, { type = .KEY, flags = flags, key = .F9 });
-                            case .F10;                  array_add(*input_events, { type = .KEY, flags = flags, key = .F10 });
-                            case .F11;                  array_add(*input_events, { type = .KEY, flags = flags, key = .F11 });
-                            case .F12;                  array_add(*input_events, { type = .KEY, flags = flags, key = .F12 });
+                            case .F1;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F1) });
+                            case .F2;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F2) });
+                            case .F3;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F3) });
+                            case .F4;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F4) });
+                            case .F5;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F5) });
+                            case .F6;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F6) });
+                            case .F7;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F7) });
+                            case .F8;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F8) });
+                            case .F9;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F9) });
+                            case .F10;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F10) });
+                            case .F11;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F11) });
+                            case .F12;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F12) });
 
-                            case .PRINT_SCREEN;         array_add(*input_events, { type = .KEY, flags = flags, key = .PRINT_SCREEN });
+                            case .PRINT_SCREEN;         array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.PRINT_SCREEN) });
 
-                            case .MOUSE_BUTTON_LEFT;    array_add(*input_events, { type = .KEY, flags = flags, key = .MB_LEFT });
-                            case .MOUSE_BUTTON_RIGHT;   array_add(*input_events, { type = .KEY, flags = flags, key = .MB_RIGHT });
-                            case .MOUSE_BUTTON_MIDDLE;  array_add(*input_events, { type = .KEY, flags = flags, key = .MB_MIDDLE });
+                            case .MOUSE_BUTTON_LEFT;    array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.MB_LEFT) });
+                            case .MOUSE_BUTTON_RIGHT;   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.MB_RIGHT) });
+                            case .MOUSE_BUTTON_MIDDLE;  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.MB_MIDDLE) });
 
                             case; {
-                                // TODO(jt): @Cleanup @Hack Both Windows and macOS have their quirks
-                                // with translating keyboard events to text events.
+                                // TODO(jt): @Cleanup @Hack On Windows, holding down control suppresses the text event,
+                                // so we emit it here.
                                 //
-                                // On macOS, Alt + key usually remaps the codepoint in the text
-                                // event into an exotic character, but for us it is important to
-                                // have Alt be part of keyboard shortcuts. For this reason, we
-                                // modified modules/Input to ignore modifiers when extracting the
-                                // text event characters. See :ModifiedInputModule.
-                                //
-                                // On Windows (and macOS sometimes?), holding down control
-                                // suppresses the text event, so we emit it here.
-                                //
-                                // This is a temporary hack. We should eventually rewrite the
-                                // platform layers for both and do the minimal necessary hacks
-                                // there.
+                                // This is a temporary hack. We should eventually rewrite the platform layers and do the
+                                // minimal necessary hacks there.
 
                                 if it.ctrl_pressed && it.text_input_count == 0 {
-                                    array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = cast(Editor.Codepoint, it.key_code) });
+                                    array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, it.key_code) });
                                 }
                             }
                         }
                     }
 
                     case .TEXT_INPUT; {
+                        // TODO(jt): @Cleanup On macOS, Alt + key usually remaps the codepoint in the text
+                        // event into an exotic character, but for us it is important to
+                        // have Alt be part of keyboard shortcuts. For this reason, we
+                        // modified modules/Input to ignore modifiers when extracting the
+                        // text event characters. See :ModifiedInputModule.
+
                         flags: Editor.Input_Event.Flags;
                         flags |= .PRESSED; // TEXT_INPUT implies key_pressed.
 
-                        array_add(*input_events, { type = .CODEPOINT, flags = flags, codepoint = cast(Editor.Codepoint, it.utf32) });
+                        array_add(*input_events, { .CODEPOINT, flags, modifiers, it.utf32 });
                     }
                 }
             }
