@@ -120,16 +120,16 @@ Usage: jai [Default_Metaprogram OPTIONS] FILE... - [OPTIONS]
 OPTIONS:
 
   -help                   Prints this message.
-  -check                  Enables modules/Check metaprogram plugin.
-  -no-check               Disables modules/Check metaprogram plugin.
+  -check                  Enables additional compile time checking.
+  -no-check               Disables additional compile time checking.
   -profile                Enables the builtin runtime profiler.
   -no-profile             Disables the builtin runtime profiler.
   -sanity                 Turns on slow paranoid asserts.
   -no-sanity              Turns off slow paranoid asserts.
-  -subpixel               Uses subpixel text rendering. (FT_LOAD_TARGET.LCD)
-  -no-subpixel            Uses regular text rendering. (FT_LOAD_TARGET.NORMAL)
+  -subpixel               Uses subpixel text rendering (FT_LOAD_TARGET.LCD).
+  -no-subpixel            Uses regular text rendering (FT_LOAD_TARGET.NORMAL).
   -windows-console        Shows console on Windows when launched from gui.
-  -no-windows-console     Doesn't show console on Windows when launched from gui and disables all console logging
+  -no-windows-console     Hides console on Windows when launched from gui and disables all console logging.
 
 For Default_Metaprogram OPTIONS, type 'jai -help'.
 
