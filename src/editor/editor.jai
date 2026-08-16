@@ -45,7 +45,7 @@ TODO(jt): Roadmap:
 - [X] Selection in modal interaction text buffer.
 - [X] COPY, CUT and PASTE in mini panel and modal interaction.
 - [~] Create file in new directories (mkdirp) ; Needs to get absolute path of nonexistent directory on macOS!
-- [ ] Refresh lister
+- [X] Refresh lister
 - [ ] Delete file in lister
 - [X] Click to open file in lister
 - [ ] Mode defined comments (C-x C-;)
@@ -471,7 +471,8 @@ Listing :: struct {
     kind: Kind;
     time_of_last_interaction: Apollo_Time;
 
-    arena: *Arena; // For backing_directory_path and items.
+    arena: *Arena; // For backing_directory_path, items and item text.
+    arena_base_data_mark: Arena_Mark;
 
     backing_directory_path: string; // In canonical format (see canonicalize_path).
 
@@ -791,6 +792,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-m",     .OPEN);
         key_map_add(key_map, "<enter>", .OPEN);
         key_map_add(key_map, "C-o",     .OPEN_IN_OTHER_PANEL);
+
+        key_map_add(key_map, "g",       .REFRESH);
     }
 
     editor.theme = abulafia_theme();
@@ -2113,6 +2116,8 @@ Listing_Action :: enum {
     OPEN;
     OPEN_IN_OTHER_PANEL;
 
+    REFRESH;
+
     SET_PROJECT_DIRECTORY;
     UNSET_PROJECT_DIRECTORY;
 }
@@ -2989,6 +2994,8 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
 
             open_file(editor, platform, input, full_path, open_in_panel);
         }
+
+        case .REFRESH;  refresh_directory_listing(platform, listing);
 
         case .SET_PROJECT_DIRECTORY; {
             // TODO(jt): @Leak Not a big problem, but still a leak.
@@ -3985,32 +3992,9 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
             listing, listing_added := find_or_add_listing(editor, platform, .DIRECTORY, file_absolute_path);
             editor_log(editor, "Opening directory: %", file_absolute_path);
 
-            if listing_added {
-                file_list := platform.list_directory(file_absolute_path, recursive = false, files = true, directories = true,, temp);
-
-                {
-                    self_dir := array_add(*listing.items);
-                    self_dir.text = ".";
-                }
-
-                {
-                    parent_dir := array_add(*listing.items);
-                    parent_dir.text = "..";
-                }
-
-                for file_list {
-                    listed_file_path := it.absolute_path;
-                    listed_filename := String.path_filename(it.absolute_path);
-
-                    s := "";
-                    if listed_filename.count {
-                        s = arena_push_string(listing.arena, listed_filename);
-
-                        item := array_add(*listing.items);
-                        item.text = s;
-                    }
-                }
-            }
+            // Refresh regardless of whether we already had the directory listed, so that we show new data.
+            // TODO(jt): We should watch changes in the directory and periodically refresh its contents.
+            refresh_directory_listing(platform, listing);
 
             panel_set_listing(panel, editor, listing);
         } else {
@@ -4089,6 +4073,41 @@ ensure_directory :: (editor: *Editor, platform: Platform, _path: string) {
         }
 
         index = String.find_index_from_left(path, #char "/", index + 1);
+    }
+}
+
+refresh_directory_listing :: (platform: Platform, listing: *Listing) {
+    sanity_assert(listing.kind == .DIRECTORY);
+    if listing.kind != .DIRECTORY {
+        return;
+    }
+
+    array_reset(*listing.items);
+    arena_pop_to_mark(listing.arena, listing.arena_base_data_mark);
+
+    file_list := platform.list_directory(listing.backing_directory_path, recursive = false, files = true, directories = true,, temp);
+
+    {
+        self_dir := array_add(*listing.items);
+        self_dir.text = ".";
+    }
+
+    {
+        parent_dir := array_add(*listing.items);
+        parent_dir.text = "..";
+    }
+
+    for file_list {
+        listed_file_path := it.absolute_path;
+        listed_filename := String.path_filename(it.absolute_path);
+
+        s := "";
+        if listed_filename.count {
+            s = arena_push_string(listing.arena, listed_filename);
+
+            item := array_add(*listing.items);
+            item.text = s;
+        }
     }
 }
 
@@ -4171,6 +4190,8 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
     if backing_directory_path.count {
         listing.backing_directory_path = arena_push_string(listing_arena, backing_directory_path);
     }
+
+    listing.arena_base_data_mark = arena_get_mark(listing_arena);
 
     listing.items.allocator = arena_allocator(listing_arena);
 
