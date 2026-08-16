@@ -1292,7 +1292,13 @@ text_buffer_move_cursor_to_end :: (buffer: Text_Buffer, cursors: *Text_Cursors, 
     return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
+Modifier_For_Move_Cursor_To_Start_Of_Line :: enum {
+    DEFAULT;
+    ALWAYS_START_OF_LINE;
+    ALWAYS_START_OF_TEXT;
+}
+
+text_buffer_move_cursor_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool, modifier := Modifier_For_Move_Cursor_To_Start_Of_Line.DEFAULT) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_cursor_to_start_of_line");
 
     assert_valid(buffer, cursors);
@@ -1311,10 +1317,24 @@ text_buffer_move_cursor_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text
         }
     }
 
-    if first_nonspace_index == -1 || cursors.c0.x == first_nonspace_index {
-        cursors.c0.x = 0;
-    } else {
-        cursors.c0.x = first_nonspace_index;
+    if #complete modifier == {
+        case .DEFAULT; {
+            if first_nonspace_index == -1 || cursors.c0.x == first_nonspace_index {
+                cursors.c0.x = 0;
+            } else {
+                cursors.c0.x = first_nonspace_index;
+            }
+        }
+        case .ALWAYS_START_OF_LINE; {
+            cursors.c0.x = 0;
+        }
+        case .ALWAYS_START_OF_TEXT; {
+            if first_nonspace_index == -1 {
+                cursors.c0.x = 0;
+            } else {
+                cursors.c0.x = first_nonspace_index;
+            }
+        }
     }
 
     if !selecting {

@@ -2074,6 +2074,8 @@ Document_Action :: enum {
     INSERT_LINE_BEFORE;
     INSERT_LINE_AFTER;
 
+    TOGGLE_COMMENT;
+
     INDENT_OR_AUTOCOMPLETE;
 
     UNDO_EDIT;
@@ -2715,6 +2717,44 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .NONE);
                 cursor_moved   |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
                 cursor_moved   |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, false);
+            }
+        }
+
+        case .TOGGLE_COMMENT; {
+            line_comment, block_comment_start, block_comment_end := get_comment_style(document);
+
+            // TODO(jt): Preserve cursors and send them into the thing manually.
+            if view.selecting {
+
+            } else {
+                line_comment_and_space := tprint("% ", line_comment);
+
+                text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting, .ALWAYS_START_OF_TEXT);
+
+                loc0 := view.cursors.c0;
+                loc1 := loc0;
+                loc1.x += count_utf8_chars(line_comment);
+
+                if document.buffer.line_chars[loc1.y] > loc1.x {
+                    v := text_buffer_make_view_for_interval(document.buffer, loc0, loc1,, temp);
+                    if String.starts_with(v, line_comment) {
+                        // nocheckin detect if we could remove line_comment_and_space
+
+                        // nocheckin Time to do that delete forward that accepts a count.
+                        // text_buffer_delete_forward(*document.buffer, *view.cursors, );
+                    } else {
+                        text_buffer_insert(*document.buffer, *view.cursors, line_comment_and_space);
+                    }
+                } else {
+                    text_buffer_insert(*document.buffer, *view.cursors, line_comment_and_space);
+                }
+
+                moved := text_buffer_move_cursor_y(document.buffer, *view.cursors, 1, view.selecting);
+                if moved {
+                    text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting, .ALWAYS_START_OF_TEXT);
+                }
+
+                buffer_changed = true;
             }
         }
 
@@ -4018,6 +4058,13 @@ is_part_of_surround_pair :: (document: Document, char: u32) -> opens: bool, clos
     }
 
     return opens, closes, paired_char;
+}
+
+get_comment_style :: (document: Document) -> /* Static */ line: string, block_start: string, block_end: string {
+    if #complete document.mode == {
+        case .PLAIN_TEXT;  return "", "", "";
+        case .JAI;         return LANG_JAI_LINE_COMMENT, LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END;
+    }
 }
 
 update_syntax_highlights :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
