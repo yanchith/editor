@@ -63,16 +63,17 @@ TODO(jt): Roadmap:
 - [ ] Emacs-like kill ring
 - [ ] CRLF
 - [ ] Rotated session logs
-- [ ] Support for dropping files into the window
-- [ ] SEARCH items should render with syntax highlighting
-- [ ] SEARCH should highlight all matches in the current view, not just the first one on the line. We should also probably add a way to navigate them (C-f, C-n).
+- [ ] SEARCH should highlight all matches in the current view, not just the first one on the line. We should also probably add a way to navigate them.
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
 - [ ] Dark text color under bright rectangles (cursor, selection, line)
 
+... things below here are only important if I want to share this with other people ...
+
 - [ ] Config file
+- [ ] Support for dropping files into the window
 - [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
 - [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
 - [ ] Flash pasted text
@@ -88,6 +89,7 @@ TODO(jt): Roadmap:
 - [ ] Version control view (Git only?, via plugin interface?)
 - [ ] 4coder style floating annotations? (e.g. name of the function or if statement expresion after closing brace)
 - [ ] Customization and plugins
+- [ ] SEARCH items should render with syntax highlighting
 
 TODO(jt): @Stream Interesting side-projects to do:
 
