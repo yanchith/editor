@@ -51,7 +51,7 @@ TODO(jt): Roadmap:
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
 - [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme)
-- [ ] M-g g (go to line)
+- [X] M-g g (go to line)
 - [ ] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
 - [ ] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
 - [ ] C-u C-<space> and cursor undo.
@@ -152,6 +152,7 @@ operator==     :: Math.operator==;
 #load "mini_panel_close_view.jai";
 #load "mini_panel_show_commands.jai";
 #load "modal_interaction_search_and_replace.jai";
+#load "modal_interaction_go_to_line.jai";
 #load "modal_interaction_compile_project.jai";
 #load "modal_interaction_benchgen.jai";
 #load "lang_jai.jai";
@@ -707,6 +708,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
         key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
+
+        key_map_add(key_map, "M-g g",   .GO_TO_LINE);
 
         key_map_add(key_map, "C-<space>", .START_SELECTING);
         key_map_add(key_map, "C-g",     .STOP_SELECTING);
@@ -2054,6 +2057,8 @@ Document_Action :: enum {
     MOVE_FORWARD_WORD;
     MOVE_BACKWARD_WORD;
 
+    GO_TO_LINE;
+
     START_SELECTING;
     STOP_SELECTING;
 
@@ -2593,8 +2598,10 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .START_SELECTING;              view.selecting = true;  text_cursors_join(*view.cursors);
-        case .STOP_SELECTING;               view.selecting = false; text_cursors_join(*view.cursors);
+        case .GO_TO_LINE;       open_modal_interaction(editor, platform, input, modal_interaction_go_to_line_procs);
+
+        case .START_SELECTING;  view.selecting = true;  text_cursors_join(*view.cursors);
+        case .STOP_SELECTING;   view.selecting = false; text_cursors_join(*view.cursors);
 
         case .DELETE_LINE; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
