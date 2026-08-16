@@ -792,8 +792,6 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
         space_count += 1;
     }
 
-    is_only_whitespace := space_count == line_end - line_start;
-
     changed := false;
     if space_count > indentation_level {
         delete_count := space_count - indentation_level;
@@ -813,12 +811,7 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
         edit_cursor_after.x = indentation_level;
 
         display_cursor_after: Text_Location = original_cursor0;
-        if is_only_whitespace {
-            display_cursor_after.x = indentation_level;
-        } else {
-            display_cursor_after.x -= delete_count;
-            display_cursor_after.x = max(display_cursor_after.x, 0);
-        }
+        display_cursor_after.x = indentation_level;
 
         discard_unapplied_edits(buffer);
 
@@ -864,11 +857,7 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
         edit_cursor_after.x = indentation_level;
 
         display_cursor_after: Text_Location = original_cursor0;
-        if is_only_whitespace {
-            display_cursor_after.x = indentation_level;
-        } else {
-            display_cursor_after.x += insert_count;
-        }
+        display_cursor_after.x = indentation_level;
 
         discard_unapplied_edits(buffer);
 
@@ -896,7 +885,7 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
         cursors.c1 = display_cursor_after;
 
         changed = true;
-    } else if is_only_whitespace {
+    } else {
         cursors.c0.x = indentation_level;
         cursors.c1.x = indentation_level;
     }

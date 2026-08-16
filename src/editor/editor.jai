@@ -7,7 +7,6 @@ TODO(jt): Known serious bugs:
 TODO(jt): Usage self-feedback:
 
 - finish the compilation buffer thing
-- indent line should move the cursor to the indentation level always
 
 TODO(jt): Roadmap:
 
@@ -46,7 +45,7 @@ TODO(jt): Roadmap:
 - [X] COPY, CUT and PASTE in mini panel and modal interaction.
 - [~] Create file in new directories (mkdirp) ; Needs to get absolute path of nonexistent directory on macOS!
 - [X] Refresh lister
-- [ ] Delete file in lister
+- [X] Delete file in lister
 - [X] Click to open file in lister
 - [ ] Mode defined comments (C-x C-;)
 - [ ] Double click to select word (expand region)
@@ -2722,18 +2721,25 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     y0 := min(view.cursors.c0.y, view.cursors.c1.y);
                     y1 := max(view.cursors.c0.y, view.cursors.c1.y);
 
-                    first := true;
-                    for y0..y1 {
-                        level := find_indentation_level_for_location(document, { 0, it });
-                        text_buffer_move_cursor_to(document.buffer, *view.cursors, { 0, it }, false);
-                        changed := text_buffer_indent_line(*document.buffer, *view.cursors, level, ifx first then .NONE else .FUSE);
+                    if y0 == y1 {
+                        // The general multiline loop would also work for the single line case,
+                        // but we undo the cursor for display better here.
+                        level := find_indentation_level_for_location(document, view.cursors.c0);
+                        buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .NONE);
+                    } else {
+                        first := true;
+                        for y0..y1 {
+                            level := find_indentation_level_for_location(document, { 0, it });
+                            text_buffer_move_cursor_to(document.buffer, *view.cursors, { 0, it }, false);
+                            changed := text_buffer_indent_line(*document.buffer, *view.cursors, level, ifx first then .NONE else .FUSE);
 
-                        if changed {
-                            update_parenthesized_scopes(document);
-                            first = false;
+                            if changed {
+                                update_parenthesized_scopes(document);
+                                first = false;
+                            }
+
+                            buffer_changed |= changed;
                         }
-
-                        buffer_changed |= changed;
                     }
 
                     // Restore cursor's vertical position if the selection is backwards.
