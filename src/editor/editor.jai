@@ -2,9 +2,7 @@
 
 TODO(jt): Known serious bugs:
 
-- On macOS, C-` (iterm) causes focus/defocus problems: C-x C-s stops working after C-`, and starts working again after Cmd-tab. Also happens with alfred.
 - On macOS, launching the app creates a console.
-- On macOS, clicking on the window header causes scrolling up. (probably fixed, confirm)
 
 TODO(jt): Usage self-feedback:
 
@@ -1802,7 +1800,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     buffer_changed := false;
     old_item_index := mp.item_index;
 
-    buffered, action := key_map_input(*mp.key_map, event, editor.input_state.modifiers);
+    buffered, action := key_map_input(*mp.key_map, event);
     if action == {
         case .MOVE_UP;                 mp.item_index = clamp(mp.item_index - 1, min_item_index, mp.items.count - 1);
         case .MOVE_DOWN;               mp.item_index = clamp(mp.item_index + 1, min_item_index, mp.items.count - 1);
@@ -1918,7 +1916,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
     buffer_changed := false;
 
-    buffered, action := key_map_input(*mi.key_map, event, editor.input_state.modifiers);
+    buffered, action := key_map_input(*mi.key_map, event);
     if action == {
         case .MOVE_LEFT;                 text_buffer_move_cursor_x(mi.buffer, *mi.cursors, -1, mi.selecting);
         case .MOVE_RIGHT;                text_buffer_move_cursor_x(mi.buffer, *mi.cursors,  1, mi.selecting);
@@ -2131,7 +2129,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     did_execute_action := false;
 
     {
-        buffered, action   := key_map_input(*editor.panel_key_map, event, editor.input_state.modifiers);
+        buffered, action   := key_map_input(*editor.panel_key_map, event);
         did_buffer_event   |= buffered;
         did_execute_action |= execute_panel_action(editor, platform, input, panel, action);
     }
@@ -2153,11 +2151,11 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             }
 
             if document.kind == .COMPILATION {
-                buffered, action   := key_map_input(*editor.compilation_key_map, event, editor.input_state.modifiers);
+                buffered, action   := key_map_input(*editor.compilation_key_map, event);
                 did_buffer_event   |= buffered;
                 did_execute_action |= execute_compilation_action(editor, platform, input, panel, view, document, action);
             } else {
-                buffered, action   := key_map_input(*editor.document_key_map, event, editor.input_state.modifiers);
+                buffered, action   := key_map_input(*editor.document_key_map, event);
                 did_buffer_event   |= buffered;
                 did_execute_action |= execute_document_action(editor, platform, input, panel, view, document, action);
             }
@@ -2270,7 +2268,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 return;
             }
 
-            buffered, action   := key_map_input(*editor.listing_key_map, event, editor.input_state.modifiers);
+            buffered, action   := key_map_input(*editor.listing_key_map, event);
             did_buffer_event   |= buffered;
             did_execute_action |= execute_listing_action(editor, platform, input, panel, view, listing, action);
         }
@@ -4451,7 +4449,7 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     text_buffer_insert(*document.buffer, *view.cursors, "\n", .OMIT );
     text_buffer_insert(*document.buffer, *view.cursors, "Compiling with args: ", .OMIT);
     text_buffer_insert(*document.buffer, *view.cursors, args, .OMIT);
-    text_buffer_insert(*document.buffer, *view.cursors, "\n", .OMIT );
+    text_buffer_insert(*document.buffer, *view.cursors, "\n\n", .OMIT );
 
     time_before := platform.get_current_time_monotonic();
     exit_code, output, error := platform.run_in_process(args, working_directory,, temp);
@@ -4466,11 +4464,11 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
         text_buffer_insert(*document.buffer, *view.cursors, error, undo_modifier = .OMIT);
     } else {
         text_buffer_insert(*document.buffer, *view.cursors, output, undo_modifier = .OMIT);
-        text_buffer_insert(*document.buffer, *view.cursors, "Compilation also wrote to standard error (this will eventually be properly interleaved):\n\n", .OMIT);
+        text_buffer_insert(*document.buffer, *view.cursors, "\nCompilation also wrote to standard error (this will eventually be properly interleaved):\n\n", .OMIT);
         text_buffer_insert(*document.buffer, *view.cursors, error, undo_modifier = .OMIT);
     }
 
-    text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: %\n\n", to_float64_seconds(time_elapsed), exit_code), undo_modifier = .OMIT);
+    text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: %\n", to_float64_seconds(time_elapsed), exit_code), undo_modifier = .OMIT);
 }
 
 // TODO(jt): The user experience of this kind of sucks. The first C-l should always recenter. But

@@ -343,7 +343,7 @@ key_map_flush :: (key_map: *Key_Map) {
     key_map.buffered_input = {};
 }
 
-key_map_input :: (key_map: *Key_Map($T), event: Input_Event, modifier_flags: Modifier_Flags) -> buffered: bool, action: T {
+key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, action: T {
     // Do nothing, if we haven't got shortcuts to compare against.
     if !key_map.registered_shortcuts.count {
         return false, default_of(T);
@@ -361,7 +361,7 @@ key_map_input :: (key_map: *Key_Map($T), event: Input_Event, modifier_flags: Mod
         }
 
         key: Shortcut_Key;
-        key.modifier_flags = modifier_flags;
+        key.modifier_flags = event.modifiers;
         key.type = event.type;
         key.data = event.data;
 

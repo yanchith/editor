@@ -106,7 +106,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
         case .REPLACING; {
             sanity_assert(panel.highlights.count > 0);
 
-            buffered, action := key_map_input(*userdata.replacing_key_map, event, editor.input_state.modifiers);
+            buffered, action := key_map_input(*userdata.replacing_key_map, event);
             if action == {
                 case .YES; #through;
                 case .NO; {
