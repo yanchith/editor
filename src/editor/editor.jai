@@ -464,7 +464,7 @@ Document :: struct {
     }
 }
 
-// TODO(jt): @Cleanup Unify Listing/Listing_View with mini_panel listings?
+// TODO(jt): Rename to Directory_Listing and remove kind?
 Listing :: struct {
     locator: Bucket_Locator;
 
@@ -478,6 +478,9 @@ Listing :: struct {
 
     items: [..] Item;
     item_index_cold: s64; // Used to restore item_index in panel view, if the listing was in the background. Otherwise, the view's item_index takes precedence.
+
+    // TODO(jt): @Speed @Memory Should use Bit_Array here, but I think we'd need to make our own that can resize and stuff.
+    marked_items: Table(s64, void);
 
     Kind :: enum u32 {
         DIRECTORY;
@@ -792,6 +795,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-m",     .OPEN);
         key_map_add(key_map, "<enter>", .OPEN);
         key_map_add(key_map, "C-o",     .OPEN_IN_OTHER_PANEL);
+
+        key_map_add(key_map, "d",       .MARK_ITEM);
+        key_map_add(key_map, "u",       .UNMARK_ITEM);
+
+        key_map_add(key_map, "x",       .DELETE_MARKED_ITEMS);
 
         key_map_add(key_map, "g",       .REFRESH);
     }
@@ -2116,6 +2124,11 @@ Listing_Action :: enum {
     OPEN;
     OPEN_IN_OTHER_PANEL;
 
+    MARK_ITEM;
+    UNMARK_ITEM;
+
+    DELETE_MARKED_ITEMS;
+
     REFRESH;
 
     SET_PROJECT_DIRECTORY;
@@ -2995,6 +3008,31 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
             open_file(editor, platform, input, full_path, open_in_panel);
         }
 
+        case .MARK_ITEM; {
+            table_add(*listing.marked_items, view.item_index, null.*);
+            view.item_index = clamp(view.item_index + 1, 0, listing.items.count - 1);
+        }
+        case .UNMARK_ITEM; {
+            table_remove(*listing.marked_items, view.item_index);
+            view.item_index = clamp(view.item_index + 1, 0, listing.items.count - 1);
+        }
+
+        case .DELETE_MARKED_ITEMS; {
+            // TODO(jt): We should bring up a modal interaction to confirm.
+            for listing.items {
+                if table_find(*listing.marked_items, it_index) {
+                    filename := String.path_join(listing.backing_directory_path, it.text, separator = "/",, temp);
+
+                    success  := platform.delete_file(filename);
+                    if !success {
+                        editor_log(editor, "Failed to delete file: %", filename);
+                    }
+                }
+            }
+
+            refresh_directory_listing(platform, listing);
+        }
+
         case .REFRESH;  refresh_directory_listing(platform, listing);
 
         case .SET_PROJECT_DIRECTORY; {
@@ -3813,7 +3851,12 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 scissor_rect := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
 
-                _font_layout_and_draw_text(*editor.font, item.text, render_commands, atlas_update_regions, offset, scissor_rect, editor.theme.listing_item_text_color, .[], binary = false);
+                color := editor.theme.listing_item_text_color;
+                if table_find(*listing.marked_items, it) {
+                    color = editor.theme.listing_item_text_color_marked;
+                }
+
+                _font_layout_and_draw_text(*editor.font, item.text, render_commands, atlas_update_regions, offset, scissor_rect, color, .[], binary = false);
             }
 
             //
@@ -4083,6 +4126,7 @@ refresh_directory_listing :: (platform: Platform, listing: *Listing) {
     }
 
     array_reset(*listing.items);
+    table_reset(*listing.marked_items);
     arena_pop_to_mark(listing.arena, listing.arena_base_data_mark);
 
     file_list := platform.list_directory(listing.backing_directory_path, recursive = false, files = true, directories = true,, temp);
@@ -4194,6 +4238,8 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
     listing.arena_base_data_mark = arena_get_mark(listing_arena);
 
     listing.items.allocator = arena_allocator(listing_arena);
+
+    listing.marked_items.allocator = arena_allocator(listing_arena);
 
     locator, pointer := bucket_array_add(*editor.listings, listing);
     pointer.locator = locator;
