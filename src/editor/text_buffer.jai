@@ -375,9 +375,7 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -
     return deleted;
 }
 
-// TODO(jt): @Cleanup Take a parameter to specify the count to delete. Do delete in batch, like
-// text_buffer_delete_selection does. There's also an update index function we can call.
-text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier_For_Delete.NONE) -> changed: bool {
+text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, char_count: s64, undo_modifier := Undo_Modifier_For_Delete.NONE) -> /* Pointing to the internal gap buffer */ string {
     ProfileZone("text_buffer_delete_forward");
 
     assert_valid(buffer, cursors);
@@ -386,105 +384,92 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, und
         deleted := text_buffer_delete_selection(buffer, cursors);
         assert(cursors.c0 == cursors.c1);
 
-        return deleted.count > 0;
+        return deleted;
+    }
+
+    if char_count <= 0 {
+        return "";
     }
 
     gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
 
-    bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
-    if bytes.count == 0 {
-        return false;
+    text := cast(string, gap_buffer_get_bytes_after_gap(buffer.gb));
+    if text.count == 0 {
+        return "";
     }
 
-    newline_advance := string_starts_with_newline(bytes, binary = buffer.binary_mode);
-    if newline_advance {
-        assert(cursors.c0.y < buffer.line_chars.count - 1);          // The last line can't have a newline.
-        assert(cursors.c0.x == buffer.line_chars[cursors.c0.y] - 1); // The newline has to be the last char.
+    deleted_byte_count := 0;
+    while char_count {
+        newline_advance := string_starts_with_newline(text, binary = buffer.binary_mode);
+        if newline_advance {
+            assert(cursors.c0.y < buffer.line_bytes.count - 1);          // The last line can't have a newline.
+            assert(cursors.c0.x == buffer.line_chars[cursors.c0.y] - 1); // The newline has to be the last char.
 
-        // We treat \r\n as one character, if it happens to be in there.
-        buffer.line_chars[cursors.c0.y] -= 1;
-        buffer.line_bytes[cursors.c0.y] -= newline_advance;
+            buffer.line_chars[cursors.c0.y] -= 1;
+            buffer.line_bytes[cursors.c0.y] -= newline_advance;
 
-        buffer.line_chars[cursors.c0.y] += buffer.line_chars[cursors.c0.y + 1];
-        buffer.line_bytes[cursors.c0.y] += buffer.line_bytes[cursors.c0.y + 1];
+            buffer.line_chars[cursors.c0.y] += buffer.line_chars[cursors.c0.y + 1];
+            buffer.line_bytes[cursors.c0.y] += buffer.line_bytes[cursors.c0.y + 1];
 
-        remove_line(buffer, cursors.c0.y + 1);
+            remove_line(buffer, cursors.c0.y + 1);
 
-        deleted := gap_buffer_delete_forward(*buffer.gb, newline_advance);
-        assert(newline_advance == deleted.count);
+            advance(*text, newline_advance);
+            assert(text.count >= 0);
 
-        discard_unapplied_edits(buffer);
+            char_count         -= 1;
+            deleted_byte_count += newline_advance;
+        } else {
+            codepoint_advance: s64 = 1;
+            if !buffer.binary_mode {
+                _, codepoint_advance = find_next_utf8_char_boundary(text, 0);
+            }
 
-        edit := array_add(*buffer.edits);
-        edit.type = .DELETE_FORWARD;
-        edit.flags = .NONE;
-        edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
-        edit.text_mark = arena_get_mark(buffer.edit_text_arena);
-        edit.gb_index_before = gb_index;
-        edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-        edit.cursor0_for_edit_before = cursors.c0;
-        edit.cursor0_for_edit_after = cursors.c0;
-        edit.cursor0_for_display_before = cursors.c0;
-        edit.cursor0_for_display_after = cursors.c0;
-        edit.cursor1_for_display_before = cursors.c0;
-        edit.cursor1_for_display_after = cursors.c0;
-
-        if undo_modifier == .FUSE {
-            maybe_fuse_last_edits(buffer.edits);
-        } else if undo_modifier == .CAN_AUTOFUSE {
-            maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
-        }
-
-        buffer.applied_edit_count = buffer.edits.count;
-    } else {
-        codepoint_advance: s64 = 1;
-        if !buffer.binary_mode {
-            _, codepoint_advance = find_next_utf8_char_boundary(bytes, 0);
-        }
-
-        if codepoint_advance {
             buffer.line_chars[cursors.c0.y] -= 1;
             buffer.line_bytes[cursors.c0.y] -= codepoint_advance;
 
-            deleted := gap_buffer_delete_forward(*buffer.gb, codepoint_advance);
-            assert(codepoint_advance == deleted.count);
+            advance(*text, codepoint_advance);
+            assert(text.count >= 0);
 
-            discard_unapplied_edits(buffer);
-
-            edit := array_add(*buffer.edits);
-            edit.type = .DELETE_FORWARD;
-            edit.flags = .NONE;
-            edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
-            edit.text_mark = arena_get_mark(buffer.edit_text_arena);
-            edit.gb_index_before = gb_index;
-            edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-            edit.cursor0_for_edit_before = cursors.c0;
-            edit.cursor0_for_edit_after = cursors.c0;
-            edit.cursor0_for_display_before = cursors.c0;
-            edit.cursor0_for_display_after = cursors.c0;
-            edit.cursor1_for_display_before = cursors.c0;
-            edit.cursor1_for_display_after = cursors.c0;
-
-            if undo_modifier == .FUSE {
-                maybe_fuse_last_edits(buffer.edits);
-            } else if undo_modifier == .CAN_AUTOFUSE {
-                maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
-            }
-
-            buffer.applied_edit_count = buffer.edits.count;
+            char_count         -= 1;
+            deleted_byte_count += codepoint_advance;
         }
     }
+
+    deleted := cast(string, gap_buffer_delete_forward(*buffer.gb, deleted_byte_count));
+
+    discard_unapplied_edits(buffer);
+
+    edit := array_add(*buffer.edits);
+    edit.type = .DELETE_FORWARD;
+    edit.flags = .NONE;
+    edit.text = arena_push_string(buffer.edit_text_arena, deleted);
+    edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+    edit.gb_index_before = gb_index;
+    edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+    edit.cursor0_for_edit_before = cursors.c0;
+    edit.cursor0_for_edit_after = cursors.c0;
+    edit.cursor0_for_display_before = cursors.c0;
+    edit.cursor0_for_display_after = cursors.c0;
+    edit.cursor1_for_display_before = cursors.c0;
+    edit.cursor1_for_display_after = cursors.c0;
+
+    if undo_modifier == .FUSE {
+        maybe_fuse_last_edits(buffer.edits);
+    } else if undo_modifier == .CAN_AUTOFUSE {
+        maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+    }
+
+    buffer.applied_edit_count = buffer.edits.count;
 
     cursors.c1 = cursors.c0;
 
     assert_valid(buffer, cursors);
 
-    return true;
+    return deleted;
 }
 
-// TODO(jt): @Cleanup Take a second parameter to specify the count to delete. Do delete in batch, like
-// text_buffer_delete_selection does. There's also an update index function we can call.
+// TODO(jt): @Cleanup Take a second parameter to specify the count to delete and do delete in batch.
 text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier_For_Delete.NONE) -> changed: bool {
     ProfileZone("text_buffer_delete_backward");
 
@@ -2095,7 +2080,7 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors
     while text.count {
         newline_advance := string_starts_with_newline(text, binary = buffer.binary_mode);
         if newline_advance {
-            assert(cursors.c0.y < buffer.line_bytes.count - 1);  // The last line can't have a newline.
+            assert(cursors.c0.y < buffer.line_bytes.count - 1);          // The last line can't have a newline.
             assert(cursors.c0.x == buffer.line_chars[cursors.c0.y] - 1); // The newline has to be the last char.
 
             buffer.line_chars[cursors.c0.y] -= 1;

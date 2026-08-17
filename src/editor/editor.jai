@@ -4,6 +4,7 @@ TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
 - We are using quite a bit of memory. Let's make a leak-detecting build, as well as tune arena commit sizes.
+- We still get an occasional crash (last one I got was when closing a buffer). Get those logs going!
 
 TODO(jt): Usage self-feedback:
 
@@ -48,7 +49,7 @@ TODO(jt): Roadmap:
 - [X] Refresh lister
 - [X] Delete file in lister
 - [X] Click to open file in lister
-- [ ] Mode defined comments (C-x C-;)
+- [~] Mode defined comments (C-x C-;) ; Still want to play with block comments
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
 - [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme)
@@ -733,6 +734,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "<tab>",   .INDENT_OR_AUTOCOMPLETE);
         key_map_add(key_map, "C-i",     .INDENT_OR_AUTOCOMPLETE);
+
+        key_map_add(key_map, "C-x C-;", .TOGGLE_COMMENT);
 
         key_map_add(key_map, "C-/",     .UNDO_EDIT);
         key_map_add(key_map, "M-/",     .REDO_EDIT);
@@ -1837,7 +1840,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .MOVE_FORWARD_WORD;       text_buffer_move_cursor_to_next_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
         case .MOVE_BACKWARD_WORD;      text_buffer_move_cursor_to_previous_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
 
-        case .DELETE_FORWARD;          text_buffer_delete_forward(*mp.buffer, *mp.cursors); buffer_changed = true;
+        case .DELETE_FORWARD;          text_buffer_delete_forward(*mp.buffer, *mp.cursors, 1); buffer_changed = true;
         case .DELETE_BACKWARD;         buffer_changed |= mp.procs.delete_backward(editor, platform, input);
 
         case .MOVE_UP_ONE_SCREEN;      mp.item_index = clamp(mp.item_index - MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
@@ -1859,7 +1862,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .CUT; {
             mp.selecting = false;
             deleted := text_buffer_delete_selection(*mp.buffer, *mp.cursors);
-            if deleted {
+            if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
             }
@@ -1867,7 +1870,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .PASTE; {
             mp.selecting = false;
             text := platform.get_clipboard_text(,, temp);
-            if text {
+            if text.count {
                 buffer_changed |= text_buffer_insert(*mp.buffer, *mp.cursors, text, .NONE);
             }
         }
@@ -1951,7 +1954,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         case .MOVE_FORWARD_WORD;         text_buffer_move_cursor_to_next_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
         case .MOVE_BACKWARD_WORD;        text_buffer_move_cursor_to_previous_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
 
-        case .DELETE_FORWARD;            text_buffer_delete_forward(*mi.buffer, *mi.cursors); buffer_changed = true;
+        case .DELETE_FORWARD;            text_buffer_delete_forward(*mi.buffer, *mi.cursors, 1); buffer_changed = true;
         case .DELETE_BACKWARD;           text_buffer_delete_backward(*mi.buffer, *mi.cursors); buffer_changed = true;
 
         case .START_SELECTING;           mi.selecting = true; text_cursors_join(*mi.cursors);
@@ -1970,7 +1973,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         case .CUT; {
             mi.selecting = false;
             deleted := text_buffer_delete_selection(*mi.buffer, *mi.cursors);
-            if deleted {
+            if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
             }
@@ -1978,7 +1981,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         case .PASTE; {
             mi.selecting = false;
             text := platform.get_clipboard_text(,, temp);
-            if text {
+            if text.count {
                 buffer_changed |= text_buffer_insert(*mi.buffer, *mi.cursors, text, .NONE);
             }
         }
@@ -2642,10 +2645,10 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
                 view.selecting = false;
-                text := text_buffer_delete_line(*document.buffer, *view.cursors);
-                if text {
+                deleted := text_buffer_delete_line(*document.buffer, *view.cursors);
+                if deleted.count {
                     buffer_changed = true;
-                    platform.set_clipboard_text(text);
+                    platform.set_clipboard_text(deleted);
                 }
             }
         }
@@ -2653,7 +2656,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
                 view.selecting = false;
-                buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors, .CAN_AUTOFUSE);
+                deleted := text_buffer_delete_forward(*document.buffer, *view.cursors, 1, .CAN_AUTOFUSE);
+                buffer_changed |= deleted.count > 0;
 
                 document.time_of_last_simple_edit = input.time;
             }
@@ -2674,7 +2678,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
                         opens, closes, paired_char := is_part_of_surround_pair(document, prev_byte);
                         if opens && paired_char == curr_byte {
-                            buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors, .NONE);
+                            deleted := text_buffer_delete_forward(*document.buffer, *view.cursors, 1, .NONE);
+                            buffer_changed |= deleted.count > 0;
                             buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors, .FUSE);
 
                             handled = true;
@@ -2757,55 +2762,77 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
         case .TOGGLE_COMMENT; {
             line_comment, block_comment_start, block_comment_end := get_comment_style(document);
+            line_comment_length := count_utf8_chars(line_comment);
+
+            line_comment_with_space := tprint("% ", line_comment);
+            line_comment_with_space_length := line_comment_length + 1; // +1 okay, because space is ASCII.
 
             // TODO(jt): Preserve cursors and send them into the thing manually.
-            if view.selecting {
+            if view.cursors.c0 == view.cursors.c1 || view.cursors.c0.x == 0 && view.cursors.c1.x == 0 {
+                // 2 cases:
+                // - Single line, and no selection on the line -> line comment
+                // - Multi line, but both cursors have X at 0 -> multiple line comments
+                if line_comment.count {
+                    y0 := min(view.cursors.c0.y, view.cursors.c1.y);
+                    y1 := max(view.cursors.c0.y, view.cursors.c1.y);
 
-            } else {
-                line_comment_with_space := tprint("% ", line_comment);
+                    first := true;
 
-                text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting, .ALWAYS_START_OF_TEXT);
+                    // nocheckin detect whether we are adding or removing on the first line and then just brainlessly do stuff for the rest!
+                    for y0..y1 {
+                        text_buffer_move_cursor_to(document.buffer, *view.cursors, 0, it, false);
+                        text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting, .ALWAYS_START_OF_TEXT);
 
-                loc0 := view.cursors.c0;
-                loc1 := loc0;
-                loc1.x += count_utf8_chars(line_comment);
+                        loc0 := view.cursors.c0;
+                        loc1 := loc0;
+                        loc1.x += line_comment_length;
 
-                if document.buffer.line_chars[loc1.y] > loc1.x {
-                    line_view := text_buffer_make_view_for_interval(document.buffer, loc0, loc1,, temp);
-                    if String.starts_with(line_view, line_comment) {
-                        loc1_with_space := loc1;
-                        loc1_with_space.x += 1; // +1 okay, because space is ASCII.
+                        if document.buffer.line_chars[loc1.y] > loc1.x {
+                            line_view := text_buffer_make_view_for_interval(document.buffer, loc0, loc1,, temp);
+                            if String.starts_with(line_view, line_comment) {
+                                loc1_with_space := loc1;
+                                loc1_with_space.x += 1; // +1 okay, because space is ASCII.
 
-                        removed_with_space := false;
+                                removed_with_space := false;
 
-                        if document.buffer.line_chars[loc1_with_space.y] > loc1_with_space.x {
-                            line_view_with_space := text_buffer_make_view_for_interval(document.buffer, loc0, loc1_with_space,, temp);
-                            if String.starts_with(line_view_with_space, line_comment_with_space) {
+                                if document.buffer.line_chars[loc1_with_space.y] > loc1_with_space.x {
+                                    line_view_with_space := text_buffer_make_view_for_interval(document.buffer, loc0, loc1_with_space,, temp);
+                                    if String.starts_with(line_view_with_space, line_comment_with_space) {
+                                        text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_with_space_length, ifx first then .NONE else .FUSE);
+                                        removed_with_space = true;
+                                    }
+                                }
 
-                                // nocheckin delete_forward line_comment_with_space
-                                removed_with_space = true;
+                                if !removed_with_space {
+                                    text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_length, ifx first then .NONE else .FUSE);
+                                }
+                            } else {
+                                text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, ifx first then .NONE else .FUSE);
                             }
+                        } else {
+                            text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, ifx first then .NONE else .FUSE);
                         }
 
-                        if !removed_with_space {
-                            // nocheckin delete_forward line_comment
-                        }
-
-                        // nocheckin Time to do that delete forward that accepts a count.
-                        // text_buffer_delete_forward(*document.buffer, *view.cursors, );
-                    } else {
-                        text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space);
+                        first = false;
                     }
+
+                    if y0 == y1 {
+                        moved := text_buffer_move_cursor_y(document.buffer, *view.cursors, 1, view.selecting);
+                        if moved {
+                            text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting, .ALWAYS_START_OF_TEXT);
+                        }
+                    } else {
+                        text_buffer_move_cursor_to(document.buffer, *view.cursors, 0, y1, false);
+                    }
+
+                    buffer_changed = true;
                 } else {
-                    text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space);
+                    editor_log(editor, "No line comment defined for %", document.mode);
                 }
-
-                moved := text_buffer_move_cursor_y(document.buffer, *view.cursors, 1, view.selecting);
-                if moved {
-                    text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting, .ALWAYS_START_OF_TEXT);
-                }
-
-                buffer_changed = true;
+            } else if view.cursors.c0.y == view.cursors.c1.y {
+                // TODO(jt): Add single line block comments (if we have a selection going)
+            } else {
+                // TODO(jt): Add multiline block comments.
             }
         }
 
@@ -2870,7 +2897,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .COPY; {
             view.selecting = false;
             text := text_buffer_make_view_for_interval(document.buffer, view.cursors.c0, view.cursors.c1,, temp);
-            if text {
+            if text.count {
                 platform.set_clipboard_text(text);
             }
 
@@ -2881,7 +2908,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             if !(document.flags & .READONLY) {
                 view.selecting = false;
                 deleted := text_buffer_delete_selection(*document.buffer, *view.cursors);
-                if deleted {
+                if deleted.count {
                     buffer_changed = true;
                     platform.set_clipboard_text(deleted);
                 }
@@ -2892,7 +2919,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             if !(document.flags & .READONLY) {
                 view.selecting = false;
                 text := platform.get_clipboard_text(,, temp);
-                if text {
+                if text.count {
                     buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, text, .NONE);
                 }
             }
