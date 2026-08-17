@@ -47,7 +47,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         search_parts, smartcase := line_search_prepare_parts(search_text,, temp);
         search_part1_char_count := ifx search_parts.count then count_utf8_chars(search_parts[0]) else 0;
 
-        max_time_of_last_interaction: Apollo_Time;
+        max_time_of_last_activation: Apollo_Time;
 
         current_thing: *void = null;
         if #complete panel.view.kind == {
@@ -63,8 +63,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
                 // Select the most recent document, except the one pointed to by the currently active panel.
-                if current_thing != it && it.time_of_last_interaction > max_time_of_last_interaction {
-                    max_time_of_last_interaction = it.time_of_last_interaction;
+                if current_thing != it && it.time_of_last_activation > max_time_of_last_activation {
+                    max_time_of_last_activation = it.time_of_last_activation;
                     mini_panel.item_index = mini_panel.items.count;
                 }
 
@@ -97,8 +97,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
                 // Select the most recent listing, except the one pointed to by the currently active panel.
-                if current_thing != it && it.time_of_last_interaction > max_time_of_last_interaction {
-                    max_time_of_last_interaction = it.time_of_last_interaction;
+                if current_thing != it && it.time_of_last_activation > max_time_of_last_activation {
+                    max_time_of_last_activation = it.time_of_last_activation;
                     mini_panel.item_index = mini_panel.items.count;
                 }
 
