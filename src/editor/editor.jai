@@ -2453,6 +2453,11 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .ZENBURN_THEME;      editor.theme = zenburn_theme();  theme_changed = true;
     }
 
+    //
+    // Careful, even though we get a valid panel as an argument in this function, the things we do here (e.g. CLOSE_CURRENT_PANEL)
+    // can destroy it. Don't assume it is still valid down here.
+    //
+
     if theme_changed {
         for * panel: editor.panels {
             if panel.view.kind == .DOCUMENT {
