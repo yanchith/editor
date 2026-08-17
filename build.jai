@@ -158,10 +158,10 @@ OPTIONS:
   -x64                    Compile with the x64 backend.
   -llvm                   Compile with the LLVM backend.
 
-  -check                  Enables additional compile time checking.
-  -no-check               Disables additional compile time checking.
-  -profile                Enables the builtin runtime profiler.
-  -no-profile             Disables the builtin runtime profiler.
+  -check                  Enable additional compile time checking.
+  -no-check               Disable additional compile time checking.
+  -profile                Enable the builtin runtime profiler.
+  -no-profile             Disable the builtin runtime profiler.
   -sanity                 Turns on slow paranoid asserts.
   -no-sanity              Turns off slow paranoid asserts.
   -subpixel               Uses subpixel text rendering (FT_LOAD_TARGET.LCD).
