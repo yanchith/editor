@@ -115,14 +115,18 @@ Arena_Procs :: struct {
 }
 
 Arena :: struct {
-    // Things given by the caller before arena_init as arguments to arena_allocate. At least procs
-    // must be set, because they don't have a default. Don't change them after init.
+    //
+    // Arguments given by caller before initialization (arena_init, arena_allocate). At least procs
+    // must be set, because they don't have a default. Don't change after init.
+    //
     procs: Arena_Procs;
     reserve_size := ARENA_DEFAULT_RESERVE_SIZE;  // How much memory we reserve, aligned to page size. Can't get more.
     commit_size  := ARENA_DEFAULT_COMMIT_SIZE;   // The minimal size that is (de)committed, aligned to page size.
     retain_size  := ARENA_DEFAULT_RETAIN_SIZE;   // The minimal size that is not decommitted once it has been committed, aligned to page size.
 
+    //
     // Internal stuff. Consider read-only.
+    //
 
     memory_start: *void;
     memory_end:   *void;
