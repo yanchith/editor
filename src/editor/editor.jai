@@ -3,6 +3,7 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
+- We are using quite a bit of memory. Let's make a leak-detecting build, as well as tune arena commit sizes.
 
 TODO(jt): Usage self-feedback:
 
@@ -357,7 +358,8 @@ Document :: struct {
     kind: Kind;
     mode: Mode;
     flags: Flags;
-    time_of_last_interaction: Apollo_Time;
+    time_of_last_activation: Apollo_Time;
+    time_of_last_simple_edit: Apollo_Time; // Insert by typing characters or delete forward/backward.
 
     cursors_cold: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
     buffer: Text_Buffer;
@@ -471,7 +473,7 @@ Listing :: struct {
     locator: Bucket_Locator;
 
     kind: Kind;
-    time_of_last_interaction: Apollo_Time;
+    time_of_last_activation: Apollo_Time;
 
     arena: *Arena; // For backing_directory_path, items and item text.
     arena_base_data_mark: Arena_Mark;
@@ -1019,7 +1021,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             for * editor.documents {
                 // Possibly the file was modified by us. Ignore. If this indeed is a valid
-                // modification done by someone else, we'll discover it int the fallback.
+                // modification done by someone else, we'll discover it in the fallback.
                 if input.time - it.backing_file_time_of_last_save < FILE_WATCH_BLIND_WINDOW {
                     continue;
                 }
@@ -1435,6 +1437,13 @@ get_scratch :: (editor: Editor) -> *Document, *Panel, panel_index: s64 {
     assert(document != null, "We are missing *scratch*"); // Currently, *scratch* can't be closed, right?!
 
     return document, panel, panel_index;
+}
+
+touch_panel :: (panel: *Panel, time: Apollo_Time) {
+    if #complete panel.view.kind == {
+        case .DOCUMENT;  panel.view._document.document.time_of_last_activation = time;
+        case .LISTING;   panel.view._listing.listing.time_of_last_activation = time;
+    }
 }
 
 // Returns Panel and panel_index only if *compilation* has a currently assigned panel,
@@ -2253,11 +2262,13 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                         if !handled {
                             undo_modifier: Undo_Modifier_For_Insert = .NONE;
-                            if input.time - document.time_of_last_interaction < UNDO_AUTOFUSE_PERIOD {
+                            if input.time - document.time_of_last_simple_edit < UNDO_AUTOFUSE_PERIOD {
                                 undo_modifier = .CAN_AUTOFUSE;
                             }
 
                             text_buffer_insert_char(*document.buffer, *view.cursors, char, undo_modifier);
+
+                            document.time_of_last_simple_edit = input.time;
                         }
 
                         //
@@ -2266,7 +2277,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         // changed for sure.
                         //
 
-                        document.time_of_last_interaction = input.time;
                         document.flags |= .MODIFIED_THIS_FRAME;
                         document.flags |= .MODIFIED;
 
@@ -2383,6 +2393,9 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                     editor.full_view_panel_index = 0;
                     editor.active_view = .FULL;
                 }
+
+                newly_active_panel := *editor.panels[editor.full_view_panel_index];
+                touch_panel(newly_active_panel, input.time);
             }
         }
         case .CLOSE_OTHER_PANELS; {
@@ -2406,13 +2419,26 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                     editor.full_view_panel_index = 0;
                     editor.active_view = .FULL;
                 }
+
+                newly_active_panel := *editor.panels[editor.full_view_panel_index];
+                touch_panel(newly_active_panel, input.time);
             }
         }
         case .GO_TO_NEXT_PANEL; {
             if #complete editor.active_view == {
                 case .FULL;   // No-op
-                case .LEFT;   editor.active_view = .RIGHT;
-                case .RIGHT;  editor.active_view = .LEFT;
+                case .LEFT; {
+                    editor.active_view = .RIGHT;
+
+                    newly_active_panel := *editor.panels[editor.right_view_panel_index];
+                    touch_panel(newly_active_panel, input.time);
+                }
+                case .RIGHT; {
+                    editor.active_view = .LEFT;
+
+                    newly_active_panel := *editor.panels[editor.left_view_panel_index];
+                    touch_panel(newly_active_panel, input.time);
+                }
             }
         }
 
@@ -2623,6 +2649,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             if !(document.flags & .READONLY) {
                 view.selecting = false;
                 buffer_changed |= text_buffer_delete_forward(*document.buffer, *view.cursors, .CAN_AUTOFUSE);
+
+                document.time_of_last_simple_edit = input.time;
             }
         }
         case .DELETE_BACKWARD; {
@@ -2652,6 +2680,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 if !handled {
                     view.selecting = false;
                     buffer_changed |= text_buffer_delete_backward(*document.buffer, *view.cursors, .CAN_AUTOFUSE);
+
+                    document.time_of_last_simple_edit = input.time;
                 }
             }
         }
@@ -2727,7 +2757,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             if view.selecting {
 
             } else {
-                line_comment_and_space := tprint("% ", line_comment);
+                line_comment_with_space := tprint("% ", line_comment);
 
                 text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting, .ALWAYS_START_OF_TEXT);
 
@@ -2736,17 +2766,33 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 loc1.x += count_utf8_chars(line_comment);
 
                 if document.buffer.line_chars[loc1.y] > loc1.x {
-                    v := text_buffer_make_view_for_interval(document.buffer, loc0, loc1,, temp);
-                    if String.starts_with(v, line_comment) {
-                        // nocheckin detect if we could remove line_comment_and_space
+                    line_view := text_buffer_make_view_for_interval(document.buffer, loc0, loc1,, temp);
+                    if String.starts_with(line_view, line_comment) {
+                        loc1_with_space := loc1;
+                        loc1_with_space.x += 1; // +1 okay, because space is ASCII.
+
+                        removed_with_space := false;
+
+                        if document.buffer.line_chars[loc1_with_space.y] > loc1_with_space.x {
+                            line_view_with_space := text_buffer_make_view_for_interval(document.buffer, loc0, loc1_with_space,, temp);
+                            if String.starts_with(line_view_with_space, line_comment_with_space) {
+
+                                // nocheckin delete_forward line_comment_with_space
+                                removed_with_space = true;
+                            }
+                        }
+
+                        if !removed_with_space {
+                            // nocheckin delete_forward line_comment
+                        }
 
                         // nocheckin Time to do that delete forward that accepts a count.
                         // text_buffer_delete_forward(*document.buffer, *view.cursors, );
                     } else {
-                        text_buffer_insert(*document.buffer, *view.cursors, line_comment_and_space);
+                        text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space);
                     }
                 } else {
-                    text_buffer_insert(*document.buffer, *view.cursors, line_comment_and_space);
+                    text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space);
                 }
 
                 moved := text_buffer_move_cursor_y(document.buffer, *view.cursors, 1, view.selecting);
@@ -2889,7 +2935,6 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         // panel...).
         //
         // :CentralizedCursorInterpolationSetup
-        document.time_of_last_interaction = input.time;
         view.flags |= .RECEIVED_DIRECT_KEYBOARD_INTERACTION;
         view.flags |= .CLAMP_SCROLL_TO_CURSOR;
     }
@@ -3002,7 +3047,6 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
         // panel...).
         //
         // :CentralizedCursorInterpolationSetup
-        document.time_of_last_interaction = input.time;
         view.flags |= .RECEIVED_DIRECT_KEYBOARD_INTERACTION;
         view.flags |= .CLAMP_SCROLL_TO_CURSOR;
     }
@@ -3135,6 +3179,8 @@ update_panel_early :: (editor: *Editor, platform: Platform, input: Input, panel:
             } else {
                 panel.flags &= ~.LAST_CLICK_WAS_INSIDE_CONTENT;
             }
+
+            touch_panel(panel, input.time);
         } else {
             panel.flags &= ~.LAST_CLICK_WAS_INSIDE;
             panel.flags &= ~.LAST_CLICK_WAS_INSIDE_CONTENT;
@@ -4229,7 +4275,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         if it.backing_directory_path != backing_directory_path  continue;
         if it.backing_file_path != backing_file_path            continue;
 
-        it.time_of_last_interaction = editor.input_state.time;
+        it.time_of_last_activation = editor.input_state.time;
 
         return it, false;
     }
@@ -4249,7 +4295,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
     }
 
     document.flags = .NONE;
-    document.time_of_last_interaction = editor.input_state.time;
+    document.time_of_last_activation = editor.input_state.time;
 
     // document.cursor0 is zero-initialized.
     // document.cursor1 is zero-initialized.
@@ -4281,7 +4327,7 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
         if it.kind != kind                                      continue;
         if it.backing_directory_path != backing_directory_path  continue;
 
-        it.time_of_last_interaction = editor.input_state.time;
+        it.time_of_last_activation = editor.input_state.time;
 
         return it, false;
     }
@@ -4290,7 +4336,7 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
 
     listing: Listing;
     listing.kind = .DIRECTORY;
-    listing.time_of_last_interaction = editor.input_state.time;
+    listing.time_of_last_activation = editor.input_state.time;
 
     listing.arena = listing_arena;
     if backing_directory_path.count {
@@ -4317,24 +4363,24 @@ close_document :: (editor: *Editor, input: Input, document: *Document) {
     thing_to_show_time: Apollo_Time = APOLLO_TIME_INVALID; // The maximum negative time. Anything valid will compare higher.
 
     for * editor.documents {
-        if it != document && it.time_of_last_interaction > thing_to_show_time {
+        if it != document && it.time_of_last_activation > thing_to_show_time {
             thing_to_show = it;
             thing_to_show_kind = .DOCUMENT;
-            thing_to_show_time = it.time_of_last_interaction;
+            thing_to_show_time = it.time_of_last_activation;
         }
     }
 
     for * editor.listings {
-        if it.time_of_last_interaction > thing_to_show_time {
+        if it.time_of_last_activation > thing_to_show_time {
             thing_to_show = it;
             thing_to_show_kind = .LISTING;
-            thing_to_show_time = it.time_of_last_interaction;
+            thing_to_show_time = it.time_of_last_activation;
         }
     }
 
-    // Find a document/listing with time_of_last_interaction > 0. If we don't, we either have no
+    // Find a document/listing with time_of_last_activation > 0. If we don't, we either have no
     // documents/listings (bad, becuase at least *scratch* shouldn't be closeable), or their
-    // time_of_last_interaction was not properly set everywhere it should be. We could do a fallback
+    // time_of_last_activation was not properly set everywhere it should be. We could do a fallback
     // here to find ANYTHING.  -jt, 25 July 2026.
     assert(thing_to_show != null);
 
@@ -4379,18 +4425,18 @@ close_listing :: (editor: *Editor, input: Input, listing: *Listing) {
     thing_to_show_time: Apollo_Time = APOLLO_TIME_INVALID; // The maximum negative time. Anything valid will compare higher.
 
     for * editor.documents {
-        if it.time_of_last_interaction > thing_to_show_time {
+        if it.time_of_last_activation > thing_to_show_time {
             thing_to_show = it;
             thing_to_show_kind = .DOCUMENT;
-            thing_to_show_time = it.time_of_last_interaction;
+            thing_to_show_time = it.time_of_last_activation;
         }
     }
 
     for * editor.listings {
-        if it != listing && it.time_of_last_interaction > thing_to_show_time {
+        if it != listing && it.time_of_last_activation > thing_to_show_time {
             thing_to_show = it;
             thing_to_show_kind = .LISTING;
-            thing_to_show_time = it.time_of_last_interaction;
+            thing_to_show_time = it.time_of_last_activation;
         }
     }
 
@@ -4494,7 +4540,7 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
 
     interpolation_init(*panel.scroll, { 0, 0 });
 
-    document.time_of_last_interaction = editor.input_state.time;
+    document.time_of_last_activation = editor.input_state.time;
 }
 
 panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
@@ -4534,7 +4580,7 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
 
     interpolation_init(*panel.scroll, { 0, 0 });
 
-    listing.time_of_last_interaction = editor.input_state.time;
+    listing.time_of_last_activation = editor.input_state.time;
 }
 
 strip_trailing_whitespace :: (view: *Document_View) -> buffer_changed: bool {
