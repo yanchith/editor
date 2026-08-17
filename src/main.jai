@@ -794,7 +794,7 @@ main :: () {
 
             #if DEBUG_MEMORY {
                 memory_visualizer_per_frame_update();
-                report_memory_leaks();
+                // report_memory_leaks();
             }
 
             if should_run && !wants_next_frame {
