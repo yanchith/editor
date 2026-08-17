@@ -1,6 +1,10 @@
 f32 :: float32;
 f64 :: float64;
 
+// DEBUG_MEMORY enables runtime allocation tracking and leak reporting.
+// TODO(jt): @CompilerBug I'd like to make this a switch supplied by the metaprogram, but it causes cycles.
+DEBUG_MEMORY :: false;
+
 // SANITY enables additional costly asserts for operations.
 #if #exists(__SANITY) {
     SANITY :: __SANITY;
@@ -57,7 +61,7 @@ f64 :: float64;
     #assert(false, "Unsupported OS");
 }
 
-#import "Basic";
+#import "Basic"()(MEMORY_DEBUGGER = DEBUG_MEMORY);
 #import "Hash_Table";
 #import "GL";
 #import "Profiler"()(IMPORT_MODE = .RUNTIME);
@@ -787,6 +791,11 @@ main :: () {
 
             array_reset_keeping_memory(*platform_state.watched_directory_changes);
             reset_temporary_storage();
+
+            #if DEBUG_MEMORY {
+                memory_visualizer_per_frame_update();
+                report_memory_leaks();
+            }
 
             if should_run && !wants_next_frame {
                 platform_wait_for_events();
