@@ -2826,6 +2826,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     }
 
                     buffer_changed = true;
+                    view.selecting = false;
                 } else {
                     editor_log(editor, "No line comment defined for %", document.mode);
                 }
