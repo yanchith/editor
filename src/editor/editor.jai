@@ -49,22 +49,22 @@ TODO(jt): Roadmap:
 - [X] Delete file in lister
 - [X] Click to open file in lister
 - [X] Mode defined comments (C-x C-;) ; (Still want to play with single-line block comments)
-- [ ] Double click to select word (expand region)
-- [ ] Triple click to select line.
 - [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme)
+- [~] ~Rotated session logs
 - [X] M-g g (go to line)
-- [ ] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
+- [X] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
 - [ ] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
 - [ ] C-u C-<space> and cursor undo.
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [ ] C-j join-next-line
+- [ ] Expand region
+- [ ] Multiple Cursors
 - [ ] MOVE_TO_START and MOVE_TO_END in mini panel.
 - [ ] Emacs-like kill ring
 - [ ] CRLF
-- [ ] Rotated session logs
-- [ ] SEARCH should highlight all matches in the current view, not just the first one on the line. We should also probably add a way to navigate them.
+- [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
@@ -74,6 +74,8 @@ TODO(jt): Roadmap:
 ... things below here are only important if I want to share this with other people ...
 
 - [ ] Config file
+- [ ] Double click to select word (expand region)
+- [ ] Triple click to select line.
 - [ ] Support for dropping files into the window
 - [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
 - [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
@@ -81,7 +83,6 @@ TODO(jt): Roadmap:
 - [ ] Flash text inserted by undo/redo
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode view
-- [ ] Multiple Cursors
 - [ ] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
 - [ ] Emacs-like undo? (If I find out I can't live without)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
@@ -1860,7 +1861,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         }
         case .CUT; {
             mp.selecting = false;
-            deleted := text_buffer_delete_selection(*mp.buffer, *mp.cursors);
+            deleted := text_buffer_delete_selection(*mp.buffer, *mp.cursors, .NONE);
             if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
@@ -1971,7 +1972,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         }
         case .CUT; {
             mi.selecting = false;
-            deleted := text_buffer_delete_selection(*mi.buffer, *mi.cursors);
+            deleted := text_buffer_delete_selection(*mi.buffer, *mi.cursors, .NONE);
             if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
@@ -2263,7 +2264,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         }
 
                         if !handled {
-                            undo_modifier: Undo_Modifier_For_Insert = .NONE;
+                            undo_modifier: Undo_Modifier = .NONE;
                             if input.time - document.time_of_last_simple_edit < UNDO_AUTOFUSE_PERIOD {
                                 undo_modifier = .CAN_AUTOFUSE;
                             }
@@ -2610,8 +2611,82 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .SWAP_LINE_UP;                 // TODO(jt): text_buffer_swap_line_up
-        case .SWAP_LINE_DOWN;               // TODO(jt): text_buffer_swap_line_down
+        case .SWAP_LINE_UP; {
+            // TODO(jt): Implement version for moving selection.
+            text_cursors_join(*view.cursors);
+            if view.cursors.c0 == view.cursors.c1 && view.cursors.c0.y > 0 {
+                original_cursor := view.cursors.c0;
+
+                prev_start := text_buffer_get_start_of_line(document.buffer, view.cursors.c0.y - 1);
+                prev_end   := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y - 1);
+                prev       := text_buffer_make_view_for_interval(document.buffer, prev_start, prev_end, force_allocate = true,, temp);
+
+                curr_start := text_buffer_get_start_of_line(document.buffer, view.cursors.c0.y);
+                curr_end   := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y);
+                curr       := text_buffer_make_view_for_interval(document.buffer, curr_start, curr_end, force_allocate = true,, temp);
+
+                cursors := view.cursors;
+                cursors.c0 = curr_start;
+                cursors.c1 = curr_end;
+                text_buffer_delete_selection(*document.buffer, *cursors, .NONE);
+
+                cursors.c0 = prev_start;
+                cursors.c1 = prev_end;
+                text_buffer_delete_selection(*document.buffer, *cursors, .FUSE);
+                text_buffer_insert(*document.buffer, *cursors, curr, .FUSE);
+
+                cursors.c0 = curr_start;
+                cursors.c1 = curr_start;
+                text_buffer_insert(*document.buffer, *cursors, prev, .FUSE);
+
+                // TODO(jt): Patch selection in undo so that we don't show it?
+
+                original_cursor.y -= 1;
+
+                view.cursors.c0 = original_cursor;
+                view.cursors.c1 = original_cursor;
+
+                buffer_changed = true;
+            }
+        }
+        case .SWAP_LINE_DOWN; {
+            // TODO(jt): Implement version for moving selection.
+            text_cursors_join(*view.cursors);
+            if view.cursors.c0.y < document.buffer.line_count - 1 {
+                original_cursor := view.cursors.c0;
+
+                curr_start := text_buffer_get_start_of_line(document.buffer, view.cursors.c0.y);
+                curr_end   := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y);
+                curr       := text_buffer_make_view_for_interval(document.buffer, curr_start, curr_end, force_allocate = true,, temp);
+
+                next_start := text_buffer_get_start_of_line(document.buffer, view.cursors.c0.y + 1);
+                next_end   := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y + 1);
+                next       := text_buffer_make_view_for_interval(document.buffer, next_start, next_end, force_allocate = true,, temp);
+
+                cursors := view.cursors;
+                cursors.c0 = next_start;
+                cursors.c1 = next_end;
+                text_buffer_delete_selection(*document.buffer, *cursors, .NONE);
+
+                cursors.c0 = curr_start;
+                cursors.c1 = curr_end;
+                text_buffer_delete_selection(*document.buffer, *cursors, .FUSE);
+                text_buffer_insert(*document.buffer, *cursors, next, .FUSE);
+
+                cursors.c0 = next_start;
+                cursors.c1 = next_start;
+                text_buffer_insert(*document.buffer, *cursors, curr, .FUSE);
+
+                // TODO(jt): Patch selection in undo so that we don't show it?
+
+                original_cursor.y += 1;
+
+                view.cursors.c0 = original_cursor;
+                view.cursors.c1 = original_cursor;
+
+                buffer_changed = true;
+            }
+        }
 
         case .MOVE_TO_START_OF_LINE;        cursor_moved |= text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting);
         case .MOVE_TO_END_OF_LINE;          cursor_moved |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, view.selecting);
@@ -2960,7 +3035,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
                 view.selecting = false;
-                deleted := text_buffer_delete_selection(*document.buffer, *view.cursors);
+                deleted := text_buffer_delete_selection(*document.buffer, *view.cursors, .NONE);
                 if deleted.count {
                     buffer_changed = true;
                     platform.set_clipboard_text(deleted);
