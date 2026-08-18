@@ -1199,10 +1199,7 @@ text_buffer_move_cursor_y :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta
 
     original_cursor := cursors.c0;
 
-    // Text_Location can not be past the last line
     cursors.c0.y = clamp(cursors.c0.y + delta, 0, buffer.line_chars.count - 1);
-
-    // Clamp X.
     if cursors.c0.y == buffer.line_chars.count - 1 {
         cursors.c0.x = clamp(cursors.c0.x, 0, buffer.line_chars[cursors.c0.y]);
     } else {
@@ -1228,7 +1225,12 @@ text_buffer_move_cursor_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, loc:
     assert_valid(buffer, cursors);
 
     y := clamp(loc.y, 0, buffer.line_count - 1);
-    x := clamp(loc.x, 0, buffer.line_chars[y]);
+    x: s64;
+    if y == buffer.line_chars.count - 1 {
+        x = clamp(loc.x, 0, buffer.line_chars[y]);
+    } else {
+        x = clamp(loc.x, 0, buffer.line_chars[y] - 1);
+    }
 
     cursors.c0 = { x, y };
 
