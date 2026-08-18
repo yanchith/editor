@@ -237,6 +237,10 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
 
     assert_valid(buffer, cursors);
 
+    if undo_modifier == .OMIT {
+        assert(buffer.edits.count == 0, "Omitting edits from history is only allowed before any edits are recorded.");
+    }
+
     if text.count == 0 {
         return false;
     }
@@ -255,10 +259,6 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
     gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
     gap_buffer_insert(*buffer.gb, text);
-
-    if undo_modifier == .OMIT {
-        assert(buffer.edits.count == 0, "Omitting edits from history is only allowed before any edits are recorded.");
-    }
 
     edit: *Edit;
     if undo_modifier != .OMIT {
