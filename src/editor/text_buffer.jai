@@ -137,31 +137,12 @@ Edit :: struct {
     }
 }
 
-Undo_Modifier_For_Insert :: enum {
+Undo_Modifier :: enum {
     NONE;
-
-    CAN_AUTOFUSE; // Think about applying FUSE, then maybe do it.
-
     FUSE;    // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
     OMIT;    // Do not record history for this edit. This is only valid before there are any recorded edits.
-}
-
-Undo_Modifier_For_Delete :: enum {
-    NONE;
 
     CAN_AUTOFUSE; // Think about applying FUSE, then maybe do it.
-
-    FUSE; // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
-}
-
-Undo_Modifier_For_Trim :: enum {
-    NONE;
-    FUSE; // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
-}
-
-Undo_Modifier_For_Indent :: enum {
-    NONE;
-    FUSE; // Logically fuse this edit with the previous one in the edit history, such that they can not be undone/redone independently.
 }
 
 // text_buffer_init has to be called, or someone must do its equivalent (create the first line)
@@ -216,7 +197,7 @@ text_buffer_reset :: (buffer: *Text_Buffer) {
     assert_valid_buffer(buffer);
 }
 
-text_buffer_insert_char :: (buffer: *Text_Buffer, cursors: *Text_Cursors, char: u32, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
+text_buffer_insert_char :: (buffer: *Text_Buffer, cursors: *Text_Cursors, char: u32, undo_modifier := Undo_Modifier.NONE) -> changed: bool {
     buf: [4] u8;
     s: string;
     s.data = buf.data;
@@ -225,14 +206,14 @@ text_buffer_insert_char :: (buffer: *Text_Buffer, cursors: *Text_Cursors, char: 
     return text_buffer_insert(buffer, cursors, s, undo_modifier);
 }
 
-text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, bytes: [] u8, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
+text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, bytes: [] u8, undo_modifier := Undo_Modifier.NONE) -> changed: bool {
     /*inline?*/ return text_buffer_insert(buffer, cursors, cast(string, bytes), undo_modifier);
 }
 
 // TODO(jt): Add binary_switch_strategy, which can customize the behavior of inserts causing the
 // switch to binary. For instance, the mini panel buffer doesn't ever want to switch, so we would
 // supply .REVERT, etc.
-text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: string, undo_modifier := Undo_Modifier_For_Insert.NONE) -> changed: bool {
+text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: string, undo_modifier := Undo_Modifier.NONE) -> changed: bool {
     ProfileZone("text_buffer_insert");
 
     assert_valid(buffer, cursors);
@@ -248,7 +229,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
     insert_caused_delete_selection := false;
 
     if cursors.c0 != cursors.c1 {
-        text_buffer_delete_selection(buffer, cursors);
+        text_buffer_delete_selection(buffer, cursors, undo_modifier);
         assert(cursors.c0 == cursors.c1);
 
         insert_caused_delete_selection = true;
@@ -319,10 +300,14 @@ text_buffer_delete_all :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* P
     return view;
 }
 
-text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
+text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier.NONE) -> /* Pointing to the internal gap buffer */ string {
     ProfileZone("text_buffer_delete_selection");
 
     assert_valid(buffer, cursors);
+
+    if undo_modifier == .OMIT {
+        assert(buffer.edits.count == 0, "Omitting edits from history is only allowed before any edits are recorded.");
+    }
 
     _start := cursors.c0;
     _end   := cursors.c1;
@@ -349,22 +334,30 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -
     cursors.c0 = start;
     cursors.c1 = start;
 
-    discard_unapplied_edits(buffer);
+    if undo_modifier != .OMIT {
+        discard_unapplied_edits(buffer);
 
-    edit := array_add(*buffer.edits);
-    edit.type = .DELETE_FORWARD;
-    edit.flags = .NONE;
-    edit.text = arena_push_string(buffer.edit_text_arena, deleted);
-    edit.text_mark = arena_get_mark(buffer.edit_text_arena);
-    edit.gb_index_before = start_gb_index;
-    edit.gb_index_after = start_gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-    // We give the sorted start cursor for edit, and the unsorted cursors for display.
-    edit.cursor0_for_edit_before = start;
-    edit.cursor0_for_edit_after = start;
-    edit.cursor0_for_display_before = _start;
-    edit.cursor0_for_display_after = start;
-    edit.cursor1_for_display_before = _end;
-    edit.cursor1_for_display_after = start;
+        edit := array_add(*buffer.edits);
+        edit.type = .DELETE_FORWARD;
+        edit.flags = .NONE;
+        edit.text = arena_push_string(buffer.edit_text_arena, deleted);
+        edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+        edit.gb_index_before = start_gb_index;
+        edit.gb_index_after = start_gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+        // We give the sorted start cursor for edit, and the unsorted cursors for display.
+        edit.cursor0_for_edit_before = start;
+        edit.cursor0_for_edit_after = start;
+        edit.cursor0_for_display_before = _start;
+        edit.cursor0_for_display_after = start;
+        edit.cursor1_for_display_before = _end;
+        edit.cursor1_for_display_after = start;
+
+        if undo_modifier == .FUSE {
+            maybe_fuse_last_edits(buffer.edits);
+        } else if undo_modifier == .CAN_AUTOFUSE {
+            maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+        }
+    }
 
     buffer.applied_edit_count = buffer.edits.count;
 
@@ -375,13 +368,17 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -
     return deleted;
 }
 
-text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, char_count: s64, undo_modifier := Undo_Modifier_For_Delete.NONE) -> /* Pointing to the internal gap buffer */ string {
+text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, char_count: s64, undo_modifier := Undo_Modifier.NONE) -> /* Pointing to the internal gap buffer */ string {
     ProfileZone("text_buffer_delete_forward");
 
     assert_valid(buffer, cursors);
 
+    if undo_modifier == .OMIT {
+        assert(buffer.edits.count == 0, "Omitting edits from history is only allowed before any edits are recorded.");
+    }
+
     if cursors.c0 != cursors.c1 {
-        deleted := text_buffer_delete_selection(buffer, cursors);
+        deleted := text_buffer_delete_selection(buffer, cursors, undo_modifier);
         assert(cursors.c0 == cursors.c1);
 
         return deleted;
@@ -438,29 +435,31 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, cha
 
     deleted := cast(string, gap_buffer_delete_forward(*buffer.gb, deleted_byte_count));
 
-    discard_unapplied_edits(buffer);
+    if undo_modifier != .OMIT {
+        discard_unapplied_edits(buffer);
 
-    edit := array_add(*buffer.edits);
-    edit.type = .DELETE_FORWARD;
-    edit.flags = .NONE;
-    edit.text = arena_push_string(buffer.edit_text_arena, deleted);
-    edit.text_mark = arena_get_mark(buffer.edit_text_arena);
-    edit.gb_index_before = gb_index;
-    edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-    edit.cursor0_for_edit_before = cursors.c0;
-    edit.cursor0_for_edit_after = cursors.c0;
-    edit.cursor0_for_display_before = cursors.c0;
-    edit.cursor0_for_display_after = cursors.c0;
-    edit.cursor1_for_display_before = cursors.c0;
-    edit.cursor1_for_display_after = cursors.c0;
+        edit := array_add(*buffer.edits);
+        edit.type = .DELETE_FORWARD;
+        edit.flags = .NONE;
+        edit.text = arena_push_string(buffer.edit_text_arena, deleted);
+        edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+        edit.gb_index_before = gb_index;
+        edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+        edit.cursor0_for_edit_before = cursors.c0;
+        edit.cursor0_for_edit_after = cursors.c0;
+        edit.cursor0_for_display_before = cursors.c0;
+        edit.cursor0_for_display_after = cursors.c0;
+        edit.cursor1_for_display_before = cursors.c0;
+        edit.cursor1_for_display_after = cursors.c0;
 
-    if undo_modifier == .FUSE {
-        maybe_fuse_last_edits(buffer.edits);
-    } else if undo_modifier == .CAN_AUTOFUSE {
-        maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+        if undo_modifier == .FUSE {
+            maybe_fuse_last_edits(buffer.edits);
+        } else if undo_modifier == .CAN_AUTOFUSE {
+            maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+        }
+
+        buffer.applied_edit_count = buffer.edits.count;
     }
-
-    buffer.applied_edit_count = buffer.edits.count;
 
     cursors.c1 = cursors.c0;
 
@@ -470,10 +469,14 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, cha
 }
 
 // TODO(jt): @Cleanup Take a second parameter to specify the count to delete and do delete in batch.
-text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier_For_Delete.NONE) -> changed: bool {
+text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier.NONE) -> changed: bool {
     ProfileZone("text_buffer_delete_backward");
 
     assert_valid(buffer, cursors);
+
+    if undo_modifier == .OMIT {
+        assert(buffer.edits.count == 0, "Omitting edits from history is only allowed before any edits are recorded.");
+    }
 
     if cursors.c0 != cursors.c1 {
         deleted := text_buffer_delete_selection(buffer, cursors);
@@ -513,46 +516,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
         deleted := gap_buffer_delete_backward(*buffer.gb, newline_advance);
         assert(newline_advance == deleted.count);
 
-        discard_unapplied_edits(buffer);
-
-        edit := array_add(*buffer.edits);
-        edit.type = .DELETE_BACKWARD;
-        edit.flags = .NONE;
-        edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
-        edit.text_mark = arena_get_mark(buffer.edit_text_arena);
-        edit.gb_index_before = gb_index;
-        edit.gb_index_after = gb_index - deleted.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
-        edit.cursor0_for_edit_before = old_cursor;
-        edit.cursor0_for_edit_after = cursors.c0;
-        edit.cursor0_for_display_before = old_cursor;
-        edit.cursor0_for_display_after = cursors.c0;
-        edit.cursor1_for_display_before = old_cursor;
-        edit.cursor1_for_display_after = cursors.c0;
-
-        if undo_modifier == .FUSE {
-            maybe_fuse_last_edits(buffer.edits);
-        } else if undo_modifier == .CAN_AUTOFUSE {
-            maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
-        }
-
-        buffer.applied_edit_count = buffer.edits.count;
-    } else {
-        codepoint_advance: s64 = 1;
-        if !buffer.binary_mode {
-            _, codepoint_advance = find_previous_utf8_char_boundary(bytes, bytes.count);
-        }
-
-        if codepoint_advance {
-            buffer.line_chars[cursors.c0.y] -= 1;
-            buffer.line_bytes[cursors.c0.y] -= codepoint_advance;
-
-            old_cursor := cursors.c0;
-
-            cursors.c0.x -= 1;
-
-            deleted := gap_buffer_delete_backward(*buffer.gb, codepoint_advance);
-            assert(codepoint_advance == deleted.count);
-
+        if undo_modifier != .OMIT {
             discard_unapplied_edits(buffer);
 
             edit := array_add(*buffer.edits);
@@ -576,6 +540,49 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
             }
 
             buffer.applied_edit_count = buffer.edits.count;
+        }
+    } else {
+        codepoint_advance: s64 = 1;
+        if !buffer.binary_mode {
+            _, codepoint_advance = find_previous_utf8_char_boundary(bytes, bytes.count);
+        }
+
+        if codepoint_advance {
+            buffer.line_chars[cursors.c0.y] -= 1;
+            buffer.line_bytes[cursors.c0.y] -= codepoint_advance;
+
+            old_cursor := cursors.c0;
+
+            cursors.c0.x -= 1;
+
+            deleted := gap_buffer_delete_backward(*buffer.gb, codepoint_advance);
+            assert(codepoint_advance == deleted.count);
+
+            if undo_modifier != .OMIT {
+                discard_unapplied_edits(buffer);
+
+                edit := array_add(*buffer.edits);
+                edit.type = .DELETE_BACKWARD;
+                edit.flags = .NONE;
+                edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
+                edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+                edit.gb_index_before = gb_index;
+                edit.gb_index_after = gb_index - deleted.count; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+                edit.cursor0_for_edit_before = old_cursor;
+                edit.cursor0_for_edit_after = cursors.c0;
+                edit.cursor0_for_display_before = old_cursor;
+                edit.cursor0_for_display_after = cursors.c0;
+                edit.cursor1_for_display_before = old_cursor;
+                edit.cursor1_for_display_after = cursors.c0;
+
+                if undo_modifier == .FUSE {
+                    maybe_fuse_last_edits(buffer.edits);
+                } else if undo_modifier == .CAN_AUTOFUSE {
+                    maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+                }
+
+                buffer.applied_edit_count = buffer.edits.count;
+            }
         }
     }
 
@@ -683,12 +690,16 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
 }
 
 // __line_gb_index is a trusted parameter. If you set it, it better be right! See :IncrementalGapBufferIndices.
-text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier_For_Trim.NONE, __line_gb_index: s64 = -1) -> changed: bool {
+text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier.NONE, __line_gb_index: s64 = -1) -> changed: bool {
     ProfileZone("text_buffer_trim_line");
 
     // TODO(jt): @Cleanup This was too slow for every save, and I want to keep sanity enabled for now.
     // assert_valid(buffer, cursors);
     assert_valid_cursors(buffer, cursors);
+
+    if undo_modifier == .OMIT {
+        assert(buffer.edits.count == 0, "Omitting edits from history is only allowed before any edits are recorded.");
+    }
 
     line_gb_index := ifx __line_gb_index == -1 then text_buffer_get_gap_buffer_index_for_line(buffer, cursors.c0.y) else __line_gb_index;
     line_view     := gap_buffer_make_view(buffer.gb, line_gb_index, buffer.line_bytes[cursors.c0.y]);
@@ -718,28 +729,32 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
         deleted_bytes := gap_buffer_delete_forward(*buffer.gb, trailing_space_count);
         deleted       := cast(string, deleted_bytes);
 
-        discard_unapplied_edits(buffer);
+        if undo_modifier != .OMIT {
+            discard_unapplied_edits(buffer);
 
-        edit := array_add(*buffer.edits);
-        edit.type = .DELETE_FORWARD;
-        edit.flags = .NONE;
-        edit.text = arena_push_string(buffer.edit_text_arena, deleted);
-        edit.text_mark = arena_get_mark(buffer.edit_text_arena);
-        edit.gb_index_before = gb_index;
-        edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+            edit := array_add(*buffer.edits);
+            edit.type = .DELETE_FORWARD;
+            edit.flags = .NONE;
+            edit.text = arena_push_string(buffer.edit_text_arena, deleted);
+            edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+            edit.gb_index_before = gb_index;
+            edit.gb_index_after = gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
 
-        edit.cursor0_for_edit_before = cursors.c0;
-        edit.cursor0_for_edit_after = cursors.c0;
-        edit.cursor0_for_display_before = original_cursor0;
-        edit.cursor0_for_display_after = cursors.c0;
-        edit.cursor1_for_display_before = original_cursor1;
-        edit.cursor1_for_display_after = cursors.c0;
+            edit.cursor0_for_edit_before = cursors.c0;
+            edit.cursor0_for_edit_after = cursors.c0;
+            edit.cursor0_for_display_before = original_cursor0;
+            edit.cursor0_for_display_after = cursors.c0;
+            edit.cursor1_for_display_before = original_cursor1;
+            edit.cursor1_for_display_after = cursors.c0;
 
-        if undo_modifier == .FUSE {
-            maybe_fuse_last_edits(buffer.edits);
+            if undo_modifier == .FUSE {
+                maybe_fuse_last_edits(buffer.edits);
+            } else if undo_modifier == .CAN_AUTOFUSE {
+                maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+            }
+
+            buffer.applied_edit_count = buffer.edits.count;
         }
-
-        buffer.applied_edit_count = buffer.edits.count;
 
         update_index_for_delete_forward(buffer, cursors, deleted);
 
@@ -749,10 +764,14 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
     return cast(bool, trailing_space_count);
 }
 
-text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indentation_level: s64, undo_modifier := Undo_Modifier_For_Indent.NONE) -> changed: bool {
+text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indentation_level: s64, undo_modifier := Undo_Modifier.NONE) -> changed: bool {
     ProfileZone("text_buffer_indent_line");
 
     assert_valid(buffer, cursors);
+
+    if undo_modifier == .OMIT {
+        assert(buffer.edits.count == 0, "Omitting edits from history is only allowed before any edits are recorded.");
+    }
 
     indentation_level = max(indentation_level, 0);
 
@@ -798,27 +817,31 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
         display_cursor_after: Text_Location = original_cursor0;
         display_cursor_after.x = indentation_level;
 
-        discard_unapplied_edits(buffer);
+        if undo_modifier != .OMIT {
+            discard_unapplied_edits(buffer);
 
-        edit := array_add(*buffer.edits);
-        edit.type = .DELETE_BACKWARD_MEMSET;
-        edit.flags = .NONE;
-        edit.memset_value = INDENTATION_VALUE;
-        edit.memset_count = delete_count;
-        edit.gb_index_before = gb_index_before;
-        edit.gb_index_after  = gb_index_after;
-        edit.cursor0_for_edit_before = edit_cursor_before;
-        edit.cursor0_for_edit_after = edit_cursor_after;
-        edit.cursor0_for_display_before = original_cursor0;
-        edit.cursor0_for_display_after = display_cursor_after;
-        edit.cursor1_for_display_before = original_cursor1;
-        edit.cursor1_for_display_after = display_cursor_after;
+            edit := array_add(*buffer.edits);
+            edit.type = .DELETE_BACKWARD_MEMSET;
+            edit.flags = .NONE;
+            edit.memset_value = INDENTATION_VALUE;
+            edit.memset_count = delete_count;
+            edit.gb_index_before = gb_index_before;
+            edit.gb_index_after  = gb_index_after;
+            edit.cursor0_for_edit_before = edit_cursor_before;
+            edit.cursor0_for_edit_after = edit_cursor_after;
+            edit.cursor0_for_display_before = original_cursor0;
+            edit.cursor0_for_display_after = display_cursor_after;
+            edit.cursor1_for_display_before = original_cursor1;
+            edit.cursor1_for_display_after = display_cursor_after;
 
-        if undo_modifier == .FUSE {
-            maybe_fuse_last_edits(buffer.edits);
+            if undo_modifier == .FUSE {
+                maybe_fuse_last_edits(buffer.edits);
+            } else if undo_modifier == .CAN_AUTOFUSE {
+                maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+            }
+
+            buffer.applied_edit_count = buffer.edits.count;
         }
-
-        buffer.applied_edit_count = buffer.edits.count;
 
         cursors.c0 = display_cursor_after;
         cursors.c1 = display_cursor_after;
@@ -844,27 +867,31 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
         display_cursor_after: Text_Location = original_cursor0;
         display_cursor_after.x = indentation_level;
 
-        discard_unapplied_edits(buffer);
+        if undo_modifier != .OMIT {
+            discard_unapplied_edits(buffer);
 
-        edit := array_add(*buffer.edits);
-        edit.type = .INSERT_FORWARD_MEMSET;
-        edit.flags = .NONE;
-        edit.memset_value = INDENTATION_VALUE;
-        edit.memset_count = insert_count;
-        edit.gb_index_before = gb_index_before;
-        edit.gb_index_after = gb_index_after;
-        edit.cursor0_for_edit_before = edit_cursor_before;
-        edit.cursor0_for_edit_after = edit_cursor_after;
-        edit.cursor0_for_display_before = original_cursor0;
-        edit.cursor0_for_display_after = display_cursor_after;
-        edit.cursor1_for_display_before = original_cursor1;
-        edit.cursor1_for_display_after = display_cursor_after;
+            edit := array_add(*buffer.edits);
+            edit.type = .INSERT_FORWARD_MEMSET;
+            edit.flags = .NONE;
+            edit.memset_value = INDENTATION_VALUE;
+            edit.memset_count = insert_count;
+            edit.gb_index_before = gb_index_before;
+            edit.gb_index_after = gb_index_after;
+            edit.cursor0_for_edit_before = edit_cursor_before;
+            edit.cursor0_for_edit_after = edit_cursor_after;
+            edit.cursor0_for_display_before = original_cursor0;
+            edit.cursor0_for_display_after = display_cursor_after;
+            edit.cursor1_for_display_before = original_cursor1;
+            edit.cursor1_for_display_after = display_cursor_after;
 
-        if undo_modifier == .FUSE {
-            maybe_fuse_last_edits(buffer.edits);
+            if undo_modifier == .FUSE {
+                maybe_fuse_last_edits(buffer.edits);
+            } else if undo_modifier == .CAN_AUTOFUSE {
+                maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+            }
+
+            buffer.applied_edit_count = buffer.edits.count;
         }
-
-        buffer.applied_edit_count = buffer.edits.count;
 
         cursors.c0 = display_cursor_after;
         cursors.c1 = display_cursor_after;

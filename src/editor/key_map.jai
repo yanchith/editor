@@ -15,16 +15,10 @@ Shortcut_Key :: struct {
 // that at the source, if at all possible. (If not possible, I guess we can live without case
 // sensitive keyboard shortcuts.)
 
-shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key, allow_superset_b_modifiers: bool) -> bool {
-    if allow_superset_b_modifiers {
-        MODIFIERS :: Modifier_Flags.[.CTRL, .ALT, .SHIFT, .META];
-        for MODIFIERS {
-            a_has := a.modifier_flags & it;
-            b_has := b.modifier_flags & it;
-
-            if a_has && !b_has {
-                return false;
-            }
+shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key, allow_extra_shift_on_b: bool) -> bool {
+    if allow_extra_shift_on_b {
+        if a.modifier_flags != b.modifier_flags && a.modifier_flags | .SHIFT != b.modifier_flags {
+            return false;
         }
     } else {
         if a.modifier_flags != b.modifier_flags {
