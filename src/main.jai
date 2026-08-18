@@ -101,13 +101,13 @@ main :: () {
     profiler_init();
     profiler_start_frame("init");
 
-    context_logger_data: Context_Logger_Data = { time_of_program_start };
+    editor_logger_data: Editor_Logger_Data;
+    editor_logger_data.time_of_program_start = time_of_program_start;
 
-    editor_context := context;
-    editor_context.logger      = context_logger;
-    editor_context.logger_data = *context_logger_data;
+    context.logger           = editor_logger;
+    context.logger_data      = *editor_logger_data;
+    context.assertion_failed = editor_assertion_failed;
 
-    push_context editor_context {
         #if OS == .WINDOWS {
             // :OperatingSystemSpecificHacks
             //
@@ -129,18 +129,55 @@ main :: () {
             // user's HOME. We make it behave more like Windows, where the working directory
             // defaults to the current executable path, unless overridden from console.
             //
-            // We detect this situation by looking for asset files that should be distributed with
+        // We detect this by looking for asset files that should be distributed with
             // the executable. If we can't find them, we are most likely not running from console.
-            see_data := File_Utilities.is_directory("data/fonts");
+        see_data := File_Utilities.is_directory("./data/fonts");
             if !see_data {
                 exe_file := System.get_path_of_running_executable();
                 exe_dir  := String.path_strip_filename(exe_file);
 
-                log("We are on macOS and we don't see our data. Attempting to set working directory to the executable path: %", exe_dir);
-
                 set_working_directory(exe_dir);
             }
         }
+
+    {
+        File.make_directory_if_it_does_not_exist("./logs");
+
+        t: Calendar_Time;
+        #if OS == .WINDOWS {
+            // TODO(jt): @Cleanup @Hack @LibraryBug We'd like to use to_calendar(time_of_program_start),
+            // but there seems to be a bug in it, so we get the system time from Windows instead.
+
+            st: SYSTEMTIME;
+            GetSystemTime(*st);
+
+            t.year = st.wYear;
+            t.month_starting_at_0        = cast,trunc(s8, max(0, st.wMonth - 1)); // Starts at 1 in SYSTEMTIME.
+            t.day_of_month_starting_at_0 = cast,trunc(s8, max(0, st.wDay - 1));   // Starts at 1 in SYSTEMTIME.
+            t.day_of_week_starting_at_0  = cast,trunc(s8, st.wDayOfWeek);         // Starts at 0 in SYSTEMTIME.
+            t.hour   = cast,trunc(s8) st.wHour;   // Starts at 0.
+            t.minute = cast,trunc(s8) st.wMinute; // Starts at 0.
+            t.second = cast,trunc(s8) st.wSecond; // Starts at 0.
+            t.millisecond = cast,trunc(s16) st.wMilliseconds; // Starts at 0.
+        } else {
+            // TODO(jt): @Audit Verify to_calendar on macOS.
+            t = to_calendar(time_of_program_start);
+        }
+
+        log_filename := tprint(
+            "./logs/editor_%%%_%%%%.log",
+            formatInt(t.year, minimum_digits = 4),
+            formatInt(t.month_starting_at_0 + 1, minimum_digits = 2),
+            formatInt(t.day_of_month_starting_at_0 + 1, minimum_digits = 2),
+            formatInt(t.hour, minimum_digits = 2),
+            formatInt(t.minute, minimum_digits = 2),
+            formatInt(t.second, minimum_digits = 2),
+            t.millisecond,
+        );
+
+        // TODO(jt): Log rotation. Only keep last N logs around. Clean them up asynchronously?
+        editor_logger_data.log_file = File.file_open(log_filename, for_writing = true);
+    }
 
         window := Window.create_window(1920, 1200, "editor");
         Simp.set_render_target(window, .LEFT_HANDED);
@@ -802,7 +839,6 @@ main :: () {
             }
         }
     }
-}
 
 //
 // Platform
@@ -1132,28 +1168,36 @@ END
 // Logger
 //
 
-Context_Logger_Data :: struct {
+Editor_Logger_Data :: struct {
     time_of_program_start: Apollo_Time;
+    log_file: File.File; // Zero (invalid) handle by default.
 }
 
-context_logger :: (message: string, data: *void, info: Log_Info) {
+editor_logger :: (message: string, data: *void, info: Log_Info) {
     if !message {
         return;
     }
 
-    context_logger_data := cast(*Context_Logger_Data, data);
+    logger_data := cast(*Editor_Logger_Data, data);
+
+    sb: String_Builder;
+    sb.allocator = temp;
 
     // Add time since launch. Pad to up to 4 leading digits and 6 decimal digits.
-    time_start           := context_logger_data.time_of_program_start;
+    time_start           := logger_data.time_of_program_start;
     time_now             := current_time_monotonic();
     time_since_start     := time_now - time_start;
     time_since_start_str := tprint("% ", formatFloat(to_float64_seconds(time_since_start), trailing_width = 6, zero_removal = .NO));
     time_prefix          := temp_left_pad(time_since_start_str, 12);
 
+    print(*sb, time_prefix);
+
     // Add log level.
     log_level_prefix := " INFO ";
     if info.common_flags & .WARNING  log_level_prefix = " WARN ";
     if info.common_flags & .ERROR    log_level_prefix = "ERROR ";
+
+    print(*sb, log_level_prefix);
 
     // Add source file.
     source_prefix: string;
@@ -1173,7 +1217,48 @@ context_logger :: (message: string, data: *void, info: Log_Info) {
         source_prefix = temp_right_pad(source_prefix, PAD_LENGTH);
     }
 
+    print(*sb, source_prefix);
+    print(*sb, " ");
+    print(*sb, message);
+    print(*sb, "\n");
+
+    if File.is_valid(logger_data.log_file) {
+        File.file_write(*logger_data.log_file, *sb, do_reset = true);
+    }
+
     write_strings(time_prefix, log_level_prefix, source_prefix, " ", message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
+}
+
+editor_assertion_failed :: (loc: Source_Code_Location, message: string) -> bool {
+    runtime_support_assertion_failed(loc, message);
+
+    logger_data := cast(*Editor_Logger_Data, context.logger_data);
+    if logger_data && File.is_valid(logger_data.log_file) {
+        sb: String_Builder;
+        sb.allocator = temp;
+
+        print(*sb, "%:%,%: Assertion failed", loc.fully_pathed_filename, loc.line_number, loc.character_number);
+        if message {
+            print(*sb, ":%\n", message);
+        } else {
+            print(*sb, "!\n");
+        }
+
+        if context.stack_trace {
+            strings := get_stack_trace_strings(context.stack_trace);
+
+            print(*sb, "\nStack trace:\n");
+            for strings {
+                print(*sb, "%\n", it);
+            }
+        } else {
+            print(*sb, "Exiting.\n");
+        }
+
+        File.file_write(*logger_data.log_file, *sb, do_reset = true);
+    }
+
+    return true;
 }
 
 //

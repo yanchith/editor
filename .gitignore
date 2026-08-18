@@ -1,6 +1,9 @@
 # Build directory
 /build
 
+# Log directory
+/logs
+
 # macOS things
 .DS_Store
 
