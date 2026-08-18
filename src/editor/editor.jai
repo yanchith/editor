@@ -48,7 +48,7 @@ TODO(jt): Roadmap:
 - [X] Refresh lister
 - [X] Delete file in lister
 - [X] Click to open file in lister
-- [~] Mode defined comments (C-x C-;) ; Still want to play with block comments
+- [X] Mode defined comments (C-x C-;) ; (Still want to play with single-line block comments)
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
 - [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme)
@@ -2776,6 +2776,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     y1 := max(view.cursors.c0.y, view.cursors.c1.y);
 
                     adding_comments: bool;
+                    adding_comments_level: s64;
                     {
                         // First line. Detect whether we are adding or removing comments and do so for the first line.
                         // All operations send .NONE undo modifier.
@@ -2809,12 +2810,16 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                                     adding_comments = false;
                                 }
                             } else {
-                                text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .NONE);
                                 adding_comments = true;
+                                adding_comments_level = view.cursors.c0.x;
+
+                                text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .NONE);
                             }
                         } else {
-                            text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .NONE);
                             adding_comments = true;
+                            adding_comments_level = view.cursors.c0.x;
+
+                            text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .NONE);
                         }
                     }
 
@@ -2826,6 +2831,13 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                         text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, false, .ALWAYS_START_OF_TEXT);
 
                         if adding_comments {
+                            if adding_comments_level > view.cursors.c0.x {
+                                end := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y);
+                                if view.cursors.c0 == end {
+                                    text_buffer_indent_line(*document.buffer, *view.cursors, adding_comments_level, .FUSE);
+                                }
+                            }
+
                             text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .FUSE);
                         } else {
                             loc0 := view.cursors.c0;
