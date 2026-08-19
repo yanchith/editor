@@ -51,7 +51,7 @@ update_parenthesized_scopes :: (document: *Document) {
 
     // See :IncrementalGapBufferIndices
     gb_index := 0;
-    for line_index: 0..document.buffer.line_bytes.count - 1 {
+    for line_index: 0..document.buffer.line_count - 1 {
         gb_count := document.buffer.line_bytes[line_index];
         defer {
             gb_index += gb_count;
