@@ -5088,11 +5088,13 @@ canonicalize_path :: (path: *string) {
     path.* = String.trim_right(path.*, "/");
 }
 
+// Try to find first occurence of <filename>:<line>:<col> or <filename>:<line>,<col> in a string.
+//
 // JAI link format:    C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
 // rustc link format:  game_platform_winit\src\main.rs:6:1
 // clang link format:  sdl_asteroids.cpp:1:10
 //
-// TODO(jt): @Cleanup The routine is really bad. What we need is a proper parser.
+// TODO(jt): @Cleanup The routine is really bad. Do a proper parser.
 find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64, path: string, path_is_absolute: bool, line_number: s64, column_number: s64 {
     if !_line.count {
         return false, -1, -1, "", false, -1, -1;
