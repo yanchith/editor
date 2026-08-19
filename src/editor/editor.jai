@@ -38,7 +38,7 @@ TODO(jt): Roadmap:
 - [~] Panel tiling
 - [X] FreeType subpixel rendering
 - [~] Directory Lister panel
-- [~] *compilation* buffer
+- [X] *compilation* buffer
 - [~] DIRECTORY_SEARCH
 - [X] SHOW_COMMANDS (M-x)
 - [X] Map-like zoom

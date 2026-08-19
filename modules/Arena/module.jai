@@ -328,6 +328,9 @@ arena_push_array :: (arena: *Arena, a: [] $T, min_alignment := 1) -> [] T {
     return result;
 }
 
+// TODO(jt): arena_push_print(arena: *Arena, format_string: string, args: .. Any), so that
+// we don't have to tprint, only to copy into the arena.
+
 arena_push_string :: (arena: *Arena, s: string, min_alignment := 1) -> string {
     assert(s.count > 0, "Can not push empty strings");
 
