@@ -3,6 +3,8 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
+- OPEN_FILE seems to navigate to the parent directory too often. Maybe for some reason the default item_index always points to ..?
+- *compilation* fails to capture output from bat files.
 - We are using quite a bit of memory. Let's make a leak-detecting build, as well as tune arena commit sizes.
 
 TODO(jt): Usage self-feedback:
@@ -782,8 +784,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "M->",     .MOVE_TO_END);
         key_map_add(key_map, "<end>",   .MOVE_TO_END);
 
-        key_map_add(key_map, "M-p",     .MOVE_TO_PREVIOUS_BLANK_LINE);
-        key_map_add(key_map, "M-n",     .MOVE_TO_NEXT_BLANK_LINE);
+        // Disabled, because we use those to move around errors.
+        // key_map_add(key_map, "M-p",     .MOVE_TO_PREVIOUS_BLANK_LINE);
+        // key_map_add(key_map, "M-n",     .MOVE_TO_NEXT_BLANK_LINE);
 
         key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
         key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
@@ -794,8 +797,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "M-w",     .COPY);
         key_map_add(key_map, "C-w",     .COPY);
 
+        key_map_add(key_map, "M-p",     .MOVE_TO_PREVIOUS_ERROR);
+        key_map_add(key_map, "M-n",     .MOVE_TO_NEXT_ERROR);
         key_map_add(key_map, "p",       .MOVE_TO_PREVIOUS_ERROR);
         key_map_add(key_map, "n",       .MOVE_TO_NEXT_ERROR);
+
         key_map_add(key_map, "C-m",     .GO_TO_CURRENT_ERROR);
         key_map_add(key_map, "<enter>", .GO_TO_CURRENT_ERROR);
 
@@ -4899,8 +4905,6 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     text_buffer_insert(*document.buffer, *view.cursors, "Compiling with args: ", .OMIT);
     text_buffer_insert(*document.buffer, *view.cursors, args, .OMIT);
     text_buffer_insert(*document.buffer, *view.cursors, "\n\n", .OMIT );
-
-    // TODO(jt): @Bug We fail to capture output from bat files... bad.
 
     time_before := platform.get_current_time_monotonic();
     exit_code, output, error := platform.run_in_process(args, working_directory,, temp);
