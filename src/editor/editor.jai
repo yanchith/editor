@@ -365,9 +365,7 @@ Document :: struct {
     cursors_cold: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
     buffer: Text_Buffer;
 
-    arena: *Arena; // For compilation_args, backing_file_directory, backing_file_path and syntax_highlight_tokens.
-
-    compilation_args: string; // Empty if this is not a .COMPILATION document.
+    arena: *Arena; // For compilation_args, compilation_errors, backing_file_directory, backing_file_path and syntax_highlight_tokens.
 
     backing_directory_path: string; // In canonical format (see canonicalize_path).
 
@@ -389,6 +387,10 @@ Document :: struct {
 
     parenthesized_scopes:    [..] Parenthesized_Scope;
     syntax_highlight_tokens: [..] Syntax_Highlight_Token;
+
+    compilation_args:   string; // Empty if this is not a .COMPILATION document.
+    compilation_errors: [..] Compilation_Error;
+    compilation_error_index: s64;
 
     Kind :: enum u32 {
         SCRATCH;
@@ -466,6 +468,16 @@ Document :: struct {
 
             COMMENT;
         }
+    }
+
+    Compilation_Error :: struct {
+        x0: s64;
+        x1: s64;
+        y: s64;
+
+        line_number: s64;
+        column_number: s64;
+        path: string;
     }
 }
 
@@ -784,6 +796,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "p",       .MOVE_TO_PREVIOUS_ERROR);
         key_map_add(key_map, "n",       .MOVE_TO_NEXT_ERROR);
+        key_map_add(key_map, "C-m",     .GO_TO_CURRENT_ERROR);
+        key_map_add(key_map, "<enter>", .GO_TO_CURRENT_ERROR);
 
         key_map_add(key_map, "g",       .REFRESH);
     }
@@ -2131,6 +2145,7 @@ Compilation_Action :: enum {
 
     MOVE_TO_PREVIOUS_ERROR;
     MOVE_TO_NEXT_ERROR;
+    GO_TO_CURRENT_ERROR;
 
     REFRESH;
 }
@@ -3192,10 +3207,81 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
         }
 
         case .MOVE_TO_PREVIOUS_ERROR; {
-            // nocheckin
+            if document.compilation_errors.count {
+                document.compilation_error_index = clamp(document.compilation_error_index - 1, 0, document.compilation_errors.count - 1);
+                ce := *document.compilation_errors[document.compilation_error_index];
+
+                view.cursors.c0.x = ce.x0;
+                view.cursors.c1.x = ce.x1;
+                view.cursors.c0.y = ce.y;
+                view.cursors.c1.y = ce.y;
+
+                view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            }
         }
         case .MOVE_TO_NEXT_ERROR; {
-            // nocheckin
+            if document.compilation_errors.count {
+                document.compilation_error_index = clamp(document.compilation_error_index + 1, 0, document.compilation_errors.count - 1);
+
+                ce := *document.compilation_errors[document.compilation_error_index];
+
+                view.cursors.c0.x = ce.x0;
+                view.cursors.c1.x = ce.x1;
+                view.cursors.c0.y = ce.y;
+                view.cursors.c1.y = ce.y;
+
+                view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            }
+        }
+        case .GO_TO_CURRENT_ERROR; {
+            for document.compilation_errors {
+                contains_y := it.y == view.cursors.c0.y;
+                contains_x := it.x0 <= view.cursors.c0.x && it.x1 >= view.cursors.c0.x;
+                if contains_y && contains_x {
+                    open_in_panel := panel;
+                    // TODO(jt): @Cleanup @Copypasta This is the same as OPEN_IN_OTHER_PANEL (also see cleanup comment there).
+                    // Also, creating a compilation buffer also has its own sort of logic that looks similar. Let's make
+                    // a shared system we can use to get a panel or make one if we need to.
+                    if editor.active_view == .FULL {
+                        assert(editor.panels.count == 1);
+
+                        // The panel is not actually valid, until we set a view (a document or
+                        // listing). We are going to do that soon after, in open_file.
+                        open_in_panel = array_add(*editor.panels);
+                        panel_init(open_in_panel, platform);
+
+                        editor.left_view_panel_index  = 0;
+                        editor.right_view_panel_index = 1;
+
+                        editor.active_view = .RIGHT;
+                    } else {
+                        open_in_panel = get_panel_for_inactive_view(editor);
+
+                        if editor.active_view == {
+                            case .FULL;   // Shouldn't get here.
+                            case .LEFT;   editor.active_view = .RIGHT;
+                            case .RIGHT;  editor.active_view = .LEFT;
+                        }
+                    }
+
+                    open_file(editor, platform, input, it.path, open_in_panel);
+                    if open_in_panel {
+                        sanity_assert(open_in_panel.view.kind == .DOCUMENT);
+                        if open_in_panel.view.kind == .DOCUMENT {
+                            open_in_view := *open_in_panel.view._document;
+                            open_in_document := open_in_view.document;
+
+                            x := it.column_number - 1;
+                            y := it.line_number - 1;
+
+                            text_buffer_move_cursor_to(open_in_document.buffer, *open_in_view.cursors, x, y, false);
+                            open_in_view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+                        }
+                    }
+
+                    break;
+                }
+            }
         }
 
         case .REFRESH;  run_compilation(editor, platform, panel);
@@ -3238,6 +3324,7 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
         case .OPEN_IN_OTHER_PANEL; {
             open_in_panel := panel;
             if action == .OPEN_IN_OTHER_PANEL {
+                // TODO(jt): @Cleanup Maybe we should also have a make_or_get_panel_for_inactiv_view.
                 if editor.active_view == .FULL {
                     assert(editor.panels.count == 1);
 
@@ -4473,6 +4560,10 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
     document.parenthesized_scopes.allocator    = arena_allocator(document_arena);
     document.syntax_highlight_tokens.allocator = arena_allocator(document_arena);
 
+    // If we find that we accidentally pass regular documents where compilation
+    // documents are needed, we could set this to a fail_allocator or something.
+    document.compilation_errors.allocator      = arena_allocator(document_arena);
+
     locator, pointer := bucket_array_add(*editor.documents, document);
     pointer.locator = locator;
 
@@ -4795,6 +4886,8 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
         return;
     }
 
+    array_reset_keeping_memory(*document.compilation_errors);
+
     args := document.compilation_args;
 
     view.cursors.c0 = { 0, 0 };
@@ -4806,6 +4899,8 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     text_buffer_insert(*document.buffer, *view.cursors, "Compiling with args: ", .OMIT);
     text_buffer_insert(*document.buffer, *view.cursors, args, .OMIT);
     text_buffer_insert(*document.buffer, *view.cursors, "\n\n", .OMIT );
+
+    // TODO(jt): @Bug We fail to capture output from bat files... bad.
 
     time_before := platform.get_current_time_monotonic();
     exit_code, output, error := platform.run_in_process(args, working_directory,, temp);
@@ -4825,6 +4920,36 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     }
 
     text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: %\n", to_float64_seconds(time_elapsed), exit_code), undo_modifier = .OMIT);
+
+    // See :IncrementalGapBufferIndices
+
+    gb_index := 0;
+    for line_index: 0..document.buffer.line_count - 1 {
+        gb_count := document.buffer.line_bytes[line_index];
+        defer {
+            gb_index += gb_count;
+        }
+
+        line := cast(string, gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp));
+
+        found, found_index, found_count, path, path_is_absolute, line_number, column_number := find_compilation_error(line);
+        if found {
+            ce := array_add(*document.compilation_errors);
+            ce.x0 = count_utf8_chars(String.slice(line, 0, found_index));
+            ce.x1 = ce.x0 + count_utf8_chars(String.slice(line, found_index, found_count));
+            ce.y  = line_index;
+
+            ce.line_number   = line_number;
+            ce.column_number = column_number;
+
+            if path_is_absolute {
+                ce.path = arena_push_string(document.arena, path);
+            } else {
+                absolute_path := String.path_join(working_directory, path,, temp);
+                ce.path = arena_push_string(document.arena, absolute_path);
+            }
+        }
+    }
 }
 
 // TODO(jt): The user experience of this kind of sucks. The first C-l should always recenter. But
@@ -4957,6 +5082,117 @@ get_line_length_for_line_index :: (document: Document, font: Font, line_index: s
 canonicalize_path :: (path: *string) {
     String.path_overwrite_separators(path.*, "/");
     path.* = String.trim_right(path.*, "/");
+}
+
+// JAI link format:    C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
+// rustc link format:  game_platform_winit\src\main.rs:6:1
+// clang link format:  sdl_asteroids.cpp:1:10
+//
+// TODO(jt): @Cleanup The routine is really bad. What we need is a proper parser.
+find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64, path: string, path_is_absolute: bool, line_number: s64, column_number: s64 {
+    if !_line.count {
+        return false, -1, -1, "", false, -1, -1;
+    }
+
+    original_line := copy_string(_line,, temp);
+
+    line := original_line;
+    String.path_overwrite_separators(line, "/");
+
+    PATH_BEGIN_UNIX    :: "/";
+    PATH_BEGIN_WINDOWS :: ":/";
+    PATH_BEGIN_WINDOWS_LOOKBACK :: 1;
+
+    PATH_BEGIN_RELATIVE :: "/";
+
+    x := 0;
+
+    path_start := -1;
+    path_is_absolute: bool;
+
+    while line.count && path_start == -1 {
+        if String.starts_with(line, PATH_BEGIN_RELATIVE) {
+            s := String.slice(original_line, 0, x);
+            if s.count {
+                if is_alnum(s[s.count - 1]) {
+                    i := s.count - 2;
+                    while i >= 0 && !is_space(s[i]) {
+                        i -= 1;
+                    }
+
+                    if is_space(s[i]) {
+                        i += 1;
+                    }
+
+                    if i == -1 {
+                        i = 0;
+                    }
+
+                    path_start = i;
+                    path_is_absolute = false;
+
+                    advance(*line, PATH_BEGIN_RELATIVE.count);
+                    x += PATH_BEGIN_RELATIVE.count;
+
+                    continue;
+                }
+            }
+        }
+
+        if String.starts_with(line, PATH_BEGIN_UNIX) {
+            path_start = x;
+            path_is_absolute = true;
+
+            advance(*line, PATH_BEGIN_UNIX.count);
+            x += PATH_BEGIN_UNIX.count;
+            continue;
+        }
+
+        if String.starts_with(line, PATH_BEGIN_WINDOWS) && x >= PATH_BEGIN_WINDOWS_LOOKBACK {
+            path_start = x - PATH_BEGIN_WINDOWS_LOOKBACK;
+            path_is_absolute = true;
+
+            advance(*line, PATH_BEGIN_WINDOWS.count);
+            x += PATH_BEGIN_WINDOWS.count;
+            continue;
+        }
+
+        advance(*line, 1);
+        x += 1;
+    }
+
+    colon_index := String.find_index_from_left(line, ":");
+    if colon_index == -1 {
+        return false, -1, -1, "", false, -1, -1;
+    }
+
+    advance(*line, colon_index + 1);
+    x += colon_index + 1;
+
+    path_count := x - path_start - 1; // -1 for the :
+
+    found, left, right := String.split_from_left_by_any(line, ":,");
+    if !found {
+        return false, -1, -1, "", false, -1, -1;
+    }
+
+    success: bool;
+    line_number, success=              := string_to_int(left, T = s64);
+    if !success {
+        return false, -1, -1, "", false, -1, -1;
+    }
+
+    column_number, success=, remainder := string_to_int(right, T = s64);
+    if !success {
+        return false, -1, -1, "", false, -1, -1;
+    }
+
+    path := String.slice(_line, path_start, path_count);
+
+    index := path_start;
+    count := x + left.count + 1 + right.count - remainder.count;
+
+    return true, index, count, path, path_is_absolute, line_number, column_number;
 }
 
 #scope_file
