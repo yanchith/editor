@@ -130,7 +130,11 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             userdata: *Search_Project_Userdata = mini_panel.userdata;
             working_directory := userdata.working_directory;
 
-            exit_code, output, error := platform.run_in_process(args, working_directory,, temp);
+            exit_code, exit_type, output, error := platform.run_in_process(args, working_directory,, temp);
+            if exit_type != .EXITED {
+                // Not good.
+                return;
+            }
             if exit_code != 0 {
                 // It can fail because it didn't find anything. Not necessarily an error.
                 return;

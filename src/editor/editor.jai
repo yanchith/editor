@@ -4908,7 +4908,7 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     text_buffer_insert(*document.buffer, *view.cursors, "\n\n", .OMIT );
 
     time_before := platform.get_current_time_monotonic();
-    exit_code, output, error := platform.run_in_process(args, working_directory,, temp);
+    exit_code, exit_type, output, error := platform.run_in_process(args, working_directory,, temp);
     time_after  := platform.get_current_time_monotonic();
 
     time_elapsed := time_after - time_before;
@@ -4924,7 +4924,7 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
         text_buffer_insert(*document.buffer, *view.cursors, error, undo_modifier = .OMIT);
     }
 
-    text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: %\n", to_float64_seconds(time_elapsed), exit_code), undo_modifier = .OMIT);
+    text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: % (exit type: %)\n", to_float64_seconds(time_elapsed), exit_code, exit_type), undo_modifier = .OMIT);
 
     // See :IncrementalGapBufferIndices
 
