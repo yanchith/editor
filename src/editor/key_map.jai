@@ -256,7 +256,7 @@ shortcut_sprint :: (shortcut: Shortcut) -> string {
 // return the default value of T when nothing is matched. You can detect that by making sure the
 // default value is not something you'd otherwise want to see, e.g. a .NONE value of an enum.
 Key_Map :: struct (T: Type) {
-    allocator: Allocator; // Will spread to all key map datastructures.
+    allocator: Allocator; // Set this before use if you don't want the default. Will propagate to underlying arrays.
 
     registered_shortcuts: [..] Shortcut;
     registered_actions:   [..] T;
@@ -390,11 +390,16 @@ key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, 
 #scope_file
 
 InitAllocators :: (key_map: *Key_Map) #expand {
-    if !key_map.registered_shortcuts.count {
-        if key_map.allocator.proc {
-            key_map.registered_shortcuts.allocator = key_map.allocator;
-            key_map.registered_actions.allocator = key_map.allocator;
-        }
+    if !key_map.allocator.proc {
+        remember_allocators(key_map);
+    }
+
+    if !key_map.registered_shortcuts.allocator.proc {
+        key_map.registered_shortcuts.allocator = key_map.allocator;
+    }
+
+    if !key_map.registered_actions.allocator.proc {
+        key_map.registered_actions.allocator = key_map.allocator;
     }
 }
 
