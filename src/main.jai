@@ -230,7 +230,7 @@ main :: () {
         return current_time_monotonic();
     }
 
-    platform.run_in_process = (args: string, working_directory: string) -> exit_code: s32, output: string, error: string {
+    platform.run_in_process = (args: string, working_directory: string) -> exit_code: s32, exit_type: Editor.Exit_Type, output: string, error: string {
         // break_command_into_string always temps the result, so our context override is just futureproofing.
         arguments := Process.break_command_into_strings(args,, temp);
 
@@ -239,7 +239,16 @@ main :: () {
             log_error("Process result is %, exit code: %. Command was: %", result.type, result.exit_code, args);
         }
 
-        return result.exit_code, output, error;
+        exit_type: Editor.Exit_Type;
+        if result.type == {
+            case .UNSTARTED;         exit_type = .UNSTARTED;
+            case .STILL_RUNNING;     exit_type = .STILL_RUNNING;
+            case .FAILED_TO_LAUNCH;  exit_type = .FAILED_TO_LAUNCH;
+            case .EXITED;            exit_type = .EXITED;
+            case .SIGNALED;          exit_type = .SIGNALED;
+        }
+
+        return result.exit_code, exit_type, output, error;
     }
 
     platform.get_absolute_path = (path: string) -> success: bool, string {

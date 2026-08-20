@@ -8,6 +8,14 @@ File_Info :: struct {
     is_directory: bool;
 }
 
+Exit_Type :: enum s32 {
+    UNSTARTED;
+    STILL_RUNNING;
+    FAILED_TO_LAUNCH;
+    EXITED;
+    SIGNALED;
+}
+
 Platform :: struct {
     page_size:                       s64;
     mem_reserve:                     (size: s64) -> *void;
@@ -18,7 +26,7 @@ Platform :: struct {
     get_current_time_monotonic:      () -> Apollo_Time;
 
     // TODO(jt): Also make a long-running version of this that we can poll for new bytes, exit code, etc.
-    run_in_process:                  (args: string, working_directory: string) -> exit_code: s32, output: string, error: string;
+    run_in_process:                  (args: string, working_directory: string) -> exit_code: s32, exit_type: Exit_Type, output: string, error: string;
 
     get_absolute_path:               (path: string) -> success: bool, string;
 
