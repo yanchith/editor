@@ -2,7 +2,15 @@ f32 :: float32;
 f64 :: float64;
 
 // DEBUG_MEMORY enables runtime allocation tracking and leak reporting.
-// TODO(jt): @CompilerBug I'd like to make this a switch supplied by the metaprogram, but it causes cycles.
+//
+// :MemoryDebuggerVsArenas
+//
+// Know that MEMORY_DEBUGGER doesn't work well with arena-style allocation unless someone calls free.
+// but we don't want to call even a no-op free on each array iteme. JAI's Temporary_Storage, Pool and Flat_Pool
+// are all ignored by MEMORY_DEBUGGER, but for now there is no way to add a custom ignore.
+//
+// TODO(jt): @CompilerBug I'd like to make this a switch supplied by the metaprogram (like SANITY, SUBPIXEL, etc.),
+// but it causes cycles.
 DEBUG_MEMORY :: false;
 
 // SANITY enables additional costly asserts for operations.

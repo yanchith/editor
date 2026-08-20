@@ -121,7 +121,12 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
                             line_number_prefix := temp_right_pad(tprint("%  ", it + 1), 4);
-                            s := sprint("%%", line_number_prefix, line_text,, arena_allocator(mini_panel.items_arena));
+
+                            // TODO(jt): @Cleanup We do additional manual copy into our arena here, because MEMORY_DEBUGGER otherwise
+                            // flags this as 'an allocation for an address that the memory debugging system thought was still live'.
+                            // See :MemoryDebuggerVsArenas.
+                            _s := tprint("%%", line_number_prefix, line_text);
+                            s := arena_push_string(mini_panel.items_arena, _s);
 
                             x0 := found_index;
                             if !document.buffer.binary_mode {
