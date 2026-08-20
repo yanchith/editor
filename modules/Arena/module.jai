@@ -3,11 +3,12 @@
 // commits/decommits on the go. You tweak the minimal amount of retained memory to prevent releasing
 // all memory back to the OS only to allocate it again.
 //
-// If we ever need a block-chaining arena (for some platforms?), we'll do it as a different module
-// with very similar API.
+// If we ever need a block-chaining arena (for some platforms? to be careful about memory reservation?),
+// we'll do it as a different module with very similar API.
 //
 
 #module_parameters(
+    ENABLE_DEBUG             := false,
     ENABLE_ASSERTS           := true,
     ENABLE_SANITY_ASSERTS    := false, // Implies ENABLE_ASSERTS
     DEFAULT_ALIGNMENT        := 16,
@@ -114,6 +115,13 @@ Arena_Procs :: struct {
     mem_decommit: (pointer: *void, size: s64);
 }
 
+Arena_Debug_Procs :: struct {
+    on_init:   (arena: *Arena, userdata: *void);
+    on_deinit: (arena: *Arena, userdata: *void);
+
+    userdata: *void;
+}
+
 Arena :: struct {
     //
     // Arguments given by caller before initialization (arena_init, arena_allocate). At least procs
@@ -135,14 +143,17 @@ Arena :: struct {
     committed: s64;
 
     low_water_mark: s64; // Anything below won't be deallocated. Currently only used to prevent overwriting the arena's own data when resetting/popping.
+
+    #if ENABLE_DEBUG {
+        debug_procs: Arena_Debug_Procs;
+        debug_label: string;
+    }
 }
 
 // Allocate a new arena in its own memory and return pointer to itself. This is useful, if you want
 // to store the handle to the arena close to where it's being used instead of keeping it alive by
-// storing it on the stack above the code that uses it, but you don't have to use it this way.
-//
-// This routine tweaks the arena's low water mark so that it never overwrites its own data.
-arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZE, commit_size := ARENA_DEFAULT_COMMIT_SIZE, retain_size := ARENA_DEFAULT_RETAIN_SIZE) -> *Arena {
+// storing it on the stack above the code that uses it.
+arena_new :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZE, commit_size := ARENA_DEFAULT_COMMIT_SIZE, retain_size := ARENA_DEFAULT_RETAIN_SIZE, debug_procs: Arena_Debug_Procs = {}, debug_label := "") -> *Arena {
     arena: Arena;
     arena.procs = procs;
 
@@ -158,6 +169,14 @@ arena_allocate :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZ
 
     // So that we don't accidentally deallocate ourselves.
     pointer.low_water_mark = pointer.allocated;
+
+    #if ENABLE_DEBUG {
+        // Set debug procs only after init finishes, so that arena_init doesn't fire on_init with the temporary address.
+        pointer.debug_procs = debug_procs;
+        if debug_procs.on_init {
+            debug_procs.on_init(pointer, debug_procs.userdata);
+        }
+    }
 
     return pointer;
 }
@@ -190,13 +209,25 @@ arena_init :: (arena: *Arena) {
     arena.committed = 0;
 
     arena.low_water_mark = 0;
+
+    #if ENABLE_DEBUG {
+        if arena.debug_procs.on_init {
+            arena.debug_procs.on_init(arena, arena.debug_procs.userdata);
+        }
+    }
 }
 
 // Release all the memory back to the OS. You don't have to do it, if your program is going to end
 // anyway. If the arena was created with arena_allocate, don't use the pointer after.
-arena_release :: (arena: *Arena) {
+arena_deinit :: (arena: *Arena) {
     if !arena.memory_start {
         return;
+    }
+
+    #if ENABLE_DEBUG {
+        if arena.debug_procs.on_deinit {
+            arena.debug_procs.on_deinit(arena, arena.debug_procs.userdata);
+        }
     }
 
     // Arena may or may not have been created with arena_allocate. In case it wasn't and it is still
@@ -210,6 +241,8 @@ arena_release :: (arena: *Arena) {
 
     arena.allocated = 0;
     arena.committed = 0;
+
+    arena.low_water_mark = 0;
 
     arena.procs.mem_release(memory_start, memory_end - memory_start);
 }

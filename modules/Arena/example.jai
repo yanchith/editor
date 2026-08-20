@@ -26,12 +26,12 @@ basic_usage :: () {
     arena_reset(*a);
     log("%", a);
 
-    arena_release(*a);
+    arena_deinit(*a);
     log("%", a);
 }
 
 stable_address :: () {
-    // TODO(jt): Talk about arena_allocate()
+    // TODO(jt): Talk about arena_new()
 }
 
 stress :: () {
@@ -54,7 +54,7 @@ stress :: () {
         }
     }
 
-    arena_release(*a);
+    arena_deinit(*a);
 }
 
 #if OS == .WINDOWS {
