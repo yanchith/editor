@@ -112,8 +112,13 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         }
 
         if String.ends_with(path_text, "/") || filename == "." || filename == ".." {
-            success, full_file_path := platform.get_absolute_path(tprint("%/..", path_prefix),, arena_allocator(mini_panel.items_arena));
+            success, _full_file_path := platform.get_absolute_path(tprint("%/..", path_prefix),, temp);
             if success {
+                // TODO(jt): @Cleanup We do additional manual copy into our arena here, because MEMORY_DEBUGGER otherwise
+                // flags this as 'an allocation for an address that the memory debugging system thought was still live'.
+                // See :MemoryDebuggerVsArenas.
+                full_file_path := arena_push_string(mini_panel.items_arena, _full_file_path);
+
                 parent_dir := array_add(*mini_panel.items);
                 parent_dir.text = "..";
                 parent_dir.highlight_x0 = 0;
