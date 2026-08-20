@@ -109,7 +109,7 @@ f32 :: float32;
 f64 :: float64;
 
 #import "Basic";
-#import "Arena"(ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY);
+#import "Arena"(ENABLE_DEBUG = true, ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY);
 #import "Bucket_Array";
 #import "Hash_Table";
 #import "Profiler";
@@ -252,6 +252,7 @@ Editor :: struct {
     is_first_frame: bool;
 
     debug_view: Debug_View;
+    debug_arenas: [..] *Arena;
 
     Debug_View :: enum u8 {
         NONE;
@@ -609,11 +610,11 @@ Modal_Interaction_Cancel_Proc          :: #type (editor: *Editor, platform: Plat
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
     ProfileZone("Editor.init");
 
-    editor.perm_arena = make_arena(platform, .LARGE);
+    editor.perm_arena = make_arena(editor, platform, .LARGE);
 
     {
         ProfileZone(":InitFont");
-        font_arena     := make_arena(platform, .LARGE);
+        font_arena     := make_arena(editor, platform, .LARGE);
         font_allocator := arena_allocator(font_arena);
 
         font_path :: (name: string, type: string) -> string {
@@ -907,12 +908,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
 
         // Mini text buffer gets its own arena, because it survives longer than the items.
-        text_buffer_init(*mini_panel.buffer, make_arena(platform, .SMALL));
+        text_buffer_init(*mini_panel.buffer, make_arena(editor, platform, .SMALL));
 
-        mini_panel.items_arena = make_arena(platform, .LARGE);
+        mini_panel.items_arena = make_arena(editor, platform, .LARGE);
         mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
 
-        mini_panel.userdata_arena = make_arena(platform, .SMALL);
+        mini_panel.userdata_arena = make_arena(editor, platform, .SMALL);
     }
 
     //
@@ -954,9 +955,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
 
         // Modal text buffer gets its own arena, because it survives longer than the items.
-        text_buffer_init(*modal_interaction.buffer, make_arena(platform, .SMALL));
+        text_buffer_init(*modal_interaction.buffer, make_arena(editor, platform, .SMALL));
 
-        modal_interaction.userdata_arena = make_arena(platform, .SMALL);
+        modal_interaction.userdata_arena = make_arena(editor, platform, .SMALL);
     }
 
     editor.messages.allocator = arena_allocator(editor.perm_arena);
@@ -3271,7 +3272,7 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
                         // The panel is not actually valid, until we set a view (a document or
                         // listing). We are going to do that soon after, in open_file.
                         open_in_panel = array_add(*editor.panels);
-                        panel_init(open_in_panel, platform);
+                        panel_init(open_in_panel, editor, platform);
 
                         editor.left_view_panel_index  = 0;
                         editor.right_view_panel_index = 1;
@@ -3354,7 +3355,7 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
                     // The panel is not actually valid, until we set a view (a document or
                     // listing). We are going to do that soon after, in open_file.
                     open_in_panel = array_add(*editor.panels);
-                    panel_init(open_in_panel, platform);
+                    panel_init(open_in_panel, editor, platform);
 
                     editor.left_view_panel_index  = 0;
                     editor.right_view_panel_index = 1;
@@ -4550,9 +4551,9 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         return it, false;
     }
 
-    document_arena         := make_arena(platform, .MEDIUM);
-    buffer_arena           := make_arena(platform, .LARGE);
-    buffer_edit_text_arena := make_arena(platform, .LARGE);
+    document_arena         := make_arena(editor, platform, .MEDIUM);
+    buffer_arena           := make_arena(editor, platform, .LARGE);
+    buffer_edit_text_arena := make_arena(editor, platform, .LARGE);
 
     document: Document;
     document.kind = kind;
@@ -4606,7 +4607,7 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
         return it, false;
     }
 
-    listing_arena := make_arena(platform, .MEDIUM);
+    listing_arena := make_arena(editor, platform, .MEDIUM);
 
     listing: Listing;
     listing.kind = .DIRECTORY;
@@ -4677,9 +4678,9 @@ close_document :: (editor: *Editor, input: Input, document: *Document) {
     }
 
     // Release arenas. Can't touch anything dynamically allocated on the document after.
-    arena_release(document.arena);
-    arena_release(document.buffer.arena);
-    arena_release(document.buffer.edit_text_arena);
+    arena_deinit(document.arena);
+    arena_deinit(document.buffer.arena);
+    arena_deinit(document.buffer.edit_text_arena);
 
     locator := document.locator;
 
@@ -4736,7 +4737,7 @@ close_listing :: (editor: *Editor, input: Input, listing: *Listing) {
     }
 
     // Release arena. Can't touch anything dynamically allocated on the listing after.
-    arena_release(listing.arena);
+    arena_deinit(listing.arena);
 
     locator := listing.locator;
 
@@ -4746,25 +4747,25 @@ close_listing :: (editor: *Editor, input: Input, listing: *Listing) {
 
 // WARNING: At the moment, panels without views (documents/listings) are invalid, so only use this
 // if you know you are going to set the view soon after.
-panel_init :: (panel: *Panel, platform: Platform) {
-    panel.highlights_arena = make_arena(platform, .LARGE);
+panel_init :: (panel: *Panel, editor: *Editor, platform: Platform) {
+    panel.highlights_arena = make_arena(editor, platform, .LARGE);
     panel.highlights.allocator = arena_allocator(panel.highlights_arena);
     panel.highlight_index = -1;
 }
 
-panel_init_with_document :: (panel: *Panel, editor: Editor, platform: Platform, document: *Document) {
-    panel_init(panel, platform);
+panel_init_with_document :: (panel: *Panel, editor: *Editor, platform: Platform, document: *Document) {
+    panel_init(panel, editor, platform);
     panel_set_document(panel, editor, document);
 }
 
-panel_init_with_listing :: (panel: *Panel, editor: Editor, platform: Platform, listing: *Listing) {
-    panel_init(panel, platform);
+panel_init_with_listing :: (panel: *Panel, editor: *Editor, platform: Platform, listing: *Listing) {
+    panel_init(panel, editor, platform);
     panel_set_listing(panel, editor, listing);
 }
 
 // Don't use the panel after calling this!
 panel_deinit :: (panel: *Panel) {
-    arena_release(panel.highlights_arena);
+    arena_deinit(panel.highlights_arena);
 }
 
 panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
@@ -5249,7 +5250,7 @@ Arena_Size :: enum s64 {
     LARGE  ::  16 << 30;
 }
 
-make_arena :: (platform: Platform, size: Arena_Size) -> *Arena {
+make_arena :: (editor: *Editor, platform: Platform, size: Arena_Size) -> *Arena {
     procs: Arena_Procs;
     procs.page_size    = platform.page_size;
     procs.mem_reserve  = platform.mem_reserve;
@@ -5257,7 +5258,20 @@ make_arena :: (platform: Platform, size: Arena_Size) -> *Arena {
     procs.mem_commit   = platform.mem_commit;
     procs.mem_decommit = platform.mem_decommit;
 
-    arena := arena_allocate(procs, reserve_size = cast(s64, size));
+    debug_procs: Arena_Debug_Procs;
+    debug_procs.on_init = (arena: *Arena, userdata: *void) {
+        ed := cast(*Editor, userdata);
+        log("nocheckin on_init");
+        array_add(*ed.debug_arenas, arena);
+    };
+    debug_procs.on_deinit = (arena: *Arena, userdata: *void) {
+        ed := cast(*Editor, userdata);
+        log("nocheckin on_deinit");
+        array_unordered_remove_by_value(*ed.debug_arenas, arena);
+    }
+    debug_procs.userdata = editor;
+
+    arena := arena_new(procs, reserve_size = cast(s64, size), debug_procs = debug_procs);
 
     return arena;
 }
