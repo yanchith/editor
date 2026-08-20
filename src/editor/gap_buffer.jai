@@ -1,5 +1,5 @@
 Gap_Buffer :: struct {
-    allocator: Allocator; // Set this before use. Will propagate to the underlying array.
+    allocator: Allocator; // Set this before use if you don't want the default. Will propagate to underlying array.
 
     //
     // Read only properties below
@@ -14,15 +14,12 @@ Gap_Buffer :: struct {
 }
 
 gap_buffer_reset :: (gb: *Gap_Buffer) {
-    if gb.bytes.count {
-        free(gb.bytes.data,, ifx gb.allocator.proc then gb.allocator else context.allocator);
-        gb.bytes.count = 0;
-    }
-
     gb.count = 0;
 
     gb.gap_index = 0;
     gb.gap_count = 0;
+
+    array_reset(*gb.bytes,, gb.allocator);
 }
 
 gap_buffer_get_bytes_before_gap :: (gb: Gap_Buffer) -> [] u8 {
@@ -261,6 +258,10 @@ operator *[] :: (gb: Gap_Buffer, index: s64) -> *u8 {
 #scope_file
 
 maybe_grow_for_insert :: (gb: *Gap_Buffer, insert_count: s64) {
+    if !gb.allocator.proc {
+        remember_allocators(gb);
+    }
+
     if insert_count > gb.gap_count {
         old_count   := gb.bytes.count;
         new_count   := round_up_grow_size(old_count + insert_count - gb.gap_count);
