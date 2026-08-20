@@ -251,9 +251,9 @@ Editor :: struct {
 
     is_first_frame: bool;
 
-    dev_view: Dev_View;
+    debug_view: Debug_View;
 
-    Dev_View :: enum u8 {
+    Debug_View :: enum u8 {
         NONE;
         ATLAS_TEXTURE;
     };
@@ -1088,7 +1088,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.key == {
-                        case .F1;  toggle_dev_view(*editor.dev_view, .ATLAS_TEXTURE); handled = true;
+                        case .F1;  toggle_debug_view(*editor.debug_view, .ATLAS_TEXTURE); handled = true;
                     }
                 }
 
@@ -1123,6 +1123,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 route_event_to_panel(editor, it, platform, input);
             }
         }
+    }
+
+    if editor.debug_view != .NONE {
+        wants_this_frame = true;
     }
 
     for * panel, panel_index: editor.panels {
@@ -1381,16 +1385,28 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    if #complete editor.dev_view == {
+    if #complete editor.debug_view == {
         case .NONE; // Nothing
         case .ATLAS_TEXTURE; {
-            wants_this_frame = true;
-            array_reset_keeping_memory(*render_commands);
+            window_w := cast(f32, input.window_size.x);
+            window_h := cast(f32, input.window_size.y);
+            atlas_w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
+            atlas_h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
 
-            w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
-            h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
-            draw_rect(*render_commands, 0, 0, w, h, { 0.89, 0.89, 0.95, 1 });
-            draw_rect(*render_commands, 0, 0, w, h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
+            atlas_x := ifx window_w > atlas_w then 0.5 * window_w - 0.5 * atlas_w else 0.0;
+            atlas_y := ifx window_h > atlas_h then 0.5 * window_h - 0.5 * atlas_h else 0.0;
+
+            draw_rect(*render_commands, 0, 0, window_w, window_h, { 0, 0, 0, 0.5 });
+            {
+                message := "Debug view: Font Atlas";
+                offset  := DVector2.{ 0, 0 };
+                scissor := Rect.{ 0, 0, window_w, window_h };
+                color   := Vector4.{ 1, 1, 1, 1 };
+                _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
+            }
+
+            draw_rect(*render_commands, atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h, { 1, 1, 1, 1 });
+            draw_rect(*render_commands, atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
         }
     }
 
@@ -5246,11 +5262,11 @@ make_arena :: (platform: Platform, size: Arena_Size) -> *Arena {
     return arena;
 }
 
-toggle_dev_view :: (dev_view: *Editor.Dev_View, value: Editor.Dev_View) {
-    if dev_view.* == value {
-        dev_view.* = .NONE;
+toggle_debug_view :: (debug_view: *Editor.Debug_View, value: Editor.Debug_View) {
+    if debug_view.* == value {
+        debug_view.* = .NONE;
     } else {
-        dev_view.* = value;
+        debug_view.* = value;
     }
 }
 
