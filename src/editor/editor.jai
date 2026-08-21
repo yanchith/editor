@@ -8,6 +8,8 @@ TODO(jt): Known serious bugs:
 - *compilation* fails to capture output from bat files.
 - We are using quite a bit of memory. Let's make a leak-detecting build, as well as tune arena commit sizes.
 
+- /Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1896,5: Assertion failed!
+
 TODO(jt): Usage self-feedback:
 
 - finish the compilation buffer thing
@@ -110,6 +112,7 @@ f64 :: float64;
 
 #import "Basic";
 #import "Arena"(ENABLE_DEBUG = true, ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY);
+#import "Sort";
 #import "Bucket_Array";
 #import "Hash_Table";
 #import "Profiler";
@@ -252,11 +255,13 @@ Editor :: struct {
     is_first_frame: bool;
 
     debug_view: Debug_View;
-    debug_arenas: [..] *Arena;
+    debug_arenas: [..] *Arena; // TODO(jt): @Memory This is for now using the default allocator, but we could switch to perm.
 
     Debug_View :: enum u8 {
         NONE;
         ATLAS_TEXTURE;
+        MEMORY_ABSOLUTE;
+        MEMORY_RELATIVE;
     };
 }
 
@@ -610,11 +615,11 @@ Modal_Interaction_Cancel_Proc          :: #type (editor: *Editor, platform: Plat
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
     ProfileZone("Editor.init");
 
-    editor.perm_arena = make_arena(editor, platform, .LARGE);
+    editor.perm_arena = make_arena(editor, platform, .MEDIUM, "Perm");
 
     {
         ProfileZone(":InitFont");
-        font_arena     := make_arena(editor, platform, .LARGE);
+        font_arena     := make_arena(editor, platform, .MEDIUM, "Font");
         font_allocator := arena_allocator(font_arena);
 
         font_path :: (name: string, type: string) -> string {
@@ -908,12 +913,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
 
         // Mini text buffer gets its own arena, because it survives longer than the items.
-        text_buffer_init(*mini_panel.buffer, make_arena(editor, platform, .SMALL));
+        text_buffer_init(*mini_panel.buffer, make_arena(editor, platform, .SMALL, "Minipanel Buffer"));
 
-        mini_panel.items_arena = make_arena(editor, platform, .LARGE);
+        mini_panel.items_arena = make_arena(editor, platform, .LARGE, "Minipanel items");
         mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
 
-        mini_panel.userdata_arena = make_arena(editor, platform, .SMALL);
+        mini_panel.userdata_arena = make_arena(editor, platform, .SMALL, "Minipanel userdata");
     }
 
     //
@@ -955,9 +960,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
 
         // Modal text buffer gets its own arena, because it survives longer than the items.
-        text_buffer_init(*modal_interaction.buffer, make_arena(editor, platform, .SMALL));
+        text_buffer_init(*modal_interaction.buffer, make_arena(editor, platform, .SMALL, "Modal Interaction Buffer"));
 
-        modal_interaction.userdata_arena = make_arena(editor, platform, .SMALL);
+        modal_interaction.userdata_arena = make_arena(editor, platform, .SMALL, "Modal Interaction Userdata");
     }
 
     editor.messages.allocator = arena_allocator(editor.perm_arena);
@@ -1090,6 +1095,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 case .KEY; {
                     if it.key == {
                         case .F1;  toggle_debug_view(*editor.debug_view, .ATLAS_TEXTURE); handled = true;
+                        case .F2;  toggle_debug_view(*editor.debug_view, .MEMORY_ABSOLUTE); handled = true;
+                        case .F3;  toggle_debug_view(*editor.debug_view, .MEMORY_RELATIVE); handled = true;
                     }
                 }
 
@@ -1386,28 +1393,124 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    if #complete editor.debug_view == {
-        case .NONE; // Nothing
-        case .ATLAS_TEXTURE; {
-            window_w := cast(f32, input.window_size.x);
-            window_h := cast(f32, input.window_size.y);
-            atlas_w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
-            atlas_h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
+    if editor.debug_view != .NONE {
+        window_w := cast(f32, input.window_size.x);
+        window_h := cast(f32, input.window_size.y);
 
-            atlas_x := ifx window_w > atlas_w then 0.5 * window_w - 0.5 * atlas_w else 0.0;
-            atlas_y := ifx window_h > atlas_h then 0.5 * window_h - 0.5 * atlas_h else 0.0;
+        draw_rect(*render_commands, 0, 0, window_w, window_h, { 0, 0, 0, 0.5 });
 
-            draw_rect(*render_commands, 0, 0, window_w, window_h, { 0, 0, 0, 0.5 });
-            {
+
+
+
+        if editor.debug_view == {
+            case .ATLAS_TEXTURE; {
                 message := "Debug view: Font Atlas";
                 offset  := DVector2.{ 0, 0 };
                 scissor := Rect.{ 0, 0, window_w, window_h };
                 color   := Vector4.{ 1, 1, 1, 1 };
                 _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
+
+                atlas_w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
+                atlas_h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
+
+                atlas_x := ifx window_w > atlas_w then 0.5 * window_w - 0.5 * atlas_w else 0.0;
+                atlas_y := ifx window_h > atlas_h then 0.5 * window_h - 0.5 * atlas_h else 0.0;
+
+
+                draw_rect(*render_commands, atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h, { 1, 1, 1, 1 });
+                draw_rect(*render_commands, atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
             }
 
-            draw_rect(*render_commands, atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h, { 1, 1, 1, 1 });
-            draw_rect(*render_commands, atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
+            case .MEMORY_ABSOLUTE; #through;
+            case .MEMORY_RELATIVE; {
+                format_size :: (n: s64) -> /* Temporary_Storage */ string {
+                    if n > (1 << 30) {
+                        n = n >> 30;
+                        return tprint("% GB", n);
+                    } else if n > (1 << 20) {
+                        n = n >> 20;
+                        return tprint("% MB", n);
+                    } else if n > (1 << 10) {
+                        n = n >> 10;
+                        return tprint("% KB", n);
+                    } else {
+                        return tprint("% bytes", n);
+                    }
+                }
+
+                quick_sort(editor.debug_arenas, (a: *Arena) -> f32 {
+                    // Sort by allocated size.
+                    return -cast(f32, a.allocated);
+
+                    // Sort by fullness.
+                    // return cast(f32, a.allocated) / cast(f32, a.reserve_size);
+                });
+
+                scissor := Rect.{ 0, 0, window_w, window_h };
+                color   := Vector4.{ 1, 1, 1, 1 };
+                {
+                    message := ifx editor.debug_view == .MEMORY_ABSOLUTE then "Debug view: Memory Absolute" else "Debug view: Memory Relative";
+                    offset  := DVector2.{ 0, 0 };
+                    _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
+                }
+
+                y := 2 * cell_h;
+
+                PADDING :: 20.0;
+                graph_w := max(window_w - 2 * PADDING, 0);
+
+                {
+                    ts := context.temporary_storage;
+
+                    total     := ts.high_water_mark;
+                    allocated := ts.total_bytes_occupied;
+
+                    message := tprint("% allocated % / %", temp_right_pad("Temp:", 40), format_size(allocated), format_size(total));
+                    offset  := DVector2.{ 0, y };
+                    _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
+
+                    arena_max_size := ifx editor.debug_view == .MEMORY_ABSOLUTE then cast(f32, Arena_Size.LARGE) else cast(f32, total);
+
+                    t_total     := cast(f32, total) / arena_max_size;
+                    t_allocated := cast(f32, allocated) / arena_max_size;
+
+                    x0 := PADDING;
+                    x1 := PADDING + graph_w;
+                    x_total     := PADDING + t_total * graph_w;
+                    x_allocated := PADDING + t_allocated * graph_w;
+
+                    draw_rect(*render_commands, x0, y + cell_h, x1, y + 2*cell_h, { 0.2, 0.2, 0.2, 1 });
+                    draw_rect(*render_commands, x0, y + cell_h, x_total, y + 2*cell_h, { 0.5, 0.5, 0.5, 1 });
+                    draw_rect(*render_commands, x0, y + cell_h, x_allocated, y + 2*cell_h, { 0, 0, 1, 1 });
+
+                    y += 2 * cell_h;
+                }
+
+                for editor.debug_arenas {
+                    total     := it.reserve_size;
+                    allocated := it.allocated;
+
+                    message := tprint("% allocated % / %", temp_right_pad(tprint("%:", it.debug_label), 40), format_size(allocated), format_size(total));
+                    offset  := DVector2.{ 0, y };
+                    _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
+
+                    arena_max_size := ifx editor.debug_view == .MEMORY_ABSOLUTE then cast(f32, Arena_Size.LARGE) else cast(f32, total);
+
+                    t_total     := cast(f32, total) / arena_max_size;
+                    t_allocated := cast(f32, allocated) / arena_max_size;
+
+                    x0 := PADDING;
+                    x1 := PADDING + graph_w;
+                    x_total     := PADDING + t_total * graph_w;
+                    x_allocated := PADDING + t_allocated * graph_w;
+
+                    draw_rect(*render_commands, x0, y + cell_h, x1, y + 2*cell_h, { 0.2, 0.2, 0.2, 1 });
+                    draw_rect(*render_commands, x0, y + cell_h, x_total, y + 2*cell_h, { 0.5, 0.5, 0.5, 1 });
+                    draw_rect(*render_commands, x0, y + cell_h, x_allocated, y + 2*cell_h, { 0, 0, 1, 1 });
+
+                    y += 2 * cell_h;
+                }
+            }
         }
     }
 
@@ -4551,9 +4654,16 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         return it, false;
     }
 
-    document_arena         := make_arena(editor, platform, .MEDIUM);
-    buffer_arena           := make_arena(editor, platform, .LARGE);
-    buffer_edit_text_arena := make_arena(editor, platform, .LARGE);
+    debug_label_name: string;
+    if #complete kind == {
+        case .SCRATCH;      debug_label_name = "*scratch*";
+        case .COMPILATION;  debug_label_name = "*compilation*";
+        case .FILE;         debug_label_name = String.path_filename(backing_file_path);
+    }
+
+    document_arena         := make_arena(editor, platform, .MEDIUM, sprint("Document %", debug_label_name,, arena_allocator(editor.perm_arena)));
+    buffer_arena           := make_arena(editor, platform, .LARGE,  sprint("Buffer %", debug_label_name),, arena_allocator(editor.perm_arena));
+    buffer_edit_text_arena := make_arena(editor, platform, .LARGE,  sprint("Buffer Edits %", debug_label_name),, arena_allocator(editor.perm_arena));
 
     document: Document;
     document.kind = kind;
@@ -4607,7 +4717,12 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
         return it, false;
     }
 
-    listing_arena := make_arena(editor, platform, .MEDIUM);
+    debug_label_name: string;
+    if #complete kind == {
+        case .DIRECTORY;  String.path_filename(backing_directory_path);
+    }
+
+    listing_arena := make_arena(editor, platform, .MEDIUM, sprint("Listing %", debug_label_name),, arena_allocator(editor.perm_arena));
 
     listing: Listing;
     listing.kind = .DIRECTORY;
@@ -4748,7 +4863,7 @@ close_listing :: (editor: *Editor, input: Input, listing: *Listing) {
 // WARNING: At the moment, panels without views (documents/listings) are invalid, so only use this
 // if you know you are going to set the view soon after.
 panel_init :: (panel: *Panel, editor: *Editor, platform: Platform) {
-    panel.highlights_arena = make_arena(editor, platform, .LARGE);
+    panel.highlights_arena = make_arena(editor, platform, .LARGE, "Panel"); // TODO(jt): Better debug_label.
     panel.highlights.allocator = arena_allocator(panel.highlights_arena);
     panel.highlight_index = -1;
 }
@@ -5247,10 +5362,10 @@ set_scissor :: (render_commands: *[..] Render_Command, scissor_rect: Rect) {
 Arena_Size :: enum s64 {
     SMALL  ::   2 << 20;
     MEDIUM :: 256 << 20;
-    LARGE  ::  16 << 30;
+    LARGE  ::   4 << 30;
 }
 
-make_arena :: (editor: *Editor, platform: Platform, size: Arena_Size) -> *Arena {
+make_arena :: (editor: *Editor, platform: Platform, size: Arena_Size, label: string) -> *Arena {
     procs: Arena_Procs;
     procs.page_size    = platform.page_size;
     procs.mem_reserve  = platform.mem_reserve;
@@ -5261,17 +5376,15 @@ make_arena :: (editor: *Editor, platform: Platform, size: Arena_Size) -> *Arena 
     debug_procs: Arena_Debug_Procs;
     debug_procs.on_init = (arena: *Arena, userdata: *void) {
         ed := cast(*Editor, userdata);
-        log("nocheckin on_init");
         array_add(*ed.debug_arenas, arena);
     };
     debug_procs.on_deinit = (arena: *Arena, userdata: *void) {
         ed := cast(*Editor, userdata);
-        log("nocheckin on_deinit");
         array_unordered_remove_by_value(*ed.debug_arenas, arena);
     }
     debug_procs.userdata = editor;
 
-    arena := arena_new(procs, reserve_size = cast(s64, size), debug_procs = debug_procs);
+    arena := arena_new(procs, reserve_size = cast(s64, size), debug_procs = debug_procs, debug_label = label);
 
     return arena;
 }
