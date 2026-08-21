@@ -397,7 +397,8 @@ Document :: struct {
     parenthesized_scopes:    [..] Parenthesized_Scope;
     syntax_highlight_tokens: [..] Syntax_Highlight_Token;
 
-    compilation_args:   string; // Empty if this is not a .COMPILATION document.
+    // Compilation fields are empty if this is not a .COMPILATION document.
+    compilation_args:   string;
     compilation_errors: [..] Compilation_Error;
     compilation_error_index: s64;
 
