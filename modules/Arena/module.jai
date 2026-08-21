@@ -176,6 +176,7 @@ arena_new :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZE, co
         if debug_procs.on_init {
             debug_procs.on_init(pointer, debug_procs.userdata);
         }
+        pointer.debug_label = debug_label;
     }
 
     return pointer;
