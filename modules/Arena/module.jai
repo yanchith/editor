@@ -103,7 +103,12 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
                 cast(*string, old_memory).* = CAPS_VERSION_STRING;
             }
 
-            return cast(*void, Allocator_Caps.HINT_I_AM_A_FAST_BUMP_ALLOCATOR);
+            caps: Allocator_Caps;
+            caps |= .ACTUALLY_RESIZE; // Sometimes. But I think even the big boy allocators only do this sometimes.
+            caps |= .IS_THIS_YOURS;
+            caps |= .HINT_I_AM_A_FAST_BUMP_ALLOCATOR;
+
+            return cast(*void, caps);
         }
     }
 }

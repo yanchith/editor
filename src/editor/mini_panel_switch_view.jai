@@ -58,7 +58,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         for * editor.documents {
             document_name := get_document_name(it); // TODO(jt): Add path prefix to disambiguate.
 
-            found, found_indices := line_search(document_name, search_parts, smartcase);
+            found, found_indices := line_search(document_name, search_parts, smartcase,, temp);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
@@ -92,7 +92,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         for * editor.listings {
             listing_name := get_listing_name(it);
 
-            found, found_indices := line_search(listing_name, search_parts, smartcase);
+            found, found_indices := line_search(listing_name, search_parts, smartcase,, temp);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
