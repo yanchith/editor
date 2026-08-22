@@ -849,7 +849,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.theme = abulafia_theme();
 
     editor.watched_files.allocator = arena_allocator(editor.perm_arena);
+
     editor.documents.allocator     = arena_allocator(editor.perm_arena);
+    editor.listings.allocator      = arena_allocator(editor.perm_arena);
     editor.panels.allocator        = arena_allocator(editor.perm_arena);
 
     // Create *scratch* document

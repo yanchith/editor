@@ -47,8 +47,8 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
     while 1 {
         // The lexer has a MAX_CONCURRENT_TOKENS, which is how many you can still access before they
         // get overwritten. Pretty cool.
-        token := JL.peek_next_token(*lexer);
-        JL.eat_token(*lexer);
+        token := JL.peek_next_token(*lexer,, temp);
+        JL.eat_token(*lexer,, temp);
 
         if token.type == .END_OF_INPUT  break;
         if lexer.reported_error         break;
