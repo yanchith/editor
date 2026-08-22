@@ -10,8 +10,20 @@ f64 :: float64;
 // are all ignored by MEMORY_DEBUGGER, but for now there is no way to add a custom ignore.
 //
 // TODO(jt): @CompilerBug I'd like to make this a switch supplied by the metaprogram (like SANITY, SUBPIXEL, etc.),
-// but it causes cycles.
-DEBUG_MEMORY :: false;
+// but it causes cycles. Hardcode-enabled for this reason, at least until I seal the leaks.
+//
+// TODO(jt): @Cleanup Memory_Debugger.jai needs to be modified so that our arena allocations get omitted from the report:
+//
+// Preamble :: () #expand {
+//     ... snip ...
+//     caps := cast(Allocator_Caps, `allocator.proc(.CAPS, 0, 0, null, `allocator.data));
+//     if caps & .HINT_I_AM_A_FAST_BUMP_ALLOCATOR      `return;
+//     ... snip ...
+// }
+//
+// I mailed this in, but now we have to wait.
+DEBUG_MEMORY :: true;
+DEBUG_MEMORY_LEAK_REPORT_PERIOD: Apollo_Time : #run seconds_to_apollo(10);
 
 // SANITY enables additional costly asserts for operations.
 #if #exists(__SANITY) {
@@ -104,7 +116,8 @@ SLOW_INIT_THRESHOLD_MILLIS  :: 200;
 }
 
 main :: () {
-    time_of_program_start := current_time_monotonic();
+    time_of_program_start    := current_time_monotonic();
+    time_of_last_leak_report := time_of_program_start;
 
     profiler_init();
     profiler_start_frame("init");
@@ -847,8 +860,34 @@ main :: () {
         reset_temporary_storage();
 
         #if DEBUG_MEMORY {
-            memory_visualizer_per_frame_update();
-            // report_memory_leaks();
+            // memory_visualizer_per_frame_update();
+
+            options: Leak_Report_Options;
+            report := make_leak_report(options);
+
+            // log_leak_report always prints something, but we don't want to spam the logs,
+            // so let's only print once in a while, if we have something to print.
+            leak_bytes_total: s64;
+            leaks_total:      s64;
+            for summary: report.sorted_summaries {
+                leak_bytes_total += summary.bytes;
+                leak_bytes_total += summary.child_bytes;
+
+                leaks_total += summary.count;
+                leaks_total += summary.child_count;
+            }
+
+            if leak_bytes_total || leaks_total {
+                if time_of_frame_start - time_of_last_leak_report > DEBUG_MEMORY_LEAK_REPORT_PERIOD {
+                    time_of_last_leak_report = time_of_frame_start;
+
+                    log("-- START OF LEAK REPORT --");
+                    log_leak_report(report, options);
+                    log("-- END OF LEAK REPORT --");
+                }
+            }
+
+            deinit(*report);
         }
 
         if should_run && !wants_next_frame {
