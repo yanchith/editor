@@ -112,7 +112,6 @@ f64 :: float64;
 
 #import "Basic";
 #import "Arena"(ENABLE_DEBUG = true, ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY);
-#import "Sort";
 #import "Bucket_Array";
 #import "Hash_Table";
 #import "Profiler";
@@ -139,6 +138,7 @@ operator==     :: Math.operator==;
 
 #load "assert.jai";
 #load "bits.jai";
+#load "sort.jai";
 #load "hash.jai";
 #load "string.jai";
 #load "math.jai";
@@ -916,10 +916,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         // Mini text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*mini_panel.buffer, make_arena(editor, platform, .SMALL, "Minipanel Buffer"));
 
-        mini_panel.items_arena = make_arena(editor, platform, .LARGE, "Minipanel items");
+        mini_panel.items_arena = make_arena(editor, platform, .LARGE, "Minipanel Items");
         mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
 
-        mini_panel.userdata_arena = make_arena(editor, platform, .SMALL, "Minipanel userdata");
+        mini_panel.userdata_arena = make_arena(editor, platform, .SMALL, "Minipanel Userdata");
     }
 
     //
@@ -961,9 +961,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
 
         // Modal text buffer gets its own arena, because it survives longer than the items.
-        text_buffer_init(*modal_interaction.buffer, make_arena(editor, platform, .SMALL, "Modal Interaction Buffer"));
+        text_buffer_init(*modal_interaction.buffer, make_arena(editor, platform, .SMALL, "Modal Buffer"));
 
-        modal_interaction.userdata_arena = make_arena(editor, platform, .SMALL, "Modal Interaction Userdata");
+        modal_interaction.userdata_arena = make_arena(editor, platform, .SMALL, "Modal Userdata");
     }
 
     editor.messages.allocator = arena_allocator(editor.perm_arena);
@@ -1439,7 +1439,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     }
                 }
 
-                quick_sort(editor.debug_arenas, (a: *Arena) -> f32 {
+                bubble_sort(editor.debug_arenas, (a: *Arena) -> f32 {
                     // Sort by allocated size.
                     return -cast(f32, a.allocated);
 
@@ -1457,8 +1457,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 y := 2 * cell_h;
 
-                PADDING :: 20.0;
-                graph_w := max(window_w - 2 * PADDING, 0);
+                PADDING_X :: 20.0;
+                PADDING_Y :: 2.0;
+                graph_x := 0.5 * window_w + PADDING_X;
+                graph_w := max(0.5 * window_w - 2 * PADDING_X, 0);
 
                 {
                     ts := context.temporary_storage;
@@ -1466,7 +1468,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     total     := ts.high_water_mark;
                     allocated := ts.total_bytes_occupied;
 
-                    message := tprint("% allocated % / %", temp_right_pad("Temp:", 40), format_size(allocated), format_size(total));
+                    message := tprint("% % / %", temp_right_pad("Temp:", 40), format_size(allocated), format_size(total));
                     offset  := DVector2.{ 0, y };
                     _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
 
@@ -1475,41 +1477,51 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     t_total     := cast(f32, total) / arena_max_size;
                     t_allocated := cast(f32, allocated) / arena_max_size;
 
-                    x0 := PADDING;
-                    x1 := PADDING + graph_w;
-                    x_total     := PADDING + t_total * graph_w;
-                    x_allocated := PADDING + t_allocated * graph_w;
+                    x0 := graph_x;
+                    x1 := x0 + graph_w;
+                    x_total     := x0 + t_total * graph_w;
+                    x_allocated := x0 + t_allocated * graph_w;
 
-                    draw_rect(*render_commands, x0, y + cell_h, x1, y + 2*cell_h, { 0.2, 0.2, 0.2, 1 });
-                    draw_rect(*render_commands, x0, y + cell_h, x_total, y + 2*cell_h, { 0.5, 0.5, 0.5, 1 });
-                    draw_rect(*render_commands, x0, y + cell_h, x_allocated, y + 2*cell_h, { 0, 0, 1, 1 });
+                    y0 := y + PADDING_Y;
+                    y1 := y + cell_h;
 
-                    y += 2 * cell_h;
+                    draw_rect(*render_commands, x0, y0, x1, y1, { 0.2, 0.2, 0.2, 1 });
+                    draw_rect(*render_commands, x0, y0, x_total, y1, { 0.5, 0.5, 0.5, 1 });
+                    draw_rect(*render_commands, x0, y0, x_allocated, y1, { 0, 1, 0, 1 });
+
+                    y += cell_h;
                 }
 
                 for editor.debug_arenas {
                     total     := it.reserve_size;
+                    committed := it.committed;
                     allocated := it.allocated;
 
-                    message := tprint("% allocated % / %", temp_right_pad(tprint("%:", it.debug_label), 40), format_size(allocated), format_size(total));
+                    message := tprint("% % / % / %", temp_right_pad(tprint("%:", it.debug_label), 40), format_size(allocated), format_size(committed), format_size(total));
                     offset  := DVector2.{ 0, y };
                     _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
 
                     arena_max_size := ifx editor.debug_view == .MEMORY_ABSOLUTE then cast(f32, Arena_Size.LARGE) else cast(f32, total);
 
                     t_total     := cast(f32, total) / arena_max_size;
+                    t_committed := cast(f32, committed) / arena_max_size;
                     t_allocated := cast(f32, allocated) / arena_max_size;
 
-                    x0 := PADDING;
-                    x1 := PADDING + graph_w;
-                    x_total     := PADDING + t_total * graph_w;
-                    x_allocated := PADDING + t_allocated * graph_w;
+                    x0 := graph_x;
+                    x1 := x0 + graph_w;
+                    x_total     := x0 + t_total * graph_w;
+                    x_committed := x0 + t_committed * graph_w;
+                    x_allocated := x0 + t_allocated * graph_w;
 
-                    draw_rect(*render_commands, x0, y + cell_h, x1, y + 2*cell_h, { 0.2, 0.2, 0.2, 1 });
-                    draw_rect(*render_commands, x0, y + cell_h, x_total, y + 2*cell_h, { 0.5, 0.5, 0.5, 1 });
-                    draw_rect(*render_commands, x0, y + cell_h, x_allocated, y + 2*cell_h, { 0, 0, 1, 1 });
+                    y0 := y + PADDING_Y;
+                    y1 := y + cell_h;
 
-                    y += 2 * cell_h;
+                    draw_rect(*render_commands, x0, y0, x1, y1, { 0.2, 0.2, 0.2, 1 });
+                    draw_rect(*render_commands, x0, y0, x_total, y1, { 0.5, 0.5, 0.5, 1 });
+                    draw_rect(*render_commands, x0, y0, x_committed, y1, { 0, 0, 1, 1 });
+                    draw_rect(*render_commands, x0, y0, x_allocated, y1, { 0, 1, 0, 1 });
+
+                    y += cell_h;
                 }
             }
         }
@@ -4662,9 +4674,9 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         case .FILE;         debug_label_name = String.path_filename(backing_file_path);
     }
 
-    document_arena         := make_arena(editor, platform, .MEDIUM, sprint("Document %", debug_label_name,, arena_allocator(editor.perm_arena)));
-    buffer_arena           := make_arena(editor, platform, .LARGE,  sprint("Buffer %", debug_label_name),, arena_allocator(editor.perm_arena));
-    buffer_edit_text_arena := make_arena(editor, platform, .LARGE,  sprint("Buffer Edits %", debug_label_name),, arena_allocator(editor.perm_arena));
+    document_arena         := make_arena(editor, platform, .MEDIUM, sprint("Document for %", debug_label_name,, arena_allocator(editor.perm_arena)));
+    buffer_arena           := make_arena(editor, platform, .LARGE,  sprint("Buffer for %", debug_label_name,, arena_allocator(editor.perm_arena)));
+    buffer_edit_text_arena := make_arena(editor, platform, .LARGE,  sprint("Edits for %", debug_label_name,, arena_allocator(editor.perm_arena)));
 
     document: Document;
     document.kind = kind;
@@ -4720,10 +4732,10 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
 
     debug_label_name: string;
     if #complete kind == {
-        case .DIRECTORY;  String.path_filename(backing_directory_path);
+        case .DIRECTORY;  debug_label_name = String.path_filename(backing_directory_path);
     }
 
-    listing_arena := make_arena(editor, platform, .MEDIUM, sprint("Listing %", debug_label_name),, arena_allocator(editor.perm_arena));
+    listing_arena := make_arena(editor, platform, .MEDIUM, sprint("Listing for %", debug_label_name,, arena_allocator(editor.perm_arena)));
 
     listing: Listing;
     listing.kind = .DIRECTORY;
