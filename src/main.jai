@@ -27,6 +27,29 @@ DEBUG_MEMORY :: true;
 DEBUG_MEMORY_LEAK_REPORT_PERIOD: Apollo_Time : #run seconds_to_apollo(10);
 
 /*
+
+TODO(jt): @LibraryBug Investigate more and mail this in!
+
+Our own leak checking interface could be this simple, but first we'd need to be able to override this_allocation_is_not_a_leak.
+Otherwise replacing the default interface just gets you a crash:
+
+handle_exception                  C:\Users\yanchith\workspace\jai\modules\Runtime_Support_Crash_Handler.jai:362
+... (skipping OS-internal procedures)
+RtlWaitOnAddress                  unknown:0
+RtlEnterCriticalSection           unknown:0
+RtlEnterCriticalSection           unknown:0
+lock                              C:\Users\yanchith\workspace\jai\modules\Thread\primitives.jai:694
+this_allocation_is_not_a_leak     C:\Users\yanchith\workspace\jai\modules\Basic\Memory_Debugger.jai:256
+add_resize_record                 C:\Users\yanchith\workspace\editor\modules\Input\windows.jai:645
+MyWindowProc                      C:\Users\yanchith\workspace\editor\modules\Input\windows.jai:237
+CallWindowProcW                   unknown:0
+DispatchMessageW                  unknown:0
+SendMessageTimeoutW               unknown:0
+KiUserCallbackDispatcher          unknown:0
+NtUserShowWindow                  unknown:0
+create_window                     C:\Users\yanchith\workspace\jai\modules\Window_Creation\windows.jai:56
+main                              C:\Users\yanchith\workspace\editor\src\main.jai:235
+
     DEBUG_MEMORY_PROCS :: struct {
         check_alloc :: _check_alloc_proc;
         check_free  :: inline (allocator: Allocator, memory: *void) {};
