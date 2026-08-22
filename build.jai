@@ -81,17 +81,17 @@ build :: () {
 
     if #complete optimization_level == {
         case .DEBUG; {
-            set_optimization(*options, .DEBUG);
+            set_optimization(*options, .DEBUG, preserve_debug_info = true);
             options.stack_trace = true;
             options.arithmetic_overflow_check = .FATAL;
         }
         case .OPTIMIZED; {
-            set_optimization(*options, .OPTIMIZED_VERY_SMALL);
+            set_optimization(*options, .OPTIMIZED_VERY_SMALL, preserve_debug_info = true);
             options.stack_trace = false;
             options.arithmetic_overflow_check = .OFF;
         }
         case .OPTIMIZED_DEBUG; {
-            set_optimization(*options, .OPTIMIZED_SMALL);
+            set_optimization(*options, .OPTIMIZED_SMALL, preserve_debug_info = true);
             options.stack_trace = false;
             options.arithmetic_overflow_check = .FATAL;
         }
@@ -108,17 +108,9 @@ build :: () {
 
     compiler_begin_intercept(w);
 
-    if do_sanity {
-        add_build_string("__SANITY :: true;\n", w);
-    }
-
-    if do_subpixel {
-        add_build_string("__SUBPIXEL :: true;\n", w);
-    }
-
-    if do_windows_console {
-        add_build_string("__WINDOWS_CONSOLE :: true;\n", w);
-    }
+    if do_sanity           add_build_string("__SANITY :: true;\n", w);
+    if do_subpixel         add_build_string("__SUBPIXEL :: true;\n", w);
+    if do_windows_console  add_build_string("__WINDOWS_CONSOLE :: true;\n", w);
 
     add_build_file("src/main.jai", w);
 
