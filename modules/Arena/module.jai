@@ -23,7 +23,7 @@ arena_allocator :: (arena: *Arena) -> Allocator {
     return { arena_allocator_proc, arena };
 }
 
-// TODO(jt): @Cleanup allocator_proc doesn't care about alignment (as of 0.2.0.029), but once it
+// The allocator_proc doesn't care about alignment (as of 0.2.0.030, 2 July 2026), but once it
 // does, we are ready for it. For now, arena_push defaults alignment to DEFAULT_ALIGNMENT, if it is
 // not specified.
 arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s64, old_memory: *void, allocator_data: *void) -> *void {
@@ -299,6 +299,8 @@ arena_push :: (arena: *Arena, _size: s64, alignment: s64 = DEFAULT_ALIGNMENT) ->
 
         arena.committed += commit_size;
     }
+
+    // nocheckin this_allocation_is_not_a_leak(pointer);
 
     return pointer;
 }
