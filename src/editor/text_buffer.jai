@@ -702,7 +702,7 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
     }
 
     line_gb_index := ifx __line_gb_index == -1 then text_buffer_get_gap_buffer_index_for_line(buffer, cursors.c0.y) else __line_gb_index;
-    line_view     := gap_buffer_make_view(buffer.gb, line_gb_index, buffer.line_bytes[cursors.c0.y]);
+    line_view     := gap_buffer_make_view(buffer.gb, line_gb_index, buffer.line_bytes[cursors.c0.y],, temp);
 
     newline_length := string_ends_with_newline(line_view, binary = buffer.binary_mode);
 
