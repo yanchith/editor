@@ -21,9 +21,44 @@ f64 :: float64;
 //     ... snip ...
 // }
 //
-// I mailed this in, but now we have to wait.
+// I mailed this in, but now we have to wait. We could theoretically make a replacement interface for MEMORY_DEBUGGER,
+// *but* that doesn't work with this_allocation_is_not_a_leak (locking of address_table_mutex crashes). See comment block below.
 DEBUG_MEMORY :: true;
 DEBUG_MEMORY_LEAK_REPORT_PERIOD: Apollo_Time : #run seconds_to_apollo(10);
+
+/*
+    DEBUG_MEMORY_PROCS :: struct {
+        check_alloc :: _check_alloc_proc;
+        check_free  :: inline (allocator: Allocator, memory: *void) {};
+
+        check_create_heap  :: inline (a: Allocator) {};
+        check_destroy_heap :: inline (a: Allocator) {};
+    };
+
+    #add_context inside_memory_debug_proc := false;
+
+    _check_alloc_proc :: inline (allocator: Allocator, memory: *void, size: s64) {
+        caps := cast(Allocator_Caps, allocator.proc(.CAPS, 0, 0, null, allocator.data));
+        if caps & (.HINT_I_AM_A_FAST_BUMP_ALLOCATOR | .HINT_I_AM_PER_FRAME_TEMPORARY_STORAGE)  {
+            return;
+        }
+
+        if context.inside_memory_debug_proc {
+            return;
+        }
+
+        context.inside_memory_debug_proc = true;
+        defer context.inside_memory_debug_proc = false;
+
+        address := cast(s64, memory);
+
+        log_error("Allocation at address % of size %.", formatInt(address, base = 16, minimum_digits = 2 * size_of(s64)), size);
+        if context.stack_trace {
+            log_error("Allocation stack trace:");
+            log_stack_trace();
+        }
+    };
+*/
 
 // SANITY enables additional costly asserts for operations.
 #if #exists(__SANITY) {
