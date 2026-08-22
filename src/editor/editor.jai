@@ -1468,7 +1468,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     total     := ts.high_water_mark;
                     allocated := ts.total_bytes_occupied;
 
-                    message := tprint("% % / %", temp_right_pad("Temp:", 40), format_size(allocated), format_size(total));
+                    message := tprint("% % / %", temp_right_pad("Temp", 40), format_size(allocated), format_size(total));
                     offset  := DVector2.{ 0, y };
                     _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
 
@@ -1497,7 +1497,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     committed := it.committed;
                     allocated := it.allocated;
 
-                    message := tprint("% % / % / %", temp_right_pad(tprint("%:", it.debug_label), 40), format_size(allocated), format_size(committed), format_size(total));
+                    message := tprint("% % / % / %", temp_right_pad(it.debug_label, 40), format_size(allocated), format_size(committed), format_size(total));
                     offset  := DVector2.{ 0, y };
                     _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
 
