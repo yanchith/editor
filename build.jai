@@ -92,7 +92,7 @@ build :: () {
         }
         case .OPTIMIZED_DEBUG; {
             set_optimization(*options, .OPTIMIZED_SMALL, preserve_debug_info = true);
-            options.stack_trace = false;
+            options.stack_trace = true;
             options.arithmetic_overflow_check = .FATAL;
         }
     }
