@@ -211,6 +211,8 @@ FONT_SIZE :: 15; // 15 for use, 20 for streaming
 Editor :: struct {
     perm_arena: *Arena;
 
+    arenas: [..] *Arena; // Used for memory debug view.
+
     font: Font;
     font_size: s32; // Scaled!
 
@@ -255,7 +257,6 @@ Editor :: struct {
     is_first_frame: bool;
 
     debug_view: Debug_View;
-    debug_arenas: [..] *Arena; // TODO(jt): @Memory This is for now using the default allocator, but we could switch to perm.
 
     Debug_View :: enum u8 {
         NONE;
@@ -619,8 +620,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     // Delay attaching debug procs to perm, because the list of arenas itself is going to be in perm.
     // So we add it to the list manually and attach procs after.
     editor.perm_arena = make_arena(editor, platform, .MEDIUM, "Perm", attach_debug_procs = false);
-    editor.debug_arenas.allocator = arena_allocator(editor.perm_arena);
-    array_add(*editor.debug_arenas, editor.perm_arena);
+    editor.arenas.allocator = arena_allocator(editor.perm_arena);
+    array_add(*editor.arenas, editor.perm_arena);
     editor.perm_arena.debug_procs = make_arena_debug_procs(editor);
 
     {
@@ -1446,20 +1447,24 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     }
                 }
 
-                bubble_sort(editor.debug_arenas, (a: *Arena) -> f32 {
-                    // Sort by allocated size.
-                    return -cast(f32, a.allocated);
+                compare_size     :: (a: *Arena) -> f32 { return -cast(f32, a.allocated); }
+                compare_fullness :: (a: *Arena) -> f32 { return -cast(f32, a.allocated) / cast(f32, a.reserve_size); }
 
-                    // Sort by fullness.
-                    // return cast(f32, a.allocated) / cast(f32, a.reserve_size);
-                });
+                if editor.debug_view == {
+                    case .MEMORY_ABSOLUTE;  bubble_sort(editor.arenas, compare_size);
+                    case .MEMORY_RELATIVE;  bubble_sort(editor.arenas, compare_fullness);
+                }
 
                 scissor := Rect.{ 0, 0, window_w, window_h };
                 color   := Vector4.{ 1, 1, 1, 1 };
                 {
-                    message := ifx editor.debug_view == .MEMORY_ABSOLUTE then "Debug view: Memory Absolute" else "Debug view: Memory Relative";
-                    offset  := DVector2.{ 0, 0 };
-                    _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
+                    message: string;
+                    if editor.debug_view == {
+                        case .MEMORY_ABSOLUTE;  message = "Debug view: Memory (absolute)";
+                        case .MEMORY_RELATIVE;  message = "Debug view: Memory (relative)";
+                    }
+
+                    _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, { 0, 0 }, scissor, color, .[], binary = false);
                 }
 
                 y := 2 * cell_h;
@@ -1473,7 +1478,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     ts := context.temporary_storage;
 
                     total     := ts.high_water_mark;
-                    allocated := ts.total_bytes_occupied;
+                    allocated := ts.total_bytes_occupied; // TODO(jt): This is not true. Figure out how to get current size of Temporary_Storage.
 
                     message := tprint("% % / %", temp_right_pad("Temp", 40), format_size(allocated), format_size(total));
                     offset  := DVector2.{ 0, y };
@@ -1499,7 +1504,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     y += cell_h;
                 }
 
-                for editor.debug_arenas {
+                for editor.arenas {
                     total     := it.reserve_size;
                     committed := it.committed;
                     allocated := it.allocated;
@@ -5407,11 +5412,11 @@ make_arena_debug_procs :: (editor: *Editor) -> Arena_Debug_Procs {
     debug_procs: Arena_Debug_Procs;
     debug_procs.on_init = (arena: *Arena, userdata: *void) {
         ed := cast(*Editor, userdata);
-        array_add(*ed.debug_arenas, arena);
+        array_add(*ed.arenas, arena);
     };
     debug_procs.on_deinit = (arena: *Arena, userdata: *void) {
         ed := cast(*Editor, userdata);
-        array_unordered_remove_by_value(*ed.debug_arenas, arena);
+        array_unordered_remove_by_value(*ed.arenas, arena);
     }
     debug_procs.userdata = editor;
 
