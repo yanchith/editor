@@ -616,7 +616,12 @@ Modal_Interaction_Cancel_Proc          :: #type (editor: *Editor, platform: Plat
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
     ProfileZone("Editor.init");
 
-    editor.perm_arena = make_arena(editor, platform, .MEDIUM, "Perm");
+    // Delay attaching debug procs to perm, because the list of arenas itself is going to be in perm.
+    // So we add it to the list manually and attach procs after.
+    editor.perm_arena = make_arena(editor, platform, .MEDIUM, "Perm", attach_debug_procs = false);
+    editor.debug_arenas.allocator = arena_allocator(editor.perm_arena);
+    array_add(*editor.debug_arenas, editor.perm_arena);
+    editor.perm_arena.debug_procs = make_arena_debug_procs(editor);
 
     {
         ProfileZone(":InitFont");
@@ -5378,7 +5383,7 @@ Arena_Size :: enum s64 {
     LARGE  ::   4 << 30;
 }
 
-make_arena :: (editor: *Editor, platform: Platform, size: Arena_Size, label: string) -> *Arena {
+make_arena :: (editor: *Editor, platform: Platform, size: Arena_Size, label: string, attach_debug_procs := true) -> *Arena {
     procs: Arena_Procs;
     procs.page_size    = platform.page_size;
     procs.mem_reserve  = platform.mem_reserve;
@@ -5386,6 +5391,17 @@ make_arena :: (editor: *Editor, platform: Platform, size: Arena_Size, label: str
     procs.mem_commit   = platform.mem_commit;
     procs.mem_decommit = platform.mem_decommit;
 
+    debug_procs: Arena_Debug_Procs;
+    if attach_debug_procs {
+        debug_procs = make_arena_debug_procs(editor);
+    }
+
+    arena := arena_new(procs, reserve_size = cast(s64, size), debug_procs = debug_procs, debug_label = label);
+
+    return arena;
+}
+
+make_arena_debug_procs :: (editor: *Editor) -> Arena_Debug_Procs {
     debug_procs: Arena_Debug_Procs;
     debug_procs.on_init = (arena: *Arena, userdata: *void) {
         ed := cast(*Editor, userdata);
@@ -5397,9 +5413,7 @@ make_arena :: (editor: *Editor, platform: Platform, size: Arena_Size, label: str
     }
     debug_procs.userdata = editor;
 
-    arena := arena_new(procs, reserve_size = cast(s64, size), debug_procs = debug_procs, debug_label = label);
-
-    return arena;
+    return debug_procs;
 }
 
 toggle_debug_view :: (debug_view: *Editor.Debug_View, value: Editor.Debug_View) {

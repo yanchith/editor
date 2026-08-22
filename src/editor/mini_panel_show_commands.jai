@@ -131,7 +131,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         }
 
         for actions_to_search_names {
-            found, found_indices := line_search(it, search_parts, smartcase);
+            found, found_indices := line_search(it, search_parts, smartcase,, temp);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 

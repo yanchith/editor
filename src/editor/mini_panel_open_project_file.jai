@@ -92,7 +92,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
         file_list := platform.list_directory(working_directory, recursive = true, files = true, directories = false,, temp);
         for file_list {
-            found, found_indices := line_search(it.absolute_path, filename_parts, smartcase);
+            found, found_indices := line_search(it.absolute_path, filename_parts, smartcase,, temp);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 

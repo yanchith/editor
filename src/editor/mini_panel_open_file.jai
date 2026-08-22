@@ -137,7 +137,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             listed_file_path := it.absolute_path;
             listed_filename := String.path_filename(it.absolute_path);
 
-            found, found_indices := line_search(listed_filename, filename_parts, smartcase);
+            found, found_indices := line_search(listed_filename, filename_parts, smartcase,, temp);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
