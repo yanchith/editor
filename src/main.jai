@@ -177,6 +177,8 @@ main :: () {
     time_of_program_start    := current_time_monotonic();
     time_of_last_leak_report := time_of_program_start;
 
+    calendar_time_of_program_start := to_calendar(current_time_consensus());
+
     profiler_init();
     profiler_start_frame("init");
 
@@ -221,27 +223,7 @@ main :: () {
 
     {
         File.make_directory_if_it_does_not_exist("./logs");
-
-        t: Calendar_Time;
-        #if OS == .WINDOWS {
-            // TODO(jt): @Cleanup @Hack @LibraryBug We'd like to use to_calendar(time_of_program_start),
-            // but there seems to be a bug in it, so we get the system time from Windows instead.
-
-            st: SYSTEMTIME;
-            GetSystemTime(*st);
-
-            t.year = st.wYear;
-            t.month_starting_at_0        = cast,trunc(s8, max(0, st.wMonth - 1)); // Starts at 1 in SYSTEMTIME.
-            t.day_of_month_starting_at_0 = cast,trunc(s8, max(0, st.wDay - 1));   // Starts at 1 in SYSTEMTIME.
-            t.day_of_week_starting_at_0  = cast,trunc(s8, st.wDayOfWeek);         // Starts at 0 in SYSTEMTIME.
-            t.hour   = cast,trunc(s8) st.wHour;   // Starts at 0.
-            t.minute = cast,trunc(s8) st.wMinute; // Starts at 0.
-            t.second = cast,trunc(s8) st.wSecond; // Starts at 0.
-            t.millisecond = cast,trunc(s16) st.wMilliseconds; // Starts at 0.
-        } else {
-            // TODO(jt): @Audit Verify to_calendar on macOS.
-            t = to_calendar(time_of_program_start);
-        }
+        t := calendar_time_of_program_start;
 
         log_filename := tprint(
             "./logs/editor_%%%_%%%%.log",
