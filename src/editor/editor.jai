@@ -111,7 +111,7 @@ f32 :: float32;
 f64 :: float64;
 
 #import "Basic";
-#import "Arena"(ENABLE_DEBUG = true, ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY, THIS_ALLOCATION_IS_NOT_A_LEAK = this_allocation_is_not_a_leak);
+#import "Arena"(ENABLE_DEBUG = true, ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY);
 #import "Bucket_Array";
 #import "Hash_Table";
 #import "Profiler";
