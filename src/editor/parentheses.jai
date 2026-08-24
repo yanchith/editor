@@ -251,6 +251,7 @@ find_indentation_level_for_location :: (document: Document, loc: Text_Location) 
 
 #scope_file
 
+// TODO(jt): @Cleanup This could be unified with Font_Text_Range in font.jai.
 contains :: (scope: Document.Parenthesized_Scope, loc: Text_Location, start_x_inclusive: bool, end_x_inclusive: bool, start_y_inclusive: bool, end_y_inclusive: bool) -> bool {
     test_top    := start_y_inclusive && loc.y >= scope.loc0.y || loc.y > scope.loc0.y;
     test_bottom := end_y_inclusive   && loc.y <= scope.loc1.y || loc.y < scope.loc1.y;

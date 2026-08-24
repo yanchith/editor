@@ -1,5 +1,6 @@
 // TODO(jt): @Bug @Incomplete respect READONLY.
 // TODO(jt): @Bug In the X/Y text Y counts every match, even ones above the cursor when we started the search.
+// TODO(jt): @Bug Replace doesn't work if second input is empty string.
 
 // TODO(jt): Preserve capitalization when replacing - our match text can be all lowercase, which
 // will match all sorts of text, but we want to preserve at least CamelCase, UPPER_CASE, etc.

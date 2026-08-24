@@ -276,30 +276,58 @@ Font_Variant :: enum u32 {
     BOLD_ITALIC :: 3;
 }
 
-Font_Style_Range :: struct {
+Font_Text_Range :: struct {
     x0: s64;
     y0: s64;
     x1: s64; // Inclusive! The range would not exist, if it would be empty!
     y1: s64; // Inclusive! The range would not exist, if it would be empty!
+}
+
+Font_Style_Range :: struct {
+    using range: Font_Text_Range;
     color: Vector4;
     variant: Font_Variant;
 }
 
-font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..] Render_Command, atlas_update_regions: *[..] IRect, offset: DVector2, scissor_rect: Rect, default_color: Vector4, style_ranges: [] Font_Style_Range, binary: bool) {
+Font_Invert_Range :: struct {
+    using range: Font_Text_Range;
+}
+
+font_layout_and_draw_text :: (font: *Font, text: string,
+                              render_commands: *[..] Render_Command, atlas_update_regions: *[..] IRect,
+                              offset: DVector2, scissor_rect: Rect,
+                              default_color: Vector4, default_variant: Font_Variant,
+                              style_ranges: [] Font_Style_Range, invert_ranges: [] Font_Invert_Range,
+                              binary: bool)
+{
     if binary {
-        _font_layout_and_draw_text(font, text, render_commands, atlas_update_regions, offset, scissor_rect, default_color, style_ranges, true);
+        _font_layout_and_draw_text(font, text,
+                                   render_commands, atlas_update_regions,
+                                   offset, scissor_rect,
+                                   default_color, default_variant,
+                                   style_ranges, invert_ranges,
+                                   true);
     } else {
-        _font_layout_and_draw_text(font, text, render_commands, atlas_update_regions, offset, scissor_rect, default_color, style_ranges, false);
+        _font_layout_and_draw_text(font, text,
+                                   render_commands, atlas_update_regions,
+                                   offset, scissor_rect,
+                                   default_color, default_variant,
+                                   style_ranges, invert_ranges,
+                                   false);
     }
 }
 
-_font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..] Render_Command, atlas_update_regions: *[..] IRect, offset: DVector2, scissor_rect: Rect, default_color: Vector4, style_ranges: [] Font_Style_Range, $binary: bool) {
+_font_layout_and_draw_text :: (font: *Font, text: string,
+                               render_commands: *[..] Render_Command, atlas_update_regions: *[..] IRect,
+                               offset: DVector2, scissor_rect: Rect,
+                               default_color: Vector4, default_variant: Font_Variant,
+                               style_ranges: [] Font_Style_Range, invert_ranges: [] Font_Invert_Range,
+                               $binary: bool)
+{
     ProfileZone("font_layout_and_draw_text");
 
-    style_range_index: s64 = -1;
-    if style_ranges.count {
-        style_range_index = 0;
-    }
+    style_range_index: s64 = 0;
+    invert_range_index: s64 = 0;
 
     // Cursors are in 26:6 pixels (64-bit, because on Unix, FT_Pos is 64-bit even if they only use 32 bits).
     cursor_x: s64 = 0;
@@ -330,43 +358,22 @@ _font_layout_and_draw_text :: (font: *Font, text: string, render_commands: *[..]
         }
 
         glyph_color   := default_color;
-        glyph_variant := Font_Variant.REGULAR;
-        if style_range_index != -1 {
-            // Seek towards next token, if we are past the current one.
-            past_vertically   := current_line_index > style_ranges[style_range_index].y1;
-            past_horizontally := current_line_index == style_ranges[style_range_index].y1 && current_char_index > style_ranges[style_range_index].x1;
-            while style_range_index != -1 && (past_vertically || past_horizontally) {
-                style_range_index += 1;
-                if style_range_index >= style_ranges.count {
-                    style_range_index = -1;
-                } else {
-                    past_vertically   = current_line_index > style_ranges[style_range_index].y1;
-                    past_horizontally = current_line_index == style_ranges[style_range_index].y1 && current_char_index > style_ranges[style_range_index].x1;
-                }
-            }
+        glyph_variant := default_variant;;
 
-            if style_range_index != -1 {
-                style_range := *style_ranges[style_range_index];
-                if current_line_index > style_range.y0 && current_line_index < style_range.y1 {
-                    glyph_color   = style_range.color;
-                    glyph_variant = style_range.variant;
-                } else if current_line_index == style_range.y0 && current_line_index == style_range.y1 {
-                    if current_char_index >= style_range.x0 && current_char_index <= style_range.x1 {
-                        glyph_color   = style_range.color;
-                        glyph_variant = style_range.variant;
-                    }
-                } else if current_line_index == style_range.y0 {
-                    if current_char_index >= style_range.x0 {
-                        glyph_color   = style_range.color;
-                        glyph_variant = style_range.variant;
-                    }
-                } else if current_line_index == style_range.y1 {
-                    if current_char_index <= style_range.x1 {
-                        glyph_color   = style_range.color;
-                        glyph_variant = style_range.variant;
-                    }
-                }
-            }
+        style_range := maybe_advance_range_index_and_get_containing_range(*style_range_index, style_ranges, current_line_index, current_char_index);
+        if style_range {
+            glyph_color  = style_range.color;
+            glyph_variant = style_range.variant;
+        }
+
+        invert_range := maybe_advance_range_index_and_get_containing_range(*invert_range_index, invert_ranges, current_line_index, current_char_index);
+        if invert_range {
+            glyph_color = {
+                1 - glyph_color.x,
+                1 - glyph_color.y,
+                1 - glyph_color.z,
+                glyph_color.w,
+            };
         }
 
         // @Hack In this routine, we extract metrics based on the weight/style of the character. In
@@ -779,6 +786,49 @@ copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest
         }
     }
 }
+
+maybe_advance_range_index_and_get_containing_range :: (range_index: *s64, ranges: [] $T/Font_Text_Range, line_index: s64, char_index: s64) -> *T{
+    result: *T;
+
+    if range_index.* < ranges.count {
+        // Seek towards next range, if we are past the current one.
+        range := *ranges[range_index.*];
+        past_vertically   := line_index > range.y1;
+        past_horizontally := line_index == range.y1 && char_index > range.x1;
+
+        while range_index.* < ranges.count && (past_vertically || past_horizontally) {
+            range_index.* += 1;
+
+            if range_index.* < ranges.count {
+                range = *ranges[range_index.*];
+                past_vertically   = line_index > range.y1;
+                past_horizontally = line_index == range.y1 && char_index > range.x1;
+            }
+        }
+
+        if range_index.* < ranges.count {
+            range = *ranges[range_index.*]; // Not strictly necessary. Should still be valid from advancing.
+            if line_index > range.y0 && line_index < range.y1 {
+                result = range;
+            } else if line_index == range.y0 && line_index == range.y1 {
+                if char_index >= range.x0 && char_index <= range.x1 {
+                    result = range;
+                }
+            } else if line_index == range.y0 {
+                if char_index >= range.x0 {
+                    result = range;
+                }
+            } else if line_index == range.y1 {
+                if char_index <= range.x1 {
+                    result = range;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 
 #if SUBPIXEL {
     FT_LOAD_TARGET :: FT_Load_Target.LCD;

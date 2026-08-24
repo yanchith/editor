@@ -40,6 +40,11 @@ Theme :: struct {
     mini_panel_line_color: Vector4;
     mini_panel_item_text_color: Vector4;
     mini_panel_item_warning_text_color: Vector4;
+
+    invert_color_under_selection: bool;
+    // TODO(jt): invert_color_under_highlight: bool;
+    invert_color_under_selected_mini_panel_line: bool;
+    invert_color_under_selected_listing_line: bool;
 }
 
 abulafia_theme :: () -> Theme {
@@ -219,16 +224,14 @@ stb_theme :: () -> Theme {
     foreground_color := Vector4.{ 0, 0, 0, 1 };
     background_color := Vector4.{ 1, 1, 1, 1 };
 
-    // TODO(jt): @Incomplete need to invert color under cursor/selection for this to make sense.
-
     t: Theme;
     t.cursor_color               = foreground_color;
     t.cursor_color_active        = foreground_color;
     t.cursor_color_readonly      = unpack_srgba(0xa0a0a0ff);
     t.line_color                 = { 0, 0, 0, 0 };
     t.selection_color            = foreground_color;
-    t.highlight_color            = foreground_color;
-    t.highlight_color_active     = foreground_color;
+    t.highlight_color            = { 0, 0, 0, 0.1 };
+    t.highlight_color_active     = { 0, 0, 0, 0.2 };
     t.matching_parenthesis_color = { 0, 0, 0, 0 };
     t.modeline_color             = unpack_srgba(0xa0a0a0ff);
     t.modeline_color_active      = unpack_srgba(0xa0a0a0ff);
@@ -252,6 +255,11 @@ stb_theme :: () -> Theme {
     t.mini_panel_line_color      = foreground_color;
     t.mini_panel_item_text_color = foreground_color;
     t.mini_panel_item_warning_text_color = foreground_color;
+
+    t.invert_color_under_selection = true;
+    // t.invert_color_under_highlight = true;
+    t.invert_color_under_selected_mini_panel_line = true;
+    t.invert_color_under_selected_listing_line = true;
 
     return t;
 }

@@ -112,6 +112,7 @@ String  :: #import "String";
 Math    :: #import "Math";
 Unicode :: #import "Unicode";
 
+S64_MAX        :: Math.S64_MAX;
 Vector2        :: Math.Vector2;
 Vector3        :: Math.Vector3;
 Vector4        :: Math.Vector4;
@@ -1287,8 +1288,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             mini_panel_y := max(window_h - mini_panel_h, 0);
             draw_rect(*render_commands, mini_panel_x0, mini_panel_y, mini_panel_x1, window_h, editor.theme.background_color);
 
+            invert_ranges: [..] Font_Invert_Range;
+            invert_ranges.allocator = temp;
+
             if mini_panel.item_index == -1 {
                 draw_rect(*render_commands, mini_panel_x0, mini_panel_y, mini_panel_x1, mini_panel_y + cell_h, editor.theme.mini_panel_line_color);
+                if editor.theme.invert_color_under_selected_mini_panel_line {
+                    invert_range := array_add(*invert_ranges);
+                    invert_range.x0 = 0;
+                    invert_range.x1 = S64_MAX; // @Hack We want to invert the whole line anyway.
+                }
             }
 
             action_text := mini_panel.procs.get_action_text(editor, platform, input);
@@ -1308,10 +1317,27 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                       mini_panel_x0 + cast(f32, cursor0_x) + cell_w, mini_panel_y + cell_h,
                       editor.theme.cursor_color);
 
+            if editor.theme.invert_color_under_selection && mini_panel.item_index != -1 {
+                c0 := mini_panel.cursors.c0;
+                c1 := mini_panel.cursors.c1;
+                text_location_sort(*c0, *c1);
+
+                action_text_length := count_utf8_chars(action_text);
+
+                invert_range := array_add(*invert_ranges);
+                invert_range.x0 = action_text_length + c0.x;
+                invert_range.x1 = action_text_length + c1.x;
+            }
+
             main_line := tprint("%%", action_text, line_view);
 
             scissor := Rect.{ mini_panel_x0, mini_panel_y, mini_panel_x1, window_h };
-            _font_layout_and_draw_text(*editor.font, main_line, *render_commands, *atlas_update_regions, { mini_panel_x0, mini_panel_y }, scissor, editor.theme.text_color, .[], binary = false);
+            _font_layout_and_draw_text(*editor.font, main_line,
+                                       *render_commands, *atlas_update_regions,
+                                       { mini_panel_x0, mini_panel_y }, scissor,
+                                       editor.theme.text_color, editor.theme.text_variant,
+                                       .[], invert_ranges,
+                                       binary = false);
 
             index0 := max(mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
             index1 := min(index0 + MINI_PANEL_LINES, mini_panel.items.count - 1);
@@ -1319,6 +1345,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             it_index := 0;
             for index0..index1 {
                 item := *mini_panel.items[it];
+
+                invert_ranges: [..] Font_Invert_Range;
+                invert_ranges.allocator = temp;
 
                 if it == mini_panel.item_index {
                     y0 := mini_panel_y + (it_index + 1) * cell_h;
@@ -1332,6 +1361,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     x1 := font_compute_position_on_line(editor.font, item.text, item.highlight_x1, binary = cast(bool, item.flags & .BINARY));
 
                     draw_rect(*render_commands, mini_panel_x0 + cast(f32, x0), y0, mini_panel_x0 + cast(f32, x1), y1, editor.theme.highlight_color);
+
+                    if editor.theme.invert_color_under_selected_mini_panel_line {
+                        invert_range := array_add(*invert_ranges);
+                        invert_range.x0 = 0;
+                        invert_range.x1 = S64_MAX; // @Hack We want to invert the whole line anyway.
+                    }
                 }
 
                 offset_y: f64 = mini_panel_y + (it_index + 1) * cell_h;
@@ -1340,7 +1375,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     color = editor.theme.mini_panel_item_warning_text_color;
                 }
 
-                font_layout_and_draw_text(*editor.font, item.text, *render_commands, *atlas_update_regions, { mini_panel_x0, offset_y }, scissor, color, .[], binary = cast(bool, item.flags & .BINARY));
+                font_layout_and_draw_text(*editor.font, item.text,
+                                          *render_commands, *atlas_update_regions,
+                                          { mini_panel_x0, offset_y }, scissor,
+                                          color, .REGULAR,
+                                          .[], invert_ranges,
+                                          binary = cast(bool, item.flags & .BINARY));
 
                 it_index += 1;
             }
@@ -1351,6 +1391,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             modal_interaction_line_x1 := window_w - GUTTER_PIXELS;
             modal_interaction_line_y := window_h - cell_h;
             draw_rect(*render_commands, modal_interaction_line_x0, modal_interaction_line_y, modal_interaction_line_x1, window_h, editor.theme.background_color);
+
+            invert_ranges: [..] Font_Invert_Range;
+            invert_ranges.allocator = temp;
 
             action_text := modal_interaction.procs.get_action_text(editor, platform, input);
 
@@ -1369,12 +1412,29 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                       modal_interaction_line_x0 + cast(f32, cursor0_x) + cell_w, modal_interaction_line_y + cell_h,
                       editor.theme.cursor_color);
 
+            if editor.theme.invert_color_under_selection {
+                c0 := modal_interaction.cursors.c0;
+                c1 := modal_interaction.cursors.c1;
+                text_location_sort(*c0, *c1);
+
+                action_text_length := count_utf8_chars(action_text);
+
+                invert_range := array_add(*invert_ranges);
+                invert_range.x0 = action_text_length + c0.x;
+                invert_range.x1 = action_text_length + c1.x;
+            }
+
             main_line := tprint("%%", action_text, line_view);
 
             offset  := DVector2.{ modal_interaction_line_x0, modal_interaction_line_y };
             scissor := Rect.{ modal_interaction_line_x0, modal_interaction_line_y, modal_interaction_line_x1, window_h };
 
-            _font_layout_and_draw_text(*editor.font, main_line, *render_commands, *atlas_update_regions, offset, scissor, editor.theme.text_color, .[], binary = false);
+            _font_layout_and_draw_text(*editor.font, main_line,
+                                       *render_commands, *atlas_update_regions,
+                                       offset, scissor,
+                                       editor.theme.text_color, .REGULAR,
+                                       .[], invert_ranges,
+                                       binary = false);
         } else {
             message_line_y := window_h - cell_h;
             message_line_x0 := GUTTER_PIXELS;
@@ -1387,7 +1447,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 offset  := DVector2.{ message_line_x0, message_line_y };
                 scissor := Rect.{ message_line_x0, message_line_y, message_line_x1, window_h };
-                _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, editor.theme.text_color, .[], binary = false);
+                _font_layout_and_draw_text(*editor.font, message,
+                                           *render_commands, *atlas_update_regions,
+                                           offset, scissor,
+                                           editor.theme.text_color, .REGULAR,
+                                           .[], .[],
+                                           binary = false);
             }
         }
 
@@ -1411,7 +1476,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 offset  := DVector2.{ 0, 0 };
                 scissor := Rect.{ 0, 0, window_w, window_h };
                 color   := Vector4.{ 1, 1, 1, 1 };
-                _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
+                _font_layout_and_draw_text(*editor.font, message,
+                                           *render_commands, *atlas_update_regions,
+                                           offset, scissor,
+                                           color, .REGULAR,
+                                           .[], .[],
+                                           binary = false);
 
                 atlas_w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
                 atlas_h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
@@ -1458,7 +1528,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .MEMORY_RELATIVE;  message = "Debug view: Memory (relative)";
                     }
 
-                    _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, { 0, 0 }, scissor, color, .[], binary = false);
+                    _font_layout_and_draw_text(*editor.font, message,
+                                               *render_commands, *atlas_update_regions,
+                                               { 0, 0 }, scissor,
+                                               color, .REGULAR,
+                                               .[], .[],
+                                               binary = false);
                 }
 
                 y := 2 * cell_h;
@@ -1476,7 +1551,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     message := tprint("% % / %", temp_right_pad("Temp", 40), format_size(allocated), format_size(total));
                     offset  := DVector2.{ 0, y };
-                    _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
+                    _font_layout_and_draw_text(*editor.font, message,
+                                               *render_commands, *atlas_update_regions,
+                                               offset, scissor,
+                                               color, .REGULAR,
+                                               .[], .[],
+                                               binary = false);
 
                     arena_max_size := ifx editor.debug_view == .MEMORY_ABSOLUTE then cast(f32, Arena_Size.LARGE) else cast(f32, total);
 
@@ -1505,7 +1585,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     message := tprint("% % / % / %", temp_right_pad(it.debug_label, 40), format_size(allocated), format_size(committed), format_size(total));
                     offset  := DVector2.{ 0, y };
-                    _font_layout_and_draw_text(*editor.font, message, *render_commands, *atlas_update_regions, offset, scissor, color, .[], binary = false);
+                    _font_layout_and_draw_text(*editor.font, message,
+                                               *render_commands, *atlas_update_regions,
+                                               offset, scissor,
+                                               color, .REGULAR,
+                                               .[], .[],
+                                               binary = false);
 
                     arena_max_size := ifx editor.debug_view == .MEMORY_ABSOLUTE then cast(f32, Arena_Size.LARGE) else cast(f32, total);
 
@@ -4305,8 +4390,27 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                     }
                 }
 
+                invert_ranges: [..] Font_Invert_Range;
+                invert_ranges.allocator = temp;
+                if editor.theme.invert_color_under_selection {
+                    c0 := view.cursors.c0;
+                    c1 := view.cursors.c1;
+                    text_location_sort(*c0, *c1);
+
+                    invert_range := array_add(*invert_ranges);
+                    invert_range.x0 = c0.x;
+                    invert_range.y0 = c0.y - viewport_line0;
+                    invert_range.x1 = c1.x;
+                    invert_range.y1 = c1.y - viewport_line0;
+                }
+
                 scissor_rect := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
-                font_layout_and_draw_text(*editor.font, cast(string, viewport_view), render_commands, atlas_update_regions, offset, scissor_rect, editor.theme.text_color, style_ranges, binary = document.buffer.binary_mode);
+                font_layout_and_draw_text(*editor.font, cast(string, viewport_view),
+                                          render_commands, atlas_update_regions,
+                                          offset, scissor_rect,
+                                          editor.theme.text_color, .REGULAR,
+                                          style_ranges, invert_ranges,
+                                          binary = document.buffer.binary_mode);
             }
 
             //
@@ -4329,7 +4433,12 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 percent_string := temp_right_pad(tprint("%\%", percent), 4);
 
                 s := tprint("    % % L% C%", temp_right_pad(document_name, 15), percent_string, cursor.y + 1, cursor.x + 1);
-                _font_layout_and_draw_text(*editor.font, s, render_commands, atlas_update_regions, modeline_offset, modeline_rect, editor.theme.system_text_color, .[], binary = false);
+                _font_layout_and_draw_text(*editor.font, s,
+                                           render_commands, atlas_update_regions,
+                                           modeline_offset, modeline_rect,
+                                           editor.theme.system_text_color, .REGULAR,
+                                           .[], .[],
+                                           binary = false);
             }
         }
 
@@ -4348,8 +4457,17 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 line_y_screen := panel_content_y + cast(f32, line_y_world - panel.scroll.value.y);
                 line_rect_screen := rect_from_point_and_size(panel_content_x, line_y_screen, panel_content_w, cell_h);
 
+                invert_ranges: [..] Font_Invert_Range;
+                invert_ranges.allocator = temp;
+
                 if it == view.item_index {
                     draw_rect(render_commands, line_rect_screen, editor.theme.selection_color);
+
+                    if editor.theme.invert_color_under_selected_listing_line {
+                        invert_range := array_add(*invert_ranges);
+                        invert_range.x0 = 0;
+                        invert_range.x1 = S64_MAX; // @Hack We want to invert the whole line anyway.
+                    }
                 }
 
                 // Because we start the layout just before the current viewport, the rendering scroll Y offset
@@ -4360,12 +4478,19 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 scissor_rect := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
 
-                color := editor.theme.listing_item_text_color;
+                color   := editor.theme.listing_item_text_color;
+                variant := editor.theme.listing_item_text_variant;
                 if table_find(*listing.marked_items, it) {
-                    color = editor.theme.listing_item_text_color_marked;
+                    color   = editor.theme.listing_item_text_color_marked;
+                    variant = editor.theme.listing_item_text_variant_marked;
                 }
 
-                _font_layout_and_draw_text(*editor.font, item.text, render_commands, atlas_update_regions, offset, scissor_rect, color, .[], binary = false);
+                _font_layout_and_draw_text(*editor.font, item.text,
+                                           render_commands, atlas_update_regions,
+                                           offset, scissor_rect,
+                                           color, variant,
+                                           .[], invert_ranges,
+                                           binary = false);
             }
 
             //
@@ -4388,7 +4513,12 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 percent_string := temp_right_pad(tprint("%\%", percent), 4);
 
                 s := tprint("    % % L%", temp_right_pad(listing_name, 15), percent_string, item_index + 1);
-                _font_layout_and_draw_text(*editor.font, s, render_commands, atlas_update_regions, modeline_offset, modeline_rect, editor.theme.system_text_color, .[], binary = false);
+                _font_layout_and_draw_text(*editor.font, s,
+                                           render_commands, atlas_update_regions,
+                                           modeline_offset, modeline_rect,
+                                           editor.theme.system_text_color, .REGULAR,
+                                           .[], .[],
+                                           binary = false);
             }
         }
     }
