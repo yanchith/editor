@@ -3,14 +3,16 @@ Texture_ID :: #type,isa u32;
 Render_Command :: struct {
     type: Render_Command_Type;
     rect: Rect;
-    texture_rect: Rect;              // Unused for SET_SCISSOR
-    texture_id: Texture_ID;          // Unused for SET_SCISSOR
+    texture_rect: Rect;              // Unused for SET_SCISSOR, DRAW_COLOR_RECT
+    texture_id: Texture_ID;          // Unused for SET_SCISSOR, DRAW_COLOR_RECT
     color := Vector4.{ 0, 0, 0, 1 }; // Unused for SET_SCISSOR
 }
 
 Render_Command_Type :: enum u32 {
-    DRAW_RECT   :: 0;
-    SET_SCISSOR :: 1;
+    DRAW_COLOR_RECT         :: 0;
+    DRAW_TEXT_RECT          :: 1;
+    DRAW_TEXT_RECT_SUBPIXEL :: 2;
+    SET_SCISSOR             :: 3;
 }
 
 Texture_Filter :: enum {

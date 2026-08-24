@@ -5548,7 +5548,11 @@ draw_rect :: (render_commands: *[..] Render_Command, x0: f32, y0: f32, x1: f32, 
 
 draw_rect :: (render_commands: *[..] Render_Command, rect: Rect, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
     command := array_add(render_commands);
-    command.type = .DRAW_RECT;
+    if texture == TEXTURE_ID_NONE {
+        command.type = .DRAW_COLOR_RECT;
+    } else {
+        command.type = #ifx SUBPIXEL then .DRAW_TEXT_RECT_SUBPIXEL else .DRAW_TEXT_RECT;
+    }
     command.rect = rect;
     command.texture_rect = { 0, 0, 1, 1 };
     command.texture_id = texture;
