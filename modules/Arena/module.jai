@@ -12,8 +12,7 @@
     ENABLE_ASSERTS           := true,
     ENABLE_SANITY_ASSERTS    := false, // Implies ENABLE_ASSERTS
     DEFAULT_ALIGNMENT        := 16,
-    DEFAULT_OVERWRITE_MEMORY := false,
-    THIS_ALLOCATION_IS_NOT_A_LEAK: (memory: *void) = (memory: *void) #expand { /*No-op*/ }
+    DEFAULT_OVERWRITE_MEMORY := false
 );
 
 ARENA_DEFAULT_RESERVE_SIZE: s64 : 256 << 20;
@@ -53,8 +52,6 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
             }
 
             result := arena_push(arena, requested_size);
-            // nocheckin _check_alloc hasn't registered the allocation yet, so this crashes. Do our modified thing?
-            // THIS_ALLOCATION_IS_NOT_A_LEAK(result);
 
             if result && old_size {
                 memcpy(result, old_memory, old_size);
@@ -68,8 +65,6 @@ arena_allocator_proc :: (mode: Allocator_Mode, requested_size: s64, old_size: s6
             assert(arena != null);
 
             result := arena_push(arena, requested_size);
-            // nocheckin _check_alloc hasn't registered the allocation yet, so this crashes. Do our modified thing?
-            // THIS_ALLOCATION_IS_NOT_A_LEAK(result);
 
             return result;
         }

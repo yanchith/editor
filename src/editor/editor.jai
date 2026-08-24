@@ -3,16 +3,8 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
-- On macOS, we also get incorrect calendar time... hack around it and send report to Jon.
 - OPEN_FILE seems to navigate to the parent directory too often. Maybe for some reason the default item_index always points to ..?
 - *compilation* fails to capture output from bat files.
-- We are using quite a bit of memory. Let's make a leak-detecting build, as well as tune arena commit sizes.
-
-- /Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1896,5: Assertion failed!
-
-TODO(jt): Usage self-feedback:
-
-- finish the compilation buffer thing
 
 TODO(jt): Roadmap:
 
@@ -111,7 +103,7 @@ f32 :: float32;
 f64 :: float64;
 
 #import "Basic";
-#import "Arena"(ENABLE_DEBUG = true, ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY, THIS_ALLOCATION_IS_NOT_A_LEAK = this_allocation_is_not_a_leak);
+#import "Arena"(ENABLE_DEBUG = true, ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY);
 #import "Bucket_Array";
 #import "Hash_Table";
 #import "Profiler";
