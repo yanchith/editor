@@ -112,8 +112,8 @@ generate_bindings :: (args: [] string) -> bool {
     output_name: string;
     if os_target == {
         case .WINDOWS;  output_name = "windows.jai";
-        case .LINUX;    #through;
-        case .MACOS;    output_name = "unix.jai";
+        case .MACOS;    #through;
+        case .LINUX;    output_name = "unix.jai";
         case;           assert(false);
     }
 
