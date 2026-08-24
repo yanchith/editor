@@ -55,26 +55,8 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-
-    working_directory := editor.project_directory;
-    working_directory_is_project := true;
-
-    if working_directory.count == 0 {
-        panel := get_panel_for_active_view(editor);
-        sanity_assert(panel != null);
-        if !panel {
-            return;
-        }
-
-        if #complete panel.view.kind == {
-            case .DOCUMENT;  working_directory = panel.view._document.document.backing_directory_path;
-            case .LISTING;   working_directory = panel.view._listing.listing.backing_directory_path;
-        }
-
-        working_directory_is_project = false;
-    }
-
-    if working_directory.count == 0 {
+    success, working_directory, working_directory_is_project := get_working_directory_for_active_view(editor);
+    if !success {
         editor_log(editor, "Failed to get working directory to search");
         close_mini_panel(editor, platform, input);
         return;

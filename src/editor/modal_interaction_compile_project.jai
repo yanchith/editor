@@ -10,19 +10,16 @@ modal_interaction_compile_project_procs: Modal_Interaction_Procs = {
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage or Static */ string {
     action_text: string;
-    if editor.project_directory.count {
-        action_text = tprint("Compile project %: ", String.path_filename(editor.project_directory));
-    } else {
-        panel := get_panel_for_active_view(editor);
-        sanity_assert(panel != null);
-        if panel {
-            if #complete panel.view.kind == {
-                case .DOCUMENT;  action_text = tprint("Compile directory %: ", panel.view._document.document.backing_directory_path);
-                case .LISTING;   action_text = tprint("Compile directory %: ", panel.view._listing.listing.backing_directory_path);
-            }
+
+    success, working_directory, working_directory_is_project := get_working_directory_for_active_view(editor);
+    if success {
+        if working_directory_is_project {
+            action_text = tprint("Compile project %: ", working_directory);
         } else {
-            action_text = "Compile directory:";
+            action_text = tprint("Compile directory %: ", working_directory);
         }
+    } else {
+        action_text = "Compile directory: ";
     }
 
     return action_text;
@@ -43,25 +40,8 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    working_directory := editor.project_directory;
-    working_directory_is_project := true;
-
-    if working_directory.count == 0 {
-        panel := get_panel_for_active_view(editor);
-        sanity_assert(panel != null);
-        if !panel {
-            return;
-        }
-
-        if #complete panel.view.kind == {
-            case .DOCUMENT;  working_directory = panel.view._document.document.backing_directory_path;
-            case .LISTING;   working_directory = panel.view._listing.listing.backing_directory_path;
-        }
-
-        working_directory_is_project = false;
-    }
-
-    if working_directory.count == 0 {
+    success, working_directory, working_directory_is_project := get_working_directory_for_active_view(editor);
+    if !success {
         editor_log(editor, "Failed to get working directory for *compilation*");
         close_modal_interaction(editor, platform, input);
         return;

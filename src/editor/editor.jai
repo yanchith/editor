@@ -80,7 +80,7 @@ TODO(jt): Roadmap:
 - [ ] Flash text inserted by undo/redo
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode view
-- [ ] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
+- [~] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
 - [ ] Emacs-like undo? (If I find out I can't live without)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
@@ -227,7 +227,7 @@ Editor :: struct {
     documents: Bucket_Array(Document, 16);
     listings:  Bucket_Array(Listing, 16);
 
-    project_directory: string;
+    project_directories: [..] string;
 
     // This is a simple hardcoded version of the view tree. We can replace it with fully K-d tree
     // layout out in an array, once we do arbitrary panel splitting.
@@ -846,6 +846,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.documents.allocator     = arena_allocator(editor.perm_arena);
     editor.listings.allocator      = arena_allocator(editor.perm_arena);
     editor.panels.allocator        = arena_allocator(editor.perm_arena);
+
+    editor.project_directories.allocator = arena_allocator(editor.perm_arena);
 
     // Create *scratch* document
     scratch_document: *Document;
@@ -2310,8 +2312,8 @@ Listing_Action :: enum {
 
     REFRESH;
 
-    SET_PROJECT_DIRECTORY;
-    UNSET_PROJECT_DIRECTORY;
+    ADD_PROJECT_DIRECTORY;
+    REMOVE_PROJECT_DIRECTORY;
 }
 
 #scope_file
@@ -2731,7 +2733,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     }
 
                 } else {
-                    editor_log(editor, "No need to save unmodified file %", document.backing_file_path);
+                    editor_log(editor, "(Already saved)");
                 }
             }
         }
@@ -3525,14 +3527,25 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
 
         case .REFRESH;  refresh_directory_listing(platform, listing);
 
-        case .SET_PROJECT_DIRECTORY; {
-            // TODO(jt): @Leak Not a big problem, but still a leak.
-            editor.project_directory = arena_push_string(editor.perm_arena, listing.backing_directory_path);
-            editor_log(editor, "Project directory set to %", editor.project_directory);
+        case .ADD_PROJECT_DIRECTORY; {
+            // TODO(jt): Also guard against one project directory being a prefix of another.
+            if !array_find(editor.project_directories, listing.backing_directory_path) {
+                // TODO(jt): @Leak Not a big problem, but still a leak.
+                project_directory := arena_push_string(editor.perm_arena, listing.backing_directory_path);
+                array_add(*editor.project_directories, project_directory);
+
+                editor_log(editor, "Added project directory: %", project_directory);
+            } else {
+                editor_log(editor, "(Already a project directory)");
+            }
+
         }
-        case .UNSET_PROJECT_DIRECTORY; {
-            editor.project_directory = "";
-            editor_log(editor, "Project directory unset");
+        case .REMOVE_PROJECT_DIRECTORY; {
+            if array_unordered_remove_by_value(*editor.project_directories, listing.backing_directory_path) {
+                editor_log(editor, "Removed project_directory", listing.backing_directory_path);
+            } else {
+                editor_log(editor, "(Wasn't a project directory)");
+            }
         }
     }
 
@@ -4594,6 +4607,46 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
     return panel;
 }
 
+get_working_directory_for_active_view :: (editor: Editor) -> success: bool, directory: string, directory_is_project: bool {
+    // Search the current directory, unless it is part of a project, in which case search the (parent) project directory.
+
+    working_directory: string;
+    working_directory_is_project := false;
+
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
+        return false, "", false;
+    }
+
+    if #complete panel.view.kind == {
+        case .DOCUMENT;  working_directory = panel.view._document.document.backing_directory_path;
+        case .LISTING;   working_directory = panel.view._listing.listing.backing_directory_path;
+    }
+
+    if working_directory.count == 0 {
+        return false, "", false;
+    }
+
+    success, project_directory := get_project_directory_for_path(editor, working_directory);
+    if success {
+        working_directory = project_directory;
+        working_directory_is_project = true;
+    }
+
+    return true, working_directory, working_directory_is_project;
+}
+
+get_project_directory_for_path :: (editor: Editor, path: string) -> success: bool, string {
+    for editor.project_directories {
+        if String.starts_with(path, it) {
+            return true, it;
+        }
+    }
+
+    return false, "";
+}
+
 ensure_directory :: (editor: *Editor, platform: Platform, _path: string) {
     path := _path;
 
@@ -4682,6 +4735,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         case .FILE;         debug_label_name = String.path_filename(backing_file_path);
     }
 
+    // TODO(jt): @Leak The sprints below leak into perm.
     document_arena         := make_arena(editor, platform, .MEDIUM, sprint("Document for %", debug_label_name,, arena_allocator(editor.perm_arena)));
     buffer_arena           := make_arena(editor, platform, .LARGE,  sprint("Buffer for %", debug_label_name,, arena_allocator(editor.perm_arena)));
     buffer_edit_text_arena := make_arena(editor, platform, .LARGE,  sprint("Edits for %", debug_label_name,, arena_allocator(editor.perm_arena)));
@@ -4743,6 +4797,7 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
         case .DIRECTORY;  debug_label_name = String.path_filename(backing_directory_path);
     }
 
+    // TODO(jt): @Leak The sprint below leaks into perm.
     listing_arena := make_arena(editor, platform, .MEDIUM, sprint("Listing for %", debug_label_name,, arena_allocator(editor.perm_arena)));
 
     listing: Listing;
