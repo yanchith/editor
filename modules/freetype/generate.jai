@@ -1,5 +1,5 @@
 //
-// This is our adapted version of the generate.jai modules/freetype in the Secret Beta. We removed
+// This is our adapted version of the modules/freetype generate.jai in the Secret Beta. We removed
 // platforms we don't build for and simplified what remained. We also added ftlcdfil.h to the build,
 // so we can do subpixel rendering. You can run this at compile time (easier) or runtime (debugging).
 //
@@ -25,6 +25,7 @@
 
 BG :: #import "Bindings_Generator";
 
+// Change to false, if you need to debug this.
 AT_COMPILE_TIME :: true;
 
 FREETYPE_PATH :: "source/freetype-2.14.3";
