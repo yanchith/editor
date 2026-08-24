@@ -996,7 +996,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.is_first_frame = true;
 }
 
-update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_next_frame: bool {
+update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_this_frame: bool, wants_next_frame: bool {
     ProfileZone("Editor.update_and_render");
 
     dt: f64;
@@ -1467,9 +1467,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         draw_rect(*render_commands, 0, 0, window_w, window_h, { 0, 0, 0, 0.5 });
 
-
-
-
         if editor.debug_view == {
             case .ATLAS_TEXTURE; {
                 message := "Debug view: Font Atlas";
@@ -1646,7 +1643,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     editor.is_first_frame = false;
 
-    return wants_next_frame;
+    return wants_this_frame, wants_next_frame;
 }
 
 editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #caller_location) {
