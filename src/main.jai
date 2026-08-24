@@ -159,6 +159,12 @@ Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY, SUBPIXEL =
 Vector4 :: Editor.Vector4;
 IRect   :: Editor.IRect;
 
+// TODO(jt): Simp works everywhere, but is a little big. Do our own backends? Sounds like a lot of work, though:
+// High end: D3D11 (probably not 12?!), Metal and Vulkan
+// Mid end:
+//   - D3D11, Metal and OpenGL
+//   - Metal and Vulkan (for both Windows and Linux)
+// Low end: OpenGL (still slimmer than Simp)
 #load "renderer_simp.jai";
 
 // The slow frame is more than 16.66, because it includes waiting for V-sync. Maybe we can do
