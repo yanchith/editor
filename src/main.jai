@@ -91,6 +91,8 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
 }
 
 // SUBPIXEL enables subpixel font rendering.
+//
+// TODO(jt): @Cleanup Make this a runtime switch to reduce the number of build options.
 #if #exists(__SUBPIXEL) {
     SUBPIXEL :: __SUBPIXEL;
 } else {

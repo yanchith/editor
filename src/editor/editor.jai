@@ -56,7 +56,7 @@ TODO(jt): Roadmap:
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [ ] C-j join-next-line
-- [ ] Expand region
+- [ ] C-: Expand region
 - [ ] Multiple Cursors
 - [ ] MOVE_TO_START and MOVE_TO_END in mini panel.
 - [ ] Emacs-like kill ring
@@ -93,7 +93,7 @@ TODO(jt): Roadmap:
 TODO(jt): @Stream Interesting side-projects to do:
 
 - [ ] Visual profiler triggered by an F-key
-- [ ] Visual memory profiler triggered by an F-key
+- [X] Visual memory profiler triggered by an F-key
 
 */
 
@@ -3838,10 +3838,14 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
 
                 viewport_rect := drect_from_point_and_size(panel.scroll.target.x + GUTTER_PIXELS, panel.scroll.target.y, panel_content_w, panel_h);
                 scroll_to_rect: DRect;
-                if view.flags & .CLAMP_SCROLL_TO_START_OF_LINE {
+                if view.flags & .CLAMP_SCROLL_TO_START_OF_LINE || cursor0_line_length < panel_content_w {
                     scroll_to_rect = drect_from_point_and_size(GUTTER_PIXELS, cursor0_position.y, cell_w, cell_h);
                 } else if view.flags & .CLAMP_SCROLL_TO_END_OF_LINE {
                     scroll_to_rect = drect_from_point_and_size(GUTTER_PIXELS + cursor0_line_length, cursor0_position.y, cell_w, cell_h);
+                } else if cursor0_line_length < panel_content_w {
+                    // If text fits, clamp to start of line even if nobody asked us to, so that we automatically scroll back to x=0
+                    // after being scrolled horizontally. This happens e.g. in minipanel search.
+                    scroll_to_rect = drect_from_point_and_size(GUTTER_PIXELS, cursor0_position.y, cell_w, cell_h);
                 } else {
                     scroll_to_rect = drect_from_point_and_size(GUTTER_PIXELS + cursor0_position.x, cursor0_position.y, cell_w, cell_h);
                 }
