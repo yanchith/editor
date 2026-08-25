@@ -5,6 +5,7 @@ TODO(jt): Known serious bugs:
 - On macOS, launching the app creates a console.
 - OPEN_FILE seems to navigate to the parent directory too often. Maybe for some reason the default item_index always points to ..?
 - *compilation* fails to capture output from bat files.
+- GO_TO_CURRENT_ERROR always scrolls from the top of the file
 
 TODO(jt): Roadmap:
 
@@ -250,7 +251,11 @@ Editor :: struct {
     is_first_frame: bool;
 
     debug_view: Debug_View;
-    debug_frame_timeline: [64] Frame_Timeline_Entry;
+
+    DEBUG_FRAME_TIMELINE_COUNT: s64 : 128;
+    #assert is_power_of_two(DEBUG_FRAME_TIMELINE_COUNT); // So that we can use bit ops as modulo.
+
+    debug_frame_timeline: [DEBUG_FRAME_TIMELINE_COUNT] Frame_Timeline_Entry;
     debug_frame_timeline_index: s64;
 
     Debug_View :: enum u8 {
@@ -262,8 +267,9 @@ Editor :: struct {
     };
 
     Frame_Timeline_Entry :: struct {
-        time_start: Apollo_Time;
-        time_end:   Apollo_Time;
+        time_start:  Apollo_Time;
+        time_render: Apollo_Time;
+        time_end:    Apollo_Time;
     }
 }
 
@@ -1015,17 +1021,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         dt = USUAL_DELTA_TIME;
     }
 
-    {
-        entry := *editor.debug_frame_timeline[editor.debug_frame_timeline_index];
-        entry.time_start = input.time_of_last_frame_start;
-        entry.time_end   = input.time_of_last_frame_end;
-
-        editor.debug_frame_timeline_index += 1;
-
-        sanity_assert(is_power_of_two(editor.debug_frame_timeline.count));
-        mask := editor.debug_frame_timeline.count - 1;
-        editor.debug_frame_timeline_index &= mask;
-    }
+    // nocheckin
+    // editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_start = input.time;
+    editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_start = platform.get_current_time_monotonic() - input.time_of_program_start;
 
     // With wants_this_frame we control whether early out to save battery/fans. Currently, we early
     // out just before submitting stuff to the GPU, but we could take this further and early out
@@ -1632,7 +1630,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             case .FRAME_TIMELINE; {
-                message := "Debug view: Frame timeline";
+                message := "Debug view: Frame timeline (blue = update, red = render)";
                 scissor := Rect.{ 0, 0, window_w, window_h };
                 _font_layout_and_draw_text(*editor.font, message,
                                            *render_commands, *atlas_update_regions,
@@ -1642,20 +1640,26 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                            binary = false);
 
 
+                TIMELINE_WINDOW_SECONDS: f64 : 2.0;
                 PADDING_X :: 20.0;
 
                 graph_width := max(window_w - 2 * PADDING_X, 0);
 
                 for editor.debug_frame_timeline {
-                    log("nocheckin start: %", to_float64_seconds(it.time_start));
-                    x_start := cast(f32, PADDING_X + to_float64_seconds(input.time - it.time_start) / USUAL_DELTA_TIME * 100.0);
-                    x_end   := cast(f32, PADDING_X + to_float64_seconds(input.time - it.time_end) / USUAL_DELTA_TIME * 100.0);
-                    log("nocheckin x0: %", x_start);
+                    if it_index == editor.debug_frame_timeline_index {
+                        continue; // This is the current frame. It is not yet finalized.
+                    }
 
-                    draw_rect(*render_commands, x_start, 100.0, x_start + 10.0, 110.0, { 1, 0, 0, 1 });
-                    draw_rect(*render_commands, x_start, 100.0, x_start + 10.0, 110.0, { 1, 1, 0, 1 });
+                    t_start  := 1.0 - to_float64_seconds(input.time - it.time_start) / TIMELINE_WINDOW_SECONDS;
+                    t_render := 1.0 - to_float64_seconds(input.time - it.time_render) / TIMELINE_WINDOW_SECONDS;
+                    t_end    := 1.0 - to_float64_seconds(input.time - it.time_end) / TIMELINE_WINDOW_SECONDS;
+                    x_start  := cast(f32, PADDING_X + t_start * graph_width);
+                    x_render := cast(f32, PADDING_X + t_render * graph_width);
+                    x_end    := cast(f32, PADDING_X + t_end * graph_width);
+
+                    draw_rect(*render_commands, x_start, 100.0, x_render, 500.0, { 0, 0, 1, 1 });
+                    draw_rect(*render_commands, x_render, 100.0, x_end + 2.0, 500.0, { 1, 0, 0, 1 });
                 }
-
             }
         }
     }
@@ -1664,6 +1668,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // and atlas_update_regions should be empty, but there could be mistakes.
     //
     // See :BatterySaver.
+    editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_render = platform.get_current_time_monotonic() - input.time_of_program_start;
     if wants_this_frame {
         atlas_update_region := irect_union_or_zero(atlas_update_regions);
 
@@ -1685,6 +1690,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         renderer.draw(render_commands);
         renderer.submit_frame();
     }
+    editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_end = platform.get_current_time_monotonic() - input.time_of_program_start;
+
+    editor.debug_frame_timeline_index += 1;
+    editor.debug_frame_timeline_index &= editor.DEBUG_FRAME_TIMELINE_COUNT - 1;
+
 
     editor.is_first_frame = false;
 

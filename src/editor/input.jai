@@ -1,10 +1,8 @@
 Input :: struct {
-    time:  Apollo_Time;
+    time:  Apollo_Time; // Starts at 0.
     dtime: Apollo_Time;
 
-    // Used to visualize frame frame timelines.
-    time_of_last_frame_start: Apollo_Time;
-    time_of_last_frame_end:   Apollo_Time;
+    time_of_program_start: Apollo_Time; // To convert time from platform.get_current_time_monotonic such that it starts at 0.
 
     // When adding stuff here, see :BatterySaver.
 
