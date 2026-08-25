@@ -174,8 +174,6 @@ IRect   :: Editor.IRect;
 SLOW_FRAME_THRESHOLD_MILLIS :: 18;
 SLOW_INIT_THRESHOLD_MILLIS  :: 200;
 
-FRAME_SLEEP_THRESHOLD_MILLIS :: 5;
-
 // :OperatingSystemSpecificHacks
 //
 // TODO(jt): @Cleanup @Hack For file watching, we have a #c_call callback, but we know it is called
@@ -764,27 +762,27 @@ main :: () {
         time_of_frame_end := current_time_monotonic();
 
         if should_run {
-            // nocheckin
-            // if !wants_this_frame {
-                // time_since_frame_start := to_float64_seconds(time_of_frame_end - time_of_frame_start);
-                // // The editor did not want this frame, so it did not render, which means
-                // // it wasn't throttled by V-sync. Let's throttle it here a little, because
-                // // quite possibly the input events aren't causing frames to happen.
-                // //
-                // // See :BatterySaver.
-                // //
-                // // If we manage to get rid of V-sync, we should perhaps do this unconditionally.
+            // TODO(jt): @Audit Check the manual sleep if we decide not to present a frame (V-sync).
+            // It is quite hard to do that? Sleep can overshoot, and if we crank up
+            // the timer precision, that by itself increases power usage. See :BatterySaver.
             //
-                // // nocheckin check the scheduler thingy
-                // // nocheckin monitor refresh rate!
-                // // TODO(jt): Tune this and make sure it doesn't cause problems. Also check whether it is affected
-                // // by scheduler resolution. Too low resolution will make us miss frames, but high scheduler resolution
-                // // will by itself cause increased power consumption.
-                // remainder_millis := cast(s32, (Editor.USUAL_DELTA_TIME - time_since_frame_start) * 1000.0);
-                // if remainder_millis > FRAME_SLEEP_THRESHOLD_MILLIS {
-                    // sleep_milliseconds(remainder_millis);
-                // }
-            // }
+            // nocheckin monitor refresh rate to know the deadline
+            // nocheckin sleep at start of frame?
+            // nocheckin investigate backend for sleep_milliseconds to be sure of its precision. sleep only safe amount, then degrade to waiting for events.
+            // nocheckin this should be independent of wants_this_frame.
+
+            if !wants_this_frame {
+                time_since_frame_start := to_float64_seconds(time_of_frame_end - time_of_frame_start);
+
+                frame_remainder_millis := cast(s32, (Editor.USUAL_DELTA_TIME - time_since_frame_start) * 1000.0);
+                safe_remainder_millis  := frame_remainder_millis / 2;
+
+                __TODO__SAFE_REMAINDER_MILLIS_BASED_ON_TIMER_PRECISION :: 4;
+
+                if safe_remainder_millis > __TODO__SAFE_REMAINDER_MILLIS_BASED_ON_TIMER_PRECISION {
+                    sleep_milliseconds(safe_remainder_millis);
+                }
+            }
 
             if !wants_next_frame {
                 platform_wait_for_events();

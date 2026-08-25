@@ -252,7 +252,7 @@ Editor :: struct {
 
     debug_view: Debug_View;
 
-    DEBUG_FRAME_TIMELINE_COUNT: s64 : 128;
+    DEBUG_FRAME_TIMELINE_COUNT: s64 : 64;
     #assert is_power_of_two(DEBUG_FRAME_TIMELINE_COUNT); // So that we can use bit ops as modulo.
 
     debug_frame_timeline: [DEBUG_FRAME_TIMELINE_COUNT] Frame_Timeline_Entry;
@@ -1640,7 +1640,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                            binary = false);
 
 
-                TIMELINE_WINDOW_SECONDS: f64 : 2.0;
+                TIMELINE_WINDOW_SECONDS: f64 : 1.0;
                 PADDING_X :: 20.0;
 
                 graph_width := max(window_w - 2 * PADDING_X, 0);
