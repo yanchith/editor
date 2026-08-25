@@ -542,6 +542,7 @@ main :: () {
 
     input: Editor.Input;
     // input.time and input.dtime are zeroed.
+    // input.time_of_last_frame_start and input.time_of_last_frame_end are zeroed.
     // input.frame_requested_by_editor is zeroed.
     input.window_size = { window_width, window_height };
     input.window_scale_factor = platform_get_window_scale_factor(window);
@@ -562,6 +563,7 @@ main :: () {
     }
 
     time_of_last_frame_start := time_of_program_start;
+    time_of_last_frame_end   := time_of_program_start;
 
     should_run  := true;
     while should_run {
@@ -571,10 +573,12 @@ main :: () {
         time_since_program_start := time_of_frame_start - time_of_program_start;
 
         dtime := time_of_frame_start - time_of_last_frame_start;
-        time_of_last_frame_start = time_of_frame_start;
 
         input.time = time_since_program_start;
         input.dtime = dtime;
+
+        input.time_of_last_frame_start = time_of_last_frame_start;
+        input.time_of_last_frame_end   = time_of_last_frame_end;
 
         input_events: [..] Editor.Input_Event;
         input_events.allocator = temp;
@@ -762,10 +766,13 @@ main :: () {
         }
 
         time_of_frame_end      := current_time_monotonic();
-        time_since_frame_start := to_float64_seconds(time_of_frame_end - time_of_frame_start);
+
+        time_of_last_frame_start = time_of_frame_start;
+        time_of_last_frame_end   = time_of_frame_end;
 
         if should_run {
             if !wants_this_frame {
+                time_since_frame_start := to_float64_seconds(time_of_frame_end - time_of_frame_start);
                 // The editor did not want this frame, so it did not render, which means
                 // it wasn't throttled by V-sync. Let's throttle it here a little, because
                 // quite possibly the input events aren't causing frames to happen.
@@ -774,6 +781,7 @@ main :: () {
                 //
                 // If we manage to get rid of V-sync, we should perhaps do this unconditionally.
 
+                // nocheckin check the scheduler thingy
                 // TODO(jt): Tune this and make sure it doesn't cause problems. Also check whether it is affected
                 // by scheduler resolution. Too low resolution will make us miss frames, but high scheduler resolution
                 // will by itself cause increased power consumption.

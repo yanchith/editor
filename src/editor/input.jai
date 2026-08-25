@@ -2,6 +2,10 @@ Input :: struct {
     time:  Apollo_Time;
     dtime: Apollo_Time;
 
+    // Used to visualize frame frame timelines.
+    time_of_last_frame_start: Apollo_Time;
+    time_of_last_frame_end:   Apollo_Time;
+
     // When adding stuff here, see :BatterySaver.
 
     frame_requested_by_editor: bool;

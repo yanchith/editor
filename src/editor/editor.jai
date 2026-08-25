@@ -250,13 +250,21 @@ Editor :: struct {
     is_first_frame: bool;
 
     debug_view: Debug_View;
+    debug_frame_timeline: [64] Frame_Timeline_Entry;
+    debug_frame_timeline_index: s64;
 
     Debug_View :: enum u8 {
         NONE;
         ATLAS_TEXTURE;
         MEMORY_ABSOLUTE;
         MEMORY_RELATIVE;
+        FRAME_TIMELINE;
     };
+
+    Frame_Timeline_Entry :: struct {
+        time_start: Apollo_Time;
+        time_end:   Apollo_Time;
+    }
 }
 
 Panel :: struct {
@@ -1007,6 +1015,18 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         dt = USUAL_DELTA_TIME;
     }
 
+    {
+        entry := *editor.debug_frame_timeline[editor.debug_frame_timeline_index];
+        entry.time_start = input.time_of_last_frame_start;
+        entry.time_end   = input.time_of_last_frame_end;
+
+        editor.debug_frame_timeline_index += 1;
+
+        sanity_assert(is_power_of_two(editor.debug_frame_timeline.count));
+        mask := editor.debug_frame_timeline.count - 1;
+        editor.debug_frame_timeline_index &= mask;
+    }
+
     // With wants_this_frame we control whether early out to save battery/fans. Currently, we early
     // out just before submitting stuff to the GPU, but we could take this further and early out
     // during the panel processing loop, etc.
@@ -1101,6 +1121,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .F1;  toggle_debug_view(*editor.debug_view, .ATLAS_TEXTURE); handled = true;
                         case .F2;  toggle_debug_view(*editor.debug_view, .MEMORY_ABSOLUTE); handled = true;
                         case .F3;  toggle_debug_view(*editor.debug_view, .MEMORY_RELATIVE); handled = true;
+                        case .F4;  toggle_debug_view(*editor.debug_view, .FRAME_TIMELINE); handled = true;
                     }
                 }
 
@@ -1470,13 +1491,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if editor.debug_view == {
             case .ATLAS_TEXTURE; {
                 message := "Debug view: Font Atlas";
-                offset  := DVector2.{ 0, 0 };
                 scissor := Rect.{ 0, 0, window_w, window_h };
-                color   := Vector4.{ 1, 1, 1, 1 };
                 _font_layout_and_draw_text(*editor.font, message,
                                            *render_commands, *atlas_update_regions,
-                                           offset, scissor,
-                                           color, .REGULAR,
+                                           { 0, 0 }, scissor,
+                                           { 1, 1, 1, 1 }, .REGULAR,
                                            .[], .[],
                                            binary = false);
 
@@ -1517,7 +1536,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
 
                 scissor := Rect.{ 0, 0, window_w, window_h };
-                color   := Vector4.{ 1, 1, 1, 1 };
                 {
                     message: string;
                     if editor.debug_view == {
@@ -1528,7 +1546,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     _font_layout_and_draw_text(*editor.font, message,
                                                *render_commands, *atlas_update_regions,
                                                { 0, 0 }, scissor,
-                                               color, .REGULAR,
+                                               { 1, 1, 1, 1 }, .REGULAR,
                                                .[], .[],
                                                binary = false);
                 }
@@ -1551,7 +1569,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     _font_layout_and_draw_text(*editor.font, message,
                                                *render_commands, *atlas_update_regions,
                                                offset, scissor,
-                                               color, .REGULAR,
+                                               { 1, 1, 1, 1 }, .REGULAR,
                                                .[], .[],
                                                binary = false);
 
@@ -1585,7 +1603,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     _font_layout_and_draw_text(*editor.font, message,
                                                *render_commands, *atlas_update_regions,
                                                offset, scissor,
-                                               color, .REGULAR,
+                                               { 1, 1, 1, 1 }, .REGULAR,
                                                .[], .[],
                                                binary = false);
 
@@ -1611,6 +1629,33 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     y += cell_h;
                 }
+            }
+
+            case .FRAME_TIMELINE; {
+                message := "Debug view: Frame timeline";
+                scissor := Rect.{ 0, 0, window_w, window_h };
+                _font_layout_and_draw_text(*editor.font, message,
+                                           *render_commands, *atlas_update_regions,
+                                           { 0, 0 }, scissor,
+                                           { 1, 1, 1, 1 }, .REGULAR,
+                                           .[], .[],
+                                           binary = false);
+
+
+                PADDING_X :: 20.0;
+
+                graph_width := max(window_w - 2 * PADDING_X, 0);
+
+                for editor.debug_frame_timeline {
+                    log("nocheckin start: %", to_float64_seconds(it.time_start));
+                    x_start := cast(f32, PADDING_X + to_float64_seconds(input.time - it.time_start) / USUAL_DELTA_TIME * 100.0);
+                    x_end   := cast(f32, PADDING_X + to_float64_seconds(input.time - it.time_end) / USUAL_DELTA_TIME * 100.0);
+                    log("nocheckin x0: %", x_start);
+
+                    draw_rect(*render_commands, x_start, 100.0, x_start + 10.0, 110.0, { 1, 0, 0, 1 });
+                    draw_rect(*render_commands, x_start, 100.0, x_start + 10.0, 110.0, { 1, 1, 0, 1 });
+                }
+
             }
         }
     }
