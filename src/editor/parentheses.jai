@@ -59,11 +59,11 @@ update_parenthesized_scopes :: (document: *Document) {
 
         // TODO(jt): @Cleanup @Speed This loop became a little gnarly. Also probably slow. Clean it up, so we can SIMD later.
         line := cast(string, gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp));
-        skip := 0; // TODO(jt): @Cleanup This would normally just be a string advance, but our loop is structured unfortunately.
+        skip_due_to_block_comment_open_or_close := 0; // TODO(jt): @Cleanup This would normally just be a string advance, but our loop is structured unfortunately.
 
         for byte, byte_index: line {
-            if skip > 0 {
-                skip -= 1;
+            if skip_due_to_block_comment_open_or_close > 0 {
+                skip_due_to_block_comment_open_or_close -= 1;
                 continue;
             }
 
@@ -72,31 +72,37 @@ update_parenthesized_scopes :: (document: *Document) {
             //
 
             // Note that we are comparing bytes with bytes in the comment detection code, but it shouldn't matter!
-            is_line_comment := block_comment_depth == 0 && String.starts_with(String.slice(line, byte_index, line.count - byte_index), line_comment);
-            if is_line_comment {
-                continue line_index;
-            }
-
-            is_block_comment_start := (block_comment_depth == 0 || block_comments_can_nest) && String.starts_with(String.slice(line, byte_index, line.count - byte_index), block_comment_start);
-            if is_block_comment_start {
-                block_comment_depth += 1;
-
-                skip = block_comment_start.count - 1;
-                continue;
-            }
-
-            is_block_comment_end := block_comment_depth > 0 && String.starts_with(String.slice(line, byte_index, line.count - byte_index), block_comment_end);
-            if is_block_comment_end {
-                if block_comments_can_nest {
-                    block_comment_depth -= 1;
-                    sanity_assert(block_comment_depth >= 0);
-                    block_comment_depth = max(block_comment_depth, 0);
-                } else {
-                    block_comment_depth = 0;
+            if line_comment.count {
+                is_line_comment := block_comment_depth == 0 && String.starts_with(String.slice(line, byte_index, line.count - byte_index), line_comment);
+                if is_line_comment {
+                    continue line_index;
                 }
+            }
 
-                skip = block_comment_end.count - 1;
-                continue;
+            if block_comment_start.count {
+                is_block_comment_start := (block_comment_depth == 0 || block_comments_can_nest) && String.starts_with(String.slice(line, byte_index, line.count - byte_index), block_comment_start);
+                if is_block_comment_start {
+                    block_comment_depth += 1;
+
+                    skip_due_to_block_comment_open_or_close = block_comment_start.count - 1;
+                    continue;
+                }
+            }
+
+            if block_comment_end.count {
+                is_block_comment_end := block_comment_depth > 0 && String.starts_with(String.slice(line, byte_index, line.count - byte_index), block_comment_end);
+                if is_block_comment_end {
+                    if block_comments_can_nest {
+                        block_comment_depth -= 1;
+                        sanity_assert(block_comment_depth >= 0);
+                        block_comment_depth = max(block_comment_depth, 0);
+                    } else {
+                        block_comment_depth = 0;
+                    }
+
+                    skip_due_to_block_comment_open_or_close = block_comment_end.count - 1;
+                    continue;
+                }
             }
 
             if block_comment_depth > 0 {

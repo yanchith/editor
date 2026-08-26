@@ -3,7 +3,6 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
-- Parentheses parser isn't working in C/CPP?
 - Control-Delete inserts a thing
 
 TODO(jt): Roadmap:
@@ -52,6 +51,7 @@ TODO(jt): Roadmap:
 - [X] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
 - [X] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
 - [ ] C-j join-next-line
+- [ ] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
 - [ ] C-: Expand region
 - [ ] C-u C-<space> and cursor undo.
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
