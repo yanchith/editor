@@ -3,6 +3,8 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
+- Parentheses parser isn't working in C/CPP?
+- Control-Delete inserts a thing
 
 TODO(jt): Roadmap:
 
@@ -48,7 +50,7 @@ TODO(jt): Roadmap:
 - [~] ~Rotated session logs
 - [X] M-g g (go to line)
 - [X] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
-- [ ] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
+- [X] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
 - [ ] C-j join-next-line
 - [ ] C-: Expand region
 - [ ] C-u C-<space> and cursor undo.
@@ -911,6 +913,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
         key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
 
+        key_map_add(key_map, "M-d",         .DELETE_FORWARD_WORD);
+        key_map_add(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
+        key_map_add(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
+
         key_map_add(key_map, "M-v",         .MOVE_UP_ONE_SCREEN);
         key_map_add(key_map, "C-v",         .MOVE_DOWN_ONE_SCREEN);
 
@@ -960,6 +966,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-d",         .DELETE_FORWARD);
         key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
         key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
+
+        key_map_add(key_map, "M-d",         .DELETE_FORWARD_WORD);
+        key_map_add(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
+        key_map_add(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
 
         key_map_add(key_map, "C-<space>",   .START_SELECTING);
 
@@ -2112,6 +2122,9 @@ Mini_Panel_Action :: enum {
     DELETE_FORWARD;
     DELETE_BACKWARD;
 
+    DELETE_FORWARD_WORD;
+    DELETE_BACKWARD_WORD;
+
     MOVE_UP_ONE_SCREEN;
     MOVE_DOWN_ONE_SCREEN;
 
@@ -2153,6 +2166,21 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
 
         case .DELETE_FORWARD;          text_buffer_delete_forward(*mp.buffer, *mp.cursors, 1); buffer_changed = true;
         case .DELETE_BACKWARD;         buffer_changed |= mp.procs.delete_backward(editor, platform, input);
+
+        case .DELETE_FORWARD_WORD; {
+            deleted := text_buffer_delete_forward_until_word_boundary(*mp.buffer, *mp.cursors);
+            if deleted.count {
+                buffer_changed = true;
+                platform.set_clipboard_text(deleted);
+            }
+        }
+        case .DELETE_BACKWARD_WORD; {
+            deleted := text_buffer_delete_backward_until_word_boundary(*mp.buffer, *mp.cursors);
+            if deleted.count {
+                buffer_changed = true;
+                platform.set_clipboard_text(deleted);
+            }
+        }
 
         case .MOVE_UP_ONE_SCREEN;      mp.item_index = clamp(mp.item_index - MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
         case .MOVE_DOWN_ONE_SCREEN;    mp.item_index = clamp(mp.item_index + MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
@@ -2233,6 +2261,9 @@ Modal_Interaction_Action :: enum {
     DELETE_FORWARD;
     DELETE_BACKWARD;
 
+    DELETE_FORWARD_WORD;
+    DELETE_BACKWARD_WORD;
+
     START_SELECTING;
 
     INDENT_OR_AUTOCOMPLETE;
@@ -2267,6 +2298,21 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
         case .DELETE_FORWARD;            text_buffer_delete_forward(*mi.buffer, *mi.cursors, 1); buffer_changed = true;
         case .DELETE_BACKWARD;           text_buffer_delete_backward(*mi.buffer, *mi.cursors); buffer_changed = true;
+
+        case .DELETE_FORWARD_WORD; {
+            deleted := text_buffer_delete_forward_until_word_boundary(*mi.buffer, *mi.cursors);
+            if deleted.count {
+                buffer_changed = true;
+                platform.set_clipboard_text(deleted);
+            }
+        }
+        case .DELETE_BACKWARD_WORD; {
+            deleted := text_buffer_delete_backward_until_word_boundary(*mi.buffer, *mi.cursors);
+            if deleted.count {
+                buffer_changed = true;
+                platform.set_clipboard_text(deleted);
+            }
+        }
 
         case .START_SELECTING;           mi.selecting = true; text_cursors_join(*mi.cursors);
 
@@ -3082,8 +3128,20 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .DELETE_FORWARD_WORD;   // TODO(jt): text_buffer_delete_until_next_word_boundary
-        case .DELETE_BACKWARD_WORD;  // TODO(jt): text_buffer_delete_until_previous_word_boundary
+        case .DELETE_FORWARD_WORD; {
+            deleted := text_buffer_delete_forward_until_word_boundary(*document.buffer, *view.cursors);
+            if deleted.count {
+                buffer_changed = true;
+                platform.set_clipboard_text(deleted);
+            }
+        }
+        case .DELETE_BACKWARD_WORD; {
+            deleted := text_buffer_delete_backward_until_word_boundary(*document.buffer, *view.cursors);
+            if deleted.count {
+                buffer_changed = true;
+                platform.set_clipboard_text(deleted);
+            }
+        }
 
         case .INSERT_LINE_BEFORE; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;

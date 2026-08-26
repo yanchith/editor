@@ -328,7 +328,6 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors, u
     deleted_bytes := gap_buffer_delete_forward(*buffer.gb, delete_count);
     deleted       := cast(string, deleted_bytes);
 
-    // gap_buffer clamps, but we should have calculated the indices correctly in this case.
     sanity_assert(deleted_bytes.count == delete_count);
 
     cursors.c0 = start;
@@ -591,6 +590,102 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
     assert_valid(buffer, cursors);
 
     return true;
+}
+
+text_buffer_delete_forward_until_word_boundary :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
+    ProfileZone("text_buffer_delete_forward_until_word_boundary");
+
+    assert_valid(buffer, cursors);
+
+    search_cursors := cursors.*;
+    moved := text_buffer_move_cursor_to_next_word_boundary(buffer, *search_cursors, false);
+    if !moved {
+        return "";
+    }
+
+    start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
+    end_gb_index   := text_buffer_get_gap_buffer_index_for_location(buffer, search_cursors.c0);
+    delete_count := end_gb_index - start_gb_index;
+
+    gap_buffer_move_gap_to(*buffer.gb, start_gb_index);
+    deleted_bytes := gap_buffer_delete_forward(*buffer.gb, delete_count);
+    deleted       := cast(string, deleted_bytes);
+
+    sanity_assert(deleted_bytes.count == delete_count);
+
+    discard_unapplied_edits(buffer);
+
+    edit := array_add(*buffer.edits);
+    edit.type = .DELETE_FORWARD;
+    edit.flags = .NONE;
+    edit.text = arena_push_string(buffer.edit_text_arena, deleted);
+    edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+    edit.gb_index_before = start_gb_index;
+    edit.gb_index_after = start_gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+    edit.cursor0_for_edit_before = cursors.c0;
+    edit.cursor0_for_edit_after = cursors.c0;
+    edit.cursor0_for_display_before = cursors.c0;
+    edit.cursor0_for_display_after = cursors.c0;
+    edit.cursor1_for_display_before = cursors.c1;
+    edit.cursor1_for_display_after = cursors.c0;
+
+    buffer.applied_edit_count = buffer.edits.count;
+
+    update_index_for_delete_forward(buffer, cursors, deleted);
+
+    cursors.c1 = cursors.c0;
+
+    assert_valid(buffer, cursors);
+
+    return deleted;
+}
+
+text_buffer_delete_backward_until_word_boundary :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
+    ProfileZone("text_buffer_delete_backward_until_word_boundary");
+
+    assert_valid(buffer, cursors);
+
+    search_cursors := cursors.*;
+    moved := text_buffer_move_cursor_to_previous_word_boundary(buffer, *search_cursors, false);
+    if !moved {
+        return "";
+    }
+
+    start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, search_cursors.c0);
+    end_gb_index   := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
+    delete_count := end_gb_index - start_gb_index;
+
+    gap_buffer_move_gap_to(*buffer.gb, start_gb_index);
+    deleted_bytes := gap_buffer_delete_forward(*buffer.gb, delete_count);
+    deleted       := cast(string, deleted_bytes);
+
+    sanity_assert(deleted_bytes.count == delete_count);
+
+    discard_unapplied_edits(buffer);
+
+    edit := array_add(*buffer.edits);
+    edit.type = .DELETE_BACKWARD;
+    edit.flags = .NONE;
+    edit.text = arena_push_string(buffer.edit_text_arena, deleted);
+    edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+    edit.gb_index_before = end_gb_index;
+    edit.gb_index_after = start_gb_index;
+    edit.cursor0_for_edit_before = cursors.c0;
+    edit.cursor0_for_edit_after = search_cursors.c0;
+    edit.cursor0_for_display_before = cursors.c0;
+    edit.cursor0_for_display_after = search_cursors.c0;
+    edit.cursor1_for_display_before = cursors.c1;
+    edit.cursor1_for_display_after = search_cursors.c0;
+
+    buffer.applied_edit_count = buffer.edits.count;
+
+    update_index_for_delete_backward(buffer, cursors, deleted);
+
+    cursors.* = search_cursors;
+
+    assert_valid(buffer, cursors);
+
+    return deleted;
 }
 
 text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> string {
@@ -1385,52 +1480,6 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: Text_Buffer, curso
 
     original_cursor := cursors.c0;
 
-    _search_line_backward :: (line_view: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
-        // The line is empty, so we couldn't have started inside a word.
-        if line_view.count == 0 {
-            return false, false, 0;
-        }
-
-        inside_word_initial_set := false;
-        inside_word             := false;
-
-        found := false;
-        dx := 0;
-
-        ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
-        for < :ITERATOR line_view {
-            is_nonword := #ifx binary then char_is_nonword_binary(it) else char_is_nonword_utf8(it);
-
-            if !inside_word_initial_set {
-                inside_word             = !is_nonword;
-                inside_word_initial_set = true;
-            }
-
-            if inside_word && is_nonword {
-                found = true;
-                break;
-            }
-
-            if !is_nonword {
-                inside_word = true;
-            }
-
-            dx += 1;
-        }
-
-        return found, inside_word, dx;
-    }
-
-    search_line_backward :: (line_view: string, binary: bool) -> found: bool, inside_word: bool, dx: s64 {
-        if binary {
-            found, inside_word, dx :=  _search_line_backward(line_view, true);
-            return found, inside_word, dx;
-        } else {
-            found, inside_word, dx :=  _search_line_backward(line_view, false);
-            return found, inside_word, dx;
-        }
-    }
-
     line_start         := text_buffer_get_start_of_line(buffer, cursors.c0.y);
     view_before_cursor := text_buffer_make_view_for_interval(buffer, line_start, cursors.c0,, temp);
 
@@ -1472,52 +1521,6 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: Text_Buffer, cursors: 
     assert_valid(buffer, cursors);
 
     original_cursor := cursors.c0;
-
-    _search_line_forward :: (line_view: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
-        // The line is empty, so we couldn't have started inside a word.
-        if line_view.count == 0 {
-            return false, false, 0;
-        }
-
-        inside_word_initial_set := false;
-        inside_word             := false;
-
-        found := false;
-        dx := 0;
-
-        ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
-        for :ITERATOR line_view {
-            is_nonword := #ifx binary then char_is_nonword_binary(it) else char_is_nonword_utf8(it);
-
-            if !inside_word_initial_set {
-                inside_word             = !is_nonword;
-                inside_word_initial_set = true;
-            }
-
-            if inside_word && is_nonword {
-                found = true;
-                break;
-            }
-
-            if !is_nonword {
-                inside_word = true;
-            }
-
-            dx += 1;
-        }
-
-        return found, inside_word, dx;
-    }
-
-    search_line_forward :: (line_view: string, binary: bool) -> found: bool, inside_word: bool, dx: s64 {
-        if binary {
-            found, inside_word, dx :=  _search_line_forward(line_view, true);
-            return found, inside_word, dx;
-        } else {
-            found, inside_word, dx :=  _search_line_forward(line_view, false);
-            return found, inside_word, dx;
-        }
-    }
 
     line_end          := text_buffer_get_end_of_line(buffer, cursors.c0.y);
     view_after_cursor := text_buffer_make_view_for_interval(buffer, cursors.c0, line_end,, temp);
@@ -2208,6 +2211,98 @@ remove_line :: (buffer: *Text_Buffer, index: s64) {
     array_ordered_remove_by_index(*buffer.line_bytes, index);
     array_ordered_remove_by_index(*buffer.line_chars, index);
     buffer.line_count -= 1;
+}
+
+_search_line_backward :: (line: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
+    // The line is empty, so we couldn't have started inside a word.
+    if line.count == 0 {
+        return false, false, 0;
+    }
+
+    inside_word_initial_set := false;
+    inside_word             := false;
+
+    found := false;
+    dx := 0;
+
+    ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
+    for < :ITERATOR line {
+        is_nonword := #ifx binary then char_is_nonword_binary(it) else char_is_nonword_utf8(it);
+
+        if !inside_word_initial_set {
+            inside_word             = !is_nonword;
+            inside_word_initial_set = true;
+        }
+
+        if inside_word && is_nonword {
+            found = true;
+            break;
+        }
+
+        if !is_nonword {
+            inside_word = true;
+        }
+
+        dx += 1;
+    }
+
+    return found, inside_word, dx;
+}
+
+search_line_backward :: (line: string, binary: bool) -> found: bool, inside_word: bool, dx: s64 {
+    if binary {
+        found, inside_word, dx :=  _search_line_backward(line, true);
+        return found, inside_word, dx;
+    } else {
+        found, inside_word, dx :=  _search_line_backward(line, false);
+        return found, inside_word, dx;
+    }
+}
+
+_search_line_forward :: (line: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
+    // The line is empty, so we couldn't have started inside a word.
+    if line.count == 0 {
+        return false, false, 0;
+    }
+
+    inside_word_initial_set := false;
+    inside_word             := false;
+
+    found := false;
+    dx := 0;
+
+    ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
+    for :ITERATOR line {
+        is_nonword := #ifx binary then char_is_nonword_binary(it) else char_is_nonword_utf8(it);
+
+        if !inside_word_initial_set {
+            inside_word             = !is_nonword;
+            inside_word_initial_set = true;
+        }
+
+        if inside_word && is_nonword {
+            found = true;
+            break;
+        }
+
+        if !is_nonword {
+            inside_word = true;
+        }
+
+        dx += 1;
+    }
+
+    return found, inside_word, dx;
+}
+
+search_line_forward :: (line: string, binary: bool) -> found: bool, inside_word: bool, dx: s64 {
+    if binary {
+        found, inside_word, dx :=  _search_line_forward(line, true);
+        return found, inside_word, dx;
+    } else {
+        found, inside_word, dx :=  _search_line_forward(line, false);
+        return found, inside_word, dx;
+    }
 }
 
 maybe_fuse_last_edits :: (edits: [] Edit, same_type_only := false, simple_only := false) {
