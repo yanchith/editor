@@ -771,7 +771,7 @@ main :: () {
             deinit(*report);
         }
 
-        time_of_frame_end := current_time_monotonic();
+        time_of_last_frame_start = time_of_frame_start;
 
         if should_run {
             // :BatterySaver
@@ -794,6 +794,8 @@ main :: () {
             // Windows 10, version 1803. We should probably detect and do that if possible.
             //
             //   -jt, 26 August 2026
+
+            time_of_frame_end := current_time_monotonic();
 
             seconds_since_frame_start := to_float64_seconds(time_of_frame_end - time_of_frame_start);
 
