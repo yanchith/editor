@@ -5500,9 +5500,10 @@ canonicalize_path :: (path: *string) {
 //
 // JAI link format:    C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
 // rustc link format:  game_platform_winit\src\main.rs:6:1
-// clang link format:  sdl_asteroids.cpp:1:10
+// clang link format:  sdl_asteroids.cpp:1:10 or .\asteroids.h:12:16
 //
 // TODO(jt): @Cleanup The routine is really bad. Do a proper parser.
+// TODO(jt): @Incomplete This routine can't find relative paths without a separator. Those regexes would sure come in handy.
 find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64, path: string, path_is_absolute: bool, line_number: s64, column_number: s64 {
     if !_line.count {
         return false, -1, -1, "", false, -1, -1;
@@ -5513,11 +5514,13 @@ find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64
     line := original_line;
     String.path_overwrite_separators(line, "/");
 
-    PATH_BEGIN_UNIX    :: "/";
-    PATH_BEGIN_WINDOWS :: ":/";
-    PATH_BEGIN_WINDOWS_LOOKBACK :: 1;
+    PATH_BEGIN_ABSOLUTE_UNIX    :: "/";
+    PATH_BEGIN_ABSOLUTE_WINDOWS :: ":/";
+    PATH_BEGIN_ABSOLUTE_WINDOWS_LOOKBACK :: 1;
 
-    PATH_BEGIN_RELATIVE :: "/";
+    PATH_BEGIN_RELATIVE :: "./";
+
+    PATH_SEPARATOR :: "/";
 
     x := 0;
 
@@ -5525,7 +5528,18 @@ find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64
     path_is_absolute: bool;
 
     while line.count && path_start == -1 {
+        // Detect relative paths starting with dot.
         if String.starts_with(line, PATH_BEGIN_RELATIVE) {
+            path_start = x;
+            path_is_absolute = false;
+
+            advance(*line, PATH_BEGIN_RELATIVE.count);
+            x += PATH_BEGIN_RELATIVE.count;
+            continue;
+        }
+
+        // Detect relative paths not starting with dot. We find the segment separator first, then scan back.
+        if String.starts_with(line, PATH_SEPARATOR) {
             s := String.slice(original_line, 0, x);
             if s.count {
                 if is_alnum(s[s.count - 1]) {
@@ -5534,40 +5548,40 @@ find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64
                         i -= 1;
                     }
 
-                    if is_space(s[i]) {
-                        i += 1;
-                    }
-
                     if i == -1 {
                         i = 0;
+                    } else if is_space(s[i]) {
+                        i += 1;
                     }
 
                     path_start = i;
                     path_is_absolute = false;
 
-                    advance(*line, PATH_BEGIN_RELATIVE.count);
-                    x += PATH_BEGIN_RELATIVE.count;
+                    advance(*line, PATH_SEPARATOR.count);
+                    x += PATH_SEPARATOR.count;
 
                     continue;
                 }
             }
         }
 
-        if String.starts_with(line, PATH_BEGIN_UNIX) {
+        // Detect UNIX absolute paths.
+        if String.starts_with(line, PATH_BEGIN_ABSOLUTE_UNIX) {
             path_start = x;
             path_is_absolute = true;
 
-            advance(*line, PATH_BEGIN_UNIX.count);
-            x += PATH_BEGIN_UNIX.count;
+            advance(*line, PATH_BEGIN_ABSOLUTE_UNIX.count);
+            x += PATH_BEGIN_ABSOLUTE_UNIX.count;
             continue;
         }
 
-        if String.starts_with(line, PATH_BEGIN_WINDOWS) && x >= PATH_BEGIN_WINDOWS_LOOKBACK {
-            path_start = x - PATH_BEGIN_WINDOWS_LOOKBACK;
+        // Detect Windows absolute paths.
+        if String.starts_with(line, PATH_BEGIN_ABSOLUTE_WINDOWS) && x >= PATH_BEGIN_ABSOLUTE_WINDOWS_LOOKBACK {
+            path_start = x - PATH_BEGIN_ABSOLUTE_WINDOWS_LOOKBACK;
             path_is_absolute = true;
 
-            advance(*line, PATH_BEGIN_WINDOWS.count);
-            x += PATH_BEGIN_WINDOWS.count;
+            advance(*line, PATH_BEGIN_ABSOLUTE_WINDOWS.count);
+            x += PATH_BEGIN_ABSOLUTE_WINDOWS.count;
             continue;
         }
 
