@@ -8,6 +8,8 @@ Input :: struct {
 
     frame_requested_by_editor: bool;
 
+    monitor_refresh_rate: s64; // 30, 60, 69, 120, 240, 420
+
     window_size: IVector2;
     window_scale_factor: f32;
 

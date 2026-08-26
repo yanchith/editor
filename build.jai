@@ -86,12 +86,12 @@ build :: () {
             options.arithmetic_overflow_check = .FATAL;
         }
         case .OPTIMIZED; {
-            set_optimization(*options, .OPTIMIZED_VERY_SMALL, preserve_debug_info = true);
+            set_optimization(*options, .VERY_OPTIMIZED, preserve_debug_info = true);
             options.stack_trace = false;
             options.arithmetic_overflow_check = .OFF;
         }
         case .OPTIMIZED_DEBUG; {
-            set_optimization(*options, .OPTIMIZED_SMALL, preserve_debug_info = true);
+            set_optimization(*options, .OPTIMIZED, preserve_debug_info = true);
             options.stack_trace = true;
             options.arithmetic_overflow_check = .FATAL;
         }

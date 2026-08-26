@@ -147,6 +147,7 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
 #import "Profiler"()(IMPORT_MODE = .RUNTIME);
 
 String         :: #import "String";
+Math           :: #import "Math";
 System         :: #import "System";
 File           :: #import "File";
 File_Utilities :: #import "File_Utilities";
@@ -158,6 +159,7 @@ Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY, SUBPIXEL =
 
 Vector4 :: Editor.Vector4;
 IRect   :: Editor.IRect;
+floor   :: Math.floor;
 
 // TODO(jt): Simp works everywhere, but is a little big. Also would be good if we could control
 // the latency a little. Do our own backends? Sounds like a lot of work, though:
@@ -173,6 +175,8 @@ IRect   :: Editor.IRect;
 // laggy present modes, if possible.
 SLOW_FRAME_THRESHOLD_MILLIS :: 18;
 SLOW_INIT_THRESHOLD_MILLIS  :: 200;
+
+SCHEDULER_PRECISION_MILLIS :: 1;
 
 // :OperatingSystemSpecificHacks
 //
@@ -202,10 +206,15 @@ main :: () {
     #if OS == .WINDOWS {
         // :OperatingSystemSpecificHacks
         //
-        // Unless you call this, GetClientRect reports sizes in scaled pixels, which is not
+        // Unless you call SetProcessDPIAware, GetClientRect reports sizes in scaled pixels, which is not
         // okay, if you do your own text rendering. We could further improve this with
         // per-monitor awareness: SetProcessDpiAwarenessContext.
         SetProcessDPIAware();
+        // :OperatingSystemSpecifiHacks
+        //
+        // Unless we set this, our end of frame nap time on Windows is too course grained.
+        // See :BatterySaver tag in this file.
+        timeBeginPeriod(SCHEDULER_PRECISION_MILLIS);
     } else #if OS == .MACOS {
         // :OperatingSystemSpecificHacks
         //
@@ -542,6 +551,9 @@ main :: () {
     // input.time and input.dtime are zeroed.
     input.time_of_program_start = time_of_program_start;
     // input.frame_requested_by_editor is zeroed.
+    // TODO(jt): @Incomplete update this when we switch windows.
+    input.monitor_refresh_rate = platform_get_monitor_refresh_rate(window);
+
     input.window_size = { window_width, window_height };
     input.window_scale_factor = platform_get_window_scale_factor(window);
 
@@ -718,7 +730,7 @@ main :: () {
         input.watched_directory_changes = platform_state.watched_directory_changes;
         input.events = input_events;
 
-        wants_this_frame, wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
+        _, wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
 
         input.frame_requested_by_editor = wants_next_frame;
 
@@ -762,27 +774,33 @@ main :: () {
         time_of_frame_end := current_time_monotonic();
 
         if should_run {
-            // TODO(jt): @Audit Check the manual sleep if we decide not to present a frame (V-sync).
-            // It is quite hard to do that? Sleep can overshoot, and if we crank up
-            // the timer precision, that by itself increases power usage. See :BatterySaver.
+            // :BatterySaver
             //
-            // nocheckin monitor refresh rate to know the deadline
-            // nocheckin sleep at start of frame?
-            // nocheckin investigate backend for sleep_milliseconds to be sure of its precision. sleep only safe amount, then degrade to waiting for events.
-            // nocheckin this should be independent of wants_this_frame.
+            // For various reasons we can't always count on V-sync and render queue depth to pace us.
+            //
+            // (For one, we'd like to be low-latency, and will try to enable mailbox presentation, etc.)
+            // However, this means that we could have gotten through the frame really fast, and would
+            // start the next one as soon as there are events in our message queue (which there are if the
+            // mouse is being moved, for instance).
+            //
+            // For this reason, we also manually sleep here, approximately until the next frame should start.
+            //
+            // However, on Windows specifically, the default sleep timer is really coarse grained (around 15 ms).
+            // A quick hack is timeBeginPeriod, but that brings problems on its own: it affects
+            // scheduler efficiency and power-consumption, but also is either completely global to all apps,
+            // or global to all apps that opted into timeBeginPeriod by picking the most precise thing.
+            //
+            // The better solution is CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, but that only arrived in
+            // Windows 10, version 1803. We should probably detect and do that if possible.
+            //
+            //   -jt, 26 August 2026
 
-            if !wants_this_frame {
-                time_since_frame_start := to_float64_seconds(time_of_frame_end - time_of_frame_start);
+            seconds_since_frame_start := to_float64_seconds(time_of_frame_end - time_of_frame_start);
 
-                frame_remainder_millis := cast(s32, (Editor.USUAL_DELTA_TIME - time_since_frame_start) * 1000.0);
-                safe_remainder_millis  := frame_remainder_millis / 2;
+            remainder_millis := cast(s32, floor((1.0 / input.monitor_refresh_rate - seconds_since_frame_start) * 1000.0));
+            remainder_millis = max(remainder_millis - SCHEDULER_PRECISION_MILLIS, 0);
 
-                __TODO__SAFE_REMAINDER_MILLIS_BASED_ON_TIMER_PRECISION :: 4;
-
-                if safe_remainder_millis > __TODO__SAFE_REMAINDER_MILLIS_BASED_ON_TIMER_PRECISION {
-                    sleep_milliseconds(safe_remainder_millis);
-                }
-            }
+            sleep_milliseconds(remainder_millis);
 
             if !wants_next_frame {
                 platform_wait_for_events();
@@ -859,6 +877,41 @@ platform_get_window_scale_factor :: (window: Window.Window_Type) -> f32 {
     }
 
     return 1.0;
+}
+
+platform_get_monitor_refresh_rate :: (window: Window.Window_Type) -> s64 {
+    #if OS == .WINDOWS {
+        // We are using the A versions of some functions here, because JAI doesn't define the
+        // W versions of some of the structs/functions.
+        // Should be fine, because we are not interacting with the strings.
+
+        monitor := MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+        monitor_info: MONITORINFOEXA;
+        monitor_info.cbSize = size_of(type_of(monitor_info));
+
+        success := GetMonitorInfoA(monitor, *monitor_info);
+        if success {
+            mode: DEVMODEA;
+            mode.dmSize = size_of(type_of(mode));
+
+            success = EnumDisplaySettingsA(cast(*u8, *monitor_info.szDevice), ENUM_CURRENT_SETTINGS, *mode);
+            if success {
+                return mode.dmDisplayFrequency;
+            }
+        }
+    } else #if OS == .MACOS {
+        // TODO(jt): @Incomplete Query macOS refresh rate...
+        /* Thanks, winit!
+
+        let current_display_mode = NativeDisplayMode(CGDisplayCopyDisplayMode(self.display_id()) as _);
+        let refresh_rate = ffi::CGDisplayModeGetRefreshRate(current_display_mode.0);
+        if refresh_rate > 0.0 {
+            return Some((refresh_rate * 1000.0).round() as u32);
+        }
+        */
+    }
+
+    return 60;
 }
 
 platform_process_watched_directory_changes :: () {

@@ -167,9 +167,6 @@ operator==     :: Math.operator==;
 TEXTURE_ID_NONE:        Texture_ID : 0;
 TEXTURE_ID_GLYPH_ATLAS: Texture_ID : 1;
 
-// TODO(jt): Get the monitor refresh rate from platform instead!
-USUAL_DELTA_TIME: f64 : 1.0 / 60.0;
-
 FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(5000); // The maximum amount of time after which the polling fallback for file detection happens.
 FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(250);  // The amount of time we for which we disregard reported changes for a directory after a write.
 
@@ -253,8 +250,6 @@ Editor :: struct {
     debug_view: Debug_View;
 
     DEBUG_FRAME_TIMELINE_COUNT: s64 : 64;
-    #assert is_power_of_two(DEBUG_FRAME_TIMELINE_COUNT); // So that we can use bit ops as modulo.
-
     debug_frame_timeline: [DEBUG_FRAME_TIMELINE_COUNT] Frame_Timeline_Entry;
     debug_frame_timeline_index: s64;
 
@@ -1017,13 +1012,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     if input.frame_requested_by_editor {
         dt = to_float64_seconds(input.dtime);
     } else {
-        // No way to tell delta if we were sleeping, so we just put something in there.
-        dt = USUAL_DELTA_TIME;
+        // No way to tell delta if we were sleeping.
+        dt = 1.0 / input.monitor_refresh_rate;
     }
 
-    // nocheckin
-    // editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_start = input.time;
-    editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_start = platform.get_current_time_monotonic() - input.time_of_program_start;
+    mark_on_frame_timeline(editor, platform, input, .START);
 
     // With wants_this_frame we control whether early out to save battery/fans. Currently, we early
     // out just before submitting stuff to the GPU, but we could take this further and early out
@@ -1630,7 +1623,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             case .FRAME_TIMELINE; {
-                message := "Debug view: Frame timeline (blue = update, red = render)";
+                message := tprint("Debug view: CPU Frame timeline (blue=update; red=render+VSync; white=refresh(%), informative only)", input.monitor_refresh_rate);
                 scissor := Rect.{ 0, 0, window_w, window_h };
                 _font_layout_and_draw_text(*editor.font, message,
                                            *render_commands, *atlas_update_regions,
@@ -1640,10 +1633,24 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                            binary = false);
 
 
-                TIMELINE_WINDOW_SECONDS: f64 : 1.0;
+                TIMELINE_WINDOW_SECONDS: f64 : 0.5;
                 PADDING_X :: 20.0;
 
                 graph_width := max(window_w - 2 * PADDING_X, 0);
+
+                {
+                    desired_frame_time: f64 = 1.0 / input.monitor_refresh_rate;
+
+                    time: f64 = to_float64_seconds(input.time);
+                    while time > (to_float64_seconds(input.time) - TIMELINE_WINDOW_SECONDS) {
+                        t := 1.0 - (to_float64_seconds(input.time) - time) / TIMELINE_WINDOW_SECONDS;
+                        x := cast(f32, PADDING_X + t * graph_width);
+
+                        draw_rect(*render_commands, x, 100.0, x + 1, 400.0, { 1, 1, 1, 1 });
+
+                        time -= desired_frame_time;
+                    }
+                }
 
                 for editor.debug_frame_timeline {
                     if it_index == editor.debug_frame_timeline_index {
@@ -1657,8 +1664,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     x_render := cast(f32, PADDING_X + t_render * graph_width);
                     x_end    := cast(f32, PADDING_X + t_end * graph_width);
 
-                    draw_rect(*render_commands, x_start, 100.0, x_render, 500.0, { 0, 0, 1, 1 });
-                    draw_rect(*render_commands, x_render, 100.0, x_end + 2.0, 500.0, { 1, 0, 0, 1 });
+                    draw_rect(*render_commands, x_start, 200.0, x_render, 300.0, { 0, 0, 1, 1 });
+                    draw_rect(*render_commands, x_render, 300.0, x_end + 2.0, 400.0, { 1, 0, 0, 1 });
                 }
             }
         }
@@ -1668,7 +1675,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // and atlas_update_regions should be empty, but there could be mistakes.
     //
     // See :BatterySaver.
-    editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_render = platform.get_current_time_monotonic() - input.time_of_program_start;
+    mark_on_frame_timeline(editor, platform, input, .RENDER);
+
     if wants_this_frame {
         atlas_update_region := irect_union_or_zero(atlas_update_regions);
 
@@ -1690,11 +1698,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         renderer.draw(render_commands);
         renderer.submit_frame();
     }
-    editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_end = platform.get_current_time_monotonic() - input.time_of_program_start;
 
-    editor.debug_frame_timeline_index += 1;
-    editor.debug_frame_timeline_index &= editor.DEBUG_FRAME_TIMELINE_COUNT - 1;
-
+    mark_on_frame_timeline(editor, platform, input, .END);
+    advance_frame_timeline(editor);
 
     editor.is_first_frame = false;
 
@@ -4064,8 +4070,8 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 }
 
                 interpolation_running := false;
-                interpolation_running |= interpolation_update(*view.cursor_position, input.time);
-                interpolation_running |= interpolation_update(*view.cursor_color, input.time);
+                interpolation_running |= interpolation_update(*view.cursor_position, input.time, dt);
+                interpolation_running |= interpolation_update(*view.cursor_color, input.time, dt);
                 if interpolation_running {
                     wants_this_frame = true;
                     wants_next_frame = true;
@@ -4145,7 +4151,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
     // Animate Scroll
     //
     {
-        interpolation_running := interpolation_update(*panel.scroll, input.time);
+        interpolation_running := interpolation_update(*panel.scroll, input.time, dt);
         if interpolation_running {
             wants_this_frame = true;
             wants_next_frame = true;
@@ -5658,6 +5664,21 @@ make_arena_debug_procs :: (editor: *Editor) -> Arena_Debug_Procs {
     debug_procs.userdata = editor;
 
     return debug_procs;
+}
+
+mark_on_frame_timeline :: (editor: *Editor, platform: Platform, input: Input, marker: enum { START; RENDER; END; }) {
+    if #complete marker == {
+        case .START;   editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_start = input.time;
+        case .RENDER;  editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_render = platform.get_current_time_monotonic() - input.time_of_program_start;
+        case .END;     editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_end = platform.get_current_time_monotonic() - input.time_of_program_start;
+    }
+}
+
+advance_frame_timeline :: (editor: *Editor) {
+    #assert is_power_of_two(editor.DEBUG_FRAME_TIMELINE_COUNT); // So that we can use bit ops modulo.
+
+    editor.debug_frame_timeline_index += 1;
+    editor.debug_frame_timeline_index &= editor.DEBUG_FRAME_TIMELINE_COUNT - 1;
 }
 
 toggle_debug_view :: (debug_view: *Editor.Debug_View, value: Editor.Debug_View) {

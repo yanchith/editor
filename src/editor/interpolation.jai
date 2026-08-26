@@ -18,7 +18,7 @@ interpolation_init :: (interpolation: *Interpolation, _target: interpolation.T) 
     #if interpolation.ROUND {
         target = round(target);
     }
-    
+
     interpolation.source = target;
     interpolation.target = target;
     interpolation.value = target;
@@ -34,7 +34,7 @@ interpolation_start :: (interpolation: *Interpolation, _source: interpolation.T,
         source = round(source);
         target = round(target);
     }
-    
+
     interpolation.source = source;
     interpolation.target = target;
     interpolation.value = source;
@@ -77,12 +77,12 @@ interpolation_chain :: (interpolation: *Interpolation, _target: interpolation.T,
     }
 }
 
-interpolation_update :: (interpolation: *Interpolation, now: Apollo_Time) -> running: bool {
+interpolation_update :: (interpolation: *Interpolation, now: Apollo_Time, dt: f64) -> running: bool {
     t: f32;
     if interpolation.duration == 0.0 {
         t = 1.0;
     } else {
-        a := #ifx interpolation.SNAPPY then 0.5 * USUAL_DELTA_TIME else 0.0;
+        a := #ifx interpolation.SNAPPY then 0.5 * dt else 0.0;
         t = cast(f32, to_float64_seconds(now) + a - to_float64_seconds(interpolation.start)) / interpolation.duration;
     }
 
@@ -96,3 +96,4 @@ interpolation_update :: (interpolation: *Interpolation, now: Apollo_Time) -> run
 
     return t < 1.0;
 }
+
