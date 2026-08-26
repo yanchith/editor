@@ -5,7 +5,6 @@ TODO(jt): Known serious bugs:
 - On macOS, launching the app creates a console.
 - OPEN_FILE seems to navigate to the parent directory too often. Maybe for some reason the default item_index always points to ..?
 - *compilation* fails to capture output from bat files.
-- GO_TO_CURRENT_ERROR always scrolls from the top of the file
 
 TODO(jt): Roadmap:
 
@@ -5152,15 +5151,20 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
     // some default background, or something.
     assert(document != null);
 
+    panel_content_changed := true;
+
     // If this was a document-viewing panel, save the cursors on the document, so that they can be
     // restored later, once the document comes back to the foreground.
     //
     // Analogous for listing-viewing panel and item_index.
-    //
-    // TODO(jt): @Cleanup @Copypasta This is a copypasta between document/listing code.
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
+
+            if view.document == document {
+                // Don't reset scroll, cursors, etc, if we are setting the same document.
+                panel_content_changed = false;
+            }
 
             if view.document {
                 view.document.cursors_cold = view.cursors;
@@ -5175,24 +5179,26 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
         }
     }
 
-    panel.view.kind = .DOCUMENT;
+    if panel_content_changed {
+        panel.view.kind = .DOCUMENT;
 
-    view := *panel.view._document;
+        view := *panel.view._document;
 
-    view.document = document;
+        view.document = document;
 
-    view.cursors = document.cursors_cold;
-    view.selecting = false;
+        view.cursors = document.cursors_cold;
+        view.selecting = false;
 
-    cursor_position := get_position_at_cursor(view, editor.font);
+        cursor_position := get_position_at_cursor(view, editor.font);
 
-    view.old_cursor = view.cursors.c0;
-    view.old_cursor_position = cursor_position;
+        view.old_cursor = view.cursors.c0;
+        view.old_cursor_position = cursor_position;
 
-    interpolation_init(*view.cursor_position, cursor_position);
-    interpolation_init(*view.cursor_color, ifx document.flags & .READONLY then editor.theme.cursor_color_readonly else editor.theme.cursor_color);
+        interpolation_init(*view.cursor_position, cursor_position);
+        interpolation_init(*view.cursor_color, ifx document.flags & .READONLY then editor.theme.cursor_color_readonly else editor.theme.cursor_color);
 
-    interpolation_init(*panel.scroll, { 0, 0 });
+        interpolation_init(*panel.scroll, { 0, 0 });
+    }
 
     document.time_of_last_activation = editor.input_state.time;
 }
@@ -5202,12 +5208,12 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
     // some default background, or something.
     assert(listing != null);
 
+    panel_content_changed := true;
+
     // If this was a document-viewing panel, save the cursors on the document, so that they can be
     // restored later, once the document comes back to the foreground.
     //
     // Analogous for listing-viewing panel and item_index.
-    //
-    // TODO(jt): @Cleanup @Copypasta This is a copypasta between document/listing code.
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
@@ -5219,20 +5225,27 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
         case .LISTING; {
             view := *panel.view._listing;
 
+            if view.listing == listing {
+                // Don't reset scroll, item_index, etc, if we are setting the same listing.
+                panel_content_changed = false;
+            }
+
             if view.listing {
                 view.listing.item_index_cold = view.item_index;
             }
         }
     }
 
-    panel.view.kind = .LISTING;
+    if panel_content_changed {
+        panel.view.kind = .LISTING;
 
-    view := *panel.view._listing;
+        view := *panel.view._listing;
 
-    view.listing = listing;
-    view.item_index = listing.item_index_cold;
+        view.listing = listing;
+        view.item_index = listing.item_index_cold;
 
-    interpolation_init(*panel.scroll, { 0, 0 });
+        interpolation_init(*panel.scroll, { 0, 0 });
+    }
 
     listing.time_of_last_activation = editor.input_state.time;
 }
