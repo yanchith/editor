@@ -49,14 +49,14 @@ TODO(jt): Roadmap:
 - [X] M-g g (go to line)
 - [X] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
 - [ ] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
+- [ ] C-j join-next-line
+- [ ] C-: Expand region
 - [ ] C-u C-<space> and cursor undo.
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
-- [ ] C-j join-next-line
-- [ ] C-: Expand region
 - [ ] Multiple Cursors
-- [ ] MOVE_TO_START and MOVE_TO_END in mini panel.
+- [X] MOVE_TO_START and MOVE_TO_END in mini panel.
 - [ ] Emacs-like kill ring
 - [ ] CRLF
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
@@ -898,6 +898,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
         key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
+
+        key_map_add(key_map, "M-<",         .MOVE_TO_START);
+        key_map_add(key_map, "<home>",      .MOVE_TO_START);
+        key_map_add(key_map, "M->",         .MOVE_TO_END);
+        key_map_add(key_map, "<end>",       .MOVE_TO_END);
 
         key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
         key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
@@ -2098,6 +2103,9 @@ Mini_Panel_Action :: enum {
     MOVE_TO_START_OF_LINE;
     MOVE_TO_END_OF_LINE;
 
+    MOVE_TO_START;
+    MOVE_TO_END;
+
     MOVE_FORWARD_WORD;
     MOVE_BACKWARD_WORD;
 
@@ -2136,6 +2144,9 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
 
         case .MOVE_TO_START_OF_LINE;   text_buffer_move_cursor_to_start_of_line(mp.buffer, *mp.cursors, mp.selecting);
         case .MOVE_TO_END_OF_LINE;     text_buffer_move_cursor_to_end_of_line(mp.buffer, *mp.cursors, mp.selecting);
+
+        case .MOVE_TO_START;           mp.item_index = 0; // Not -1, even if the particular procs support it.
+        case .MOVE_TO_END;             mp.item_index = max(mp.items.count - 1, 0);
 
         case .MOVE_FORWARD_WORD;       text_buffer_move_cursor_to_next_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
         case .MOVE_BACKWARD_WORD;      text_buffer_move_cursor_to_previous_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
