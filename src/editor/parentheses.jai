@@ -1,5 +1,27 @@
 DEFAULT_INDENTATION_STEP :: 4; // TODO(jt): Make this configurable (also per project). :Config
 
+Parenthesized_Scope :: struct {
+    loc0: Text_Location;
+    loc1: Text_Location;
+
+    open_paren_char:  u32;
+    close_paren_char: u32;
+
+    indentation_flags: Flags;
+    indentation_level: s64;
+
+    parent_index:       s64 = -1;
+    first_child_index:  s64 = -1;
+    next_sibling_index: s64 = -1;
+
+    Flags :: enum_flags u32 {
+        NONE :: 0;
+
+        HANGING  :: 0x01; // Casey-style scope, e.g. 'hwnd = CreateWindowExW(0,' (continues on the next line).
+        PREFIXED :: 0x02; // The scope opening paren has text before it, e.g. 'for {'. Not actually read, but maybe it will be useful later?
+    }
+}
+
 // TODO(jt): @Speed When we indent the entirety of a 10000 document, this takes ~8 seconds. Even if
 // we SIMD this, it will traverse the whole document contents too many times. We need an incremental
 // version, or perhaps some cooperative version that can work well with indenting large regions.
@@ -118,7 +140,7 @@ update_parenthesized_scopes :: (document: *Document) {
                     index := document.parenthesized_scopes.count;
                     parent := *document.parenthesized_scopes[parent_index];
 
-                    scope: Document.Parenthesized_Scope;
+                    scope: Parenthesized_Scope;
                     scope.loc0.x = count_utf8_chars(String.slice(cast(string, line), 0, byte_index));
                     scope.loc0.y = line_index;
 
@@ -196,7 +218,7 @@ update_parenthesized_scopes :: (document: *Document) {
     }
 }
 
-find_parenthesized_scope_for_location :: (document: Document, loc: Text_Location, start_x_inclusive := true, end_x_inclusive := true, start_y_inclusive := true, end_y_inclusive := true) -> *Document.Parenthesized_Scope {
+find_parenthesized_scope_for_location :: (document: Document, loc: Text_Location, start_x_inclusive := true, end_x_inclusive := true, start_y_inclusive := true, end_y_inclusive := true) -> *Parenthesized_Scope {
     ProfileZone("find_parenthesized_scope_for_location");
 
     scopes := document.parenthesized_scopes;
@@ -258,7 +280,7 @@ find_indentation_level_for_location :: (document: Document, loc: Text_Location) 
 #scope_file
 
 // TODO(jt): @Cleanup This could be unified with Font_Text_Range in font.jai.
-contains :: (scope: Document.Parenthesized_Scope, loc: Text_Location, start_x_inclusive: bool, end_x_inclusive: bool, start_y_inclusive: bool, end_y_inclusive: bool) -> bool {
+contains :: (scope: Parenthesized_Scope, loc: Text_Location, start_x_inclusive: bool, end_x_inclusive: bool, start_y_inclusive: bool, end_y_inclusive: bool) -> bool {
     test_top    := start_y_inclusive && loc.y >= scope.loc0.y || loc.y > scope.loc0.y;
     test_bottom := end_y_inclusive   && loc.y <= scope.loc1.y || loc.y < scope.loc1.y;
     test_left   := start_x_inclusive && loc.x >= scope.loc0.x || loc.x > scope.loc0.x;

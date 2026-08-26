@@ -3,7 +3,7 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
-- Control-Delete inserts a thing
+- Control-Delete inserts a thing a delete
 
 TODO(jt): Roadmap:
 
@@ -51,7 +51,7 @@ TODO(jt): Roadmap:
 - [X] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
 - [X] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
 - [ ] C-j join-next-line
-- [ ] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
+- [X] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
 - [ ] C-: Expand region
 - [ ] C-u C-<space> and cursor undo.
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
@@ -435,28 +435,6 @@ Document :: struct {
         TRANSIENT :: MODIFIED_THIS_FRAME | MODIFY_ATTEMPT_THIS_FRAME;
     }
 
-    Parenthesized_Scope :: struct {
-        loc0: Text_Location;
-        loc1: Text_Location;
-
-        open_paren_char:  u32;
-        close_paren_char: u32;
-
-        indentation_flags: Flags;
-        indentation_level: s64;
-
-        parent_index:       s64 = -1;
-        first_child_index:  s64 = -1;
-        next_sibling_index: s64 = -1;
-
-        Flags :: enum_flags u32 {
-            NONE :: 0;
-
-            HANGING  :: 0x01; // Casey-style scope, e.g. 'hwnd = CreateWindowExW(0,' (continues on the next line).
-            PREFIXED :: 0x02; // The scope opening paren has text before it, e.g. 'for {'. Not actually read, but maybe it will be useful later?
-        }
-    }
-
     Syntax_Highlight_Token :: struct {
         loc0: Text_Location;
         loc1: Text_Location;
@@ -743,7 +721,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
         key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
 
-        key_map_add(key_map, "M-g g",   .GO_TO_LINE);
+        key_map_add(key_map, "C-M-b",   .MOVE_TO_START_OF_SCOPE);
+        key_map_add(key_map, "C-M-f",   .MOVE_TO_END_OF_SCOPE);
+
+        key_map_add(key_map, "M-g g",   .MOVE_TO_LINE);
 
         key_map_add(key_map, "C-<space>", .START_SELECTING);
         key_map_add(key_map, "C-g",     .STOP_SELECTING);
@@ -2428,7 +2409,10 @@ Document_Action :: enum {
     MOVE_FORWARD_WORD;
     MOVE_BACKWARD_WORD;
 
-    GO_TO_LINE;
+    MOVE_TO_START_OF_SCOPE;
+    MOVE_TO_END_OF_SCOPE;
+
+    MOVE_TO_LINE;
 
     START_SELECTING;
     STOP_SELECTING;
@@ -3068,7 +3052,22 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .GO_TO_LINE;       open_modal_interaction(editor, platform, input, modal_interaction_go_to_line_procs);
+        case .MOVE_TO_START_OF_SCOPE; {
+            scope := find_parenthesized_scope_for_location(document, view.cursors.c0);
+            if scope {
+                text_buffer_move_cursor_to(document.buffer, *view.cursors, scope.loc0, view.selecting);
+                cursor_moved = true;
+            }
+        }
+        case .MOVE_TO_END_OF_SCOPE; {
+            scope := find_parenthesized_scope_for_location(document, view.cursors.c0);
+            if scope {
+                text_buffer_move_cursor_to(document.buffer, *view.cursors, scope.loc1, view.selecting);
+                cursor_moved = true;
+            }
+        }
+
+        case .MOVE_TO_LINE;       open_modal_interaction(editor, platform, input, modal_interaction_go_to_line_procs);
 
         case .START_SELECTING;  view.selecting = true;  text_cursors_join(*view.cursors);
         case .STOP_SELECTING;   view.selecting = false; text_cursors_join(*view.cursors);
