@@ -3,8 +3,6 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
-- OPEN_FILE seems to navigate to the parent directory too often. Maybe for some reason the default item_index always points to ..?
-- *compilation* fails to capture output from bat files.
 
 TODO(jt): Roadmap:
 

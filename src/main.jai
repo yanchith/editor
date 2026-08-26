@@ -310,7 +310,22 @@ main :: () {
         return current_time_monotonic();
     }
 
-    platform.run_in_process = (args: string, working_directory: string) -> exit_code: s32, exit_type: Editor.Exit_Type, output: string, error: string {
+    platform.run_in_process = (_args: string, working_directory: string) -> exit_code: s32, exit_type: Editor.Exit_Type, output: string, error: string {
+        args := _args;
+        #if OS == .WINDOWS {
+            space_index := String.find_index_from_left(args, " ");
+            if space_index == -1 {
+                if String.ends_with(args, ".bat") {
+                    // A single bat file. CreateProcessW can't run this directly.
+                    // Instead, we need to run cmd.exe with a /c flag.
+                    //
+                    // We detect this simple case on the user's behalf, so they don't have to type that.
+
+                    args = tprint("cmd.exe /c %", _args);
+                }
+            }
+        }
+
         // break_command_into_string always temps the result, so our context override is just futureproofing.
         arguments := Process.break_command_into_strings(args,, temp);
 
