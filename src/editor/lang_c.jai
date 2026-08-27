@@ -227,24 +227,16 @@ parse_number :: (lexer: *Lexer, token: *Token) {
 parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
     ident: string;
     ident.data = lexer.input.data;
+    ident.count = 1;
 
     token.type = .IDENTIFIER;
     lexer_advance_horizontally(lexer);
 
-    start := lexer.byte_index;
-    while lexer.input.count {
-        c := lexer.input[0];
-
-        // TODO(jt): @Incomplete Unicode identifiers.
-        if !is_alnum(c) {
-            break;
-        }
-
+    // TODO(jt): @Incomplete Unicode identifiers.
+    while lexer.input.count && lexer_next_char_matches(lexer, is_alnum) {
         lexer_advance_horizontally(lexer);
+        ident.count += 1;
     }
-    end := lexer.byte_index;
-
-    ident.count = lexer.byte_index;
 
     if is_keyword(ident) {
         token.type = .KEYWORD;
