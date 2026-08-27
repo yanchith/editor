@@ -42,9 +42,16 @@ update_scopes :: (document: *Document) {
     block_comment_end       := "";
     block_comments_can_nest := false;
 
-    if #complete document.mode == {
+    if #complete document.lang == {
         case .PLAIN_TEXT; {
             indentation_pairs = PLAIN_TEXT_INDENTATION_PAREN_PAIRS;
+        }
+        case .C; {
+            indentation_pairs       = LANG_C_INDENTATION_PAREN_PAIRS;
+            line_comment            = LANG_C_LINE_COMMENT;
+            block_comment_start     = LANG_C_BLOCK_COMMENT_START;
+            block_comment_end       = LANG_C_BLOCK_COMMENT_END;
+            block_comments_can_nest = LANG_C_BLOCK_COMMENTS_CAN_NEST;
         }
         case .JAI; {
             indentation_pairs       = LANG_JAI_INDENTATION_PAREN_PAIRS;

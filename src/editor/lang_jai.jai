@@ -16,7 +16,7 @@ LANG_JAI_INDENTATION_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "[", #char "]" },
 ];
 
-lang_jai_update_tokens :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
+lang_jai_update_tokens :: (document: *Document) {
     ProfileZone("lang_jai_update_tokens");
 
     sanity_assert(document != null);

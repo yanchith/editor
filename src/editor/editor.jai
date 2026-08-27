@@ -161,7 +161,8 @@ operator==     :: Math.operator==;
 #load "color.jai";
 #load "theme.jai";
 #load "scope.jai";
-#load "lang_common.jai";
+#load "lexer.jai";
+#load "lang_c.jai";
 #load "lang_jai.jai";
 #load "mini_panel_search.jai";
 #load "mini_panel_search_project.jai";
@@ -383,7 +384,7 @@ Document :: struct {
     locator: Bucket_Locator;
 
     kind: Kind;
-    mode: Mode;
+    lang: Lang;
     flags: Flags;
     time_of_last_activation: Apollo_Time;
     time_of_last_simple_edit: Apollo_Time; // Insert by typing characters or delete forward/backward.
@@ -422,8 +423,9 @@ Document :: struct {
         FILE;
     }
 
-    Mode :: enum u32 {
+    Lang :: enum u32 {
         PLAIN_TEXT;
+        C;
         JAI;
     }
 
@@ -2048,7 +2050,7 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                         text_buffer_move_cursor_to(document.buffer, *document.cursors_cold, cursor_before_reload, false);
 
                         update_scopes(document);
-                        update_tokens(editor, document, platform, input);
+                        update_tokens(document);
 
                         editor_log(editor, "Updated % from filesystem", String.path_filename(document.backing_file_path));
                     }
@@ -2933,7 +2935,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                                         input.time, CURSOR_FLASH_DURATION);
 
                     update_scopes(document);
-                    update_tokens(editor, document, platform, input);
+                    update_tokens(document);
 
                     editor_log(editor, "Reloaded file: %", document.backing_file_path);
                 }
@@ -3311,7 +3313,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     buffer_changed = true;
                     view.selecting = false;
                 } else {
-                    editor_log(editor, "No line comment defined for %", document.mode);
+                    editor_log(editor, "No line comment defined for language: %", document.lang);
                 }
             } else if view.cursors.c0.y == view.cursors.c1.y {
                 // TODO(jt): Add single line block comments (if we have a selection going)
@@ -4091,7 +4093,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
             // Update Syntax Highlighting
             //
             if document.flags & .MODIFIED_THIS_FRAME {
-                update_tokens(editor, document, platform, input);
+                update_tokens(document);
             }
 
             //
@@ -4483,7 +4485,8 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                         r.y1 = it.loc1.y - viewport_line0;
 
                         if #complete it.type == {
-                            case .UNINITIALIZED;   // Nothing.
+                            case .UNINITIALIZED;   // Nothing
+                            case .EOF;             // Nothing
 
                             // TODO(jt): @Cleanup While we sort of define color constants for things, we
                             // also can modify bold/italic, for which we have no way of customization
@@ -4730,8 +4733,9 @@ PLAIN_TEXT_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
 ];
 
 get_surround_pairs :: (document: Document) -> /* Static */ [] Paren_Pair {
-    if #complete document.mode == {
+    if #complete document.lang == {
         case .PLAIN_TEXT;  return PLAIN_TEXT_SURROUND_PAREN_PAIRS;
+        case .C;           return LANG_C_SURROUND_PAREN_PAIRS;
         case .JAI;         return LANG_JAI_SURROUND_PAREN_PAIRS;
     }
 }
@@ -4758,16 +4762,18 @@ is_part_of_surround_pair :: (document: Document, char: u32) -> opens: bool, clos
 }
 
 get_comment_style :: (document: Document) -> /* Static */ line: string, block_start: string, block_end: string {
-    if #complete document.mode == {
+    if #complete document.lang == {
         case .PLAIN_TEXT;  return "", "", "";
+        case .C;           return LANG_C_LINE_COMMENT, LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END;
         case .JAI;         return LANG_JAI_LINE_COMMENT, LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END;
     }
 }
 
-update_tokens :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
-    if #complete document.mode == {
-        case .PLAIN_TEXT; // Nothing
-        case .JAI;        lang_jai_update_tokens(editor, document, platform, input);
+update_tokens :: (document: *Document) {
+    if #complete document.lang == {
+        case .PLAIN_TEXT;  // Nothing
+        case .C;           lang_c_update_tokens(document);
+        case .JAI;         lang_jai_update_tokens(document);
     }
 }
 
@@ -4834,7 +4840,7 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
                         text_buffer_move_cursor_to(document.buffer, *document.cursors_cold, 0, 0, false);
 
                         update_scopes(document);
-                        update_tokens(editor, document, platform, input);
+                        update_tokens(document);
 
                         watch_file(editor, platform, input, document.backing_file_path);
                     }
@@ -4985,19 +4991,22 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     document: Document;
     document.kind = kind;
-    document.mode = .PLAIN_TEXT;
+    document.lang = .PLAIN_TEXT;
     {
         ext, ext_found := String.path_extension(backing_file_path);
-        if ext_found && ext == "jai" {
-            document.mode = .JAI;
+        if ext_found {
+            if ext == {
+                case "c";    #through;
+                case "h";    #through;
+                case "inl";  document.lang = .C;
+                case "jai";  document.lang = .JAI;
+            }
         }
     }
 
     document.flags = .NONE;
     document.time_of_last_activation = editor.input_state.time;
 
-    // document.cursor0 is zero-initialized.
-    // document.cursor1 is zero-initialized.
     text_buffer_init(*document.buffer, buffer_arena, buffer_edit_text_arena);
 
     document.arena = document_arena;
