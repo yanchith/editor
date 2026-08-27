@@ -1496,7 +1496,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         n = n >> 10;
                         return tprint("% KB", n);
                     } else {
-                        return tprint("% bytes", n);
+                        return tprint("% B", n);
                     }
                 }
 
@@ -1537,7 +1537,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     total     := ts.high_water_mark;
                     allocated := ts.total_bytes_occupied; // TODO(jt): This is not true. Figure out how to get current size of Temporary_Storage.
 
-                    message := tprint("% % / %", temp_right_pad("Temp", 40), format_size(allocated), format_size(total));
+                    message := tprint("% % / %", temp_right_pad("Temp", 45), format_size(allocated), format_size(total));
                     offset  := DVector2.{ 0, y };
                     _font_layout_and_draw_text(*editor.font, message,
                                                *render_commands, *atlas_update_regions,
@@ -1571,7 +1571,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     committed := it.committed;
                     allocated := it.allocated;
 
-                    message := tprint("% % / % / %", temp_right_pad(it.debug_label, 40), format_size(allocated), format_size(committed), format_size(total));
+                    message := tprint("% % / % / %", temp_right_pad(it.debug_label, 45), format_size(allocated), format_size(committed), format_size(total));
                     offset  := DVector2.{ 0, y };
                     _font_layout_and_draw_text(*editor.font, message,
                                                *render_commands, *atlas_update_regions,
@@ -4985,9 +4985,9 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
     }
 
     // TODO(jt): @Leak The sprints below leak into perm.
-    document_arena         := make_arena(editor, platform, .MEDIUM, sprint("Document for %", debug_label_name,, arena_allocator(editor.perm_arena)));
-    buffer_arena           := make_arena(editor, platform, .LARGE,  sprint("Buffer for %", debug_label_name,, arena_allocator(editor.perm_arena)));
-    buffer_edit_text_arena := make_arena(editor, platform, .LARGE,  sprint("Edits for %", debug_label_name,, arena_allocator(editor.perm_arena)));
+    document_arena         := make_arena(editor, platform, .MEDIUM, sprint("% (Doc)", debug_label_name,, arena_allocator(editor.perm_arena)));
+    buffer_arena           := make_arena(editor, platform, .LARGE,  sprint("% (Buffer)", debug_label_name,, arena_allocator(editor.perm_arena)));
+    buffer_edit_text_arena := make_arena(editor, platform, .LARGE,  sprint("% (Edits)", debug_label_name,, arena_allocator(editor.perm_arena)));
 
     document: Document;
     document.kind = kind;
@@ -5050,7 +5050,7 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
     }
 
     // TODO(jt): @Leak The sprint below leaks into perm.
-    listing_arena := make_arena(editor, platform, .MEDIUM, sprint("Listing for %", debug_label_name,, arena_allocator(editor.perm_arena)));
+    listing_arena := make_arena(editor, platform, .MEDIUM, sprint("% (Listing)", debug_label_name,, arena_allocator(editor.perm_arena)));
 
     listing: Listing;
     listing.kind = .DIRECTORY;
