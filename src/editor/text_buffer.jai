@@ -30,6 +30,9 @@ Text_Buffer :: struct {
     // having the edits there as a linked list. When we discard_unapplied_edits, we can also fully
     // nuke the edit metadata. This will leave just gap_buffer, line_bytes and line_chars sharing
     // the main arena.
+    //
+    // UPDATE: after editing a (less than 1000 lines) file for the whole day,
+    // the buffer arena claimed up to 5MB. Probably need to do something about it long term.
     edits: [..] Edit;
     // Undoing decreases this. Redoing increases. When editing, this is the same as edits.count,
     // because edits that were undone are discarded (at least until we do Emacs-like undo)
