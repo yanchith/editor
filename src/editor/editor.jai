@@ -4487,13 +4487,18 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                         if #complete it.type == {
                             case .UNINITIALIZED;   // Nothing
                             case .EOF;             // Nothing
+                            case .INVALID;         // Nothing
 
                             // TODO(jt): @Cleanup While we sort of define color constants for things, we
                             // also can modify bold/italic, for which we have no way of customization
                             // yet. :Config
                             case .KEYWORD;         r.color = editor.theme.keyword_color; r.variant = editor.theme.keyword_variant;
                             case .NUMBER_LITERAL;  r.color = editor.theme.number_literal_color; r.variant = editor.theme.number_literal_variant;
-                            case .STRING_LITERAL;  r.color = editor.theme.string_literal_color; r.variant = editor.theme.string_literal_variant;
+                            case .STRING_LITERAL;  #through;
+                            case .CHAR_LITERAL;    r.color = editor.theme.string_literal_color; r.variant = editor.theme.string_literal_variant;
+
+                            case .PUNCTUATION;     // Nothing
+                            case .IDENTIFIER;      // Nothing
 
                             case .ATTRIBUTE;       r.color = editor.theme.attribute_color; r.variant = editor.theme.attribute_variant;
                             case .DIRECTIVE;       r.color = editor.theme.directive_color; r.variant = editor.theme.directive_variant;
@@ -4996,9 +5001,13 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         ext, ext_found := String.path_extension(backing_file_path);
         if ext_found {
             if ext == {
-                case "c";    #through;
+                // TODO(jt): @Incomplete C++ currently goes to the C backend, but eventually it should get its own?
+                // Or maybe we can have a single C+ backend for both and ignore the modern monstrosity? This could be possible,
+                // because we are just lexing.
+                case "hpp";  #through;
+                case "cpp";  #through;
                 case "h";    #through;
-                case "inl";  document.lang = .C;
+                case "c";    document.lang = .C;
                 case "jai";  document.lang = .JAI;
             }
         }
