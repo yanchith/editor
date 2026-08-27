@@ -224,7 +224,7 @@ parse_number :: (lexer: *Lexer, token: *Token) {
     lexer_set_token_end(lexer, token);
 }
 
-parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
+parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) -> ident: string {
     ident: string;
     ident.data = lexer.input.data;
     ident.count = 1;
@@ -243,6 +243,8 @@ parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
     }
 
     lexer_set_token_end(lexer, token);
+
+    return ident;
 }
 
 parse_equal :: (lexer: *Lexer, token: *Token) {
@@ -370,9 +372,12 @@ parse_directive :: (lexer: *Lexer, token: *Token) {
 
     lexer_eat_whitespace(lexer);
 
-    // TODO(jt): @Hack extract read_identifier, so we don't need to overwrite.
-    parse_identifier_or_keyword(lexer, token);
+    // TODO(jt): @Cleanup @Hack extract read_identifier, so we don't need to overwrite.
+    ident := parse_identifier_or_keyword(lexer, token);
     token.type = .DIRECTIVE;
+    if ident == "include" {
+        token.userdata |= USERDATA__IS_INCLUDE_DIRECTIVE;
+    }
 }
 
 parse_string_literal :: (lexer: *Lexer, token: *Token) {
