@@ -85,16 +85,71 @@ lexer_read_recent_token :: (lexer: Lexer, index: s64 = -1) -> *Token {
     return token;
 }
 
-lexer_set_token_start :: (lexer: Lexer, token: *Token) {
+lexer_set_token_start :: inline (lexer: Lexer, token: *Token) {
     token.byte0 = lexer.byte_index;
     token.loc0.x = lexer.column_index;
     token.loc0.y = lexer.line_index;
 }
 
-lexer_set_token_end :: (lexer: Lexer, token: *Token) {
+lexer_set_token_end :: inline (lexer: Lexer, token: *Token) {
     token.byte1 = lexer.byte_index;
     token.loc1.x = lexer.column_index;
     token.loc1.y = lexer.line_index;
+}
+
+lexer_next_char_equals :: inline (lexer: Lexer, c: u8) -> bool {
+    if lexer.input.count {
+        return lexer.input[0] == c;
+    }
+
+    return false;
+}
+
+lexer_next_char_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
+    if lexer.input.count {
+        for bytes {
+            if lexer.input[0] == it {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+lexer_next_char_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> bool {
+    if lexer.input.count {
+        if matcher(lexer.input[0]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+lexer_advance :: inline (lexer: *Lexer) {
+    sanity_assert(lexer.input.count > 0);
+
+    c := lexer.input[0];
+
+    advance(*lexer.input);
+    lexer.byte_index += 1;
+
+    if c == "\n" {
+        lexer.line_index += 1;
+        lexer.column_index = 0;
+    } else {
+        lexer.column_index += 1;
+    }
+}
+
+lexer_advance_horizontally :: inline (lexer: *Lexer) {
+    sanity_assert(lexer.input.count > 0);
+    sanity_assert(lexer.input[0] != "\n");
+
+    advance(*lexer.input);
+    lexer.byte_index += 1;
+    lexer.column_index += 1;
 }
 
 lexer_eat_whitespace :: (lexer: *Lexer) {
@@ -127,29 +182,4 @@ lexer_eat_until_newline :: (lexer: *Lexer) {
         lexer.byte_index += 1;
         lexer.column_index += 1;
     }
-}
-
-lexer_advance :: (lexer: *Lexer) {
-    sanity_assert(lexer.input.count > 0);
-
-    c := lexer.input[0];
-
-    advance(*lexer.input);
-    lexer.byte_index += 1;
-
-    if c == "\n" {
-        lexer.line_index += 1;
-        lexer.column_index = 0;
-    } else {
-        lexer.column_index += 1;
-    }
-}
-
-lexer_advance_horizontally :: (lexer: *Lexer) {
-    sanity_assert(lexer.input.count > 0);
-    sanity_assert(lexer.input[0] != "\n");
-
-    advance(*lexer.input);
-    lexer.byte_index += 1;
-    lexer.column_index += 1;
 }

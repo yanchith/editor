@@ -84,12 +84,12 @@ count_utf8_chars :: (text: string) -> s64 {
         return 0;
     }
 
-    assert(byte_is_utf8_char_boundary(text[0]));
+    assert(is_utf8_char_boundary(text[0]));
 
     // TODO(jt): @Speed SIMD this!
     count := 1;
     for 1..text.count - 1 {
-        if byte_is_utf8_char_boundary(text[it]) {
+        if is_utf8_char_boundary(text[it]) {
             count += 1;
         }
     }
@@ -110,7 +110,7 @@ find_next_utf8_char_boundary :: (text: string, index: s64, $sanity: bool = true)
         return text.count, 0;
     }
 
-    assert(byte_is_utf8_char_boundary(text[index]));
+    assert(is_utf8_char_boundary(text[index]));
 
     byte_count := UTF8_LENGTH_FOR_STARTING_BYTE[text[index]];
     next_index := index + byte_count;
@@ -122,7 +122,7 @@ find_next_utf8_char_boundary :: (text: string, index: s64, $sanity: bool = true)
     // binary files. We should probably do a better detection that's completely separate.
     #if SANITY && sanity {
         next_index_check := index + 1;
-        while next_index_check < text.count && !byte_is_utf8_char_boundary(text[next_index_check]) {
+        while next_index_check < text.count && !is_utf8_char_boundary(text[next_index_check]) {
             next_index_check += 1;
         }
 
@@ -146,12 +146,12 @@ find_previous_utf8_char_boundary :: (text: string, index: s64) -> found_index: s
     }
 
     // index == count is also a valid starting point.
-    assert(index == text.count || byte_is_utf8_char_boundary(text[index]));
+    assert(index == text.count || is_utf8_char_boundary(text[index]));
 
     // TODO(jt): @Speed There should be a SIMD-ish, Hacker's Delight style way of finding the
     // previous character index instead of this loop.
     prev_index := index - 1;
-    while prev_index > 0 && !byte_is_utf8_char_boundary(text[prev_index]) {
+    while prev_index > 0 && !is_utf8_char_boundary(text[prev_index]) {
         prev_index -= 1;
     }
 
@@ -165,7 +165,7 @@ find_previous_utf8_char_boundary :: (text: string, index: s64) -> found_index: s
     return prev_index, cast(u32, byte_count);
 }
 
-byte_is_utf8_char_boundary :: inline (b: u8) -> bool {
+is_utf8_char_boundary :: inline (b: u8) -> bool {
     /* Taken from Rust's std.
 
     pub(crate) const fn is_utf8_char_boundary(self) -> bool {
@@ -174,6 +174,10 @@ byte_is_utf8_char_boundary :: inline (b: u8) -> bool {
     }
     */
     return b < 128 || b >= 192;
+}
+
+is_hex :: inline (b: u8) -> bool {
+    return is_digit(b) || b >= "a" && b <= "f" || b >= "A" && b <= "F";
 }
 
 // This is just a wrapper around the regular string iterator, in case you need to refer to it by name.

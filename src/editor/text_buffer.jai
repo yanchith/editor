@@ -2078,7 +2078,7 @@ update_index_for_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, _text:
                     }
                 }
 
-                if !byte_is_utf8_char_boundary(text[0]) {
+                if !is_utf8_char_boundary(text[0]) {
                     text_buffer_switch_to_binary_mode(buffer, cursors);
                     return;
                 }

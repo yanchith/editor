@@ -136,10 +136,89 @@ parse_simple :: (lexer: *Lexer, token: *Token) {
 }
 
 parse_number :: (lexer: *Lexer, token: *Token) {
+    start_c := lexer.input[0];
+
     token.type = .NUMBER_LITERAL;
     lexer_advance_horizontally(lexer);
 
-    // nocheckin
+    if lexer.input.count {
+        c := lexer.input[0];
+        if is_digit(c) || c == "." {
+
+            parsed_decimal_point := false;
+
+            // Parse decimal
+            is_digit_or_point :: (b: u8) -> bool {
+                return is_digit(b) || b == ".";
+            }
+
+            while lexer.input.count && lexer_next_char_matches(lexer, is_digit_or_point) {
+                if c == "." {
+                    if parsed_decimal_point {
+                        break;
+                    }
+                    parsed_decimal_point = true;
+                }
+
+                lexer_advance_horizontally(lexer);
+            }
+
+            // Parse exponent
+            if lexer.input.count {
+                if lexer_next_char_is_any(lexer, "eE") {
+                    lexer_advance_horizontally(lexer);
+
+                    if lexer.input.count && lexer_next_char_is_any(lexer, "+-") {
+                        lexer_advance_horizontally(lexer);
+                    }
+
+                    while lexer.input.count && lexer_next_char_matches(lexer, is_digit) {
+                        lexer_advance_horizontally(lexer);
+                    }
+                }
+
+                if parsed_decimal_point {
+                    if lexer_next_char_is_any(lexer, "fFdD") {
+                        lexer_advance_horizontally(lexer);
+                    }
+                } else {
+                    if lexer_next_char_is_any(lexer, "lL") {
+                        lexer_advance_horizontally(lexer); // l
+                        if lexer_next_char_is_any(lexer, "lL") {
+                            lexer_advance_horizontally(lexer); // ll
+                            if lexer_next_char_is_any(lexer, "uU") {
+                                lexer_advance_horizontally(lexer); // llu
+                            }
+                        } else if lexer_next_char_is_any(lexer, "uU") {
+                            lexer_advance_horizontally(lexer); // lu
+                        }
+                    } else if lexer_next_char_is_any(lexer, "uU") {
+                        lexer_advance_horizontally(lexer); // u
+                        if lexer_next_char_is_any(lexer, "lL") {
+                            lexer_advance_horizontally(lexer); // ul
+                            if lexer_next_char_is_any(lexer, "lL") {
+                                lexer_advance_horizontally(lexer); // ull
+                            }
+                        }
+                    }
+                }
+            }
+        } else if start_c == "0" {
+            if c == "x" || c == "X" {
+                lexer_advance_horizontally(lexer);
+                while lexer.input.count && lexer_next_char_matches(lexer, is_hex) {
+                    lexer_advance_horizontally(lexer);
+                }
+            } else if c == "b" || c == "B" {
+                lexer_advance_horizontally(lexer);
+                while lexer.input.count && lexer_next_char_is_any(lexer, "01") {
+                    lexer_advance_horizontally(lexer);
+                }
+            }
+        }
+    }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
