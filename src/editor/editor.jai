@@ -33,19 +33,21 @@ TODO(jt): Roadmap:
 - [X] FreeType subpixel rendering
 - [~] Directory Lister panel
 - [X] *compilation* buffer
-- [~] DIRECTORY_SEARCH
+- [X] DIRECTORY_SEARCH
 - [X] SHOW_COMMANDS (M-x)
 - [X] Map-like zoom
 - [X] Read-only mode for documents.
 - [X] Selection in mini panel text buffer.
 - [X] Selection in modal interaction text buffer.
 - [X] COPY, CUT and PASTE in mini panel and modal interaction.
+- [X] MOVE_TO_START and MOVE_TO_END in mini panel.
 - [~] Create file in new directories (mkdirp) ; Needs to get absolute path of nonexistent directory on macOS!
 - [X] Refresh lister
 - [X] Delete file in lister
 - [X] Click to open file in lister
 - [X] Mode defined comments (C-x C-;) ; (Still want to play with single-line block comments)
-- [~] Themes (got some basic ones, could have more (e.g. stb retro, delphi retro, some other nice light theme)
+- [~] Themes (got some basic ones, could have more (need to add delphi, and at least more one good light theme)
+- [X] Dark text color under bright rectangles (cursor, selection, line)
 - [~] ~Rotated session logs
 - [X] M-g g (go to line)
 - [X] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
@@ -57,19 +59,32 @@ TODO(jt): Roadmap:
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
+- [X] Language: JAI
+- [ ] Language: C
+- [ ] Language: C++
+- [ ] Language: C#
+- [ ] Language: GLSL
+- [ ] Language: HLSL
+- [ ] Language: Rust
+- [ ] Language: Javascript
+- [ ] Language: Typescript
+- [ ] Language: Odin
+- [ ] Language: Lua
+- [ ] Language: Java
+- [ ] Language: Python
 - [ ] Multiple Cursors
-- [X] MOVE_TO_START and MOVE_TO_END in mini panel.
 - [ ] Emacs-like kill ring
-- [ ] CRLF
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
+- [ ] Mouse interaction in the mini panel (text selection, item selection, item hover?)
+- [ ] Mouse interaction in the modal interaction (text selection)
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
-- [X] Dark text color under bright rectangles (cursor, selection, line)
 
 ... things below here are only important if I want to share this with other people ...
 
+- [ ] CRLF
 - [ ] Config file
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
@@ -81,7 +96,6 @@ TODO(jt): Roadmap:
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode view
 - [~] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
-- [ ] Emacs-like undo? (If I find out I can't live without)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
 - [ ] Very nice text rendering + get rid of freetype (kb_text_shape + Slug)
@@ -143,10 +157,12 @@ operator==     :: Math.operator==;
 #load "font.jai";
 #load "gap_buffer.jai";
 #load "text_buffer.jai";
-#load "parentheses.jai";
 #load "line_search.jai";
 #load "color.jai";
 #load "theme.jai";
+#load "scope.jai";
+#load "lang_common.jai";
+#load "lang_jai.jai";
 #load "mini_panel_search.jai";
 #load "mini_panel_search_project.jai";
 #load "mini_panel_open_file.jai";
@@ -158,7 +174,6 @@ operator==     :: Math.operator==;
 #load "modal_interaction_go_to_line.jai";
 #load "modal_interaction_compile_project.jai";
 #load "modal_interaction_benchgen.jai";
-#load "lang_jai.jai";
 
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
 // if the texture wasn't uploaded (we don't upload TEXTURE_ID_NONE). We could also reserve a few
@@ -385,19 +400,16 @@ Document :: struct {
     // backing_file_path can also be created without the file already existing.
     backing_file_path: string; // In canonical format (see canonicalize_path).
     backing_file_exists: bool;
+
     backing_file_time_of_last_save: Apollo_Time; // Used to filter out modifications from the filesystem done by us.
     backing_file_time_of_last_sync: Apollo_Time;
-    // The modification time and size are used to detect changes on filesystem since we last read
-    // from or wrote to the file.
-    //
-    // TODO(jt): modtime and size are not sufficient to detect all file changes, and we may need to
-    // resort to actually reading that and comparing the contents hash to a previously stored hash,
+
     backing_file_last_synced_modification_time: Apollo_Time;
     backing_file_last_synced_size: s64;
     backing_file_last_synced_hash: u64;
 
-    parenthesized_scopes:    [..] Parenthesized_Scope;
-    syntax_highlight_tokens: [..] Syntax_Highlight_Token;
+    scopes: [..] Scope; // For indentation, parentheses matching, navigation.
+    tokens: [..] Token; // For syntax highlighting. Sparse!
 
     // Compilation fields are empty if this is not a .COMPILATION document.
     compilation_args:   string;
@@ -435,31 +447,6 @@ Document :: struct {
         TRANSIENT :: MODIFIED_THIS_FRAME | MODIFY_ATTEMPT_THIS_FRAME;
     }
 
-    Syntax_Highlight_Token :: struct {
-        loc0: Text_Location;
-        loc1: Text_Location;
-        type: Type;
-
-        Type :: enum u32 {
-            UNINITIALIZED :: 0;
-
-            KEYWORD;
-            NUMBER_LITERAL;
-            STRING_LITERAL;
-
-            OPERATOR;
-            PARENTHESIS;
-
-            // TYPE;
-            // IDENTIFIER; (variable, parameter, global...)
-
-            DIRECTIVE; // Preprocessor directive in C. Compiler directive in JAI. Macro invocation in Rust.
-            ATTRIBUTE; // [[attribute]] or __attribute__() in C. @Note in JAI, #[attribute] in Rust, [Attribute] in C#;
-
-            COMMENT;
-        }
-    }
-
     Compilation_Error :: struct {
         x0: s64;
         x1: s64;
@@ -492,8 +479,8 @@ Listing :: struct {
     Kind :: enum u32 {
         DIRECTORY;
         // TODO(jt): Add VIEWS (unified) ... this is basically entitities.
-        // TODO(jt): Add SEARCH_RESULTS
-        // TODO(jt): Add COMPILATION_ERRORS
+        // TODO(jt): Add SEARCH_RESULTS?
+        // TODO(jt): Add COMPILATION_ERRORS?
     }
 
     Item :: struct {
@@ -2060,8 +2047,8 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                         text_buffer_insert(*document.buffer, *document.cursors_cold, contents, .FUSE);
                         text_buffer_move_cursor_to(document.buffer, *document.cursors_cold, cursor_before_reload, false);
 
-                        update_parenthesized_scopes(document);
-                        update_syntax_highlights(editor, document, platform, input);
+                        update_scopes(document);
+                        update_tokens(editor, document, platform, input);
 
                         editor_log(editor, "Updated % from filesystem", String.path_filename(document.backing_file_path));
                     }
@@ -2635,7 +2622,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         // We have to update these after every change, because the very next edit could be needing
                         // this. We could start being smarter about this (e.g. by setting a specific dirty flag),
                         // becuase not every subsequent action needs these up to date.  -jt, 22 July 2026.
-                        update_parenthesized_scopes(document);
+                        update_scopes(document);
                     }
                 }
             }
@@ -2945,8 +2932,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                                         editor.theme.cursor_color_active, editor.theme.cursor_color,
                                         input.time, CURSOR_FLASH_DURATION);
 
-                    update_parenthesized_scopes(document);
-                    update_syntax_highlights(editor, document, platform, input);
+                    update_scopes(document);
+                    update_tokens(editor, document, platform, input);
 
                     editor_log(editor, "Reloaded file: %", document.backing_file_path);
                 }
@@ -3053,14 +3040,14 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         }
 
         case .MOVE_TO_START_OF_SCOPE; {
-            scope := find_parenthesized_scope_for_location(document, view.cursors.c0);
+            scope := find_scope_for_location(document, view.cursors.c0);
             if scope {
                 text_buffer_move_cursor_to(document.buffer, *view.cursors, scope.loc0, view.selecting);
                 cursor_moved = true;
             }
         }
         case .MOVE_TO_END_OF_SCOPE; {
-            scope := find_parenthesized_scope_for_location(document, view.cursors.c0);
+            scope := find_scope_for_location(document, view.cursors.c0);
             if scope {
                 text_buffer_move_cursor_to(document.buffer, *view.cursors, scope.loc1, view.selecting);
                 cursor_moved = true;
@@ -3170,8 +3157,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .FUSE);
 
                     cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
-                    if document.parenthesized_scopes.count {
-                        update_parenthesized_scopes(document);
+                    if document.scopes.count {
+                        update_scopes(document);
 
                         level := find_indentation_level_for_location(document, view.cursors.c0);
                         buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .FUSE);
@@ -3179,8 +3166,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, 1, false);
                 }
 
-                if document.parenthesized_scopes.count {
-                    update_parenthesized_scopes(document);
+                if document.scopes.count {
+                    update_scopes(document);
 
                     level := find_indentation_level_for_location(document, view.cursors.c0);
                     buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .FUSE);
@@ -3337,7 +3324,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .INDENT_OR_AUTOCOMPLETE; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
-                if document.parenthesized_scopes.count {
+                if document.scopes.count {
                     view.selecting = false;
 
                     original_y0 := view.cursors.c0.y;
@@ -3358,7 +3345,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                             changed := text_buffer_indent_line(*document.buffer, *view.cursors, level, ifx first then .NONE else .FUSE);
 
                             if changed {
-                                update_parenthesized_scopes(document);
+                                update_scopes(document);
                                 first = false;
                             }
 
@@ -3475,7 +3462,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         // We have to update these after every change, because the very next edit could be needing
         // this. We could start being smarter about this (e.g. by setting a specific dirty flag),
         // becuase not every subsequent action needs these up to date.  -jt, 22 July 2026.
-        update_parenthesized_scopes(document);
+        update_scopes(document);
     }
 
     return true, cursor_moved, buffer_changed;
@@ -3658,7 +3645,7 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
         // We have to update these after every change, because the very next edit could be needing
         // this. We could start being smarter about this (e.g. by setting a specific dirty flag),
         // becuase not every subsequent action needs these up to date.  -jt, 22 July 2026.
-        update_parenthesized_scopes(document);
+        update_scopes(document);
     }
 
     return true, cursor_moved, buffer_changed;
@@ -4104,7 +4091,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
             // Update Syntax Highlighting
             //
             if document.flags & .MODIFIED_THIS_FRAME {
-                update_syntax_highlights(editor, document, platform, input);
+                update_tokens(editor, document, platform, input);
             }
 
             //
@@ -4414,7 +4401,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 found := false;
                 highlight_loc: Text_Location;
 
-                scope := find_parenthesized_scope_for_location(document, view.cursors.c0);
+                scope := find_scope_for_location(document, view.cursors.c0);
                 if scope && scope.parent_index != -1 {
                     if scope.loc0 == view.cursors.c0 {
                         found = true;
@@ -4485,7 +4472,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 // Find syntax highlights for current screen
                 //
                 {
-                    for document.syntax_highlight_tokens {
+                    for document.tokens {
                         if it.loc1.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
                         if it.loc0.y > viewport_line1  break;
 
@@ -4495,18 +4482,21 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                         r.x1 = it.loc1.x;
                         r.y1 = it.loc1.y - viewport_line0;
 
-                        if it.type == {
+                        if #complete it.type == {
+                            case .UNINITIALIZED;   // Nothing.
+
                             // TODO(jt): @Cleanup While we sort of define color constants for things, we
                             // also can modify bold/italic, for which we have no way of customization
                             // yet. :Config
                             case .KEYWORD;         r.color = editor.theme.keyword_color; r.variant = editor.theme.keyword_variant;
+                            case .NUMBER_LITERAL;  r.color = editor.theme.number_literal_color; r.variant = editor.theme.number_literal_variant;
+                            case .STRING_LITERAL;  r.color = editor.theme.string_literal_color; r.variant = editor.theme.string_literal_variant;
+
                             case .ATTRIBUTE;       r.color = editor.theme.attribute_color; r.variant = editor.theme.attribute_variant;
                             case .DIRECTIVE;       r.color = editor.theme.directive_color; r.variant = editor.theme.directive_variant;
-                            case .STRING_LITERAL;  r.color = editor.theme.string_literal_color; r.variant = editor.theme.string_literal_variant;
-                            case .NUMBER_LITERAL;  r.color = editor.theme.number_literal_color; r.variant = editor.theme.number_literal_variant;
-                            case .COMMENT;         r.color = editor.theme.comment_color; r.variant = editor.theme.comment_variant;
 
-                            case; continue;
+                            case .LINE_COMMENT;    #through;
+                            case .BLOCK_COMMENT;   r.color = editor.theme.comment_color; r.variant = editor.theme.comment_variant;
                         }
 
                         array_add(*style_ranges, r);
@@ -4774,10 +4764,10 @@ get_comment_style :: (document: Document) -> /* Static */ line: string, block_st
     }
 }
 
-update_syntax_highlights :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
+update_tokens :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
     if #complete document.mode == {
         case .PLAIN_TEXT; // Nothing
-        case .JAI;        lang_jai_update_syntax_highlights(editor, document, platform, input);
+        case .JAI;        lang_jai_update_tokens(editor, document, platform, input);
     }
 }
 
@@ -4843,8 +4833,8 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
                         text_buffer_insert(*document.buffer, *document.cursors_cold, file_contents, .OMIT);
                         text_buffer_move_cursor_to(document.buffer, *document.cursors_cold, 0, 0, false);
 
-                        update_parenthesized_scopes(document);
-                        update_syntax_highlights(editor, document, platform, input);
+                        update_scopes(document);
+                        update_tokens(editor, document, platform, input);
 
                         watch_file(editor, platform, input, document.backing_file_path);
                     }
@@ -5019,8 +5009,8 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         document.backing_file_path = arena_push_string(document_arena, backing_file_path);
     }
 
-    document.parenthesized_scopes.allocator    = arena_allocator(document_arena);
-    document.syntax_highlight_tokens.allocator = arena_allocator(document_arena);
+    document.scopes.allocator = arena_allocator(document_arena);
+    document.tokens.allocator = arena_allocator(document_arena);
 
     // If we find that we accidentally pass regular documents where compilation
     // documents are needed, we could set this to a fail_allocator or something.

@@ -1,6 +1,6 @@
 DEFAULT_INDENTATION_STEP :: 4; // TODO(jt): Make this configurable (also per project). :Config
 
-Parenthesized_Scope :: struct {
+Scope :: struct {
     loc0: Text_Location;
     loc1: Text_Location;
 
@@ -28,8 +28,8 @@ Parenthesized_Scope :: struct {
 //
 // UPDATE: For documents above ~2MB, this also causes us to miss frames for every edit. So need that
 // incremental version for this reason also.
-update_parenthesized_scopes :: (document: *Document) {
-    ProfileZone("update_parenthesized_scopes");
+update_scopes :: (document: *Document) {
+    ProfileZone("update_scopes");
 
     sanity_assert(document != null);
     if document == null {
@@ -55,15 +55,15 @@ update_parenthesized_scopes :: (document: *Document) {
         }
     }
 
-    array_reset_keeping_memory(*document.parenthesized_scopes);
+    array_reset_keeping_memory(*document.scopes);
     if document.buffer.binary_mode {
         return; // Don't recreate indentation data if we entered binary mode.
     }
 
-    parent_index  := document.parenthesized_scopes.count;
+    parent_index  := document.scopes.count;
     sibling_index := -1;
     {
-        scope := array_add(*document.parenthesized_scopes);
+        scope := array_add(*document.scopes);
         scope.loc0 = text_buffer_get_start(document.buffer);
         scope.loc1 = text_buffer_get_end(document.buffer);
         scope.indentation_level = 0;
@@ -137,10 +137,10 @@ update_parenthesized_scopes :: (document: *Document) {
 
             for paren_pair: indentation_pairs {
                 if byte == paren_pair.open {
-                    index := document.parenthesized_scopes.count;
-                    parent := *document.parenthesized_scopes[parent_index];
+                    index := document.scopes.count;
+                    parent := *document.scopes[parent_index];
 
-                    scope: Parenthesized_Scope;
+                    scope: Scope;
                     scope.loc0.x = count_utf8_chars(String.slice(cast(string, line), 0, byte_index));
                     scope.loc0.y = line_index;
 
@@ -184,11 +184,11 @@ update_parenthesized_scopes :: (document: *Document) {
                         assert(parent.first_child_index == -1);
                         parent.first_child_index = index;
                     } else {
-                        sibling := *document.parenthesized_scopes[sibling_index];
+                        sibling := *document.scopes[sibling_index];
                         sibling.next_sibling_index = index;
                     }
 
-                    array_add(*document.parenthesized_scopes, scope); // We potentially invalidate pointers here, careful!
+                    array_add(*document.scopes, scope); // We potentially invalidate pointers here, careful!
 
                     parent_index = index;
                     sibling_index = -1;
@@ -196,7 +196,7 @@ update_parenthesized_scopes :: (document: *Document) {
                     continue byte;
                 } else if byte == paren_pair.close {
                     scope_index := parent_index;
-                    scope := *document.parenthesized_scopes[scope_index];
+                    scope := *document.scopes[scope_index];
                     if paren_pair.open == scope.open_paren_char {
                         // TODO(jt): @Speed Maintain count so we don't have to rescan the line?
                         scope.loc1.x = count_utf8_chars(String.slice(cast(string, line), 0, byte_index));
@@ -218,10 +218,10 @@ update_parenthesized_scopes :: (document: *Document) {
     }
 }
 
-find_parenthesized_scope_for_location :: (document: Document, loc: Text_Location, start_x_inclusive := true, end_x_inclusive := true, start_y_inclusive := true, end_y_inclusive := true) -> *Parenthesized_Scope {
-    ProfileZone("find_parenthesized_scope_for_location");
+find_scope_for_location :: (document: Document, loc: Text_Location, start_x_inclusive := true, end_x_inclusive := true, start_y_inclusive := true, end_y_inclusive := true) -> *Scope {
+    ProfileZone("find_scope_for_location");
 
-    scopes := document.parenthesized_scopes;
+    scopes := document.scopes;
     if !scopes.count {
         return null;
     }
@@ -255,7 +255,7 @@ find_indentation_level_for_location :: (document: Document, loc: Text_Location) 
     // The Y range check is start-exclusive and end-inclusive by design: we indent the line of
     // the closing paren depending on whether the scope has REGULAR or HANGING indentation,
     // while the opening paren always belongs to its parent scope, so we exclude it.
-    scope := find_parenthesized_scope_for_location(document, loc, start_y_inclusive = false);
+    scope := find_scope_for_location(document, loc, start_y_inclusive = false);
     if !scope {
         return 0;
     }
@@ -267,7 +267,7 @@ find_indentation_level_for_location :: (document: Document, loc: Text_Location) 
     // indent to the parent scope's level, if it exists.
     if scope.loc1.y == loc.y && !(scope.indentation_flags & .HANGING) {
         if scope.parent_index >= 0 {
-            parent := *document.parenthesized_scopes[scope.parent_index];
+            parent := *document.scopes[scope.parent_index];
             sanity_assert(parent.indentation_level >= 0);
 
             level = parent.indentation_level;
@@ -280,7 +280,7 @@ find_indentation_level_for_location :: (document: Document, loc: Text_Location) 
 #scope_file
 
 // TODO(jt): @Cleanup This could be unified with Font_Text_Range in font.jai.
-contains :: (scope: Parenthesized_Scope, loc: Text_Location, start_x_inclusive: bool, end_x_inclusive: bool, start_y_inclusive: bool, end_y_inclusive: bool) -> bool {
+contains :: (scope: Scope, loc: Text_Location, start_x_inclusive: bool, end_x_inclusive: bool, start_y_inclusive: bool, end_y_inclusive: bool) -> bool {
     test_top    := start_y_inclusive && loc.y >= scope.loc0.y || loc.y > scope.loc0.y;
     test_bottom := end_y_inclusive   && loc.y <= scope.loc1.y || loc.y < scope.loc1.y;
     test_left   := start_x_inclusive && loc.x >= scope.loc0.x || loc.x > scope.loc0.x;

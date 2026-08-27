@@ -1,5 +1,3 @@
-JL :: #import "Jai_Lexer"; // This is our modified version. See :ModifiedJaiLexerModule.
-
 LANG_JAI_LINE_COMMENT        :: "//";
 LANG_JAI_BLOCK_COMMENT_START :: "/*";
 LANG_JAI_BLOCK_COMMENT_END   :: "*/";
@@ -18,15 +16,15 @@ LANG_JAI_INDENTATION_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "[", #char "]" },
 ];
 
-lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
-    ProfileZone("lang_jai_update_syntax_highlights");
+lang_jai_update_tokens :: (editor: *Editor, document: *Document, platform: Platform, input: Input) {
+    ProfileZone("lang_jai_update_tokens");
 
     sanity_assert(document != null);
     if document == null {
         return;
     }
 
-    array_reset_keeping_memory(*document.syntax_highlight_tokens);
+    array_reset_keeping_memory(*document.tokens);
 
     // TODO(jt): @Memory It's possible that cached_make_atom inside the Lexer leaks memory. Maybe we
     // want to pass in temp as the context allocator when we call the lexer? Maybe we want to audit
@@ -47,72 +45,74 @@ lang_jai_update_syntax_highlights :: (editor: *Editor, document: *Document, plat
     while 1 {
         // The lexer has a MAX_CONCURRENT_TOKENS, which is how many you can still access before they
         // get overwritten. Pretty cool.
-        token := JL.peek_next_token(*lexer,, temp);
+        jl_token := JL.peek_next_token(*lexer,, temp);
         JL.eat_token(*lexer,, temp);
 
-        if token.type == .END_OF_INPUT  break;
-        if lexer.reported_error         break;
+        if jl_token.type == .END_OF_INPUT  break;
+        if lexer.reported_error            break;
 
-        highlight_token: Document.Syntax_Highlight_Token;
+        token: Token;
         // The highlight token interval is inclusive on both sides. This is sort of an arbitrary
         // choice we can revisit. Note however, that Jai_Lexer produces end-exclusive horizontal
         // range and end-inclusive vertical range due to the way set_end_of_token works. To correct
         // for this, we subtract 2 from c1.
         //
         // TODO(jt): @Audit is c0 and c1 counting in unicode or bytes?
-        highlight_token.loc0.x = token.c0 - 1;
-        highlight_token.loc0.y = token.l0 - 1;
-        highlight_token.loc1.x = token.c1 - 2;
-        highlight_token.loc1.y = token.l1 - 1;
+        token.loc0.x = jl_token.c0 - 1;
+        token.loc0.y = jl_token.l0 - 1;
+        token.loc1.x = jl_token.c1 - 2;
+        token.loc1.y = jl_token.l1 - 1;
 
         // TODO(jt): Modify font to be able to mix in multiple font weights in a single atlas
         // (regular, bold, italic, etc.) and make use of this.
 
-        if token.type == {
+        if jl_token.type == {
             case .IDENT; {
                 if last_token_is_pound || last_token_is_dollar {
-                    highlight_token.type = .DIRECTIVE;
-                    highlight_token.loc0.x -= 1;
+                    token.type = .DIRECTIVE;
+                    token.loc0.x -= 1;
                 } else if last_token_is_double_dollar {
-                    highlight_token.type = .DIRECTIVE;
-                    highlight_token.loc0.x -= 2;
+                    token.type = .DIRECTIVE;
+                    token.loc0.x -= 2;
                 }
             }
 
-            case .NUMBER;        highlight_token.type = .NUMBER_LITERAL;
-            case .STRING;        highlight_token.type = .STRING_LITERAL;
-            case .TRIPLE_MINUS;  highlight_token.type = .DIRECTIVE;
+            case .NUMBER;        token.type = .NUMBER_LITERAL;
+            case .STRING;        token.type = .STRING_LITERAL;
+            case .TRIPLE_MINUS;  token.type = .DIRECTIVE;
 
             case .NOTE; {
-                highlight_token.type = .ATTRIBUTE;
-                highlight_token.loc0.x -= 1;
+                token.type = .ATTRIBUTE;
+                token.loc0.x -= 1;
             }
 
-            case .COMMENT;        #through;
-            case .BLOCK_COMMENT;  highlight_token.type = .COMMENT;
+            case .COMMENT;        token.type = .LINE_COMMENT;
+            case .BLOCK_COMMENT;  token.type = .BLOCK_COMMENT;
 
             case; {
-                if token.type >= .__FIRST_KEYWORD && token.type <= .__LAST_KEYWORD {
+                if jl_token.type >= .__FIRST_KEYWORD && jl_token.type <= .__LAST_KEYWORD {
                     if last_token_is_pound {
-                        highlight_token.type = .DIRECTIVE;
-                        highlight_token.loc0.x -= 1;
+                        token.type = .DIRECTIVE;
+                        token.loc0.x -= 1;
                     } else {
-                        highlight_token.type = .KEYWORD;
+                        token.type = .KEYWORD;
                     }
                 }
             }
         }
 
-        last_token_is_pound  = token.type == #char "#";
-        last_token_is_dollar = token.type == DOLLAR;
-        last_token_is_double_dollar = token.type == .DOUBLE_DOLLAR;
+        last_token_is_pound  = jl_token.type == #char "#";
+        last_token_is_dollar = jl_token.type == DOLLAR;
+        last_token_is_double_dollar = jl_token.type == .DOUBLE_DOLLAR;
 
-        if highlight_token.type != .UNINITIALIZED {
-            array_add(*document.syntax_highlight_tokens, highlight_token);
+        if token.type != .UNINITIALIZED {
+            array_add(*document.tokens, token);
         }
     }
 }
 
 #scope_file
+
+JL :: #import "Jai_Lexer"; // This is our modified version. See :ModifiedJaiLexerModule.
 
 DOLLAR :: #char "$"; // Thank you Emacs!
