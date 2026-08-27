@@ -49,9 +49,12 @@ lang_c_update_tokens :: (document: *Document) {
         if lexer.reported_error  break;
         if token.type == .EOF    break;
 
-        if token.type != .UNINITIALIZED {
-            array_add(*document.tokens, token);
-        }
+        // We currently don't (and can't) handle these, so don't send them down the pipe.
+        if token.type == .UNINITIALIZED  continue;
+        if token.type == .IDENTIFIER     continue;
+        if token.type == .PUNCTUATION    continue;
+
+        array_add(*document.tokens, token);
     }
 }
 
