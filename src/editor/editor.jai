@@ -4485,9 +4485,10 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                         r.y1 = it.loc1.y - viewport_line0;
 
                         if #complete it.type == {
-                            case .UNINITIALIZED;   // Nothing
-                            case .EOF;             // Nothing
-                            case .INVALID;         // Nothing
+                            // These should not get here, but in case they do, we assign the defaults.
+                            case .UNINITIALIZED;   r.color = editor.theme.text_color; r.variant = editor.theme.text_variant;
+                            case .INVALID;         r.color = editor.theme.text_color; r.variant = editor.theme.text_variant;
+                            case .EOF;             r.color = editor.theme.text_color; r.variant = editor.theme.text_variant;
 
                             // TODO(jt): @Cleanup While we sort of define color constants for things, we
                             // also can modify bold/italic, for which we have no way of customization
@@ -4497,8 +4498,9 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                             case .STRING_LITERAL;  #through;
                             case .CHAR_LITERAL;    r.color = editor.theme.string_literal_color; r.variant = editor.theme.string_literal_variant;
 
-                            case .PUNCTUATION;     // Nothing
-                            case .IDENTIFIER;      // Nothing
+                            // These should not get here, but in case they do, we assign the defaults.
+                            case .PUNCTUATION;     r.color = editor.theme.text_color; r.variant = editor.theme.text_variant;
+                            case .IDENTIFIER;      r.color = editor.theme.text_color; r.variant = editor.theme.text_variant;
 
                             case .ATTRIBUTE;       r.color = editor.theme.attribute_color; r.variant = editor.theme.attribute_variant;
                             case .DIRECTIVE;       r.color = editor.theme.directive_color; r.variant = editor.theme.directive_variant;
@@ -4529,7 +4531,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 font_layout_and_draw_text(*editor.font, cast(string, viewport_view),
                                           render_commands, atlas_update_regions,
                                           offset, scissor_rect,
-                                          editor.theme.text_color, .REGULAR,
+                                          editor.theme.text_color, editor.theme.text_variant,
                                           style_ranges, invert_ranges,
                                           binary = document.buffer.binary_mode);
             }

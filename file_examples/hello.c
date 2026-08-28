@@ -1,10 +1,11 @@
 #include <stdio.h>
 
-#        include       "dingolingo.h";
+#        include       "dingolingo.h"
 
 int main() {
-    float x = 0.2342342e10f;
-    const char s = "stringo?";;
+    float y = .5;
+    float x = 0.2342342e10;
+    const char s = "stringo?";
 
     int i = x > 1 ? 0 : 42lu;
 

@@ -1,10 +1,10 @@
 Token :: struct {
     loc0: Text_Location;
-    loc1: Text_Location;
+    loc1: Text_Location; // Inclusive!
 
     // nocheckin fill these in for JAI!
     byte0: s64;
-    byte1: s64;
+    byte1: s64; // Inclusive!
 
     type: Token_Type;
 
@@ -97,7 +97,7 @@ lexer_set_token_end :: inline (lexer: Lexer, token: *Token) {
     token.loc1.y = lexer.line_index;
 }
 
-lexer_next_char_equals :: inline (lexer: Lexer, c: u8) -> bool {
+lexer_current_char_equals :: inline (lexer: Lexer, c: u8) -> bool {
     if lexer.input.count {
         return lexer.input[0] == c;
     }
@@ -105,7 +105,7 @@ lexer_next_char_equals :: inline (lexer: Lexer, c: u8) -> bool {
     return false;
 }
 
-lexer_next_char_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
+lexer_current_char_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
     if lexer.input.count {
         for bytes {
             if lexer.input[0] == it {
@@ -117,7 +117,7 @@ lexer_next_char_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
     return false;
 }
 
-lexer_next_char_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> bool {
+lexer_current_char_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> bool {
     if lexer.input.count {
         if matcher(lexer.input[0]) {
             return true;
