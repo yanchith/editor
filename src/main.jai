@@ -23,7 +23,9 @@ f64 :: float64;
 //
 // I mailed this in, but now we have to wait. We could theoretically make a replacement interface for MEMORY_DEBUGGER,
 // *but* that doesn't work with this_allocation_is_not_a_leak (locking of address_table_mutex crashes). See comment block below.
-DEBUG_MEMORY :: true;
+//
+// TODO(jt): @Bug @LibraryBug? make_leak_report crashes on macOS! Investigate.
+DEBUG_MEMORY :: false;
 DEBUG_MEMORY_LEAK_REPORT_PERIOD: Apollo_Time : #run seconds_to_apollo(10);
 
 /*
