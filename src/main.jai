@@ -560,7 +560,7 @@ main :: () {
     renderer.submit_frame              = renderer_submit_frame;
     renderer.draw                      = renderer_draw;
 
-    window_width, window_height := Window.get_dimensions(window, right_handed = false);
+    _, _, window_width, window_height := Window.get_dimensions(window, right_handed = false);
 
     input: Editor.Input;
     // input.time and input.dtime are zeroed.
