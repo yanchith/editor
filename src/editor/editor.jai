@@ -111,7 +111,7 @@ TODO(jt): @Stream Interesting side-projects to do:
 
 */
 
-#module_parameters()(SANITY := false, SUBPIXEL := true);
+#module_parameters()(SANITY := false);
 
 f32 :: float32;
 f64 :: float64;
@@ -179,8 +179,9 @@ operator==     :: Math.operator==;
 // ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
 // if the texture wasn't uploaded (we don't upload TEXTURE_ID_NONE). We could also reserve a few
 // pixels in the font atlas for color shading, but maybe we don't want to do that?
-TEXTURE_ID_NONE:        Texture_ID : 0;
-TEXTURE_ID_GLYPH_ATLAS: Texture_ID : 1;
+TEXTURE_ID_NONE:                 Texture_ID : 0;
+TEXTURE_ID_GLYPH_ATLAS:          Texture_ID : 1;
+TEXTURE_ID_GLYPH_ATLAS_SUBPIXEL: Texture_ID : 2;
 
 FILE_WATCH_POLL_PERIOD:  Apollo_Time : #run milliseconds_to_apollo(5000); // The maximum amount of time after which the polling fallback for file detection happens.
 FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(250);  // The amount of time we for which we disregard reported changes for a directory after a write.
@@ -631,7 +632,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         want_pixel_height := cast(s32, ceil(FONT_SIZE * input.window_scale_factor));
 
         editor.font_size = FONT_SIZE;
-        editor.font = make_font(font_arena, ttf_regular, ttf_bold, ttf_italic, ttf_bold_italic, TEXTURE_ID_GLYPH_ATLAS, want_pixel_height, FONT_LINE_HEIGHT_MULTIPLIER);
+        editor.font = make_font(font_arena, ttf_regular, ttf_bold, ttf_italic, ttf_bold_italic, TEXTURE_ID_GLYPH_ATLAS, want_pixel_height, FONT_LINE_HEIGHT_MULTIPLIER, true);
     }
 
     input_state_update_on_frame_start(*editor.input_state, input);
@@ -962,25 +963,27 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     editor.messages.allocator = arena_allocator(editor.perm_arena);
 
-    #if SUBPIXEL {
-        atlas: [] u8;
-        atlas.count = editor.font.glyph_atlas.count * 4;
-        atlas.data  = cast(*u8, editor.font.glyph_atlas.data);
-
-        renderer.create_texture_rgba8unorm(
-            TEXTURE_ID_GLYPH_ATLAS,
-            atlas,
-            editor.font.glyph_atlas_width_in_pixels,
-            editor.font.glyph_atlas_height_in_pixels,
-            .NEAREST,
-        );
-    } else {
+    {
         renderer.create_texture_r8unorm(
             TEXTURE_ID_GLYPH_ATLAS,
             editor.font.glyph_atlas,
             editor.font.glyph_atlas_width_in_pixels,
             editor.font.glyph_atlas_height_in_pixels,
             .LINEAR,
+        );
+    }
+
+    {
+        atlas: [] u8;
+        atlas.count = editor.font.glyph_atlas_subpixel.count * 4;
+        atlas.data  = cast(*u8, editor.font.glyph_atlas_subpixel.data);
+
+        renderer.create_texture_rgba8unorm(
+            TEXTURE_ID_GLYPH_ATLAS_SUBPIXEL,
+            atlas,
+            editor.font.glyph_atlas_width_in_pixels,
+            editor.font.glyph_atlas_height_in_pixels,
+            .NEAREST,
         );
     }
 
@@ -1073,8 +1076,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         }
     }
 
-    font_new_frame(*editor.font);
-
     for input.events {
         handled := false;
 
@@ -1159,7 +1160,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             editor_log(editor, "Font size: %, physical pixel height: %", editor.font_size, pixel_height);
 
             cell_h_before_zoom := editor.font.line_height_in_pixels;
-            font_reset_for_options(*editor.font, pixel_height, FONT_LINE_HEIGHT_MULTIPLIER);
+            font_reset_for_options(*editor.font, pixel_height, FONT_LINE_HEIGHT_MULTIPLIER, editor.font.subpixel);
             cell_h_after_zoom  := editor.font.line_height_in_pixels;
 
             for * editor.panels {
@@ -1208,6 +1209,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
         }
     }
+
+    font_new_frame(*editor.font);
 
     // :FloatPrecision
     //
@@ -1478,9 +1481,22 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 atlas_x := ifx window_w > atlas_w then 0.5 * window_w - 0.5 * atlas_w else 0.0;
                 atlas_y := ifx window_h > atlas_h then 0.5 * window_h - 0.5 * atlas_h else 0.0;
 
-
                 draw_rect(*render_commands, atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h, { 1, 1, 1, 1 });
-                draw_rect(*render_commands, atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h, { 0, 0, 0, 1 }, TEXTURE_ID_GLYPH_ATLAS);
+                if editor.font.subpixel {
+                    command := array_add(*render_commands);
+                    command.type = .DRAW_TEXT_RECT;
+                    command.rect = { atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h };
+                    command.texture_rect = { 0, 0, 1, 1 };
+                    command.texture_id   = TEXTURE_ID_GLYPH_ATLAS;
+                    command.color        = { 1, 1, 1, 1 };
+                } else {
+                    command := array_add(*render_commands);
+                    command.type = .DRAW_TEXT_RECT_SUBPIXEL;
+                    command.rect = { atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h };
+                    command.texture_rect = { 0, 0, 1, 1 };
+                    command.texture_id   = TEXTURE_ID_GLYPH_ATLAS_SUBPIXEL;
+                    command.color        = { 1, 1, 1, 1 };
+                }
             }
 
             case .MEMORY_ABSOLUTE; #through;
@@ -1666,10 +1682,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // update_texture does early return (because the update region is empty), either it or
         // draw_rects blocks for about 10-15ms, but at least one of them does. We should probably just
         // switch to our own rendering backend (raw Vulkan/Metal, WGPU or SGPU) and tune it for latency.
-        #if SUBPIXEL {
+        if editor.font.subpixel {
             atlas: [] u8;
-            atlas.count = editor.font.glyph_atlas.count * 4;
-            atlas.data  = cast(*u8, editor.font.glyph_atlas.data);
+            atlas.count = editor.font.glyph_atlas_subpixel.count * 4;
+            atlas.data  = cast(*u8, editor.font.glyph_atlas_subpixel.data);
 
             renderer.update_texture_rgba8unorm(TEXTURE_ID_GLYPH_ATLAS, atlas, atlas_update_region);
         } else {
@@ -2363,6 +2379,9 @@ Panel_Action :: enum {
     SEARCH_PROJECT;
     COMPILE_PROJECT;
 
+    ENABLE_SUBPIXEL_RENDERING;
+    DISABLE_SUBPIXEL_RENDERING;
+
     ABULAFIA_THEME;
     NAYSAYER_THEME;
     HANDMADE_THEME;
@@ -2781,6 +2800,9 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .OPEN_PROJECT_FILE;  open_mini_panel(editor, platform, input, mini_panel_open_project_file_procs);
         case .SEARCH_PROJECT;     open_mini_panel(editor, platform, input, mini_panel_search_project_procs);
         case .COMPILE_PROJECT;    open_modal_interaction(editor, platform, input, modal_interaction_compile_project_procs);
+
+        case .ENABLE_SUBPIXEL_RENDERING;   font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, true);
+        case .DISABLE_SUBPIXEL_RENDERING;  font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, false);
 
         case .ABULAFIA_THEME;     editor.theme = abulafia_theme(); theme_changed = true;
         case .NAYSAYER_THEME;     editor.theme = naysayer_theme(); theme_changed = true;
@@ -5705,20 +5727,14 @@ find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64
 
 #scope_file
 
-draw_rect :: (render_commands: *[..] Render_Command, x0: f32, y0: f32, x1: f32, y1: f32, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
-    inline draw_rect(render_commands, { x0, y0, x1, y1 }, color, texture);
+draw_rect :: (render_commands: *[..] Render_Command, x0: f32, y0: f32, x1: f32, y1: f32, color: Vector4 = { 1, 1, 1, 1 }) {
+    inline draw_rect(render_commands, { x0, y0, x1, y1 }, color);
 }
 
-draw_rect :: (render_commands: *[..] Render_Command, rect: Rect, color: Vector4 = { 1, 1, 1, 1 }, texture := TEXTURE_ID_NONE) {
+draw_rect :: (render_commands: *[..] Render_Command, rect: Rect, color: Vector4 = { 1, 1, 1, 1 }) {
     command := array_add(render_commands);
-    if texture == TEXTURE_ID_NONE {
-        command.type = .DRAW_COLOR_RECT;
-    } else {
-        command.type = #ifx SUBPIXEL then .DRAW_TEXT_RECT_SUBPIXEL else .DRAW_TEXT_RECT;
-    }
+    command.type = .DRAW_COLOR_RECT;
     command.rect = rect;
-    command.texture_rect = { 0, 0, 1, 1 };
-    command.texture_id = texture;
     command.color = color;
 }
 

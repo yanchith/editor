@@ -9,7 +9,7 @@ f64 :: float64;
 // but we don't want to call even a no-op free on each array iteme. JAI's Temporary_Storage, Pool and Flat_Pool
 // are all ignored by MEMORY_DEBUGGER, but for now there is no way to add a custom ignore.
 //
-// TODO(jt): @CompilerBug I'd like to make this a switch supplied by the metaprogram (like SANITY, SUBPIXEL, etc.),
+// TODO(jt): @CompilerBug I'd like to make this a switch supplied by the metaprogram (like SANITY, etc.),
 // but it causes cycles. Hardcode-enabled for this reason, at least until I seal the leaks.
 //
 // TODO(jt): @Cleanup Memory_Debugger.jai needs to be modified so that our arena allocations get omitted from the report:
@@ -92,15 +92,6 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
     SANITY :: false;
 }
 
-// SUBPIXEL enables subpixel font rendering.
-//
-// TODO(jt): @Cleanup Make this a runtime switch to reduce the number of build options.
-#if #exists(__SUBPIXEL) {
-    SUBPIXEL :: __SUBPIXEL;
-} else {
-    SUBPIXEL :: false;
-}
-
 #if OS == .WINDOWS {
     #if #exists(__WINDOWS_CONSOLE) {
         WINDOWS_CONSOLE :: __WINDOWS_CONSOLE;
@@ -157,7 +148,7 @@ Window         :: #import "Window_Creation";
 Input          :: #import "Input";   // This is our modified version. See :ModifiedInputModule.
 Process        :: #import "Process"; // This is our modified version. See :ModifiedProcessModule.
 Clipboard      :: #import "Clipboard";
-Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY, SUBPIXEL = SUBPIXEL);
+Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY);
 
 Vector4 :: Editor.Vector4;
 IRect   :: Editor.IRect;
@@ -869,13 +860,6 @@ platform_state: Platform_State;
 platform_wait_for_events :: () {
     #if OS == .WINDOWS {
         // On Windows (TM), we wait for new events with WaitMessage.
-        //
-        // TODO(jt): WaitMessage does not wake us for overlapped IO completion. We could signal
-        // ourselves by posting onto our message queue from a callback, but we can also use
-        // MsgWaitForMultipleObjectsEx().
-        //
-        // TODO(jt): @Bug Sometimes we keep receiving events (or for some other reason WaitMessage does not sleep),
-        // if our window is defocused and we use a lot of battery power.
         WaitMessage();
     } else #if OS == .MACOS {
         // On macOS, we wait for events by checking the queue with nextEventMatchingMask

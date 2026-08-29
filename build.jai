@@ -24,7 +24,6 @@ build :: () {
     do_check           := true;
     do_profile         := false;
     do_sanity          := true;
-    do_subpixel        := true;
     do_windows_console := true;
 
     // Match on commandline received by the default metaprogram so that we can tweak its decisions.
@@ -58,8 +57,6 @@ build :: () {
             case "-no-profile";          do_profile = false;
             case "-sanity";              do_sanity = true;
             case "-no-sanity";           do_sanity = false;
-            case "-subpixel";            do_subpixel = true;
-            case "-no-subpixel";         do_subpixel = false;
             case "-windows-console";     do_windows_console = true;
             case "-no-windows-console";  do_windows_console = false;
             case; {
@@ -109,7 +106,6 @@ build :: () {
     compiler_begin_intercept(w);
 
     if do_sanity           add_build_string("__SANITY :: true;\n", w);
-    if do_subpixel         add_build_string("__SUBPIXEL :: true;\n", w);
     if do_windows_console  add_build_string("__WINDOWS_CONSOLE :: true;\n", w);
 
     add_build_file("src/main.jai", w);
@@ -156,8 +152,6 @@ OPTIONS:
   -no-profile             Disable the builtin runtime profiler.
   -sanity                 Turns on slow paranoid asserts.
   -no-sanity              Turns off slow paranoid asserts.
-  -subpixel               Uses subpixel text rendering (FT_LOAD_TARGET.LCD).
-  -no-subpixel            Uses regular text rendering (FT_LOAD_TARGET.NORMAL).
   -windows-console        Shows console on Windows when launched from gui.
   -no-windows-console     Hides console on Windows when launched from gui and disables all console logging.
 
