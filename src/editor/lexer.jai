@@ -16,7 +16,7 @@ Token_Type :: enum u32 {
 
     INVALID;
 
-    EOF;
+    END_OF_INPUT;
 
     KEYWORD;
     NUMBER_LITERAL;

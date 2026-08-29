@@ -45,8 +45,8 @@ lang_c_update_tokens :: (document: *Document) {
     while 1 {
         token := get_next_token(*lexer);
 
-        if lexer.reported_error  break;
-        if token.type == .EOF    break;
+        if lexer.reported_error         break;
+        if token.type == .END_OF_INPUT  break;
 
         if token.type == .UNINITIALIZED  continue;
         if token.type == .INVALID        continue;
@@ -70,7 +70,7 @@ get_next_token :: (lexer: *Lexer) -> Token {
     lexer_set_token_end(lexer, *token);
 
     if lexer.input.count == 0 {
-        token.type = .EOF;
+        token.type = .END_OF_INPUT;
         lexer_write_recent_token(lexer, token);
 
         return token;

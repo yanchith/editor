@@ -4490,7 +4490,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                             // These should not get here, but in case they do, we assign the defaults.
                             case .UNINITIALIZED;   r.color = editor.theme.text_color; r.variant = editor.theme.text_variant;
                             case .INVALID;         r.color = editor.theme.text_color; r.variant = editor.theme.text_variant;
-                            case .EOF;             r.color = editor.theme.text_color; r.variant = editor.theme.text_variant;
+                            case .END_OF_INPUT;    r.color = editor.theme.text_color; r.variant = editor.theme.text_variant;
 
                             // TODO(jt): @Cleanup While we sort of define color constants for things, we
                             // also can modify bold/italic, for which we have no way of customization
