@@ -240,12 +240,14 @@ parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) -> ident: string {
     lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
 
-    // nocheckin do this! This is now incorrect since lexer_advance handles unicode.
-    // TODO(jt): @Incomplete Handle Unicode!
-    while lexer.input.count && lexer_current_byte_matches(lexer, is_alnum) {
+    // The is_nonascii_utf8_char_boundary may be a little too lenient, and perhaps
+    // C identifiers are more strict, but for syntax highlighting this is good enough.
+    // We may want to switch this to a more robust unicode character detection -
+    // either based on the unicode database, or a character heuristic like Focus does.
+    while lexer.input.count && (lexer_current_byte_matches(lexer, is_alnum) || lexer_current_byte_matches(lexer, is_nonascii_utf8_char_boundary)) {
         lexer_set_token_end(lexer, token);
-        lexer_advance_horizontally(lexer);
-        ident.count += 1;
+        bytes_advanced := lexer_advance_horizontally(lexer);
+        ident.count += bytes_advanced;
     }
 
     if is_keyword(ident) {

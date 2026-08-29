@@ -176,6 +176,11 @@ is_utf8_char_boundary :: inline (b: u8) -> bool {
     return b < 128 || b >= 192;
 }
 
+is_nonascii_utf8_char_boundary :: inline (b: u8) -> bool {
+    // See comment for is_utf8_char_bounday
+    return b >= 192;
+}
+
 is_hex :: inline (b: u8) -> bool {
     return is_digit(b) || b >= "a" && b <= "f" || b >= "A" && b <= "F";
 }

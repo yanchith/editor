@@ -118,7 +118,7 @@ lexer_current_byte_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) ->
     return false;
 }
 
-lexer_advance :: inline (lexer: *Lexer) {
+lexer_advance :: inline (lexer: *Lexer) -> bytes_advanced: s64 {
     sanity_assert(lexer.input.count > 0);
 
     c := lexer.input[0];
@@ -126,12 +126,14 @@ lexer_advance :: inline (lexer: *Lexer) {
         lexer.line_index += 1;
         lexer.column_index = 0;
         advance(*lexer.input);
+
+        return 1;
     } else {
-        lexer_advance_horizontally(lexer);
+        return lexer_advance_horizontally(lexer);
     }
 }
 
-lexer_advance_horizontally :: inline (lexer: *Lexer) {
+lexer_advance_horizontally :: inline (lexer: *Lexer) -> bytes_advanced: s64 {
     sanity_assert(lexer.input.count > 0);
     sanity_assert(lexer.input[0] != "\n");
 
@@ -149,6 +151,8 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
 
     lexer.column_index += 1;
     advance(*lexer.input, char_length);
+
+    return char_length;
 }
 
 lexer_eat_whitespace :: (lexer: *Lexer) {
