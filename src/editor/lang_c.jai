@@ -45,6 +45,8 @@ lang_c_update_tokens :: (document: *Document) {
     while 1 {
         token := get_next_token(*lexer);
 
+        log("nocheckin token: % %", token.type, String.slice(contents, token.byte0, 1 + token.byte1 - token.byte0));
+
         if lexer.reported_error  break;
         if token.type == .EOF    break;
 
@@ -151,7 +153,7 @@ parse_number :: (lexer: *Lexer, token: *Token) {
             }
 
             while lexer.input.count && lexer_current_char_matches(lexer, is_digit_or_point) {
-                if c == "." {
+                if lexer_current_char_equals(lexer, ".") {
                     if parsed_decimal_point {
                         break;
                     }
