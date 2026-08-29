@@ -1,13 +1,7 @@
 Token :: struct {
     loc0: Text_Location;
     loc1: Text_Location; // Inclusive!
-
-    // nocheckin fill these in for JAI!
-    byte0: s64;
-    byte1: s64; // Inclusive!
-
     type: Token_Type;
-
     userdata: u32; // Lexer implementations can hide info here for their benefit.
 }
 
@@ -49,7 +43,6 @@ Lexer :: struct {
 
     reported_error: bool;
 
-    byte_index: s64;    // Starts at 0
     line_index: s64;    // Starts at 0
     column_index: s64;  // Starts at 0
 
@@ -86,18 +79,16 @@ lexer_read_recent_token :: (lexer: Lexer, index: s64 = -1) -> *Token {
 }
 
 lexer_set_token_start :: inline (lexer: Lexer, token: *Token) {
-    token.byte0 = lexer.byte_index;
     token.loc0.x = lexer.column_index;
     token.loc0.y = lexer.line_index;
 }
 
 lexer_set_token_end :: inline (lexer: Lexer, token: *Token) {
-    token.byte1 = lexer.byte_index;
     token.loc1.x = lexer.column_index;
     token.loc1.y = lexer.line_index;
 }
 
-lexer_current_char_equals :: inline (lexer: Lexer, c: u8) -> bool {
+lexer_current_byte_equals :: inline (lexer: Lexer, c: u8) -> bool {
     if lexer.input.count {
         return lexer.input[0] == c;
     }
@@ -105,7 +96,7 @@ lexer_current_char_equals :: inline (lexer: Lexer, c: u8) -> bool {
     return false;
 }
 
-lexer_current_char_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
+lexer_current_byte_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
     if lexer.input.count {
         for bytes {
             if lexer.input[0] == it {
@@ -117,7 +108,7 @@ lexer_current_char_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
     return false;
 }
 
-lexer_current_char_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> bool {
+lexer_current_byte_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> bool {
     if lexer.input.count {
         if matcher(lexer.input[0]) {
             return true;
@@ -131,15 +122,12 @@ lexer_advance :: inline (lexer: *Lexer) {
     sanity_assert(lexer.input.count > 0);
 
     c := lexer.input[0];
-
-    advance(*lexer.input);
-    lexer.byte_index += 1;
-
     if c == "\n" {
         lexer.line_index += 1;
         lexer.column_index = 0;
+        advance(*lexer.input);
     } else {
-        lexer.column_index += 1;
+        lexer_advance_horizontally(lexer);
     }
 }
 
@@ -147,9 +135,20 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
     sanity_assert(lexer.input.count > 0);
     sanity_assert(lexer.input[0] != "\n");
 
-    advance(*lexer.input);
-    lexer.byte_index += 1;
+    c := lexer.input[0];
+
+    // We (almost) completely trust the table for utf8 lengths, however
+    // we clamp the length to 4 (because our table is from an older RFC?), and
+    // we also clamp and emit error if the character would cause us to go
+    // out of bounds.
+    char_length: s64 = min(UTF8_LENGTH_FOR_STARTING_BYTE[c], 4);
+    if char_length > lexer.input.count {
+        lexer.reported_error = true;
+        char_length = lexer.input.count;
+    }
+
     lexer.column_index += 1;
+    advance(*lexer.input, char_length);
 }
 
 lexer_eat_whitespace :: (lexer: *Lexer) {
@@ -160,7 +159,6 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
         }
 
         advance(*lexer.input);
-        lexer.byte_index += 1;
 
         if c == "\n" {
             lexer.line_index += 1;
@@ -178,8 +176,6 @@ lexer_eat_until_newline :: (lexer: *Lexer) {
             break;
         }
 
-        advance(*lexer.input);
-        lexer.byte_index += 1;
-        lexer.column_index += 1;
+        lexer_advance_horizontally(lexer);
     }
 }

@@ -53,11 +53,12 @@ lang_jai_update_tokens :: (document: *Document) {
 
         token: Token;
         // The highlight token interval is inclusive on both sides. This is sort of an arbitrary
-        // choice we can revisit. Note however, that Jai_Lexer produces end-exclusive horizontal
+        // choice we can revisit. Note that Jai_Lexer produces end-exclusive horizontal
         // range and end-inclusive vertical range due to the way set_end_of_token works. To correct
         // for this, we subtract 2 from c1.
         //
-        // TODO(jt): @Audit is c0 and c1 counting in unicode or bytes?
+        // TODO(jt): @Audit @Bug c0 and c1 are likely counting in bytes,
+        // but our locations are in characters. Fix!
         token.loc0.x = jl_token.c0 - 1;
         token.loc0.y = jl_token.l0 - 1;
         token.loc1.x = jl_token.c1 - 2;

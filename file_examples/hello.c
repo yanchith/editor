@@ -7,6 +7,7 @@ int main() {
     float y = .5;
     float x = 0.2342342e10;
     const char s = "stringo?";
+    const char s = "Chraščieť";
 
     int i = x > 1 ? 0 : 42lu;
 
