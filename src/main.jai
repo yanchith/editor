@@ -1106,9 +1106,6 @@ editor_logger :: (message: string, data: *void, info: Log_Info) {
 
     logger_data := cast(*Editor_Logger_Data, data);
 
-    sb: String_Builder;
-    sb.allocator = temp;
-
     // Add time since launch. Pad to up to 4 leading digits and 6 decimal digits.
     time_start           := logger_data.time_of_program_start;
     time_now             := current_time_monotonic();
@@ -1116,14 +1113,10 @@ editor_logger :: (message: string, data: *void, info: Log_Info) {
     time_since_start_str := tprint("% ", formatFloat(to_float64_seconds(time_since_start), trailing_width = 6, zero_removal = .NO));
     time_prefix          := temp_left_pad(time_since_start_str, 12);
 
-    print(*sb, time_prefix);
-
     // Add log level.
     log_level_prefix := " INFO ";
     if info.common_flags & .WARNING  log_level_prefix = " WARN ";
     if info.common_flags & .ERROR    log_level_prefix = "ERROR ";
-
-    print(*sb, log_level_prefix);
 
     // Add source file.
     source_prefix: string;
@@ -1143,13 +1136,19 @@ editor_logger :: (message: string, data: *void, info: Log_Info) {
         source_prefix = temp_right_pad(source_prefix, PAD_LENGTH);
     }
 
-    print(*sb, source_prefix);
-    print(*sb, " ");
-    print(*sb, message);
-    print(*sb, "\n");
-
     if File.is_valid(logger_data.log_file) {
+        sb: String_Builder;
+        sb.allocator = temp;
+
+        print(*sb, time_prefix);
+        print(*sb, log_level_prefix);
+        print(*sb, source_prefix);
+        print(*sb, " ");
+        print(*sb, message);
+        print(*sb, "\n");
+
         File.file_write(*logger_data.log_file, *sb, do_reset = true);
+        File.file_flush(logger_data.log_file); // On macOS, this wasn't really flushing without us being explicit about it.
     }
 
     write_strings(time_prefix, log_level_prefix, source_prefix, " ", message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
@@ -1182,6 +1181,7 @@ editor_assertion_failed :: (loc: Source_Code_Location, message: string) -> bool 
         }
 
         File.file_write(*logger_data.log_file, *sb, do_reset = true);
+        File.file_flush(logger_data.log_file); // On macOS, this wasn't really flushing without us being explicit about it.
     }
 
     return true;
