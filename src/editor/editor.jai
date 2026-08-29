@@ -2595,6 +2595,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                         }
 
                         if !handled {
+                            // TODO(jt): @Bug If we Cmd-Q on macOS, the Q comes here.
+                            // Should we execute this only if there's no ctrl/alt/cmd? (shift is okay).
                             undo_modifier: Undo_Modifier = .NONE;
                             if input.time - document.time_of_last_simple_edit < UNDO_AUTOFUSE_PERIOD {
                                 undo_modifier = .CAN_AUTOFUSE;

@@ -1,5 +1,5 @@
 //
-// The lexer in this file was created by looking at the tokenizer in the Focus editor for reference.
+// The lexer in this file was created by looking at the tokenizer in the Focus editor, mainly for C language reference.
 // Structural similarities are not accidental. Thank you, Focus developers.
 //
 // https://github.com/focus-editor/focus
@@ -45,8 +45,6 @@ lang_c_update_tokens :: (document: *Document) {
     while 1 {
         token := get_next_token(*lexer);
 
-        log("nocheckin token: % %", token.type, String.slice(contents, token.byte0, 1 + token.byte1 - token.byte0));
-
         if lexer.reported_error  break;
         if token.type == .EOF    break;
 
@@ -80,8 +78,8 @@ get_next_token :: (lexer: *Lexer) -> Token {
 
     c := lexer.input[0];
 
-    if is_digit(c) {
-        parse_number(lexer, *token);
+    if c == "." || is_digit(c) {
+        parse_number_or_period(lexer, *token);
     } else if is_alpha(c) || c == "_" {
         parse_identifier_or_keyword(lexer, *token);
     } else if c == {
@@ -107,7 +105,6 @@ get_next_token :: (lexer: *Lexer) -> Token {
         case ";";   parse_simple(lexer, *token);
         case "\\";  parse_simple(lexer, *token);
         case ",";   parse_simple(lexer, *token);
-        case ".";   parse_simple(lexer, *token);
         case "{";   parse_simple(lexer, *token);
         case "}";   parse_simple(lexer, *token);
         case "(";   parse_simple(lexer, *token);
@@ -136,7 +133,7 @@ parse_simple :: (lexer: *Lexer, token: *Token) {
     lexer_advance_horizontally(lexer);
 }
 
-parse_number :: (lexer: *Lexer, token: *Token) {
+parse_number_or_period :: (lexer: *Lexer, token: *Token) {
     start_c := lexer.input[0];
     parsed_decimal_point := start_c == ".";
 
@@ -146,7 +143,10 @@ parse_number :: (lexer: *Lexer, token: *Token) {
 
     if lexer.input.count {
         c := lexer.input[0];
-        if is_digit(c) || c == "." {
+        if parsed_decimal_point && !is_digit(c) {
+            // Not a number literal after all.
+            token.type = .PUNCTUATION;
+        } else if is_digit(c) || c == "." {
             // Parse decimal
             is_digit_or_point :: (b: u8) -> bool {
                 return is_digit(b) || b == ".";
