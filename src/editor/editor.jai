@@ -176,10 +176,7 @@ operator==     :: Math.operator==;
 #load "modal_interaction_compile_project.jai";
 #load "modal_interaction_benchgen.jai";
 
-// ID 0 is reserved for the texture-less pipeline. The backend must switch to a texture-less shader
-// if the texture wasn't uploaded (we don't upload TEXTURE_ID_NONE). We could also reserve a few
-// pixels in the font atlas for color shading, but maybe we don't want to do that?
-TEXTURE_ID_NONE:                 Texture_ID : 0;
+TEXTURE_ID_NONE:                 Texture_ID : 0; // Not really used, just a 0 default.
 TEXTURE_ID_GLYPH_ATLAS:          Texture_ID : 1;
 TEXTURE_ID_GLYPH_ATLAS_SUBPIXEL: Texture_ID : 2;
 
@@ -1477,24 +1474,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 atlas_w := cast(f32, editor.font.glyph_atlas_width_in_pixels);
                 atlas_h := cast(f32, editor.font.glyph_atlas_height_in_pixels);
-
                 atlas_x := ifx window_w > atlas_w then 0.5 * window_w - 0.5 * atlas_w else 0.0;
                 atlas_y := ifx window_h > atlas_h then 0.5 * window_h - 0.5 * atlas_h else 0.0;
 
-                draw_rect(*render_commands, atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h, { 1, 1, 1, 1 });
+                draw_rect(*render_commands, atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h, { 0, 0, 0, 1 });
                 if editor.font.subpixel {
                     command := array_add(*render_commands);
-                    command.type = .DRAW_TEXT_RECT;
-                    command.rect = { atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h };
-                    command.texture_rect = { 0, 0, 1, 1 };
-                    command.texture_id   = TEXTURE_ID_GLYPH_ATLAS;
-                    command.color        = { 1, 1, 1, 1 };
-                } else {
-                    command := array_add(*render_commands);
-                    command.type = .DRAW_TEXT_RECT_SUBPIXEL;
+                    command.type = .DRAW_TEXT_SUBPIXEL;
                     command.rect = { atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h };
                     command.texture_rect = { 0, 0, 1, 1 };
                     command.texture_id   = TEXTURE_ID_GLYPH_ATLAS_SUBPIXEL;
+                    command.color        = { 1, 1, 1, 1 };
+                } else {
+                    command := array_add(*render_commands);
+                    command.type = .DRAW_TEXT;
+                    command.rect = { atlas_x, atlas_y, atlas_x + atlas_w, atlas_y + atlas_h };
+                    command.texture_rect = { 0, 0, 1, 1 };
+                    command.texture_id   = TEXTURE_ID_GLYPH_ATLAS;
                     command.color        = { 1, 1, 1, 1 };
                 }
             }

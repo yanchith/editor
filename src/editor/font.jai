@@ -549,7 +549,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
         // it if ends up being discarded anyway.
         if rect_intersects_rect(scissor_rect, r) {
             command := array_add(render_commands);
-            command.type = ifx font.subpixel then .DRAW_TEXT_RECT_SUBPIXEL else .DRAW_TEXT_RECT;
+            command.type = ifx font.subpixel then .DRAW_TEXT_SUBPIXEL else .DRAW_TEXT;
             command.rect = r;
             command.texture_rect = rect_from_point_and_size(
                 cast(f32, glyph_cell_x * font.glyph_atlas_cell_width_in_pixels) / font.glyph_atlas_width_in_pixels,

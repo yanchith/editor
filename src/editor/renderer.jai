@@ -9,10 +9,10 @@ Render_Command :: struct {
 }
 
 Render_Command_Type :: enum u32 {
-    DRAW_COLOR_RECT         :: 0;
-    DRAW_TEXT_RECT          :: 1;
-    DRAW_TEXT_RECT_SUBPIXEL :: 2;
-    SET_SCISSOR             :: 3;
+    DRAW_COLOR_RECT    :: 0;
+    DRAW_TEXT          :: 1;
+    DRAW_TEXT_SUBPIXEL :: 2;
+    SET_SCISSOR        :: 3;
 }
 
 Texture_Filter :: enum {

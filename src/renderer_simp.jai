@@ -158,12 +158,8 @@ renderer_draw :: (render_commands: [] Editor.Render_Command) {
                 );
             }
 
-            case .DRAW_TEXT_RECT; {
-                texture: *Simp.Texture;
-                if it.texture_id != Editor.TEXTURE_ID_NONE {
-                    texture = table_find_pointer(*renderer_state.textures, it.texture_id);
-                }
-
+            case .DRAW_TEXT; {
+                texture := table_find_pointer(*renderer_state.textures, it.texture_id);
                 if !texture {
                     continue;
                 }
@@ -195,12 +191,8 @@ renderer_draw :: (render_commands: [] Editor.Render_Command) {
                 );
             }
 
-            case .DRAW_TEXT_RECT_SUBPIXEL; {
-                texture: *Simp.Texture;
-                if it.texture_id != Editor.TEXTURE_ID_NONE {
-                    texture = table_find_pointer(*renderer_state.textures, it.texture_id);
-                }
-
+            case .DRAW_TEXT_SUBPIXEL; {
+                texture := table_find_pointer(*renderer_state.textures, it.texture_id);
                 if !texture {
                     continue;
                 }
