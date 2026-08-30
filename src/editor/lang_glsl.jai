@@ -141,7 +141,27 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
         if parsed_decimal_point && !is_digit(c) {
             // Not a number literal after all.
             token.type = .PUNCTUATION;
-        } else if is_digit(c) || c == "." {
+        } else if start_c == "0" {
+            if c == "x" || c == "X" {
+                // Hexadecimal
+                lexer_advance_horizontally(lexer);
+                while lexer.input.count && lexer_input_byte_matches(lexer, is_hex) {
+                    lexer_set_token_end(lexer, token);
+                    lexer_advance_horizontally(lexer);
+                }
+            } else {
+                // Octal
+                while lexer.input.count && lexer_input_byte_is_any(lexer, "01234567") {
+                    lexer_set_token_end(lexer, token);
+                    lexer_advance_horizontally(lexer);
+                }
+            }
+
+            if lexer_input_byte_is_any(lexer, "uU") {
+                lexer_set_token_end(lexer, token);
+                lexer_advance_horizontally(lexer);
+            }
+        } else {
             // Parse decimal
             is_digit_or_point :: (b: u8) -> bool {
                 return is_digit(b) || b == ".";
@@ -192,26 +212,6 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
                     lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
                 }
-            }
-        } else if start_c == "0" {
-            if c == "x" || c == "X" {
-                // Hexadecimal
-                lexer_advance_horizontally(lexer);
-                while lexer.input.count && lexer_input_byte_matches(lexer, is_hex) {
-                    lexer_set_token_end(lexer, token);
-                    lexer_advance_horizontally(lexer);
-                }
-            } else {
-                // Octal
-                while lexer.input.count && lexer_input_byte_is_any(lexer, "01234567") {
-                    lexer_set_token_end(lexer, token);
-                    lexer_advance_horizontally(lexer);
-                }
-            }
-
-            if lexer_input_byte_is_any(lexer, "uU") {
-                lexer_set_token_end(lexer, token);
-                lexer_advance_horizontally(lexer);
             }
         }
     }

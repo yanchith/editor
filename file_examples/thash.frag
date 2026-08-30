@@ -23,8 +23,6 @@ void main() {
     // gl_FragCoord starts from upper left here, hence the flipped Y
     vec2 screen_pos = vec2(gl_FragCoord.x, u_screen_height - gl_FragCoord.y);
 
-    int x = 1u; // nocheckin
-
     // v_pattern_bits_and_length bit-packs both the pattern and its bit length like so: 0xPPPP_PPLL.
     // We clamp the 8-bit length to [1, 24], i.e. the min/max pattern length in bits.
     uint pattern_length_bits = clamp(v_pattern_bits_and_length & 0xff, 1u, 24u);
