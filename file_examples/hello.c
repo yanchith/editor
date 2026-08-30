@@ -10,7 +10,7 @@ int main() {
     const char s1 = "Chraščieť";
     const char s2 = "こんにちは";
 
-    int i = x > 1 ? 0 : 42lu; // nocheckin report this to Focus editor.
+    int i = x > 1 ? 0 : 42lu;
     int i2 = 1ull;
 
     printf("Hello, World!");
