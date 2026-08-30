@@ -813,9 +813,10 @@ main :: () {
             seconds_since_frame_start := to_float64_seconds(time_of_frame_end - time_of_frame_start);
 
             remainder_millis := cast(s32, floor((1.0 / input.monitor_refresh_rate - seconds_since_frame_start) * 1000.0));
-            remainder_millis = max(remainder_millis - SCHEDULER_PRECISION_MILLIS, 0);
-
-            sleep_milliseconds(remainder_millis);
+            remainder_millis = max(remainder_millis, 0); // nocheckin explain not subtracting scheduler frequency
+            if remainder_millis {
+                sleep_milliseconds(remainder_millis);
+            }
 
             if !wants_next_frame {
                 platform_wait_for_events();

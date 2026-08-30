@@ -263,7 +263,7 @@ Editor :: struct {
 
     debug_view: Debug_View;
 
-    DEBUG_FRAME_TIMELINE_COUNT: s64 : 64;
+    DEBUG_FRAME_TIMELINE_COUNT: s64 : 128;
     debug_frame_timeline: [DEBUG_FRAME_TIMELINE_COUNT] Frame_Timeline_Entry;
     debug_frame_timeline_index: s64;
 
@@ -1629,7 +1629,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                            binary = false);
 
 
-                TIMELINE_WINDOW_SECONDS: f64 : 0.5;
+                TIMELINE_WINDOW_SECONDS: f64 : 1.0;
                 PADDING_X :: 20.0;
 
                 graph_width := max(window_w - 2 * PADDING_X, 0);
