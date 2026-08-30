@@ -62,7 +62,7 @@ TODO(jt): Roadmap:
 - [X] Language: JAI
 - [X] Language: C
 - [~] Language: C++
-- [ ] Language: GLSL
+- [X] Language: GLSL
 - [ ] Language: HLSL
 - [ ] Language: Rust
 - [ ] Language: Javascript
@@ -164,6 +164,7 @@ operator==     :: Math.operator==;
 #load "lexer.jai";
 #load "lang_c.jai";
 #load "lang_jai.jai";
+#load "lang_glsl.jai";
 #load "mini_panel_search.jai";
 #load "mini_panel_search_project.jai";
 #load "mini_panel_open_file.jai";
@@ -425,6 +426,7 @@ Document :: struct {
         PLAIN_TEXT;
         C;
         JAI;
+        GLSL;
     }
 
     Flags :: enum_flags u32 {
@@ -2449,6 +2451,7 @@ Document_Action :: enum {
     LANGUAGE_PLAIN_TEXT;
     LANGUAGE_C;
     LANGUAGE_JAI;
+    LANGUAGE_GLSL;
 
     BENCHGEN_TEXT;
 }
@@ -3466,6 +3469,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .LANGUAGE_PLAIN_TEXT;  document_change_lang(document, .PLAIN_TEXT);
         case .LANGUAGE_C;           document_change_lang(document, .C);
         case .LANGUAGE_JAI;         document_change_lang(document, .JAI);
+        case .LANGUAGE_GLSL;        document_change_lang(document, .GLSL);
 
         case .BENCHGEN_TEXT; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
@@ -4585,6 +4589,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                     case .PLAIN_TEXT;  document_lang = "Text";
                     case .C;           document_lang = "C";
                     case .JAI;         document_lang = "Jai";
+                    case .GLSL;        document_lang = "GLSL";
                 }
 
                 percent_string := temp_right_pad(tprint("%\%", percent), 4);
@@ -4778,6 +4783,7 @@ get_surround_pairs :: (document: Document) -> /* Static */ [] Paren_Pair {
         case .PLAIN_TEXT;  return PLAIN_TEXT_SURROUND_PAREN_PAIRS;
         case .C;           return LANG_C_SURROUND_PAREN_PAIRS;
         case .JAI;         return LANG_JAI_SURROUND_PAREN_PAIRS;
+        case .GLSL;        return LANG_GLSL_SURROUND_PAREN_PAIRS;
     }
 }
 
@@ -5024,11 +5030,14 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
                 // TODO(jt): @Incomplete C++ currently goes to the C backend, but eventually it should get its own?
                 // Or maybe we can have a single C+ backend for both and ignore the modern monstrosity? This could be possible,
                 // because we are just lexing.
-                case "hpp";  #through;
-                case "cpp";  #through;
-                case "h";    #through;
-                case "c";    document.lang = .C;
-                case "jai";  document.lang = .JAI;
+                case "hpp";   #through;
+                case "cpp";   #through;
+                case "h";     #through;
+                case "c";     document.lang = .C;
+                case "jai";   document.lang = .JAI;
+                case "vert";  #through;
+                case "frag";  #through;
+                case "glsl";  document.lang = .GLSL;
             }
         }
     }
@@ -5222,6 +5231,7 @@ document_get_comment_style :: (document: Document) -> /* Static */ line: string,
         case .PLAIN_TEXT;  return "", "", "";
         case .C;           return LANG_C_LINE_COMMENT, LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END;
         case .JAI;         return LANG_JAI_LINE_COMMENT, LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END;
+        case .GLSL;        return LANG_GLSL_LINE_COMMENT, LANG_GLSL_BLOCK_COMMENT_START, LANG_GLSL_BLOCK_COMMENT_END;
     }
 }
 
@@ -5230,6 +5240,7 @@ document_update_tokens :: (document: *Document) {
         case .PLAIN_TEXT;  // Nothing
         case .C;           lang_c_update_tokens(document);
         case .JAI;         lang_jai_update_tokens(document);
+        case .GLSL;        lang_glsl_update_tokens(document);
     }
 }
 

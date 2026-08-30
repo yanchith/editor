@@ -60,6 +60,13 @@ update_scopes :: (document: *Document) {
             block_comment_end       = LANG_JAI_BLOCK_COMMENT_END;
             block_comments_can_nest = LANG_JAI_BLOCK_COMMENTS_CAN_NEST;
         }
+        case .GLSL; {
+            indentation_pairs       = LANG_GLSL_INDENTATION_PAREN_PAIRS;
+            line_comment            = LANG_GLSL_LINE_COMMENT;
+            block_comment_start     = LANG_GLSL_BLOCK_COMMENT_START;
+            block_comment_end       = LANG_GLSL_BLOCK_COMMENT_END;
+            block_comments_can_nest = LANG_GLSL_BLOCK_COMMENTS_CAN_NEST;
+        }
     }
 
     array_reset_keeping_memory(*document.scopes);

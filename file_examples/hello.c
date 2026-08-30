@@ -11,6 +11,7 @@ int main() {
     const char s2 = "こんにちは";
 
     int i = x > 1 ? 0 : 42lu;
+    int i2 = 1ull; // nocheckin
 
     printf("Hello, World!");
     return 0;

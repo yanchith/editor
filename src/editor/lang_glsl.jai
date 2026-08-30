@@ -1,33 +1,26 @@
 // This file provides basic support for the C Programming language.
 //
 // The lexer is not yet very well tested, so expect bugs.
-//
-// Apart for supporting C, this file also supports some basic C++.
-// Some C++ tokens (like ::) are not lexed properly, but this is hard to notice
-// until we'd enable syntax highlighting for these (which we currently don't support)
-//   -jt 30 August 2026
 
-LANG_C_LINE_COMMENT        :: "//";
-LANG_C_BLOCK_COMMENT_START :: "/*";
-LANG_C_BLOCK_COMMENT_END   :: "*/";
-LANG_C_BLOCK_COMMENTS_CAN_NEST :: false;
+LANG_GLSL_LINE_COMMENT        :: "//";
+LANG_GLSL_BLOCK_COMMENT_START :: "/*";
+LANG_GLSL_BLOCK_COMMENT_END   :: "*/";
+LANG_GLSL_BLOCK_COMMENTS_CAN_NEST :: false;
 
-LANG_C_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
-    { #char "{", #char "}" },
-    { #char "(", #char ")" },
-    { #char "[", #char "]" },
-    { #char "\"", #char "\"" },
-    { #char "'", #char "'" },
-];
-
-LANG_C_INDENTATION_PAREN_PAIRS: [] Paren_Pair = .[
+LANG_GLSL_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
     { #char "[", #char "]" },
 ];
 
-lang_c_update_tokens :: (document: *Document) {
-    ProfileZone("lang_c_update_tokens");
+LANG_GLSL_INDENTATION_PAREN_PAIRS: [] Paren_Pair = .[
+    { #char "{", #char "}" },
+    { #char "(", #char ")" },
+    { #char "[", #char "]" },
+];
+
+lang_glsl_update_tokens :: (document: *Document) {
+    ProfileZone("lang_glsl_update_tokens");
 
     sanity_assert(document != null);
     if document == null {
@@ -64,20 +57,11 @@ lang_c_update_tokens :: (document: *Document) {
 #scope_file
 
 //
-// The lexer in this file was created by looking at the tokenizer in the Focus editor for C language reference.
-// Structural similarities are not accidental. Thank you, Focus developers. (https://github.com/focus-editor/focus)
+// The lexer in this file is a modified version of the C lexer from lang_c.jai.
 //
-// However, we preserve less information on our tokens than Focus does, so we did away with some things.
-// For example, almost every token here is PUNCTUATION,  we don't distinguish operators, etc.
-//
-// Additionally, I did find some bugs in the the focus implementation, which I fixed here (like the missing case for double_greater_than).
-// There might be more bugs.
-//
-
-USERDATA__IS_INCLUDE_DIRECTIVE: u32 : 0x01;
 
 get_next_token :: (lexer: *Lexer) -> Token {
-    lexer_eat_whitespace(lexer);
+        lexer_eat_whitespace(lexer);
 
     token: Token;
     lexer_set_token_start(lexer, *token);
@@ -104,12 +88,10 @@ get_next_token :: (lexer: *Lexer) -> Token {
         case "-";   parse_minus(lexer, *token);
         case "+";   parse_plus(lexer, *token);
         case "*";   parse_asterisk(lexer, *token);
-        case "<";   parse_less_than_or_include(lexer, *token);
+        case "<";   parse_less_than(lexer, *token);
         case ">";   parse_greater_than(lexer, *token);
         case "!";   parse_bang(lexer, *token);
         case "#";   parse_directive(lexer, *token);
-        case "\"";  parse_string_literal(lexer, *token);
-        case "'";   parse_char_literal(lexer, *token);
         case "/";   parse_slash_or_comment(lexer, *token);
         case "&";   parse_ampersand(lexer, *token);
         case "|";   parse_pipe(lexer, *token);
@@ -127,7 +109,6 @@ get_next_token :: (lexer: *Lexer) -> Token {
         case "]";   parse_simple(lexer, *token);
 
         case "~";   parse_simple(lexer, *token);
-        case "`";   parse_simple(lexer, *token);
 
         case; {
             token.type = .INVALID;
@@ -194,51 +175,43 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
 
             // Parse suffixes
             if parsed_decimal_point {
-                if lexer_input_byte_is_any(lexer, "fFdD") {
+                if lexer_input_byte_is_any(lexer, "fF") {
+                    lexer_set_token_end(lexer, token);
+                    lexer_advance_horizontally(lexer);
+                } else if lexer_input_byte_equals(lexer, "L") && lexer_input_byte_at_index_equals(lexer, "F", 1) {
+                    lexer_advance_horizontally(lexer);
+                    lexer_set_token_end(lexer, token);
+                    lexer_advance_horizontally(lexer);
+                } else if lexer_input_byte_equals(lexer, "l") && lexer_input_byte_at_index_equals(lexer, "f", 1) {
+                    lexer_advance_horizontally(lexer);
                     lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
                 }
             } else {
-                if lexer_input_byte_is_any(lexer, "lL") {
-                    lexer_set_token_end(lexer, token); // l
+                if lexer_input_byte_is_any(lexer, "uU") {
+                    lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
-                    if lexer_input_byte_is_any(lexer, "lL") {
-                        lexer_set_token_end(lexer, token); // ll
-                        lexer_advance_horizontally(lexer);
-                        if lexer_input_byte_is_any(lexer, "uU") {
-                            lexer_set_token_end(lexer, token); // llu
-                            lexer_advance_horizontally(lexer);
-                        }
-                    } else if lexer_input_byte_is_any(lexer, "uU") {
-                        lexer_set_token_end(lexer, token); // lu
-                        lexer_advance_horizontally(lexer);
-                    }
-                } else if lexer_input_byte_is_any(lexer, "uU") {
-                    lexer_set_token_end(lexer, token); // u
-                    lexer_advance_horizontally(lexer);
-                    if lexer_input_byte_is_any(lexer, "lL") {
-                        lexer_set_token_end(lexer, token); // ul
-                        lexer_advance_horizontally(lexer);
-                        if lexer_input_byte_is_any(lexer, "lL") {
-                            lexer_set_token_end(lexer, token); // ull
-                            lexer_advance_horizontally(lexer);
-                        }
-                    }
                 }
             }
         } else if start_c == "0" {
             if c == "x" || c == "X" {
+                // Hexadecimal
                 lexer_advance_horizontally(lexer);
                 while lexer.input.count && lexer_input_byte_matches(lexer, is_hex) {
                     lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
                 }
-            } else if c == "b" || c == "B" {
-                lexer_advance_horizontally(lexer);
-                while lexer.input.count && lexer_input_byte_is_any(lexer, "01") {
+            } else {
+                // Octal
+                while lexer.input.count && lexer_input_byte_is_any(lexer, "01234567") {
                     lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
                 }
+            }
+
+            if lexer_input_byte_is_any(lexer, "uU") {
+                lexer_set_token_end(lexer, token);
+                lexer_advance_horizontally(lexer);
             }
         }
     }
@@ -295,7 +268,6 @@ parse_minus :: (lexer: *Lexer, token: *Token) {
         c := lexer.input[0];
         if c == {
             case "="; #through;
-            case ">"; #through;
             case "-"; {
                 lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
@@ -337,35 +309,18 @@ parse_asterisk :: (lexer: *Lexer, token: *Token) {
     }
 }
 
-parse_less_than_or_include :: (lexer: *Lexer, token: *Token) {
+parse_less_than :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
 
     if lexer.input.count {
-        recent := lexer_read_recent_token(lexer);
-        if recent.type == .DIRECTIVE && recent.userdata & USERDATA__IS_INCLUDE_DIRECTIVE {
-            token.type = .STRING_LITERAL;
-
-            while lexer.input.count && !lexer_input_byte_equals(lexer, "\n") {
+        c := lexer.input[0];
+        if c == {
+            case "="; #through;
+            case "<"; {
                 lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
-
-                if lexer_input_byte_equals(lexer, ">") {
-                    lexer_set_token_end(lexer, token);
-                    lexer_advance_horizontally(lexer);
-
-                    break;
-                }
-            }
-        } else {
-            c := lexer.input[0];
-            if c == {
-                case "="; #through;
-                case "<"; {
-                    lexer_set_token_end(lexer, token);
-                    lexer_advance_horizontally(lexer);
-                }
             }
         }
     }
@@ -379,7 +334,7 @@ parse_greater_than :: (lexer: *Lexer, token: *Token) {
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "=";
+            case "="; #through;
             case ">"; {
                 lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
@@ -412,73 +367,6 @@ parse_directive :: (lexer: *Lexer, token: *Token) {
     // TODO(jt): @Cleanup @Hack extract read_identifier, so we don't need to overwrite.
     ident := parse_identifier_or_keyword(lexer, token);
     token.type = .DIRECTIVE;
-    if ident == "include" {
-        token.userdata |= USERDATA__IS_INCLUDE_DIRECTIVE;
-    }
-}
-
-parse_string_literal :: (lexer: *Lexer, token: *Token) {
-    token.type = .STRING_LITERAL;
-    lexer_advance_horizontally(lexer);
-
-    escape := false;
-    while lexer.input.count {
-        c := lexer.input[0];
-        if c == "\n" {
-            lexer_set_token_end(lexer, token);
-            lexer_advance(lexer);
-            break;
-        }
-
-        if c == "\"" && !escape {
-            lexer_set_token_end(lexer, token);
-            lexer_advance_horizontally(lexer);
-            break;
-        }
-
-        escape = !escape && c == "\\";
-
-        lexer_advance_horizontally(lexer);
-    }
-}
-
-parse_char_literal :: (lexer: *Lexer, token: *Token) {
-    Advance :: () #expand {
-        lexer_advance_horizontally(lexer);
-        if lexer.input.count == 0 {
-            `return;
-        }
-        c = lexer.input[0];
-    }
-
-    token.type = .CHAR_LITERAL;
-
-    escape := false;
-    c: u8;
-
-    Advance(); // Consume starting '
-
-    if c == "\\" {
-        escape = true;
-        Advance(); // Consume escape
-    }
-
-    if c == "'" && !escape {
-        token.type == .INVALID;
-        lexer_set_token_end(lexer, token);
-        Advance(); // Consume invalid ending '
-
-        return;
-    }
-
-    Advance(); // Consume the character itself
-
-    if c != "'" {
-        token.type == .INVALID;
-    }
-
-    lexer_set_token_end(lexer, token);
-    Advance(); // The ending '
 }
 
 parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
@@ -581,6 +469,7 @@ parse_caret :: (lexer: *Lexer, token: *Token) {
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
+            case "^"; #through;
             case "="; {
                 lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
@@ -598,18 +487,96 @@ is_keyword :: (ident: string) -> bool {
 
 KEYWORDS :: string.[
     //
-    // These are the official keywords as of C23 (https://cppreference.com/c/keyword)
+    // From https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.4.60.html#keywords
     //
-    "alignas", "alignof", "auto", "bool", "break", "case", "char", "const", "constexpr",
-    "continue", "default", "do", "double", "else", "enum",
-    "extern", "false", "float", "for", "goto", "if", "inline", "int", "long", "nullptr", "register",
-    "restrict", "return", "short", "signed",
-    "sizeof", "static", "static_assert", "struct", "switch", "thread_local", "true", "typedef",
-    "typeof", "typeof_unqual", "union", "unsigned", "void", "volatile", "while",
-    "_Alignas", "_Alignof", "_Atomic", "_BitInt", "_Bool", "_Complex", "_Decimal128", "_Decimal32",
-    "_Decimal64", "_Generic", "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local",
+    // The following are the keywords in the language and (after preprocessing) can only be
+    // used as described in this specification, or a compile-time error results:
+    //
+    "const", "uniform", "buffer", "shared", "attribute", "varying",
+    "coherent", "volatile", "restrict", "readonly", "writeonly",
+    "atomic_uint",
+    "layout",
+    "centroid", "flat", "smooth", "noperspective",
+    "patch", "sample",
+    "invariant", "precise",
+    "break", "continue", "do", "for", "while", "switch", "case", "default",
+    "if", "else",
+    "subroutine",
+    "in", "out", "inout",
+    "int", "void", "bool", "true", "false", "float", "double",
+    "discard", "return",
+    "vec2", "vec3", "vec4", "ivec2", "ivec3", "ivec4", "bvec2", "bvec3", "bvec4",
+    "uint", "uvec2", "uvec3", "uvec4",
+    "dvec2", "dvec3", "dvec4",
+    "mat2", "mat3", "mat4",
+    "mat2x2", "mat2x3", "mat2x4",
+    "mat3x2", "mat3x3", "mat3x4",
+    "mat4x2", "mat4x3", "mat4x4",
+    "dmat2", "dmat3", "dmat4",
+    "dmat2x2", "dmat2x3", "dmat2x4",
+    "dmat3x2", "dmat3x3", "dmat3x4",
+    "dmat4x2", "dmat4x3", "dmat4x4",
+    "lowp", "mediump", "highp", "precision",
+    "sampler1D", "sampler1DShadow", "sampler1DArray", "sampler1DArrayShadow",
+    "isampler1D", "isampler1DArray", "usampler1D", "usampler1DArray",
+    "sampler2D", "sampler2DShadow", "sampler2DArray", "sampler2DArrayShadow",
+    "isampler2D", "isampler2DArray", "usampler2D", "usampler2DArray",
+    "sampler2DRect", "sampler2DRectShadow", "isampler2DRect", "usampler2DRect",
+    "sampler2DMS", "isampler2DMS", "usampler2DMS",
+    "sampler2DMSArray", "isampler2DMSArray", "usampler2DMSArray",
+    "sampler3D", "isampler3D", "usampler3D",
+    "samplerCube", "samplerCubeShadow", "isamplerCube", "usamplerCube",
+    "samplerCubeArray", "samplerCubeArrayShadow",
+    "isamplerCubeArray", "usamplerCubeArray",
+    "samplerBuffer", "isamplerBuffer", "usamplerBuffer",
+    "image1D", "iimage1D", "uimage1D",
+    "image1DArray", "iimage1DArray", "uimage1DArray",
+    "image2D", "iimage2D", "uimage2D",
+    "image2DArray", "iimage2DArray", "uimage2DArray",
+    "image2DRect", "iimage2DRect", "uimage2DRect",
+    "image2DMS", "iimage2DMS", "uimage2DMS",
+    "image2DMSArray", "iimage2DMSArray", "uimage2DMSArray",
+    "image3D", "iimage3D", "uimage3D",
+    "imageCube", "iimageCube", "uimageCube",
+    "imageCubeArray", "iimageCubeArray", "uimageCubeArray",
+    "imageBuffer", "iimageBuffer", "uimageBuffer",
+    "struct",
 
-    // These are some additional C++ keywords that may appear in handmade-style, sane C++ codebases.
-    "asm", "class", "const_cast", "decltype", "operator", "reinterpret_cast", "static_cast",
-    "template", "typename", "using", "virtual",
+    //
+    // In addition, when targeting Vulkan, the following keywords also exist:
+    //
+
+    "texture1D", "texture1DArray",
+    "itexture1D", "itexture1DArray", "utexture1D", "utexture1DArray",
+    "texture2D", "texture2DArray",
+    "itexture2D", "itexture2DArray", "utexture2D", "utexture2DArray",
+    "texture2DRect", "itexture2DRect", "utexture2DRect",
+    "texture2DMS", "itexture2DMS", "utexture2DMS",
+    "texture2DMSArray", "itexture2DMSArray", "utexture2DMSArray",
+    "texture3D", "itexture3D", "utexture3D",
+    "textureCube", "itextureCube", "utextureCube",
+    "textureCubeArray", "itextureCubeArray", "utextureCubeArray",
+    "textureBuffer", "itextureBuffer", "utextureBuffer",
+    "sampler", "samplerShadow",
+    "subpassInput", "isubpassInput", "usubpassInput",
+    "subpassInputMS", "isubpassInputMS", "usubpassInputMS",
+
+    //
+    // The following are the keywords reserved for future use. Using them will result in a
+    // compile-time error:
+    //
+
+    "common", "partition", "active",
+    "asm",
+    "class", "union", "enum", "typedef", "template", "this",
+    "resource",
+    "goto",
+    "inline", "noinline", "public", "static", "extern", "external", "interface",
+    "long", "short", "half", "fixed", "unsigned", "superp",
+    "input", "output",
+    "hvec2", "hvec3", "hvec4", "fvec2", "fvec3", "fvec4",
+    "filter",
+    "sizeof", "cast",
+    "namespace", "using",
+    "sampler3DRect",
 ];

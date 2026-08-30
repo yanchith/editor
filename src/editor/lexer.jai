@@ -88,7 +88,15 @@ lexer_set_token_end :: inline (lexer: Lexer, token: *Token) {
     token.loc1.y = lexer.line_index;
 }
 
-lexer_current_byte_equals :: inline (lexer: Lexer, c: u8) -> bool {
+lexer_input_byte_at_index_equals :: inline (lexer: Lexer, c: u8, index: s64) -> bool {
+    if lexer.input.count > index {
+        return lexer.input[index] == c;
+    }
+
+    return false;
+}
+
+lexer_input_byte_equals :: inline (lexer: Lexer, c: u8) -> bool {
     if lexer.input.count {
         return lexer.input[0] == c;
     }
@@ -96,7 +104,7 @@ lexer_current_byte_equals :: inline (lexer: Lexer, c: u8) -> bool {
     return false;
 }
 
-lexer_current_byte_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
+lexer_input_byte_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
     if lexer.input.count {
         for bytes {
             if lexer.input[0] == it {
@@ -108,7 +116,7 @@ lexer_current_byte_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
     return false;
 }
 
-lexer_current_byte_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> bool {
+lexer_input_byte_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> bool {
     if lexer.input.count {
         if matcher(lexer.input[0]) {
             return true;
