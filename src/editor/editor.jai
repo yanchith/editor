@@ -60,14 +60,14 @@ TODO(jt): Roadmap:
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [X] Language: JAI
-- [ ] Language: C
-- [ ] Language: C++
-- [ ] Language: C#
+- [X] Language: C
+- [~] Language: C++
 - [ ] Language: GLSL
 - [ ] Language: HLSL
 - [ ] Language: Rust
 - [ ] Language: Javascript
 - [ ] Language: Typescript
+- [ ] Language: C#
 - [ ] Language: Odin
 - [ ] Language: Lua
 - [ ] Language: Java
@@ -2066,7 +2066,7 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                         text_buffer_move_cursor_to(document.buffer, *document.cursors_cold, cursor_before_reload, false);
 
                         update_scopes(document);
-                        update_tokens(document);
+                        document_update_tokens(document);
 
                         editor_log(editor, "Updated % from filesystem", String.path_filename(document.backing_file_path));
                     }
@@ -2449,6 +2449,10 @@ Document_Action :: enum {
     TOGGLE_READONLY;
 
     STRIP_TRAILING_WHITESPACE;
+
+    LANGUAGE_PLAIN_TEXT;
+    LANGUAGE_C;
+    LANGUAGE_JAI;
 
     BENCHGEN_TEXT;
 }
@@ -2959,7 +2963,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                                         input.time, CURSOR_FLASH_DURATION);
 
                     update_scopes(document);
-                    update_tokens(document);
+                    document_update_tokens(document);
 
                     editor_log(editor, "Reloaded file: %", document.backing_file_path);
                 }
@@ -3217,7 +3221,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         }
 
         case .TOGGLE_COMMENT; {
-            line_comment, block_comment_start, block_comment_end := get_comment_style(document);
+            line_comment, block_comment_start, block_comment_end := document_get_comment_style(document);
             line_comment_length := count_utf8_chars(line_comment);
 
             line_comment_with_space := tprint("% ", line_comment);
@@ -3462,6 +3466,10 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 buffer_changed |= strip_trailing_whitespace(view);
             }
         }
+
+        case .LANGUAGE_PLAIN_TEXT;  document_change_lang(document, .PLAIN_TEXT);
+        case .LANGUAGE_C;           document_change_lang(document, .C);
+        case .LANGUAGE_JAI;         document_change_lang(document, .JAI);
 
         case .BENCHGEN_TEXT; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
@@ -4117,7 +4125,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
             // Update Syntax Highlighting
             //
             if document.flags & .MODIFIED_THIS_FRAME {
-                update_tokens(document);
+                document_update_tokens(document);
             }
 
             //
@@ -4576,10 +4584,16 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, document.buffer.line_bytes.count));
 
                 document_name := get_document_name(document);
+                document_lang: string;
+                if #complete document.lang == {
+                    case .PLAIN_TEXT;  document_lang = "Text";
+                    case .C;           document_lang = "C";
+                    case .JAI;         document_lang = "Jai";
+                }
 
                 percent_string := temp_right_pad(tprint("%\%", percent), 4);
 
-                s := tprint("    % % L% C%", temp_right_pad(document_name, 15), percent_string, cursor.y + 1, cursor.x + 1);
+                s := tprint("    % % % L% C%", temp_right_pad(document_name, 15), temp_right_pad(document_lang, 15), percent_string, cursor.y + 1, cursor.x + 1);
                 _font_layout_and_draw_text(*editor.font, s,
                                            render_commands, atlas_update_regions,
                                            modeline_offset, modeline_rect,
@@ -4792,22 +4806,6 @@ is_part_of_surround_pair :: (document: Document, char: u32) -> opens: bool, clos
     return opens, closes, paired_char;
 }
 
-get_comment_style :: (document: Document) -> /* Static */ line: string, block_start: string, block_end: string {
-    if #complete document.lang == {
-        case .PLAIN_TEXT;  return "", "", "";
-        case .C;           return LANG_C_LINE_COMMENT, LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END;
-        case .JAI;         return LANG_JAI_LINE_COMMENT, LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END;
-    }
-}
-
-update_tokens :: (document: *Document) {
-    if #complete document.lang == {
-        case .PLAIN_TEXT;  // Nothing
-        case .C;           lang_c_update_tokens(document);
-        case .JAI;         lang_jai_update_tokens(document);
-    }
-}
-
 open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: string, open_in_panel: *Panel = null) -> opened_in_panel: *Panel {
     panel: *Panel;
     if open_in_panel {
@@ -4871,7 +4869,7 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
                         text_buffer_move_cursor_to(document.buffer, *document.cursors_cold, 0, 0, false);
 
                         update_scopes(document);
-                        update_tokens(document);
+                        document_update_tokens(document);
 
                         watch_file(editor, platform, input, document.backing_file_path);
                     }
@@ -5221,6 +5219,32 @@ close_listing :: (editor: *Editor, input: Input, listing: *Listing) {
 
     // Remove listing itself.
     bucket_array_remove(*editor.listings, locator);
+}
+
+document_get_comment_style :: (document: Document) -> /* Static */ line: string, block_start: string, block_end: string {
+    if #complete document.lang == {
+        case .PLAIN_TEXT;  return "", "", "";
+        case .C;           return LANG_C_LINE_COMMENT, LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END;
+        case .JAI;         return LANG_JAI_LINE_COMMENT, LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END;
+    }
+}
+
+document_update_tokens :: (document: *Document) {
+    if #complete document.lang == {
+        case .PLAIN_TEXT;  // Nothing
+        case .C;           lang_c_update_tokens(document);
+        case .JAI;         lang_jai_update_tokens(document);
+    }
+}
+
+document_change_lang :: (document: *Document, lang: Document.Lang) {
+    array_reset_keeping_memory(*document.tokens);
+    array_reset_keeping_memory(*document.scopes);
+
+    document.lang = lang;
+
+    update_scopes(document);
+    document_update_tokens(document);
 }
 
 // WARNING: At the moment, panels without views (documents/listings) are invalid, so only use this
