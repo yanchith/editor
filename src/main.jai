@@ -207,6 +207,11 @@ main :: () {
         //
         // Unless we set this, our end of frame nap time on Windows is too course grained.
         // See :BatterySaver tag in this file.
+
+        // nocheckin explain: If we enable this, our sleep is more precise, so we should be able to time our sleep well,
+        // but also we spend more time blocked in OpenGL (vsync + queue depth), which is super power consuming, what the hell!
+        // If we don't enable timeBeginPeriod, we miss a frame from time to time, but also never become blocked by OpenGL too much,
+        // leading to better power consumption.
         timeBeginPeriod(SCHEDULER_PRECISION_MILLIS);
     } else #if OS == .MACOS {
         // :OperatingSystemSpecificHacks
