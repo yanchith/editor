@@ -1674,20 +1674,17 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     mark_on_frame_timeline(editor, platform, input, .RENDER);
 
     if wants_this_frame {
-        atlas_update_region := irect_union_or_zero(atlas_update_regions);
+        if atlas_update_regions.count {
+            atlas_update_region := irect_union_or_zero(atlas_update_regions);
+            if editor.font.subpixel {
+                atlas: [] u8;
+                atlas.count = editor.font.glyph_atlas_subpixel.count * 4;
+                atlas.data  = cast(*u8, editor.font.glyph_atlas_subpixel.data);
 
-        // TODO(jt): @Speed OpenGL is doing some kind of synchronization here. Depending on whether
-        // update_texture does early return (because the update region is empty), either it or
-        // draw_rects blocks for about 10-15ms, but at least one of them does. We should probably just
-        // switch to our own rendering backend (raw Vulkan/Metal, WGPU or SGPU) and tune it for latency.
-        if editor.font.subpixel {
-            atlas: [] u8;
-            atlas.count = editor.font.glyph_atlas_subpixel.count * 4;
-            atlas.data  = cast(*u8, editor.font.glyph_atlas_subpixel.data);
-
-            renderer.update_texture_rgba8unorm(TEXTURE_ID_GLYPH_ATLAS, atlas, atlas_update_region);
-        } else {
-            renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, atlas_update_region);
+                renderer.update_texture_rgba8unorm(TEXTURE_ID_GLYPH_ATLAS, atlas, atlas_update_region);
+            } else {
+                renderer.update_texture_r8unorm(TEXTURE_ID_GLYPH_ATLAS, editor.font.glyph_atlas, atlas_update_region);
+            }
         }
 
         renderer.begin_frame(editor.theme.background_color);
