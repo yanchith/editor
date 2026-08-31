@@ -1642,7 +1642,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         t := 1.0 - (to_float64_seconds(input.time) - time) / TIMELINE_WINDOW_SECONDS;
                         x := cast(f32, PADDING_X + t * graph_width);
 
-                        draw_rect(*render_commands, x, 100.0, x + 1, 400.0, { 1, 1, 1, 1 });
+                        draw_rect(*render_commands, x, 100.0, x + 1, 200.0, { 1, 1, 1, 1 });
 
                         time -= desired_frame_time;
                     }

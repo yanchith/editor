@@ -158,8 +158,11 @@ renderer_submit_frame :: () {
 
     // :WindowVSync
     //
-    // wglSwapInterval unfortunately does nothing (at least on my computer/drivers).
-    // This seems to help and I noticed no bad side effects yet.
+    // @Hack wglSwapInterval unfortunately does nothing (at least on my computer/drivers).
+    // This seems to help and I noticed no bad side effects yet. However, some people
+    // experienced stutter with DwmFlush, so we need to watch this closely.
+    //
+    // More discussion here: https://github.com/glfw/glfw/issues/2733
     #if OS == .WINDOWS {
         hresult := DwmFlush();
         if hresult != S_OK {
