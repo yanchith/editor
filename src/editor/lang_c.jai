@@ -611,6 +611,6 @@ KEYWORDS :: string.[
     "_Decimal64", "_Generic", "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local",
 
     // These are some additional C++ keywords that may appear in handmade-style, sane C++ codebases.
-    "asm", "class", "const_cast", "decltype", "operator", "reinterpret_cast", "static_cast",
-    "template", "typename", "using", "virtual",
+    "asm", "class", "const_cast", "decltype", "operator", "private", "protected", "public",
+    "reinterpret_cast", "static_cast", "template", "typename", "using", "virtual",
 ];
