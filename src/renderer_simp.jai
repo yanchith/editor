@@ -1,6 +1,28 @@
 renderer_init :: (window: WT.Window_Type) {
     Simp.set_render_target(window, .LEFT_HANDED);
 
+    // :WindowsVSync
+    //
+    // We don't currently enable VSync, because it didn't do anything and
+    // we still burned CPU inside the driver.
+    /*
+    #if OS == .WINDOWS {
+        // Enable VSync if we can.
+        _wglSwapIntervalEXT : (interval: s32) -> BOOL #foreign;
+        _wglSwapIntervalEXT = xx wglGetProcAddress("wglSwapIntervalEXT");
+        if _wglSwapIntervalEXT {
+            success := _wglSwapIntervalEXT(1);
+            if success {
+                log("VSync enabled");
+            } else {
+                log_error("Failed to enable VSync");
+            }
+        } else {
+            log_error("Failed to load wglSwapIntervalEXT; Can't enable VSync");
+        }
+    }
+    */
+
     renderer_state.window = window;
 
     renderer_state.text_shader.gl_handle   = Simp.get_shader_program(TEXT_SHADER);
@@ -133,6 +155,17 @@ renderer_begin_frame :: (clear_color: Vector4) {
 renderer_submit_frame :: () {
     ProfileZone("renderer_submit_frame");
     Simp.swap_buffers(renderer_state.window);
+
+    // :WindowVSync
+    //
+    // wglSwapInterval unfortunately does nothing (at least on my computer/drivers).
+    // This seems to help and I noticed no bad side effects yet.
+    #if OS == .WINDOWS {
+        hresult := DwmFlush();
+        if hresult != S_OK {
+            log_error("Call to DwmFlush failed: %", hresult);
+        }
+    }
 }
 
 renderer_draw :: (render_commands: [] Editor.Render_Command) {
@@ -243,8 +276,11 @@ renderer_draw :: (render_commands: [] Editor.Render_Command) {
 
 #scope_file
 
-WT   :: #import "Window_Type";
-Simp :: #import "Simp";
+WT     :: #import "Window_Type";
+Simp   :: #import "Simp";
+Dwmapi :: #library,system "Dwmapi";
+
+DwmFlush :: () -> HRESULT #foreign Dwmapi;
 
 renderer_state: Renderer_State;
 Renderer_State :: struct {

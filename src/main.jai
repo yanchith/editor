@@ -123,7 +123,7 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
     // to GetDpiForMonitor (Windows 8.1) in Shcore.dll, or the venerable GetDeviceCaps(LOGPIXELSX)
     // (Windows 2000) in Gdi32.dll.
     GetDpiForWindow :: (hWnd: HWND) -> UINT #foreign user32;
-    WaitMessage     :: () -> BOOL #foreign user32;
+    WaitMessage     :: ()           -> BOOL #foreign user32;
 } else #if OS == .MACOS {
     #import "POSIX";
     #import "macOS";
@@ -207,11 +207,6 @@ main :: () {
         //
         // Unless we set this, our end of frame nap time on Windows is too course grained.
         // See :BatterySaver tag in this file.
-
-        // nocheckin explain: If we enable this, our sleep is more precise, so we should be able to time our sleep well,
-        // but also we spend more time blocked in OpenGL (vsync + queue depth), which is super power consuming, what the hell!
-        // If we don't enable timeBeginPeriod, we miss a frame from time to time, but also never become blocked by OpenGL too much,
-        // leading to better power consumption.
         timeBeginPeriod(SCHEDULER_PRECISION_MILLIS);
     } else #if OS == .MACOS {
         // :OperatingSystemSpecificHacks
@@ -806,16 +801,20 @@ main :: () {
             // The better solution is CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, but that only arrived in
             // Windows 10, version 1803. We should probably detect and do that if possible.
             //
+            // UPDATE: This is also not really tested without VSync. Maybe it is a bad idea and we should
+            // always just wait on some kind of presentation fence. I don't know.
+            //
             //   -jt, 26 August 2026
 
             time_of_frame_end := current_time_monotonic();
 
             seconds_since_frame_start := to_float64_seconds(time_of_frame_end - time_of_frame_start);
+            target_frame_seconds      := 1.0 / input.monitor_refresh_rate;
 
-            remainder_millis := cast(s32, floor((1.0 / input.monitor_refresh_rate - seconds_since_frame_start) * 1000.0));
-            remainder_millis = max(remainder_millis, 0); // nocheckin explain not subtracting scheduler frequency
-            if remainder_millis {
-                sleep_milliseconds(remainder_millis);
+            remainder_millis := cast(s32, floor((target_frame_seconds - seconds_since_frame_start) * 1000.0));
+            sleep_millis     := max(remainder_millis - SCHEDULER_PRECISION_MILLIS, 0);
+            if sleep_millis {
+                sleep_milliseconds(sleep_millis);
             }
 
             if !wants_next_frame {
