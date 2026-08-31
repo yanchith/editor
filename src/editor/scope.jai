@@ -7,14 +7,14 @@ Scope :: struct {
     open_paren_char:  u32;
     close_paren_char: u32;
 
-    indentation_flags: Flags;
+    indentation_flags: Indentation_Flags;
     indentation_level: s64;
 
     parent_index:       s64 = -1;
     first_child_index:  s64 = -1;
     next_sibling_index: s64 = -1;
 
-    Flags :: enum_flags u32 {
+    Indentation_Flags :: enum_flags u32 {
         NONE :: 0;
 
         HANGING  :: 0x01; // Casey-style scope, e.g. 'hwnd = CreateWindowExW(0,' (continues on the next line).
