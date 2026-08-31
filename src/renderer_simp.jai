@@ -282,7 +282,7 @@ renderer_draw :: (render_commands: [] Editor.Render_Command) {
 WT     :: #import "Window_Type";
 Simp   :: #import "Simp";
 
-#if OS == .WINOWS {
+#if OS == .WINDOWS {
     Dwmapi :: #library,system "Dwmapi";
     DwmFlush :: () -> HRESULT #foreign Dwmapi;
 }
