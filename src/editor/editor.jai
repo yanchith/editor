@@ -186,6 +186,9 @@ FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(250);  // The
 
 UNDO_AUTOFUSE_PERIOD: Apollo_Time : #run milliseconds_to_apollo(500);
 
+HIGHLIGHT_CUTOFF_SIZE:   s64 : 10 << 20;
+INDENTATION_CUTOFF_SIZE: s64 : 10 << 20;
+
 GUTTER_PIXELS :: 20.0; // TODO(jt): Make this configurable. :Config
 
 PANEL_SCROLL_PADDING_CELLS_X :: 5;    // TODO(jt): Make this configurable. :Config
@@ -5233,7 +5236,14 @@ document_get_comment_style :: (document: Document) -> /* Static */ line: string,
     }
 }
 
+// TODO(jt): @Speed At sizes around ~10MB, even the fastest lexer we have (JAI_Lexer) takes 10 milliseconds to produce tokens.
+// We need to make all lexers faster, so that we can increase the highlighting cutoff.
 document_update_tokens :: (document: *Document) {
+    if document.buffer.gb.count > HIGHLIGHT_CUTOFF_SIZE {
+        array_reset_keeping_memory(*document.tokens);
+        return;
+    }
+
     if #complete document.lang == {
         case .PLAIN_TEXT;  // Nothing
         case .C;           lang_c_update_tokens(document);

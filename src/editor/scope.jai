@@ -22,12 +22,13 @@ Scope :: struct {
     }
 }
 
-// TODO(jt): @Speed When we indent the entirety of a 10000 document, this takes ~8 seconds. Even if
+// TODO(jt): @Speed When we indent the entirety of a 10000-line document, this takes ~8 seconds. Even if
 // we SIMD this, it will traverse the whole document contents too many times. We need an incremental
 // version, or perhaps some cooperative version that can work well with indenting large regions.
 //
-// UPDATE: For documents above ~2MB, this also causes us to miss frames for every edit. So need that
-// incremental version for this reason also.
+// TODO(jt): @Speed For documents above ~2MB, this also causes us to miss frames for every edit.
+// The problem is 2MB isn't really that large. This needs to become 10x faster AND we should also
+// think about doing an incremental thing.
 update_scopes :: (document: *Document) {
     ProfileZone("update_scopes");
 
@@ -35,6 +36,12 @@ update_scopes :: (document: *Document) {
     if document == null {
         return;
     }
+
+    array_reset_keeping_memory(*document.scopes);
+
+    if document.buffer.binary_mode                         return;
+    if document.buffer.gb.count > INDENTATION_CUTOFF_SIZE  return;
+
 
     indentation_pairs: [] Paren_Pair;
     line_comment            := "";
@@ -67,11 +74,6 @@ update_scopes :: (document: *Document) {
             block_comment_end       = LANG_GLSL_BLOCK_COMMENT_END;
             block_comments_can_nest = LANG_GLSL_BLOCK_COMMENTS_CAN_NEST;
         }
-    }
-
-    array_reset_keeping_memory(*document.scopes);
-    if document.buffer.binary_mode {
-        return; // Don't recreate indentation data if we entered binary mode.
     }
 
     parent_index  := document.scopes.count;

@@ -11,14 +11,16 @@ modal_interaction_benchgen_procs: Modal_Interaction_Procs = {
 // For -x64/-llvm and -sanity, 64KB is smooth, but it chokes on larger stuff.
 // For -optimized and -no-sanity, 256MB is smooth, and can go up to 1GB without being too choppy.
 //
-// UPDATE: The prior is true if we exclude update_parethesized_scopes, which now completely
-// dominates every frame where an edit happened.
+// UPDATE: The prior is true if we exclude update_scopes (and to a lesser degree update_tokens),
+// which now completely dominates every frame where an edit happened. For this reason, we turned
+// them off above 10MB files. I hope to improve this limit.
 benchgen_text :: (view: *Document_View, approx_size_in_bytes: s64) {
     text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1);
 
     while view.document.buffer.gb.count < approx_size_in_bytes {
         SEPARATOR :: "\n========================================================\n\n";
 
+        // TODO(jt): @Speed This is quadratic, because we insert in a loop, and the insert has to compute a gb index.
         text_buffer_insert(*view.document.buffer, *view.cursors, SEPARATOR, .FUSE);
         text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1, .FUSE);
     }

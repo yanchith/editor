@@ -589,9 +589,10 @@ parse_caret :: (lexer: *Lexer, token: *Token) {
     }
 }
 
+// TODO(jt): @Speed Accelerate! Could be a lookup table, or perhaps just a
+// length-based narrowing before doing a strcomp, like Jai_Lexer does.
 is_keyword :: (ident: string) -> bool {
-    // TODO(jt): @Speed Accelerate! Could be a lookup table, or perhaps just a
-    // length-based narrowing before doing a strcomp, like Jai_Lexer does.
+    ProfileZone("lang_c_is_keyword");
     found := array_find(KEYWORDS, ident);
     return found;
 }
