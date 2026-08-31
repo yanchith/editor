@@ -3,10 +3,6 @@
 FONT_ATLAS_WIDTH_IN_PIXELS  :: 1024;
 FONT_ATLAS_HEIGHT_IN_PIXELS :: 1024;
 
-// TODO(jt): All procedures in this file should eventually handle tabs (basically by pretending it
-// is N spaces). Currently, the editor just inserts spaces everywhere, so it is kind of fine, but we
-// won't be able to do that forever.
-
 Font :: struct {
     //
     // "Inputs"
@@ -359,11 +355,25 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
         }
 
         if it == #char "\r" {
-            continue; // Not rendered.
+            current_char_index += 1;
+            continue;
+        }
+
+        // nocheckin more tabsies work
+        if it == #char "\t" {
+            current_char_index += 1;
+
+            // We could also cache this...
+            error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | ft_load_target);
+            if !error {
+                cursor_x = font.ft_face_for_regular.glyph.metrics.horiAdvance;
+            }
+
+            continue;
         }
 
         glyph_color   := default_color;
-        glyph_variant := default_variant;;
+        glyph_variant := default_variant;
 
         style_range := maybe_advance_range_index_and_get_containing_range(*style_range_index, style_ranges, current_line_index, current_char_index);
         if style_range {
