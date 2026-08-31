@@ -281,9 +281,11 @@ renderer_draw :: (render_commands: [] Editor.Render_Command) {
 
 WT     :: #import "Window_Type";
 Simp   :: #import "Simp";
-Dwmapi :: #library,system "Dwmapi";
 
-DwmFlush :: () -> HRESULT #foreign Dwmapi;
+#if OS == .WINOWS {
+    Dwmapi :: #library,system "Dwmapi";
+    DwmFlush :: () -> HRESULT #foreign Dwmapi;
+}
 
 renderer_state: Renderer_State;
 Renderer_State :: struct {
