@@ -88,6 +88,7 @@ TODO(jt): Roadmap:
 - [ ] Config file
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
+- [ ] Render subtle symbols for whitespace characters (space, tab, cr, lf)
 - [ ] Support for dropping files into the window
 - [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
 - [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
@@ -188,6 +189,8 @@ UNDO_AUTOFUSE_PERIOD: Apollo_Time : #run milliseconds_to_apollo(500);
 
 HIGHLIGHT_CUTOFF_SIZE:   s64 : 10 << 20;
 INDENTATION_CUTOFF_SIZE: s64 : 10 << 20;
+
+INDENTATION_STEP :: 4; // Also controls tab width. TODO(jt): Make this configurable (also per project). :Config
 
 GUTTER_PIXELS :: 20.0; // TODO(jt): Make this configurable. :Config
 

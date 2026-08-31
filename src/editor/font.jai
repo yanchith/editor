@@ -359,14 +359,12 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             continue;
         }
 
-        // nocheckin more tabsies work
         if it == #char "\t" {
             current_char_index += 1;
 
-            // We could also cache this...
-            error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | ft_load_target);
+            error := FT_Load_Char(font.ft_face_for_regular, #char " ", FT_LOAD_DEFAULT | ft_load_target);
             if !error {
-                cursor_x = font.ft_face_for_regular.glyph.metrics.horiAdvance;
+                cursor_x += INDENTATION_STEP * font.ft_face_for_regular.glyph.metrics.horiAdvance;
             }
 
             continue;
@@ -593,15 +591,24 @@ _font_compute_line_length :: (font: Font, line_text: string, $binary: bool) -> f
 
     ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
     for :ITERATOR line_text {
+        // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
+        if it == #char "\n" {
+            it = #char " ";
+        }
+
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
             }
-        } else {
-            // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
-            if it == #char "\n" {
-                it = #char " ";
+        }
+
+        if it == #char "\t" {
+            error := FT_Load_Char(font.ft_face_for_regular, #char " ", FT_LOAD_DEFAULT | ft_load_target);
+            if !error {
+                advance += INDENTATION_STEP * font.ft_face_for_regular.glyph.metrics.horiAdvance;
             }
+
+            continue;
         }
 
         error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | ft_load_target);
@@ -642,15 +649,24 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
             break;
         }
 
+        // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
+        if it == #char "\n" {
+            it = #char " ";
+        }
+
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
             }
-        } else {
-            // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
-            if it == #char "\n" {
-                it = #char " ";
+        }
+
+        if it == #char "\t" {
+            error := FT_Load_Char(font.ft_face_for_regular, #char " ", FT_LOAD_DEFAULT | ft_load_target);
+            if !error {
+                advance += INDENTATION_STEP * font.ft_face_for_regular.glyph.metrics.horiAdvance;
             }
+
+            continue;
         }
 
         error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | ft_load_target);
@@ -692,15 +708,24 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
 
         character_index = it_index;
 
+        // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
+        if it == #char "\n" {
+            it = #char " ";
+        }
+
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
             }
-        } else {
-            // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
-            if it == #char "\n" {
-                it = #char " ";
+        }
+
+        if it == #char "\t" {
+            error := FT_Load_Char(font.ft_face_for_regular, #char " ", FT_LOAD_DEFAULT | ft_load_target);
+            if !error {
+                advance += INDENTATION_STEP * font.ft_face_for_regular.glyph.metrics.horiAdvance;
             }
+
+            continue;
         }
 
         error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | ft_load_target);

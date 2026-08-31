@@ -1,5 +1,3 @@
-DEFAULT_INDENTATION_STEP :: 4; // TODO(jt): Make this configurable (also per project). :Config
-
 Scope :: struct {
     loc0: Text_Location;
     loc1: Text_Location;
@@ -174,13 +172,13 @@ update_scopes :: (document: *Document) {
                     // opening paren.
                     //
 
-                    scope.indentation_level = scope.loc0.x + DEFAULT_INDENTATION_STEP;
+                    scope.indentation_level = scope.loc0.x + INDENTATION_STEP;
 
                     for 0..byte_index - 1 {
                         // TODO(jt): @Speed We could SIMD this.
                         if !String.is_any(line[it], String.DEFAULT_SPACES) {
                             scope.indentation_flags |= .PREFIXED;
-                            scope.indentation_level = it + DEFAULT_INDENTATION_STEP; // DEFAULT_SPACES are all single-byte.
+                            scope.indentation_level = it + INDENTATION_STEP; // DEFAULT_SPACES are all single-byte.
                             break;
                         }
                     }
