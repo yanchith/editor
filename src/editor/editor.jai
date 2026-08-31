@@ -5027,6 +5027,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
                 // TODO(jt): @Incomplete C++ currently goes to the C backend, but eventually it should get its own?
                 // Or maybe we can have a single C+ backend for both and ignore the modern monstrosity? This could be possible,
                 // because we are just lexing.
+                case "inl";   #through;
                 case "hpp";   #through;
                 case "cpp";   #through;
                 case "h";     #through;
