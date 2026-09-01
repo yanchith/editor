@@ -734,7 +734,7 @@ main :: () {
 
         time_scale := profiler_end_frame();
 
-        frame_zones, frame_zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
+        frame_zones, frame_zone_labels := profiler_get_zones(.INCLUSIVE_TIME);
         input.debug_previous_frame_time_scale  = time_scale;
         input.debug_previous_frame_zones       = frame_zones;
         input.debug_previous_frame_zone_labels = frame_zone_labels;
