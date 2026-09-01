@@ -1898,6 +1898,25 @@ assert_valid_buffer :: (buffer: Text_Buffer) {
     }
 }
 
+// TODO(jt): @Bug We got a crash here:
+/*
+C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1902,5: Assertion failed!
+
+Stack trace:
+'editor_assertion_failed' at C:/Users/yanchith/workspace/editor/src/main.jai:1162
+'assert_helper' at C:/Users/yanchith/workspace/jai/modules/Basic/module.jai:86
+'assert_line_valid' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1902
+'text_buffer_make_view_for_line' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1223
+'get_position_for_location' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5608
+'get_position_at_cursor' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5591
+'panel_set_document' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5320
+'panel_init_with_document' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5264
+'execute_panel_action' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:2711
+'route_event_to_panel' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:2522
+'update_and_render' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:1129
+'main' at C:/Users/yanchith/workspace/editor/src/main.jai:741
+*/
+
 assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
     assert(is_line_valid(buffer, line_index));
 }
