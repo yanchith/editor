@@ -5,7 +5,7 @@
 // The __profiler global variable is inserted when this module is imported. It is used inside this
 // module to detect whether this is a profiling build with #exists.
 //
-// The __init_zone_labels procedure and __PROFILER_ZONE_COUNT constant are inserted when the
+// The __init_zone_labels procedure and PROFILER_ZONE_COUNT constant are inserted when the
 // metaprogram gets a TYPECHECKED_ALL_WE_CAN message. The values of these depend on what it saw
 // during compilation.
 //
@@ -88,7 +88,7 @@ Sort_Mode :: enum {
 // Get sorted profiling data. You'll have to scale it by the time scale obtained from
 // profiler_end_frame. The resulting arrays are allocated with context.allocator if in profiling
 // builds and in static storage otherwise. Pass in temporary allocator if you don't want to care.
-profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
+profiler_get_zones :: (sort_mode: Sort_Mode) -> [PROFILER_ZONE_COUNT] Profiler_Zone, [PROFILER_ZONE_COUNT] string {
     #if #exists(__profiler) {
         get :: (zone: Profiler_Zone, sort_mode: Sort_Mode) -> u64 {
             if #complete sort_mode == {
@@ -100,8 +100,8 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
             return zone.elapsed_inclusive;
         }
 
-        zones := Basic.array_copy(__profiler.zones);
-        zone_labels := Basic.array_copy(__profiler.zone_labels);
+        zones       := __profiler.zones;
+        zone_labels := __profiler.zone_labels;
 
         // @Speed Yes, this is bubble sort. We use it to sort two arrays at once. We could do a
         // modified version of quicksort to do that, but let's see if it becomes a problem first.
@@ -134,8 +134,8 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
     __Profiler :: struct {
         // Labels are stored out of band, because we don't need to touch them them when
         // profiling and they would increase the zone size to 40 bytes.
-        zones:       [__PROFILER_ZONE_COUNT] Profiler_Zone;
-        zone_labels: [__PROFILER_ZONE_COUNT] string;
+        zones:       [PROFILER_ZONE_COUNT] Profiler_Zone;
+        zone_labels: [PROFILER_ZONE_COUNT] string;
 
         current_zone_index: s64;
 
@@ -181,6 +181,9 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
             __profiler.current_zone_index = parent_zone_index;
         }
     }
+} else {
+    // Defined, so that people can refer to it always.
+    PROFILER_ZONE_COUNT: s64 : 0;
 }
 
 #scope_module

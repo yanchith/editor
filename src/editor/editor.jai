@@ -148,6 +148,7 @@ operator==     :: Math.operator==;
 #load "bits.jai";
 #load "sort.jai";
 #load "hash.jai";
+#load "array.jai";
 #load "string.jai";
 #load "math.jai";
 #load "interpolation.jai";
@@ -268,6 +269,11 @@ Editor :: struct {
     is_first_frame: bool;
 
     debug_view: Debug_View;
+    debug_view_state: Debug_View_State;
+
+    DEBUG_FRAME_PROFILE_COUNT: s64 : 128;
+    debug_frame_profiles: [DEBUG_FRAME_PROFILE_COUNT] Frame_Profile_Entry;
+    debug_frame_profile_index: s64;
 
     DEBUG_FRAME_TIMELINE_COUNT: s64 : 128;
     debug_frame_timeline: [DEBUG_FRAME_TIMELINE_COUNT] Frame_Timeline_Entry;
@@ -278,8 +284,26 @@ Editor :: struct {
         ATLAS_TEXTURE;
         MEMORY_ABSOLUTE;
         MEMORY_RELATIVE;
+        FRAME_PROFILE;
         FRAME_TIMELINE;
     };
+
+    Debug_View_State :: struct {
+        data: [64] u8;
+
+        #overlay (data) _frame_profile: Frame_Profile_State;
+
+        Frame_Profile_State :: struct {
+            index: s64;
+            paused: bool;
+        }
+    }
+
+    Frame_Profile_Entry :: struct {
+        zones:       [PROFILER_ZONE_COUNT] Profiler_Zone;
+        zone_labels: [PROFILER_ZONE_COUNT] string;
+        time_scale:  f64;
+    }
 
     Frame_Timeline_Entry :: struct {
         time_start:  Apollo_Time;
@@ -590,6 +614,8 @@ Modal_Interaction_Cancel_Proc          :: #type (editor: *Editor, platform: Plat
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
     ProfileZone("Editor.init");
+
+    // print("nocheckin mail this in: %\n", PROFILER_ZONE_COUNT);
 
     // Delay attaching debug procs to perm, because the list of arenas itself is going to be in perm.
     // So we add it to the list manually and attach procs after.
@@ -996,7 +1022,13 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_this_frame: bool, wants_next_frame: bool {
-    ProfileZone("Editor.update_and_render");
+    // TODO(jt): @CompilerBug After reading PROFILER_ZONE_COUNT, instrumenting this zone now causes the compiler
+    // to emit TYPECHECKED_ALL_WE_CAN before it processes the commented out zone.
+    //
+    // ProfileZone("Editor.update_and_render");
+
+    mark_on_frame_timeline(editor, platform, input, .START);
+    mark_and_advance_frame_profile(editor, input);
 
     dt: f64;
     if input.frame_requested_by_editor {
@@ -1005,8 +1037,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // No way to tell delta if we were sleeping.
         dt = 1.0 / input.monitor_refresh_rate;
     }
-
-    mark_on_frame_timeline(editor, platform, input, .START);
 
     // With wants_this_frame we control whether early out to save battery/fans. Currently, we early
     // out just before submitting stuff to the GPU, but we could take this further and early out
@@ -1097,10 +1127,11 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if it.type == {
                 case .KEY; {
                     if it.key == {
-                        case .F1;  toggle_debug_view(*editor.debug_view, .ATLAS_TEXTURE); handled = true;
-                        case .F2;  toggle_debug_view(*editor.debug_view, .MEMORY_ABSOLUTE); handled = true;
-                        case .F3;  toggle_debug_view(*editor.debug_view, .MEMORY_RELATIVE); handled = true;
-                        case .F4;  toggle_debug_view(*editor.debug_view, .FRAME_TIMELINE); handled = true;
+                        case .F1;  toggle_debug_view(editor, .ATLAS_TEXTURE); handled = true;
+                        case .F2;  toggle_debug_view(editor, .MEMORY_ABSOLUTE); handled = true;
+                        case .F3;  toggle_debug_view(editor, .MEMORY_RELATIVE); handled = true;
+                        case .F4;  toggle_debug_view(editor, .FRAME_PROFILE); handled = true;
+                        case .F5;  toggle_debug_view(editor, .FRAME_TIMELINE); handled = true;
                     }
                 }
 
@@ -1624,8 +1655,114 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
             }
 
+            case .FRAME_PROFILE; {
+                message := "Debug view: Frame profile";
+                scissor := Rect.{ 0, 0, window_w, window_h };
+                _font_layout_and_draw_text(*editor.font, message,
+                                           *render_commands, *atlas_update_regions,
+                                           { 0, 0 }, scissor,
+                                           { 1, 1, 1, 1 }, .REGULAR,
+                                           .[], .[],
+                                           binary = false);
+
+                state := *editor.debug_view_state._frame_profile;
+
+                if PROFILER_ZONE_COUNT {
+                    last_frame_index := (editor.debug_frame_profile_index - 1) & (editor.DEBUG_FRAME_PROFILE_COUNT - 1);
+
+                    if editor.input_state.keys[Key.ARROW_LEFT] & .PRESSED {
+                        if state.paused {
+                            state.index -= 1;
+                            state.index &= editor.DEBUG_FRAME_PROFILE_COUNT - 1;
+                        } else {
+                            state.index = (editor.debug_frame_profile_index - 1) & (editor.DEBUG_FRAME_PROFILE_COUNT - 1);
+                        }
+                        state.paused = true;
+                    }
+
+                    if editor.input_state.keys[Key.ARROW_RIGHT] & .PRESSED {
+                        if state.paused {
+                            state.index += 1;
+                            state.index &= editor.DEBUG_FRAME_PROFILE_COUNT - 1;
+                        } else {
+                            state.index = (editor.debug_frame_profile_index + 1) & (editor.DEBUG_FRAME_PROFILE_COUNT - 1);
+                        }
+                        state.paused = true;
+                    }
+
+                    if editor.input_state.keys[Key.ARROW_UP] & .PRESSED {
+                        state.paused = false;
+                    }
+
+                    PADDING_X :: 20.0;
+                    REGULAR_BAR_HEIGHT   :: 150.0;
+                    EXCEEDING_BAR_HEIGHT :: 350.0;
+                    R_COUNT :: 1.0 / editor.DEBUG_FRAME_PROFILE_COUNT;
+
+                    graph_width := max(window_w - 2 * PADDING_X, 0);
+                    bar_width   := graph_width / editor.DEBUG_FRAME_PROFILE_COUNT - 2.0;
+                    desired_frame_time: f64 = 1.0 / input.monitor_refresh_rate;
+
+                    displayed_frame_index := last_frame_index;
+                    if state.paused {
+                        displayed_frame_index = state.index;
+                    }
+
+                    for profile, profile_index: editor.debug_frame_profiles {
+                        time_scale := profile.time_scale;
+                        zone0      := *profile.zones[0];
+
+                        frame_time := time_scale * zone0.elapsed_inclusive;
+                        th := frame_time / desired_frame_time;
+                        h  := cast(f32, th * REGULAR_BAR_HEIGHT);
+
+                        tx := profile_index * R_COUNT;
+                        x := PADDING_X + tx * graph_width;
+
+                        color: Vector4 = { 0.5, 0.5, 0.5, 1 };
+
+                        if profile_index == displayed_frame_index {
+                            color = { 1, 1, 1, 1 };
+                        }
+
+                        draw_rect(*render_commands, x, 100.0, x + bar_width, 100.0 + h, color);
+                    }
+
+                    {
+                        profile    := *editor.debug_frame_profiles[displayed_frame_index];
+                        time_scale := profile.time_scale;
+                        cursor_y := 0;
+                        for zone, zone_index: profile.zones {
+                            s := tprint("% %      %     %     %",
+                                        temp_right_pad(tprint("[%]", zone_index), 5),
+                                        temp_right_pad(profile.zone_labels[zone_index], 50),
+                                        formatInt(zone.hits, minimum_digits = 15, padding = #char " "),
+                                        formatFloat(1000 * time_scale * zone.elapsed_inclusive, width = 15, trailing_width = 3),
+                                        formatFloat(1000 * time_scale * zone.elapsed_exclusive, width = 15, trailing_width = 3));
+
+                            y := EXCEEDING_BAR_HEIGHT + zone_index * cell_h;
+                            _font_layout_and_draw_text(*editor.font, s,
+                                                       *render_commands, *atlas_update_regions,
+                                                       { 0, y }, scissor,
+                                                       { 1, 1, 1, 1 }, .REGULAR,
+                                                       .[], .[],
+                                                       binary = false);
+                        }
+                    }
+                } else {
+                    // TODO(jt): @Cleanup Make a draw_debug_text helper!  nocheckin
+                    message := "(Profiling info unavailable)";
+                    _font_layout_and_draw_text(*editor.font, message,
+                                               *render_commands, *atlas_update_regions,
+                                               { 0, 3 * cell_h }, scissor,
+                                               { 1, 1, 1, 1 }, .REGULAR,
+                                               .[], .[],
+                                               binary = false);
+                }
+            }
+
             case .FRAME_TIMELINE; {
-                message := tprint("Debug view: CPU Frame timeline (blue=update; red=render+VSync; white=refresh(%), informative only)", input.monitor_refresh_rate);
+                message := tprint("Debug view: Frame timeline (blue=update; red=render+VSync; white=refresh(%), informative only)", input.monitor_refresh_rate);
                 scissor := Rect.{ 0, 0, window_w, window_h };
                 _font_layout_and_draw_text(*editor.font, message,
                                            *render_commands, *atlas_update_regions,
@@ -5829,6 +5966,25 @@ make_arena_debug_procs :: (editor: *Editor) -> Arena_Debug_Procs {
     return debug_procs;
 }
 
+mark_and_advance_frame_profile :: (editor: *Editor, input: Input) {
+    #assert is_power_of_two(editor.DEBUG_FRAME_PROFILE_COUNT); // So that we can use bit ops modulo.
+
+    if editor.debug_view == .FRAME_PROFILE {
+        state := *editor.debug_view_state._frame_profile;
+        if state.paused {
+            return;
+        }
+    }
+
+    current := *editor.debug_frame_profiles[editor.debug_frame_profile_index];
+    array_copy(current.zones, input.debug_previous_frame_zones);
+    array_copy(current.zone_labels, input.debug_previous_frame_zone_labels);
+    current.time_scale = input.debug_previous_frame_time_scale;
+
+    editor.debug_frame_profile_index += 1;
+    editor.debug_frame_profile_index &= editor.DEBUG_FRAME_TIMELINE_COUNT - 1;
+}
+
 mark_on_frame_timeline :: (editor: *Editor, platform: Platform, input: Input, marker: enum { START; RENDER; END; }) {
     if #complete marker == {
         case .START;   editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_start = input.time;
@@ -5844,11 +6000,13 @@ advance_frame_timeline :: (editor: *Editor) {
     editor.debug_frame_timeline_index &= editor.DEBUG_FRAME_TIMELINE_COUNT - 1;
 }
 
-toggle_debug_view :: (debug_view: *Editor.Debug_View, value: Editor.Debug_View) {
-    if debug_view.* == value {
-        debug_view.* = .NONE;
+toggle_debug_view :: (editor: *Editor, value: Editor.Debug_View) {
+    editor.debug_view_state = {};
+
+    if editor.debug_view == value {
+        editor.debug_view = .NONE;
     } else {
-        debug_view.* = value;
+        editor.debug_view = value;
     }
 }
 

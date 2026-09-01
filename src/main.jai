@@ -575,10 +575,6 @@ main :: () {
 
     editor: Editor.Editor;
     Editor.init(*editor, platform, renderer, input);
-    {
-        time_scale := profiler_end_frame();
-        print_profile_for_slow_frames(SLOW_INIT_THRESHOLD_MILLIS, time_scale);
-    }
 
     time_of_last_frame_start := time_of_program_start;
 
@@ -743,7 +739,11 @@ main :: () {
         input.frame_requested_by_editor = wants_next_frame;
 
         time_scale := profiler_end_frame();
-        print_profile_for_slow_frames(SLOW_FRAME_THRESHOLD_MILLIS, time_scale);
+
+        frame_zones, frame_zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
+        input.debug_previous_frame_time_scale  = time_scale;
+        input.debug_previous_frame_zones       = frame_zones;
+        input.debug_previous_frame_zone_labels = frame_zone_labels;
 
         array_reset_keeping_memory(*platform_state.watched_directory_changes);
         reset_temporary_storage();
@@ -1179,29 +1179,6 @@ editor_assertion_failed :: (loc: Source_Code_Location, message: string) -> bool 
 //
 // Misc helpers
 //
-
-print_profile_for_slow_frames :: (threshold_millis: f64, time_scale: f64) {
-    zones, zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
-    if zones.count {
-        frame_time := 1000.0 * time_scale * zones[0].elapsed_inclusive;
-        if frame_time >= threshold_millis {
-            print("\nFrame took more than % millis. Printing profiling info for % zones:\n\n", threshold_millis, zones.count);
-
-            print("      zone                                                               hits    inclusive millis    exclusive millis\n");
-            print("---------------------------------------------------------------------------------------------------------------------\n");
-            for zones {
-                print(
-                    "% %      %     %     %\n",
-                    temp_right_pad(tprint("[%]", it_index), 5),
-                    temp_right_pad(zone_labels[it_index], 50),
-                    formatInt(it.hits, minimum_digits = 15, padding = #char " "),
-                    formatFloat(1000 * time_scale * it.elapsed_inclusive, width = 15, trailing_width = 3),
-                    formatFloat(1000 * time_scale * it.elapsed_exclusive, width = 15, trailing_width = 3),
-                );
-            }
-        }
-    }
-}
 
 // These are copypaste from src/string.jai, but it isn't worth it #load-ing all of that code just for these two.
 

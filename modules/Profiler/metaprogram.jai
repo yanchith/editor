@@ -46,7 +46,7 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
                         sb: String_Builder;
                         sb.allocator = temp;
 
-                        print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
+                        print(*sb, "PROFILER_ZONE_COUNT :: %;\n", zone_count);
                         print(*sb, "__init_zone_labels :: () {\n");
                         for 0..zone_count - 2 {
                             print(*sb, "    __profiler.zone_labels[%] = \"%\";\n", it + 1, profiler_collected_zone_labels[it]);
