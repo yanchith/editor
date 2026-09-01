@@ -1891,6 +1891,22 @@ assert_valid_buffer :: (buffer: Text_Buffer) {
                 want_bytes := line_bytes[it];
                 have_bytes := buffer.line_bytes[it];
 
+                // TODO(jt): @Bug We sometimes insert an invalid char or something!
+                /*
+                C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1895,17: Assertion failed:Different char count on line 632: 88 (computed) != 89 (stored)
+
+Stack trace:
+'editor_assertion_failed' at C:/Users/yanchith/workspace/editor/src/main.jai:1162
+'assert_helper' at C:/Users/yanchith/workspace/jai/modules/Basic/module.jai:86
+'assert_valid_buffer' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1895
+'assert_valid' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1796
+'text_buffer_insert' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:287
+'text_buffer_insert_char' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:209
+'route_event_to_panel' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:2624
+'update_and_render' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:1129
+'main' at C:/Users/yanchith/workspace/editor/src/main.jai:741
+                */
+
                 assert(want_bytes == have_bytes, "Different byte count on line %: % (computed) != % (stored)", it, want_bytes, have_bytes);
                 assert(want_chars == have_chars, "Different char count on line %: % (computed) != % (stored)", it, want_chars, have_chars);
             }
