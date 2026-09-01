@@ -271,12 +271,12 @@ Editor :: struct {
     debug_view: Debug_View;
     debug_view_state: Debug_View_State;
 
-    DEBUG_FRAME_PROFILE_COUNT: s64 : 128;
-    debug_frame_profiles: [DEBUG_FRAME_PROFILE_COUNT] Frame_Profile_Entry;
+    DEBUG_FRAME_PROFILE_COUNT: s64 : 256;
+    debug_frame_profiles: *Frame_Profiles;
     debug_frame_profile_index: s64;
 
     DEBUG_FRAME_TIMELINE_COUNT: s64 : 128;
-    debug_frame_timeline: [DEBUG_FRAME_TIMELINE_COUNT] Frame_Timeline_Entry;
+    debug_frame_timeline: *Frame_Timeline;
     debug_frame_timeline_index: s64;
 
     Debug_View :: enum u8 {
@@ -299,10 +299,18 @@ Editor :: struct {
         }
     }
 
+    Frame_Profiles :: struct {
+        entries: [DEBUG_FRAME_PROFILE_COUNT] Frame_Profile_Entry;
+    }
+
     Frame_Profile_Entry :: struct {
         zones:       [PROFILER_ZONE_COUNT] Profiler_Zone;
         zone_labels: [PROFILER_ZONE_COUNT] string;
         time_scale:  f64;
+    }
+
+    Frame_Timeline :: struct {
+        entries: [DEBUG_FRAME_TIMELINE_COUNT] Frame_Timeline_Entry;
     }
 
     Frame_Timeline_Entry :: struct {
@@ -613,9 +621,7 @@ Modal_Interaction_Advance_Proc         :: #type (editor: *Editor, platform: Plat
 Modal_Interaction_Cancel_Proc          :: #type (editor: *Editor, platform: Platform, input: Input);
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
-    ProfileZone("Editor.init");
-
-    // print("nocheckin mail this in: %\n", PROFILER_ZONE_COUNT);
+    // ProfileZone("Editor.init"); nocheckin
 
     // Delay attaching debug procs to perm, because the list of arenas itself is going to be in perm.
     // So we add it to the list manually and attach procs after.
@@ -624,8 +630,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     array_add(*editor.arenas, editor.perm_arena);
     editor.perm_arena.debug_procs = make_arena_debug_procs(editor);
 
+    editor.debug_frame_profiles = arena_push(editor.perm_arena, Editor.Frame_Profiles);
+    editor.debug_frame_timeline = arena_push(editor.perm_arena, Editor.Frame_Timeline);
+
     {
-        ProfileZone(":InitFont");
+        // ProfileZone(":InitFont"); nocheckin
         font_arena     := make_arena(editor, platform, .MEDIUM, "Font");
         font_allocator := arena_allocator(font_arena);
 
@@ -1025,7 +1034,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // TODO(jt): @CompilerBug After reading PROFILER_ZONE_COUNT, instrumenting this zone now causes the compiler
     // to emit TYPECHECKED_ALL_WE_CAN before it processes the commented out zone.
     //
-    // ProfileZone("Editor.update_and_render");
+    // ProfileZone("Editor.update_and_render"); nocheckin
 
     mark_on_frame_timeline(editor, platform, input, .START);
     mark_and_advance_frame_profile(editor, input);
@@ -1667,7 +1676,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 state := *editor.debug_view_state._frame_profile;
 
-                if PROFILER_ZONE_COUNT {
+                #if PROFILER_ZONE_COUNT {
                     last_frame_index := (editor.debug_frame_profile_index - 1) & (editor.DEBUG_FRAME_PROFILE_COUNT - 1);
 
                     if editor.input_state.keys[Key.ARROW_LEFT] & .PRESSED {
@@ -1708,7 +1717,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         displayed_frame_index = state.index;
                     }
 
-                    for profile, profile_index: editor.debug_frame_profiles {
+                    for profile, profile_index: editor.debug_frame_profiles.entries {
                         time_scale := profile.time_scale;
                         zone0      := *profile.zones[0];
 
@@ -1729,7 +1738,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     }
 
                     {
-                        profile    := *editor.debug_frame_profiles[displayed_frame_index];
+                        profile    := *editor.debug_frame_profiles.entries[displayed_frame_index];
                         time_scale := profile.time_scale;
                         cursor_y := 0;
                         for zone, zone_index: profile.zones {
@@ -1750,9 +1759,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         }
                     }
                 } else {
-                    // TODO(jt): @Cleanup Make a draw_debug_text helper!  nocheckin
-                    message := "(Profiling info unavailable)";
-                    _font_layout_and_draw_text(*editor.font, message,
+                    _font_layout_and_draw_text(*editor.font, "(Profiling info unavailable)",
                                                *render_commands, *atlas_update_regions,
                                                { 0, 3 * cell_h }, scissor,
                                                { 1, 1, 1, 1 }, .REGULAR,
@@ -1791,7 +1798,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     }
                 }
 
-                for editor.debug_frame_timeline {
+                for editor.debug_frame_timeline.entries {
                     if it_index == editor.debug_frame_timeline_index {
                         continue; // This is the current frame. It is not yet finalized.
                     }
@@ -5976,20 +5983,20 @@ mark_and_advance_frame_profile :: (editor: *Editor, input: Input) {
         }
     }
 
-    current := *editor.debug_frame_profiles[editor.debug_frame_profile_index];
+    current := *editor.debug_frame_profiles.entries[editor.debug_frame_profile_index];
     array_copy(current.zones, input.debug_previous_frame_zones);
     array_copy(current.zone_labels, input.debug_previous_frame_zone_labels);
     current.time_scale = input.debug_previous_frame_time_scale;
 
     editor.debug_frame_profile_index += 1;
-    editor.debug_frame_profile_index &= editor.DEBUG_FRAME_TIMELINE_COUNT - 1;
+    editor.debug_frame_profile_index &= editor.DEBUG_FRAME_PROFILE_COUNT - 1;
 }
 
 mark_on_frame_timeline :: (editor: *Editor, platform: Platform, input: Input, marker: enum { START; RENDER; END; }) {
     if #complete marker == {
-        case .START;   editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_start = input.time;
-        case .RENDER;  editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_render = platform.get_current_time_monotonic() - input.time_of_program_start;
-        case .END;     editor.debug_frame_timeline[editor.debug_frame_timeline_index].time_end = platform.get_current_time_monotonic() - input.time_of_program_start;
+        case .START;   editor.debug_frame_timeline.entries[editor.debug_frame_timeline_index].time_start = input.time;
+        case .RENDER;  editor.debug_frame_timeline.entries[editor.debug_frame_timeline_index].time_render = platform.get_current_time_monotonic() - input.time_of_program_start;
+        case .END;     editor.debug_frame_timeline.entries[editor.debug_frame_timeline_index].time_end = platform.get_current_time_monotonic() - input.time_of_program_start;
     }
 }
 

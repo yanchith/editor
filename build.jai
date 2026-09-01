@@ -20,9 +20,13 @@ Optimization_Level :: enum {
 build :: () {
     optimization_level := Optimization_Level.DEBUG;
 
+    profiler_plugin: Profiler_Plugin.Profiler_Plugin;
+    profiler_plugin.verbose = false;
+
+    icon_plugin: Icon_Plugin.My_Plugin;
+    icon_plugin.icon_filename = "./data/icon.ico";
+
     do_print_help      := false;
-    do_check           := true;
-    do_profile         := false;
     do_sanity          := true;
     do_windows_console := true;
 
@@ -51,10 +55,8 @@ build :: () {
             case "-optimized_debug";     optimization_level = .OPTIMIZED_DEBUG;
             case "-x64";                 options.backend = .X64;
             case "-llvm";                options.backend = .LLVM;
-            case "-check";               do_check = true;
-            case "-no-check";            do_check = false;
-            case "-profile";             do_profile = true;
-            case "-no-profile";          do_profile = false;
+            case "-profile-verbose";     profiler_plugin.verbose = true;
+            case "-no-profile-verbose";  profiler_plugin.verbose = false;
             case "-sanity";              do_sanity = true;
             case "-no-sanity";           do_sanity = false;
             case "-windows-console";     do_windows_console = true;
@@ -100,9 +102,6 @@ build :: () {
 
     set_build_options(options, w);
 
-    icon_plugin: Icon_Plugin.My_Plugin;
-    icon_plugin.icon_filename = "./data/icon.ico";
-
     compiler_begin_intercept(w);
 
     if do_sanity           add_build_string("__SANITY :: true;\n", w);
@@ -113,8 +112,8 @@ build :: () {
     while true {
         message := compiler_wait_for_message();
 
-        if do_profile  Profiler_Plugin.message(null, message);
-        if do_check    Check_Plugin.do_error_checking(null, message);
+        Profiler_Plugin.message(*profiler_plugin, message);
+        Check_Plugin.do_error_checking(null, message);
 
         Icon_Plugin.message(*icon_plugin, message);
 
@@ -146,10 +145,8 @@ OPTIONS:
   -x64                    Compile with the x64 backend.
   -llvm                   Compile with the LLVM backend.
 
-  -check                  Enable additional compile time checking.
-  -no-check               Disable additional compile time checking.
-  -profile                Enable the builtin runtime profiler.
-  -no-profile             Disable the builtin runtime profiler.
+  -profile-verbose        Print more messages about instrumented profiler zones
+  -no-profile-verbose     Do not print more messages about instrumented profiler zones
   -sanity                 Turns on slow paranoid asserts.
   -no-sanity              Turns off slow paranoid asserts.
   -windows-console        Shows console on Windows when launched from gui.
