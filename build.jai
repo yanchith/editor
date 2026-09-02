@@ -27,6 +27,7 @@ build :: () {
     icon_plugin.icon_filename = "./data/icon.ico";
 
     do_print_help      := false;
+    do_profile         := true;
     do_sanity          := true;
     do_windows_console := true;
 
@@ -55,6 +56,8 @@ build :: () {
             case "-optimized_debug";     optimization_level = .OPTIMIZED_DEBUG;
             case "-x64";                 options.backend = .X64;
             case "-llvm";                options.backend = .LLVM;
+            case "-profile";             do_profile = true;
+            case "-no-profile";          do_profile = false;
             case "-profile-verbose";     profiler_plugin.verbose = true;
             case "-no-profile-verbose";  profiler_plugin.verbose = false;
             case "-sanity";              do_sanity = true;
@@ -112,9 +115,11 @@ build :: () {
     while true {
         message := compiler_wait_for_message();
 
-        Profiler_Plugin.message(*profiler_plugin, message);
         Check_Plugin.do_error_checking(null, message);
 
+        if do_profile {
+            Profiler_Plugin.message(*profiler_plugin, message);
+        }
         Icon_Plugin.message(*icon_plugin, message);
 
         if message.kind == .COMPLETE {
@@ -136,21 +141,23 @@ Usage: jai [DEFAULT_METAPROGRAM_OPTIONS] FILE... - [OPTIONS]
 
 OPTIONS:
 
-  -help                   Prints this message.
+  -help                   Prints this message
 
-  -debug                  Make a debug build.
-  -optimized              Make an optimized build.
-  -optimized_debug        Make a slightly less optimized build with debug info.
+  -debug                  Make a debug build
+  -optimized              Make an optimized build
+  -optimized_debug        Make a slightly less optimized build with debug info
 
-  -x64                    Compile with the x64 backend.
-  -llvm                   Compile with the LLVM backend.
+  -x64                    Compile with the x64 backend
+  -llvm                   Compile with the LLVM backend
 
+  -profile                Instrument with profiling code
+  -no-profile             Don't instrument with profiling code
   -profile-verbose        Print more messages about instrumented profiler zones
   -no-profile-verbose     Do not print more messages about instrumented profiler zones
-  -sanity                 Turns on slow paranoid asserts.
-  -no-sanity              Turns off slow paranoid asserts.
-  -windows-console        Shows console on Windows when launched from gui.
-  -no-windows-console     Hides console on Windows when launched from gui and disables all console logging.
+  -sanity                 Turns on slow paranoid asserts
+  -no-sanity              Turns off slow paranoid asserts
+  -windows-console        Shows console on Windows when launched from gui
+  -no-windows-console     Hides console on Windows when launched from gui and disables all console logging
 
 For DEFAULT_METAPROGRAM_OPTIONS, type 'jai -help'.
 
