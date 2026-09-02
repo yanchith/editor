@@ -5653,7 +5653,6 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: % (exit type: %)\n", to_float64_seconds(time_elapsed), exit_code, exit_type), undo_modifier = .OMIT);
 
     // See :IncrementalGapBufferIndices
-
     gb_index := 0;
     for line_index: 0..document.buffer.line_count - 1 {
         gb_count := document.buffer.line_bytes[line_index];
@@ -5968,7 +5967,7 @@ set_scissor :: (render_commands: *[..] Render_Command, scissor_rect: Rect) {
 Arena_Size :: enum s64 {
     SMALL  ::   2 << 20;
     MEDIUM :: 256 << 20;
-    LARGE  ::   4 << 30;
+    LARGE  ::   8 << 30;
 }
 
 make_arena :: (editor: *Editor, platform: Platform, size: Arena_Size, label: string, attach_debug_procs := true) -> *Arena {

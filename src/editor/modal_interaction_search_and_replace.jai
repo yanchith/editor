@@ -243,18 +243,10 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
             // TODO(jt): @Speed This causes us to miss frames above 4MB buffers. It is serviceable
             // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
             // fan-out & collect threading, but we should also do SIMD.
-            gb_index := 0;
+            gb_index := 0; // See :IncrementalGapBufferIndices
             for 0..document.buffer.line_bytes.count - 1 {
                 gb_count := document.buffer.line_bytes[it];
 
-                // :IncrementalGapBufferIndices
-                //
-                // We go straight to the gap buffer and count its indices manually, so that
-                // we avoid the quadratic behavior of calling get_gb_index_for_line each
-                // time through the loop.
-                //
-                // Note that even though we pass in temp, making of the view will only
-                // allocate for one of the lines - the one that crosses the gap.
                 line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
                 line_text  := cast(string, line_bytes);
 
