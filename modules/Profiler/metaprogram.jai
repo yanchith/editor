@@ -6,7 +6,7 @@
 // This metaprogram plugin works with the Default_Metaprogram by supplying the +Profiler argument.
 //
 // It can also be used from custom metaprograms by importing it in the .METAPROGRAM mode and calling
-// message manually in the message loop with null first argument.
+// message manually in the message loop. The first parameter is optional.
 //
 
 Profiler_Plugin :: struct {
@@ -74,7 +74,7 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
                         sb: String_Builder;
                         sb.allocator = temp;
 
-                        print(*sb, "PROFILER_ZONE_COUNT :: %;\n", zone_count);
+                        print(*sb, "__PROFILER_ZONE_COUNT :: %;\n", zone_count);
                         print(*sb, "__init_zone_labels :: () {\n");
                         for 0..zone_count - 2 {
                             print(*sb, "    __profiler.zone_labels[%] = \"%\";\n", it + 1, profiler_collected_zone_labels[it]);
@@ -82,7 +82,7 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
                         print(*sb, "}\n");
 
                         s := builder_to_string(*sb,, temp);
-                        add_build_string(s, message.workspace, profiler_import);
+                        add_build_string(s, profiler_import.workspace, profiler_import);
                     } else {
                         compiler_report("[Profiler] Could not find #import for the Profiler module.");
                     }
@@ -127,7 +127,7 @@ message :: (p: *Metaprogram_Plugin, message: *Message) {
                 // TODO(jt): @CompilerBug We currently instrument each instantiation of the
                 // polymorphic/autobaked procedure. This is sort of okay, but even if we wanted to
                 // instrument the original procedure, we can't, because the compiler does not send a
-                // message with its body.
+                // message with its body. Maybe we should add the generic parameters into label?
 
                 body := tc.expression;
 
@@ -265,7 +265,7 @@ maybe_instrument_statements :: (new_statements: *[..] *Code_Node, statements: []
             continue;
         }
 
-        zone_index := profiler_collected_zone_labels.count + 1; // +1, because zone 0 is for the entire profiled frame.
+        zone_index := profiler_collected_zone_labels.count + 1; // +1, because zone 0 is the entire profiled frame.
         array_add(*profiler_collected_zone_labels, argument_literal._string);
 
         if verbose {

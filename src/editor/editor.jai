@@ -304,8 +304,8 @@ Editor :: struct {
     }
 
     Frame_Profile_Entry :: struct {
-        zones:       [PROFILER_ZONE_COUNT] Profiler_Zone;
-        zone_labels: [PROFILER_ZONE_COUNT] string;
+        zones:       [] Profiler_Zone;
+        zone_labels: [] string;
         time_scale:  f64;
     }
 
@@ -621,7 +621,7 @@ Modal_Interaction_Advance_Proc         :: #type (editor: *Editor, platform: Plat
 Modal_Interaction_Cancel_Proc          :: #type (editor: *Editor, platform: Platform, input: Input);
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
-    // ProfileZone("Editor.init"); nocheckin
+    ProfileZone("Editor.init");
 
     // Delay attaching debug procs to perm, because the list of arenas itself is going to be in perm.
     // So we add it to the list manually and attach procs after.
@@ -631,10 +631,19 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.perm_arena.debug_procs = make_arena_debug_procs(editor);
 
     editor.debug_frame_profiles = arena_push(editor.perm_arena, Editor.Frame_Profiles);
+    {
+        count := profiler_get_zone_count();
+        if count {
+            for * editor.debug_frame_profiles.entries {
+                it.zones       = arena_push_array(editor.perm_arena, Profiler_Zone, count);
+                it.zone_labels = arena_push_array(editor.perm_arena, string, count);
+            }
+        }
+    }
     editor.debug_frame_timeline = arena_push(editor.perm_arena, Editor.Frame_Timeline);
 
     {
-        // ProfileZone(":InitFont"); nocheckin
+        ProfileZone(":InitFont");
         font_arena     := make_arena(editor, platform, .MEDIUM, "Font");
         font_allocator := arena_allocator(font_arena);
 
@@ -1031,10 +1040,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_this_frame: bool, wants_next_frame: bool {
-    // TODO(jt): @CompilerBug After reading PROFILER_ZONE_COUNT, instrumenting this zone now causes the compiler
-    // to emit TYPECHECKED_ALL_WE_CAN before it processes the commented out zone.
-    //
-    // ProfileZone("Editor.update_and_render"); nocheckin
+    ProfileZone("Editor.update_and_render");
 
     mark_on_frame_timeline(editor, platform, input, .START);
     mark_and_advance_frame_profile(editor, input);
@@ -1676,26 +1682,26 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                 state := *editor.debug_view_state._frame_profile;
 
-                #if PROFILER_ZONE_COUNT {
+                if profiler_get_zone_count() {
                     last_frame_index := (editor.debug_frame_profile_index - 1) & (editor.DEBUG_FRAME_PROFILE_COUNT - 1);
 
                     if editor.input_state.keys[Key.ARROW_LEFT] & .PRESSED {
-                        if state.paused {
-                            state.index -= 1;
-                            state.index &= editor.DEBUG_FRAME_PROFILE_COUNT - 1;
-                        } else {
-                            state.index = (editor.debug_frame_profile_index - 1) & (editor.DEBUG_FRAME_PROFILE_COUNT - 1);
+                        if !state.paused {
+                            state.index = editor.debug_frame_profile_index;
                         }
+
+                        state.index -= 1;
+                        state.index &= editor.DEBUG_FRAME_PROFILE_COUNT - 1;
                         state.paused = true;
                     }
 
                     if editor.input_state.keys[Key.ARROW_RIGHT] & .PRESSED {
-                        if state.paused {
-                            state.index += 1;
-                            state.index &= editor.DEBUG_FRAME_PROFILE_COUNT - 1;
-                        } else {
-                            state.index = (editor.debug_frame_profile_index + 1) & (editor.DEBUG_FRAME_PROFILE_COUNT - 1);
+                        if !state.paused {
+                            state.index = editor.debug_frame_profile_index;
                         }
+
+                        state.index += 1;
+                        state.index &= editor.DEBUG_FRAME_PROFILE_COUNT - 1;
                         state.paused = true;
                     }
 

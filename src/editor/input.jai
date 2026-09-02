@@ -23,8 +23,8 @@ Input :: struct {
     events: [] Input_Event;
 
     debug_previous_frame_time_scale: f64;
-    debug_previous_frame_zones: [PROFILER_ZONE_COUNT] Profiler_Zone;
-    debug_previous_frame_zone_labels: [PROFILER_ZONE_COUNT] string;
+    debug_previous_frame_zones: [] Profiler_Zone;
+    debug_previous_frame_zone_labels: [] string;
 }
 
 Watched_Directory_Change :: struct {

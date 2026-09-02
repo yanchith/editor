@@ -5,9 +5,16 @@
 // The __profiler global variable is inserted when this module is imported. It is used inside this
 // module to detect whether this is a profiling build with #exists.
 //
-// The __init_zone_labels procedure and PROFILER_ZONE_COUNT constant are inserted when the
+// The __init_zone_labels procedure and __PROFILER_ZONE_COUNT constant are inserted when the
 // metaprogram gets a TYPECHECKED_ALL_WE_CAN message. The values of these depend on what it saw
 // during compilation.
+//
+// While the pieces of code inserted by the metaprogram are theoretically exported from the module,
+// it is not recommended to reference them from your code, especially if that code also contains
+// an invocation of the ProfileZone macro. Doing this will result in dependency cycles in the compiler,
+// causing the metaprogram to miss the ProfileZone invocations, which will in turn be detected by the
+// metaprogram and reported as a compile-time error. Hopefully this limitation will go away eventually,
+// but for now I was unable to make it work.
 //
 // WARNING: The profiler is not thread-safe. Don't profile the same profiling zone from multiple threads.
 //
@@ -34,7 +41,7 @@ profiler_init :: () {
 }
 
 // Call this at the start of the frame or the section of code you want to profile.
-profiler_start_frame :: (label := "frame") {
+profiler_start_frame :: ($label := "frame") {
     #if #exists(__profiler) {
         __profiler.zone_labels[0] = label;
 
@@ -88,7 +95,7 @@ Sort_Mode :: enum {
 // Get sorted profiling data. You'll have to scale it by the time scale obtained from
 // profiler_end_frame. The resulting arrays are allocated with context.allocator if in profiling
 // builds and in static storage otherwise. Pass in temporary allocator if you don't want to care.
-profiler_get_zones :: (sort_mode: Sort_Mode) -> [PROFILER_ZONE_COUNT] Profiler_Zone, [PROFILER_ZONE_COUNT] string {
+profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
     #if #exists(__profiler) {
         get :: (zone: Profiler_Zone, sort_mode: Sort_Mode) -> u64 {
             if #complete sort_mode == {
@@ -100,11 +107,12 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [PROFILER_ZONE_COUNT] Profiler_Z
             return zone.elapsed_inclusive;
         }
 
-        zones       := __profiler.zones;
-        zone_labels := __profiler.zone_labels;
+        zones       := Basic.array_copy(__profiler.zones);
+        zone_labels := Basic.array_copy(__profiler.zone_labels);
 
-        // @Speed Yes, this is bubble sort. We use it to sort two arrays at once. We could do a
-        // modified version of quicksort to do that, but let's see if it becomes a problem first.
+        // @Speed Yes, this is bubble sort. We use it to sort two arrays at once. It is also stable,
+        // so if you display this output, it doesn't jump around unnecessarily. Maybe we should do
+        // some better stable sort here.
         swapped := true;
         while swapped {
             swapped = false;
@@ -130,12 +138,28 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [PROFILER_ZONE_COUNT] Profiler_Z
     }
 }
 
+// Get number of zones, in case you need to dynamically allocate memory for them,
+// or just detect whether this is a profiling build.
+//
+// @Hack This only exists so nobody touches __PROFILER_ZONE_COUNT directly, because
+// if a procedure that contains a ProfileZone also references __PROFILER_ZONE_COUNT,
+// its typechecking will stall and the procedure will not be instrumented until
+// we have inserted final profiling code. By separating the access to its own procedure,
+// we prevent the stall.
+profiler_get_zone_count :: () -> s64 {
+    #if #exists(__profiler) {
+        return __PROFILER_ZONE_COUNT;
+    } else {
+        return 0;
+    }
+}
+
 #if #exists(__profiler) {
     __Profiler :: struct {
-        // Labels are stored out of band, because we don't need to touch them them when
+        // Labels are stored out of band, because we don't need to touch them when
         // profiling and they would increase the zone size to 40 bytes.
-        zones:       [PROFILER_ZONE_COUNT] Profiler_Zone;
-        zone_labels: [PROFILER_ZONE_COUNT] string;
+        zones:       [__PROFILER_ZONE_COUNT] Profiler_Zone;
+        zone_labels: [__PROFILER_ZONE_COUNT] string;
 
         current_zone_index: s64;
 
@@ -181,12 +205,9 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [PROFILER_ZONE_COUNT] Profiler_Z
             __profiler.current_zone_index = parent_zone_index;
         }
     }
-} else {
-    // Defined, so that people can refer to it always.
-    PROFILER_ZONE_COUNT: s64 : 0;
 }
 
-#scope_module
+#scope_file
 
 // TODO(jt): Both of these imports could get removed:
 //
