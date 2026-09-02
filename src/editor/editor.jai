@@ -52,7 +52,7 @@ TODO(jt): Roadmap:
 - [X] M-g g (go to line)
 - [X] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
 - [X] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
-- [ ] C-j join-next-line
+- [X] C-j join-next-line
 - [X] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
 - [ ] C-: Expand region
 - [ ] C-u C-<space> and cursor undo.
@@ -771,6 +771,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
         key_map_add(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
 
+        key_map_add(key_map, "C-j",     .JOIN_WITH_NEXT_LINE);
+
         key_map_add(key_map, "C-m",     .INSERT_LINE_BEFORE);
         key_map_add(key_map, "<enter>", .INSERT_LINE_BEFORE);
         key_map_add(key_map, "C-o",     .INSERT_LINE_AFTER);
@@ -886,7 +888,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     }
 
     text_buffer_insert(*scratch_document.buffer, *scratch_document.cursors_cold, WELCOME, .OMIT);
-    text_buffer_move_cursor_to(scratch_document.buffer, *scratch_document.cursors_cold, 0, 0, false);
+    text_buffer_move_to(scratch_document.buffer, *scratch_document.cursors_cold, 0, 0, false);
 
     // Create first panel.
     panel := array_add(*editor.panels);
@@ -2209,7 +2211,7 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
 
                         text_buffer_delete_all(*document.buffer, *document.cursors_cold);
                         text_buffer_insert(*document.buffer, *document.cursors_cold, contents, .FUSE);
-                        text_buffer_move_cursor_to(document.buffer, *document.cursors_cold, cursor_before_reload, false);
+                        text_buffer_move_to(document.buffer, *document.cursors_cold, cursor_before_reload, false);
 
                         update_scopes(document);
                         document_update_tokens(document);
@@ -2284,30 +2286,30 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     if action == {
         case .MOVE_UP;                 mp.item_index = clamp(mp.item_index - 1, min_item_index, mp.items.count - 1);
         case .MOVE_DOWN;               mp.item_index = clamp(mp.item_index + 1, min_item_index, mp.items.count - 1);
-        case .MOVE_LEFT;               text_buffer_move_cursor_x(mp.buffer, *mp.cursors, -1, mp.selecting);
-        case .MOVE_RIGHT;              text_buffer_move_cursor_x(mp.buffer, *mp.cursors,  1, mp.selecting);
+        case .MOVE_LEFT;               text_buffer_move_x(mp.buffer, *mp.cursors, -1, mp.selecting);
+        case .MOVE_RIGHT;              text_buffer_move_x(mp.buffer, *mp.cursors,  1, mp.selecting);
 
-        case .MOVE_TO_START_OF_LINE;   text_buffer_move_cursor_to_start_of_line(mp.buffer, *mp.cursors, mp.selecting);
-        case .MOVE_TO_END_OF_LINE;     text_buffer_move_cursor_to_end_of_line(mp.buffer, *mp.cursors, mp.selecting);
+        case .MOVE_TO_START_OF_LINE;   text_buffer_move_to_start_of_line(mp.buffer, *mp.cursors, mp.selecting);
+        case .MOVE_TO_END_OF_LINE;     text_buffer_move_to_end_of_line(mp.buffer, *mp.cursors, mp.selecting);
 
         case .MOVE_TO_START;           mp.item_index = 0; // Not -1, even if the particular procs support it.
         case .MOVE_TO_END;             mp.item_index = max(mp.items.count - 1, 0);
 
-        case .MOVE_FORWARD_WORD;       text_buffer_move_cursor_to_next_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
-        case .MOVE_BACKWARD_WORD;      text_buffer_move_cursor_to_previous_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
+        case .MOVE_FORWARD_WORD;       text_buffer_move_to_next_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
+        case .MOVE_BACKWARD_WORD;      text_buffer_move_to_previous_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
 
         case .DELETE_FORWARD;          text_buffer_delete_forward(*mp.buffer, *mp.cursors, 1); buffer_changed = true;
         case .DELETE_BACKWARD;         buffer_changed |= mp.procs.delete_backward(editor, platform, input);
 
         case .DELETE_FORWARD_WORD; {
-            deleted := text_buffer_delete_forward_until_word_boundary(*mp.buffer, *mp.cursors);
+            deleted := text_buffer_delete_forward_word(*mp.buffer, *mp.cursors);
             if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
             }
         }
         case .DELETE_BACKWARD_WORD; {
-            deleted := text_buffer_delete_backward_until_word_boundary(*mp.buffer, *mp.cursors);
+            deleted := text_buffer_delete_backward_word(*mp.buffer, *mp.cursors);
             if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
@@ -2419,27 +2421,27 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
     buffered, action := key_map_input(*mi.key_map, event);
     if action == {
-        case .MOVE_LEFT;                 text_buffer_move_cursor_x(mi.buffer, *mi.cursors, -1, mi.selecting);
-        case .MOVE_RIGHT;                text_buffer_move_cursor_x(mi.buffer, *mi.cursors,  1, mi.selecting);
+        case .MOVE_LEFT;                 text_buffer_move_x(mi.buffer, *mi.cursors, -1, mi.selecting);
+        case .MOVE_RIGHT;                text_buffer_move_x(mi.buffer, *mi.cursors,  1, mi.selecting);
 
-        case .MOVE_TO_START_OF_LINE;     text_buffer_move_cursor_to_start_of_line(mi.buffer, *mi.cursors, mi.selecting);
-        case .MOVE_TO_END_OF_LINE;       text_buffer_move_cursor_to_end_of_line(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_TO_START_OF_LINE;     text_buffer_move_to_start_of_line(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_TO_END_OF_LINE;       text_buffer_move_to_end_of_line(mi.buffer, *mi.cursors, mi.selecting);
 
-        case .MOVE_FORWARD_WORD;         text_buffer_move_cursor_to_next_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
-        case .MOVE_BACKWARD_WORD;        text_buffer_move_cursor_to_previous_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_FORWARD_WORD;         text_buffer_move_to_next_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_BACKWARD_WORD;        text_buffer_move_to_previous_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
 
         case .DELETE_FORWARD;            text_buffer_delete_forward(*mi.buffer, *mi.cursors, 1); buffer_changed = true;
         case .DELETE_BACKWARD;           text_buffer_delete_backward(*mi.buffer, *mi.cursors); buffer_changed = true;
 
         case .DELETE_FORWARD_WORD; {
-            deleted := text_buffer_delete_forward_until_word_boundary(*mi.buffer, *mi.cursors);
+            deleted := text_buffer_delete_forward_word(*mi.buffer, *mi.cursors);
             if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
             }
         }
         case .DELETE_BACKWARD_WORD; {
-            deleted := text_buffer_delete_backward_until_word_boundary(*mi.buffer, *mi.cursors);
+            deleted := text_buffer_delete_backward_word(*mi.buffer, *mi.cursors);
             if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
@@ -2577,6 +2579,8 @@ Document_Action :: enum {
 
     DELETE_FORWARD_WORD;
     DELETE_BACKWARD_WORD;
+
+    JOIN_WITH_NEXT_LINE;
 
     INSERT_LINE_BEFORE;
     INSERT_LINE_AFTER;
@@ -2716,7 +2720,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                                 if text_buffer_can_read_at_location(document.buffer, c0) {
                                     curr_byte := text_buffer_get_byte_at_location(document.buffer, c0);
                                     if char == curr_byte {
-                                        text_buffer_move_cursor_x(document.buffer, *view.cursors, 1, false);
+                                        text_buffer_move_x(document.buffer, *view.cursors, 1, false);
                                         handled = true;
                                     }
                                 }
@@ -2728,11 +2732,11 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                                 text_cursors_join(*view.cursors);
 
-                                text_buffer_move_cursor_to(document.buffer, *view.cursors, c0, false);
+                                text_buffer_move_to(document.buffer, *view.cursors, c0, false);
                                 text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .NONE);
 
                                 c1.x += 1; // Because we just inserted the starting paren.
-                                text_buffer_move_cursor_to(document.buffer, *view.cursors, c1, false);
+                                text_buffer_move_to(document.buffer, *view.cursors, c1, false);
                                 text_buffer_insert_char(*document.buffer, *view.cursors, char, .FUSE);
 
                                 handled = true;
@@ -2743,7 +2747,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                             if view.cursors.c0 == view.cursors.c1 {
                                 text_buffer_insert_char(*document.buffer, *view.cursors, char, .NONE);
                                 text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .FUSE);
-                                text_buffer_move_cursor_x(document.buffer, *view.cursors, -1, false);
+                                text_buffer_move_x(document.buffer, *view.cursors, -1, false);
 
                                 handled = true;
                             } else {
@@ -2754,10 +2758,10 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
                                 text_cursors_join(*view.cursors);
 
-                                text_buffer_move_cursor_to(document.buffer, *view.cursors, c1, false);
+                                text_buffer_move_to(document.buffer, *view.cursors, c1, false);
                                 text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .NONE);
 
-                                text_buffer_move_cursor_to(document.buffer, *view.cursors, c0, false);
+                                text_buffer_move_to(document.buffer, *view.cursors, c0, false);
                                 text_buffer_insert_char(*document.buffer, *view.cursors, char, .FUSE);
 
                                 handled = true;
@@ -2998,28 +3002,28 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .NONE;  return false, cursor_moved, buffer_changed;
 
         case .MOVE_UP; {
-            cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
+            cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_DOWN; {
-            cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
+            cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_LEFT; {
-            cursor_moved |= text_buffer_move_cursor_x(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
+            cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_RIGHT; {
-            cursor_moved |= text_buffer_move_cursor_x(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
+            cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
@@ -3100,7 +3104,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     text_buffer_reset(*document.buffer);
 
                     text_buffer_insert(*document.buffer, *view.cursors, file_contents, .OMIT);
-                    text_buffer_move_cursor_to(document.buffer, *view.cursors, 0, 0, false);
+                    text_buffer_move_to(document.buffer, *view.cursors, 0, 0, false);
 
                     document.flags &= ~.MODIFIED;
                     document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
@@ -3194,23 +3198,23 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .MOVE_TO_START_OF_LINE;        cursor_moved |= text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_END_OF_LINE;          cursor_moved |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_START_OF_LINE;        cursor_moved |= text_buffer_move_to_start_of_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_END_OF_LINE;          cursor_moved |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, view.selecting);
 
-        case .MOVE_TO_START;                cursor_moved |= text_buffer_move_cursor_to_start(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_END;                  cursor_moved |= text_buffer_move_cursor_to_end(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_START;                cursor_moved |= text_buffer_move_to_start(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_END;                  cursor_moved |= text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting);
 
-        case .MOVE_TO_PREVIOUS_BLANK_LINE;  cursor_moved |= text_buffer_move_cursor_to_previous_blank_line(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_NEXT_BLANK_LINE;      cursor_moved |= text_buffer_move_cursor_to_next_blank_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_PREVIOUS_BLANK_LINE;  cursor_moved |= text_buffer_move_to_previous_blank_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_NEXT_BLANK_LINE;      cursor_moved |= text_buffer_move_to_next_blank_line(document.buffer, *view.cursors, view.selecting);
 
         case .MOVE_FORWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_cursor_to_next_word_boundary(document.buffer, *view.cursors, view.selecting);
+            cursor_moved=, cursor_y_moved := text_buffer_move_to_next_word_boundary(document.buffer, *view.cursors, view.selecting);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
             }
         }
         case .MOVE_BACKWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_cursor_to_previous_word_boundary(document.buffer, *view.cursors, view.selecting);
+            cursor_moved=, cursor_y_moved := text_buffer_move_to_previous_word_boundary(document.buffer, *view.cursors, view.selecting);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
             }
@@ -3219,14 +3223,14 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .MOVE_TO_START_OF_SCOPE; {
             scope := find_scope_for_location(document, view.cursors.c0);
             if scope {
-                text_buffer_move_cursor_to(document.buffer, *view.cursors, scope.loc0, view.selecting);
+                text_buffer_move_to(document.buffer, *view.cursors, scope.loc0, view.selecting);
                 cursor_moved = true;
             }
         }
         case .MOVE_TO_END_OF_SCOPE; {
             scope := find_scope_for_location(document, view.cursors.c0);
             if scope {
-                text_buffer_move_cursor_to(document.buffer, *view.cursors, scope.loc1, view.selecting);
+                text_buffer_move_to(document.buffer, *view.cursors, scope.loc1, view.selecting);
                 cursor_moved = true;
             }
         }
@@ -3292,17 +3296,42 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         }
 
         case .DELETE_FORWARD_WORD; {
-            deleted := text_buffer_delete_forward_until_word_boundary(*document.buffer, *view.cursors);
-            if deleted.count {
-                buffer_changed = true;
-                platform.set_clipboard_text(deleted);
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                deleted := text_buffer_delete_forward_word(*document.buffer, *view.cursors);
+                if deleted.count {
+                    buffer_changed = true;
+                    platform.set_clipboard_text(deleted);
+                }
             }
         }
         case .DELETE_BACKWARD_WORD; {
-            deleted := text_buffer_delete_backward_until_word_boundary(*document.buffer, *view.cursors);
-            if deleted.count {
-                buffer_changed = true;
-                platform.set_clipboard_text(deleted);
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                deleted := text_buffer_delete_backward_word(*document.buffer, *view.cursors);
+                if deleted.count {
+                    buffer_changed = true;
+                    platform.set_clipboard_text(deleted);
+                }
+            }
+        }
+
+        case .JOIN_WITH_NEXT_LINE; {
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                cursors := view.cursors;
+
+                text_buffer_move_to_end_of_line(document.buffer, *view.cursors, false);
+
+                deleted := text_buffer_delete_forward(*document.buffer, *view.cursors, 1, .NONE);
+                if deleted.count {
+                    text_buffer_insert(*document.buffer, *view.cursors, " ", .FUSE);
+                    text_buffer_delete_indentation_forward(*document.buffer, *view.cursors, .FUSE);
+
+                    buffer_changed = true;
+                }
+
+                view.cursors = cursors;
             }
         }
 
@@ -3333,14 +3362,14 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 if should_make_space_for_block {
                     buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .FUSE);
 
-                    cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
+                    cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors, -1, false);
                     if document.scopes.count {
                         update_scopes(document);
 
                         level := find_indentation_level_for_location(document, view.cursors.c0);
                         buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .FUSE);
                     }
-                    cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, 1, false);
+                    cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors, 1, false);
                 }
 
                 if document.scopes.count {
@@ -3351,8 +3380,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 }
 
                 if should_make_space_for_block {
-                    cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
-                    cursor_moved |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, false);
+                    cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors, -1, false);
+                    cursor_moved |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, false);
                 }
             }
         }
@@ -3362,8 +3391,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 // TODO(jt): Preserve CRLF in CRLF-only documents.
                 view.selecting = false;
                 buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .NONE);
-                cursor_moved   |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, false);
-                cursor_moved   |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, false);
+                cursor_moved   |= text_buffer_move_y(document.buffer, *view.cursors, -1, false);
+                cursor_moved   |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, false);
             }
         }
 
@@ -3388,8 +3417,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     {
                         // First line. Detect whether we are adding or removing comments and do so for the first line.
                         // All operations send .NONE undo modifier.
-                        text_buffer_move_cursor_to(document.buffer, *view.cursors, 0, y0, false);
-                        text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, false, .ALWAYS_START_OF_TEXT);
+                        text_buffer_move_to(document.buffer, *view.cursors, 0, y0, false);
+                        text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .ALWAYS_START_OF_TEXT);
 
                         loc0 := view.cursors.c0;
                         loc1 := loc0;
@@ -3435,8 +3464,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                         // Subsequent lines. Do what we did ont the first line, but don't remove a comment if there is none.
                         // All operations send .FUSE undo modifier.
 
-                        text_buffer_move_cursor_to(document.buffer, *view.cursors, 0, it, false);
-                        text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, false, .ALWAYS_START_OF_TEXT);
+                        text_buffer_move_to(document.buffer, *view.cursors, 0, it, false);
+                        text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .ALWAYS_START_OF_TEXT);
 
                         if adding_comments {
                             if adding_comments_level > view.cursors.c0.x {
@@ -3477,12 +3506,12 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     }
 
                     if y0 == y1 {
-                        moved := text_buffer_move_cursor_y(document.buffer, *view.cursors, 1, false);
+                        moved := text_buffer_move_y(document.buffer, *view.cursors, 1, false);
                         if moved {
-                            text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, false, .ALWAYS_START_OF_TEXT);
+                            text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .ALWAYS_START_OF_TEXT);
                         }
                     } else {
-                        text_buffer_move_cursor_to(document.buffer, *view.cursors, 0, y1, false);
+                        text_buffer_move_to(document.buffer, *view.cursors, 0, y1, false);
                     }
 
                     buffer_changed = true;
@@ -3518,7 +3547,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                         first := true;
                         for y0..y1 {
                             level := find_indentation_level_for_location(document, { 0, it });
-                            text_buffer_move_cursor_to(document.buffer, *view.cursors, { 0, it }, false);
+                            text_buffer_move_to(document.buffer, *view.cursors, { 0, it }, false);
                             changed := text_buffer_indent_line(*document.buffer, *view.cursors, level, ifx first then .NONE else .FUSE);
 
                             if changed {
@@ -3532,7 +3561,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
                     // Restore cursor's vertical position if the selection is backwards.
                     if original_y0 < original_y1 {
-                        text_buffer_move_cursor_to(document.buffer, *view.cursors, view.cursors.c0.x, original_y0, false);
+                        text_buffer_move_to(document.buffer, *view.cursors, view.cursors.c0.x, original_y0, false);
                     }
                 } else {
                     if view.cursors.c0 == view.cursors.c1 {
@@ -3666,51 +3695,51 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
         case .NONE;  return false, cursor_moved, buffer_changed;
 
         case .MOVE_UP; {
-            cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
+            cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_DOWN; {
-            cursor_moved |= text_buffer_move_cursor_y(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
+            cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_LEFT; {
-            cursor_moved |= text_buffer_move_cursor_x(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
+            cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_RIGHT; {
-            cursor_moved |= text_buffer_move_cursor_x(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
+            cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
 
-        case .MOVE_TO_START_OF_LINE;        cursor_moved |= text_buffer_move_cursor_to_start_of_line(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_END_OF_LINE;          cursor_moved |= text_buffer_move_cursor_to_end_of_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_START_OF_LINE;        cursor_moved |= text_buffer_move_to_start_of_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_END_OF_LINE;          cursor_moved |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, view.selecting);
 
-        case .MOVE_TO_START;                cursor_moved |= text_buffer_move_cursor_to_start(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_END;                  cursor_moved |= text_buffer_move_cursor_to_end(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_START;                cursor_moved |= text_buffer_move_to_start(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_END;                  cursor_moved |= text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting);
 
-        case .MOVE_TO_PREVIOUS_BLANK_LINE;  cursor_moved |= text_buffer_move_cursor_to_previous_blank_line(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_NEXT_BLANK_LINE;      cursor_moved |= text_buffer_move_cursor_to_next_blank_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_PREVIOUS_BLANK_LINE;  cursor_moved |= text_buffer_move_to_previous_blank_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_NEXT_BLANK_LINE;      cursor_moved |= text_buffer_move_to_next_blank_line(document.buffer, *view.cursors, view.selecting);
 
         case .MOVE_FORWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_cursor_to_next_word_boundary(document.buffer, *view.cursors, view.selecting);
+            cursor_moved=, cursor_y_moved := text_buffer_move_to_next_word_boundary(document.buffer, *view.cursors, view.selecting);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
             }
         }
         case .MOVE_BACKWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_cursor_to_previous_word_boundary(document.buffer, *view.cursors, view.selecting);
+            cursor_moved=, cursor_y_moved := text_buffer_move_to_previous_word_boundary(document.buffer, *view.cursors, view.selecting);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
             }
@@ -3797,7 +3826,7 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
                             x := it.column_number - 1;
                             y := it.line_number - 1;
 
-                            text_buffer_move_cursor_to(open_in_document.buffer, *open_in_view.cursors, x, y, false);
+                            text_buffer_move_to(open_in_document.buffer, *open_in_view.cursors, x, y, false);
                             open_in_view.flags |= .CLAMP_SCROLL_TO_CURSOR;
                         }
                     }
@@ -4126,7 +4155,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                     col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
                 }
 
-                text_buffer_move_cursor_to(document.buffer, *view.cursors, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
+                text_buffer_move_to(document.buffer, *view.cursors, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
 
                 view.flags |= .RECEIVED_MOUSE_INTERACTION;
             }
@@ -4202,13 +4231,13 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 if viewport_rect.y0 > cursor_rect.y1 {
                     // Move cursor down
                     delta := cast(s64, ceil((viewport_rect.y0 - cursor_rect.y1) / cell_h)) + PANEL_SCROLL_PADDING_CELLS_Y;
-                    text_buffer_move_cursor_y(document.buffer, *view.cursors, delta, view.selecting);
+                    text_buffer_move_y(document.buffer, *view.cursors, delta, view.selecting);
 
                     cursor_position_dirty = true;
                 } else if viewport_rect.y1 < cursor_rect.y0 {
                     // Move cursor up
                     delta := cast(s64, ceil((cursor_rect.y0 - viewport_rect.y1) / cell_h)) + PANEL_SCROLL_PADDING_CELLS_Y;
-                    text_buffer_move_cursor_y(document.buffer, *view.cursors, -delta, view.selecting);
+                    text_buffer_move_y(document.buffer, *view.cursors, -delta, view.selecting);
 
                     cursor_position_dirty = true;
                 }
@@ -5016,7 +5045,7 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
                         document.backing_file_last_synced_hash = hash_file_contents(file_contents);
 
                         text_buffer_insert(*document.buffer, *document.cursors_cold, file_contents, .OMIT);
-                        text_buffer_move_cursor_to(document.buffer, *document.cursors_cold, 0, 0, false);
+                        text_buffer_move_to(document.buffer, *document.cursors_cold, 0, 0, false);
 
                         update_scopes(document);
                         document_update_tokens(document);
@@ -5704,7 +5733,7 @@ scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
-            text_buffer_move_cursor_y(view.document.buffer, *view.cursors, -delta, view.selecting);
+            text_buffer_move_y(view.document.buffer, *view.cursors, -delta, view.selecting);
 
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }
@@ -5724,7 +5753,7 @@ scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
-            text_buffer_move_cursor_y(view.document.buffer, *view.cursors, delta, view.selecting);
+            text_buffer_move_y(view.document.buffer, *view.cursors, delta, view.selecting);
 
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
         }

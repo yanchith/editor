@@ -253,7 +253,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     view := *panel.view._document;
                     document := view.document;
 
-                    text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
+                    text_buffer_move_to(document.buffer, *view.cursors, x, y, false);
 
                     view.flags |= .CLAMP_SCROLL_TO_CURSOR;
                     view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
@@ -321,7 +321,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                 document := view.document;
 
                 if document {
-                    text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
+                    text_buffer_move_to(document.buffer, *view.cursors, x, y, false);
                     view.flags |= .CLAMP_SCROLL_TO_CURSOR;
                 }
             }
@@ -369,7 +369,7 @@ cancel :: (editor: *Editor, platform: Platform, input: Input) {
             document := view.document;
 
             if document {
-                text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, view.selecting);
+                text_buffer_move_to(document.buffer, *view.cursors, x, y, view.selecting);
             }
 
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;

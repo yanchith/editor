@@ -51,7 +51,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
     view := *panel.view._document;
     document := view.document;
 
-    text_buffer_move_cursor_to(document.buffer, *view.cursors, 0, line_index, view.selecting);
+    text_buffer_move_to(document.buffer, *view.cursors, 0, line_index, view.selecting);
     view.flags |= .CLAMP_SCROLL_TO_CURSOR;
     view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
 

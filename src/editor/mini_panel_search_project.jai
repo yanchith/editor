@@ -228,7 +228,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                 x := item_userdata.column_number - 1;
                 y := item_userdata.line_number - 1;
 
-                text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
+                text_buffer_move_to(document.buffer, *view.cursors, x, y, false);
                 view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             }
         }

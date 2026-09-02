@@ -250,7 +250,6 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
 
         edit = array_add(*buffer.edits);
         edit.type = .INSERT_FORWARD;
-        edit.flags = .NONE;
         edit.text = arena_push_string(buffer.edit_text_arena, text);
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
@@ -268,7 +267,7 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
         } else if undo_modifier == .FUSE {
             maybe_fuse_last_edits(buffer.edits);
         } else if undo_modifier == .CAN_AUTOFUSE {
-            maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+            maybe_fuse_last_edits(buffer.edits, is_autofuse = true);
         }
 
         buffer.applied_edit_count = buffer.edits.count;
@@ -341,7 +340,6 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors, u
 
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_FORWARD;
-        edit.flags = .NONE;
         edit.text = arena_push_string(buffer.edit_text_arena, deleted);
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = start_gb_index;
@@ -357,7 +355,7 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors, u
         if undo_modifier == .FUSE {
             maybe_fuse_last_edits(buffer.edits);
         } else if undo_modifier == .CAN_AUTOFUSE {
-            maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+            maybe_fuse_last_edits(buffer.edits, is_autofuse = true);
         }
     }
 
@@ -442,7 +440,6 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, cha
 
         edit := array_add(*buffer.edits);
         edit.type = .DELETE_FORWARD;
-        edit.flags = .NONE;
         edit.text = arena_push_string(buffer.edit_text_arena, deleted);
         edit.text_mark = arena_get_mark(buffer.edit_text_arena);
         edit.gb_index_before = gb_index;
@@ -457,7 +454,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, cha
         if undo_modifier == .FUSE {
             maybe_fuse_last_edits(buffer.edits);
         } else if undo_modifier == .CAN_AUTOFUSE {
-            maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+            maybe_fuse_last_edits(buffer.edits, is_autofuse = true);
         }
 
         buffer.applied_edit_count = buffer.edits.count;
@@ -523,7 +520,6 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
 
             edit := array_add(*buffer.edits);
             edit.type = .DELETE_BACKWARD;
-            edit.flags = .NONE;
             edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
             edit.text_mark = arena_get_mark(buffer.edit_text_arena);
             edit.gb_index_before = gb_index;
@@ -538,7 +534,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
             if undo_modifier == .FUSE {
                 maybe_fuse_last_edits(buffer.edits);
             } else if undo_modifier == .CAN_AUTOFUSE {
-                maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+                maybe_fuse_last_edits(buffer.edits, is_autofuse = true);
             }
 
             buffer.applied_edit_count = buffer.edits.count;
@@ -565,7 +561,6 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
 
                 edit := array_add(*buffer.edits);
                 edit.type = .DELETE_BACKWARD;
-                edit.flags = .NONE;
                 edit.text = arena_push_string(buffer.edit_text_arena, cast(string, deleted));
                 edit.text_mark = arena_get_mark(buffer.edit_text_arena);
                 edit.gb_index_before = gb_index;
@@ -580,7 +575,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
                 if undo_modifier == .FUSE {
                     maybe_fuse_last_edits(buffer.edits);
                 } else if undo_modifier == .CAN_AUTOFUSE {
-                    maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+                    maybe_fuse_last_edits(buffer.edits, is_autofuse = true);
                 }
 
                 buffer.applied_edit_count = buffer.edits.count;
@@ -595,13 +590,13 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
     return true;
 }
 
-text_buffer_delete_forward_until_word_boundary :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
-    ProfileZone("text_buffer_delete_forward_until_word_boundary");
+text_buffer_delete_forward_word :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
+    ProfileZone("text_buffer_delete_forward_word");
 
     assert_valid(buffer, cursors);
 
     search_cursors := cursors.*;
-    moved := text_buffer_move_cursor_to_next_word_boundary(buffer, *search_cursors, false);
+    moved := text_buffer_move_to_next_word_boundary(buffer, *search_cursors, false);
     if !moved {
         return "";
     }
@@ -620,7 +615,6 @@ text_buffer_delete_forward_until_word_boundary :: (buffer: *Text_Buffer, cursors
 
     edit := array_add(*buffer.edits);
     edit.type = .DELETE_FORWARD;
-    edit.flags = .NONE;
     edit.text = arena_push_string(buffer.edit_text_arena, deleted);
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = start_gb_index;
@@ -643,13 +637,13 @@ text_buffer_delete_forward_until_word_boundary :: (buffer: *Text_Buffer, cursors
     return deleted;
 }
 
-text_buffer_delete_backward_until_word_boundary :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
-    ProfileZone("text_buffer_delete_backward_until_word_boundary");
+text_buffer_delete_backward_word :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
+    ProfileZone("text_buffer_delete_backward_word");
 
     assert_valid(buffer, cursors);
 
     search_cursors := cursors.*;
-    moved := text_buffer_move_cursor_to_previous_word_boundary(buffer, *search_cursors, false);
+    moved := text_buffer_move_to_previous_word_boundary(buffer, *search_cursors, false);
     if !moved {
         return "";
     }
@@ -668,7 +662,6 @@ text_buffer_delete_backward_until_word_boundary :: (buffer: *Text_Buffer, cursor
 
     edit := array_add(*buffer.edits);
     edit.type = .DELETE_BACKWARD;
-    edit.flags = .NONE;
     edit.text = arena_push_string(buffer.edit_text_arena, deleted);
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = end_gb_index;
@@ -685,6 +678,66 @@ text_buffer_delete_backward_until_word_boundary :: (buffer: *Text_Buffer, cursor
     update_index_for_delete_backward(buffer, cursors, deleted);
 
     cursors.* = search_cursors;
+
+    assert_valid(buffer, cursors);
+
+    return deleted;
+}
+
+text_buffer_delete_indentation_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier.NONE) -> string {
+    ProfileZone("text_buffer_delete_indentation_forward");
+
+    assert_valid(buffer, cursors);
+
+    KEEP :: 1;
+
+    start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
+    gb_index       := start_gb_index;
+    gap_buffer_move_gap_to(*buffer.gb, gb_index);
+
+    while gb_index < buffer.gb.count {
+        byte := buffer.gb[gb_index];
+        if byte != #char " " && byte != #char "\t" {
+            break;
+        }
+
+        gb_index += 1;
+    }
+
+    delete_count := max(gb_index - start_gb_index - KEEP, 0);
+    if delete_count == 0 {
+        return "";
+    }
+
+    deleted_bytes := gap_buffer_delete_forward(*buffer.gb, delete_count);
+    deleted       := cast(string, deleted_bytes);
+
+    discard_unapplied_edits(buffer);
+
+    edit := array_add(*buffer.edits);
+    edit.type = .DELETE_FORWARD;
+    edit.text = arena_push_string(buffer.edit_text_arena, deleted);
+    edit.text_mark = arena_get_mark(buffer.edit_text_arena);
+    edit.gb_index_before = start_gb_index;
+    edit.gb_index_after = start_gb_index; sanity_assert(edit.gb_index_after == buffer.gb.gap_index);
+    edit.cursor0_for_edit_before = cursors.c0;
+    edit.cursor0_for_edit_after = cursors.c0;
+    edit.cursor0_for_display_before = cursors.c0;
+    edit.cursor0_for_display_after = cursors.c0;
+    edit.cursor1_for_display_before = cursors.c1;
+    edit.cursor1_for_display_after = cursors.c0;
+
+    if undo_modifier == .FUSE {
+        maybe_fuse_last_edits(buffer.edits);
+    } else if undo_modifier == .CAN_AUTOFUSE {
+        maybe_fuse_last_edits(buffer.edits, is_autofuse = true);
+    }
+
+    buffer.applied_edit_count = buffer.edits.count;
+
+    update_index_for_delete_forward(buffer, cursors, deleted);
+
+    cursors.c1 = cursors.c0;
 
     assert_valid(buffer, cursors);
 
@@ -764,7 +817,6 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
 
     edit := array_add(*buffer.edits);
     edit.type = .DELETE_FORWARD;
-    edit.flags = .NONE;
     edit.text = arena_push_string(buffer.edit_text_arena, deleted);
     edit.text_mark = arena_get_mark(buffer.edit_text_arena);
     edit.gb_index_before = start_gb_index;
@@ -832,7 +884,6 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
 
             edit := array_add(*buffer.edits);
             edit.type = .DELETE_FORWARD;
-            edit.flags = .NONE;
             edit.text = arena_push_string(buffer.edit_text_arena, deleted);
             edit.text_mark = arena_get_mark(buffer.edit_text_arena);
             edit.gb_index_before = gb_index;
@@ -848,7 +899,7 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
             if undo_modifier == .FUSE {
                 maybe_fuse_last_edits(buffer.edits);
             } else if undo_modifier == .CAN_AUTOFUSE {
-                maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+                maybe_fuse_last_edits(buffer.edits, is_autofuse = true);
             }
 
             buffer.applied_edit_count = buffer.edits.count;
@@ -920,7 +971,6 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
 
             edit := array_add(*buffer.edits);
             edit.type = .DELETE_BACKWARD_MEMSET;
-            edit.flags = .NONE;
             edit.memset_value = INDENTATION_VALUE;
             edit.memset_count = delete_count;
             edit.gb_index_before = gb_index_before;
@@ -935,7 +985,7 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
             if undo_modifier == .FUSE {
                 maybe_fuse_last_edits(buffer.edits);
             } else if undo_modifier == .CAN_AUTOFUSE {
-                maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+                maybe_fuse_last_edits(buffer.edits, is_autofuse = true);
             }
 
             buffer.applied_edit_count = buffer.edits.count;
@@ -970,7 +1020,6 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
 
             edit := array_add(*buffer.edits);
             edit.type = .INSERT_FORWARD_MEMSET;
-            edit.flags = .NONE;
             edit.memset_value = INDENTATION_VALUE;
             edit.memset_count = insert_count;
             edit.gb_index_before = gb_index_before;
@@ -985,7 +1034,7 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
             if undo_modifier == .FUSE {
                 maybe_fuse_last_edits(buffer.edits);
             } else if undo_modifier == .CAN_AUTOFUSE {
-                maybe_fuse_last_edits(buffer.edits, same_type_only = true, simple_only = true);
+                maybe_fuse_last_edits(buffer.edits, is_autofuse = true);
             }
 
             buffer.applied_edit_count = buffer.edits.count;
@@ -1271,8 +1320,8 @@ text_buffer_make_view_for_interval :: (buffer: Text_Buffer, _start: Text_Locatio
     return cast(string, view);
 }
 
-text_buffer_move_cursor_x :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta: s64, selecting: bool) -> cursor_moved: bool {
-    ProfileZone("text_buffer_move_cursor_x");
+text_buffer_move_x :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta: s64, selecting: bool) -> cursor_moved: bool {
+    ProfileZone("text_buffer_move_x");
 
     assert_valid(buffer, cursors);
 
@@ -1317,8 +1366,8 @@ text_buffer_move_cursor_x :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta
     return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_y :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta: s64, selecting: bool) -> cursor_moved: bool {
-    ProfileZone("text_buffer_move_cursor_y");
+text_buffer_move_y :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta: s64, selecting: bool) -> cursor_moved: bool {
+    ProfileZone("text_buffer_move_y");
 
     assert_valid(buffer, cursors);
 
@@ -1340,12 +1389,12 @@ text_buffer_move_cursor_y :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta
     return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, _x: s64, _y: s64, selecting: bool) {
-    /*inline?*/ text_buffer_move_cursor_to(buffer, cursors, { _x, _y }, selecting);
+text_buffer_move_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, _x: s64, _y: s64, selecting: bool) {
+    /*inline?*/ text_buffer_move_to(buffer, cursors, { _x, _y }, selecting);
 }
 
-text_buffer_move_cursor_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, loc: Text_Location, selecting: bool) {
-    ProfileZone("text_buffer_move_cursor_to");
+text_buffer_move_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, loc: Text_Location, selecting: bool) {
+    ProfileZone("text_buffer_move_to");
 
     assert_valid(buffer, cursors);
 
@@ -1366,8 +1415,8 @@ text_buffer_move_cursor_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, loc:
     assert_valid_cursors(buffer, cursors);
 }
 
-text_buffer_move_cursor_to_start :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
-    ProfileZone("text_buffer_move_cursor_to_start");
+text_buffer_move_to_start :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
+    ProfileZone("text_buffer_move_to_start");
 
     assert_valid(buffer, cursors);
 
@@ -1384,8 +1433,8 @@ text_buffer_move_cursor_to_start :: (buffer: Text_Buffer, cursors: *Text_Cursors
     return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_to_end :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
-    ProfileZone("text_buffer_move_cursor_to_end");
+text_buffer_move_to_end :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
+    ProfileZone("text_buffer_move_to_end");
 
     assert_valid(buffer, cursors);
 
@@ -1404,14 +1453,14 @@ text_buffer_move_cursor_to_end :: (buffer: Text_Buffer, cursors: *Text_Cursors, 
     return original_cursor != cursors.c0;
 }
 
-Modifier_For_Move_Cursor_To_Start_Of_Line :: enum {
+Modifier_For_Move_To_Start_Of_Line :: enum {
     DEFAULT;
     ALWAYS_START_OF_LINE;
     ALWAYS_START_OF_TEXT;
 }
 
-text_buffer_move_cursor_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool, modifier := Modifier_For_Move_Cursor_To_Start_Of_Line.DEFAULT) -> cursor_moved: bool {
-    ProfileZone("text_buffer_move_cursor_to_start_of_line");
+text_buffer_move_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool, modifier := Modifier_For_Move_To_Start_Of_Line.DEFAULT) -> cursor_moved: bool {
+    ProfileZone("text_buffer_move_to_start_of_line");
 
     assert_valid(buffer, cursors);
 
@@ -1458,8 +1507,8 @@ text_buffer_move_cursor_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text
     return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_to_end_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
-    ProfileZone("text_buffer_move_cursor_to_end_of_line");
+text_buffer_move_to_end_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
+    ProfileZone("text_buffer_move_to_end_of_line");
 
     assert_valid(buffer, cursors);
 
@@ -1476,8 +1525,8 @@ text_buffer_move_cursor_to_end_of_line :: (buffer: Text_Buffer, cursors: *Text_C
     return original_cursor != cursors.c0;
 }
 
-text_buffer_move_cursor_to_previous_word_boundary :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool, cursor_y_moved: bool {
-    ProfileZone("text_buffer_move_cursor_to_previous_word_boundary");
+text_buffer_move_to_previous_word_boundary :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool, cursor_y_moved: bool {
+    ProfileZone("text_buffer_move_to_previous_word_boundary");
 
     assert_valid(buffer, cursors);
 
@@ -1492,7 +1541,7 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: Text_Buffer, curso
     } else {
         while true {
             previous_cursor := cursors.c0;
-            text_buffer_move_cursor_y(buffer, cursors, -1, selecting);
+            text_buffer_move_y(buffer, cursors, -1, selecting);
             if previous_cursor.y == cursors.c0.y {
                 break;
             }
@@ -1518,8 +1567,8 @@ text_buffer_move_cursor_to_previous_word_boundary :: (buffer: Text_Buffer, curso
     return original_cursor != cursors.c0, original_cursor.y != cursors.c0.y;
 }
 
-text_buffer_move_cursor_to_next_word_boundary :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool, cursor_y_moved: bool {
-    ProfileZone("text_buffer_move_cursor_to_next_word_boundary");
+text_buffer_move_to_next_word_boundary :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool, cursor_y_moved: bool {
+    ProfileZone("text_buffer_move_to_next_word_boundary");
 
     assert_valid(buffer, cursors);
 
@@ -1534,7 +1583,7 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: Text_Buffer, cursors: 
     } else {
         while true {
             previous_cursor := cursors.c0;
-            text_buffer_move_cursor_y(buffer, cursors, 1, selecting);
+            text_buffer_move_y(buffer, cursors, 1, selecting);
             if previous_cursor.y == cursors.c0.y {
                 break;
             }
@@ -1562,8 +1611,8 @@ text_buffer_move_cursor_to_next_word_boundary :: (buffer: Text_Buffer, cursors: 
 
 // TODO(jt): @Speed Searching through 45 lines towards the end of a 1GB file takes about 350
 // milliseconds. Most of that time is spent in text_buffer_make_view_for_line.
-text_buffer_move_cursor_to_previous_blank_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
-    ProfileZone("text_buffer_move_cursor_to_previous_blank_line");
+text_buffer_move_to_previous_blank_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
+    ProfileZone("text_buffer_move_to_previous_blank_line");
 
     assert_valid(buffer, cursors);
 
@@ -1596,9 +1645,9 @@ text_buffer_move_cursor_to_previous_blank_line :: (buffer: Text_Buffer, cursors:
     }
 
     if found {
-        text_buffer_move_cursor_y(buffer, cursors, found_index - cursors.c0.y, selecting);
+        text_buffer_move_y(buffer, cursors, found_index - cursors.c0.y, selecting);
     } else {
-        text_buffer_move_cursor_y(buffer, cursors, -1, selecting);
+        text_buffer_move_y(buffer, cursors, -1, selecting);
     }
 
     assert_valid_cursors(buffer, cursors);
@@ -1608,8 +1657,8 @@ text_buffer_move_cursor_to_previous_blank_line :: (buffer: Text_Buffer, cursors:
 
 // TODO(jt): @Speed Searching through 45 lines towards the end of a 1GB file takes about 350
 // milliseconds. Most of that time is spent in text_buffer_make_view_for_line.
-text_buffer_move_cursor_to_next_blank_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
-    ProfileZone("text_buffer_move_cursor_to_next_blank_line");
+text_buffer_move_to_next_blank_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
+    ProfileZone("text_buffer_move_to_next_blank_line");
 
     assert_valid(buffer, cursors);
 
@@ -1642,9 +1691,9 @@ text_buffer_move_cursor_to_next_blank_line :: (buffer: Text_Buffer, cursors: *Te
     }
 
     if found {
-        text_buffer_move_cursor_y(buffer, cursors, found_index - cursors.c0.y, selecting);
+        text_buffer_move_y(buffer, cursors, found_index - cursors.c0.y, selecting);
     } else {
-        text_buffer_move_cursor_y(buffer, cursors, 1, selecting);
+        text_buffer_move_y(buffer, cursors, 1, selecting);
     }
 
     assert_valid_cursors(buffer, cursors);
@@ -2343,20 +2392,18 @@ search_line_forward :: (line: string, binary: bool) -> found: bool, inside_word:
     }
 }
 
-maybe_fuse_last_edits :: (edits: [] Edit, same_type_only := false, simple_only := false) {
+maybe_fuse_last_edits :: (edits: [] Edit, is_autofuse := false) {
     // The caller does not know whether we already have something in our undo buffer, so let's only
     // do the fusing there's at least two things.
     if edits.count > 1 {
         current  := *edits[edits.count - 1];
         previous := *edits[edits.count - 2];
 
-        if same_type_only {
+        if is_autofuse {
             if current.type != previous.type {
                 return;
             }
-        }
 
-        if simple_only {
             // We could theoretically count memset edits here.
             if !is_simple_edit(current.text)   return;
             if !is_simple_edit(previous.text)  return;

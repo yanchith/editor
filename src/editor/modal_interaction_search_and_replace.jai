@@ -174,7 +174,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         x := highlight.x0;
                         y := highlight.y;
 
-                        text_buffer_move_cursor_to(view.document.buffer, *view.cursors, x, y, false);
+                        text_buffer_move_to(view.document.buffer, *view.cursors, x, y, false);
                         view.flags |= .CLAMP_SCROLL_TO_CURSOR;
                         view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
                     }
@@ -301,7 +301,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
                 x := highlight.x0;
                 y := highlight.y;
 
-                text_buffer_move_cursor_to(document.buffer, *view.cursors, x, y, false);
+                text_buffer_move_to(document.buffer, *view.cursors, x, y, false);
 
                 view.flags |= .CLAMP_SCROLL_TO_CURSOR;
                 view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
