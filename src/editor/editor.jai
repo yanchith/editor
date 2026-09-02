@@ -1715,6 +1715,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     R_COUNT :: 1.0 / editor.DEBUG_FRAME_PROFILE_COUNT;
 
                     graph_width := max(window_w - 2 * PADDING_X, 0);
+                    bar_y       := 2 * cell_h;
                     bar_width   := graph_width / editor.DEBUG_FRAME_PROFILE_COUNT - 2.0;
                     desired_frame_time: f64 = 1.0 / input.monitor_refresh_rate;
 
@@ -1740,7 +1741,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             color = { 1, 1, 1, 1 };
                         }
 
-                        draw_rect(*render_commands, x, 100.0, x + bar_width, 100.0 + h, color);
+                        draw_rect(*render_commands, x, bar_y, x + bar_width, bar_y + h, color);
                     }
 
                     {
@@ -1755,7 +1756,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                         formatFloat(1000 * time_scale * zone.elapsed_inclusive, width = 15, trailing_width = 3),
                                         formatFloat(1000 * time_scale * zone.elapsed_exclusive, width = 15, trailing_width = 3));
 
-                            y := EXCEEDING_BAR_HEIGHT + zone_index * cell_h;
+                            y := bar_y + EXCEEDING_BAR_HEIGHT + zone_index * cell_h;
                             _font_layout_and_draw_text(*editor.font, s,
                                                        *render_commands, *atlas_update_regions,
                                                        { 0, y }, scissor,
