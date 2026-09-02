@@ -124,9 +124,10 @@ profiler_get_zones :: (sort_mode: Sort_Mode) -> [] Profiler_Zone, [] string {
                 v0 := get(zones[i0], sort_mode);
                 v1 := get(zones[i1], sort_mode);
 
-                if v0 < v1 { // V0 less than V1, because we want the largest zones first.
-                    Basic.swap(*zones[i0], *zones[i1]);
-                    Basic.swap(*zone_labels[i0], *zone_labels[i1]);
+                // V0 less than V1, because we want the largest zones first.
+                if v0 < v1 {
+                    zones[i0],       zones[i1]       = zones[i1],       zones[i0];
+                    zone_labels[i0], zone_labels[i1] = zone_labels[i1], zone_labels[i0];
                     swapped = true;
                 }
             }
@@ -209,12 +210,10 @@ profiler_get_zone_count :: () -> s64 {
 
 #scope_file
 
-// TODO(jt): Both of these imports could get removed:
-//
-// modules/Basic imports a few helpers for which we could have our own version here. It also
-// includes time retrieval and conversion to float64.
-//
-// modules/System is imported only for read_cpu_counter. Copy it in here? We also need a
-// better timer for arm macOS: "mrs {t}, cntvct_el0". Can we do it with #bytes?
-Basic  :: #import "Basic";
+// TODO(jt): Remove import of modules/System, and instead let the caller pass in the time-measuring function.
+// We can still define a couple of defaults, like rdtsc for X64, "mrs {t}, cntvct_el0" for ARM64 (if it gets inline assembly), etc.
 System :: #import "System";
+
+// TODO(jt): modules/Basic imports a few helpers for which we could have our own version here. It also
+// includes time retrieval and conversion to float64.
+Basic  :: #import "Basic";
