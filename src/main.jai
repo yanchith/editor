@@ -739,7 +739,7 @@ main :: () {
 
         time_scale := profiler_end_frame();
         input.debug_previous_frame_time_scale = time_scale;
-        // The zones themselves are transferred at the beginnning of the next frame, so that they survive reset_temporary_storage.
+        // The zones are transferred at the beginnning of the next frame, to survive reset_temporary_storage.
 
         array_reset_keeping_memory(*platform_state.watched_directory_changes);
         reset_temporary_storage();
@@ -1161,9 +1161,16 @@ editor_assertion_failed :: (loc: Source_Code_Location, message: string) -> bool 
             for strings {
                 print(*sb, "%\n", it);
             }
-        } else {
-            print(*sb, "Exiting.\n");
         }
+
+        if Input.events_this_frame.count {
+            print(*sb, "\nInput events this frame:\n");
+            for Input.events_this_frame {
+                print(*sb, "[%] %\n", it_index, it);
+            }
+        }
+
+        print(*sb, "\nExiting.\n");
 
         File.file_write(*logger_data.log_file, *sb, do_reset = true);
         File.file_flush(logger_data.log_file); // On macOS, this wasn't really flushing without us being explicit about it.

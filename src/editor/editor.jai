@@ -4,6 +4,7 @@ TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
 - Control-Delete inserts a thing
+- ESCAPE inserts a thing
 
 TODO(jt): Roadmap:
 
