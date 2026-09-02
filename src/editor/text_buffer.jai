@@ -1817,11 +1817,18 @@ text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, loc: Text
         index += buffer.line_bytes[it];
     }
 
-    for 0..loc.x - 1 {
-        first_byte := buffer.gb[index];
+    if buffer.binary_mode {
+        index += loc.x;
+    } else if buffer.line_bytes[line_index] == buffer.line_chars[line_index] {
+        // This is an ASCII only line
+        index += loc.x;
+    } else {
+        // This is a UTF8 line. We have to count.
+        sanity_assert(!buffer.binary_mode);
 
-        codepoint_bytes: s64 = 1;
-        if !buffer.binary_mode {
+        for 0..loc.x - 1 {
+            first_byte := buffer.gb[index];
+
             // :CarriageReturn
             //
             // Even if in ascii \r\n is two characters, we treat them as one character when moving
@@ -1830,10 +1837,10 @@ text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, loc: Text
             //
             // TODO(jt): @Bug We likely do not support bare \r in the text. Let's either support it
             // (preferrable), or fall back to binary mode when we find it.
-            codepoint_bytes = ifx first_byte == #char "\r" then 2 else UTF8_LENGTH_FOR_STARTING_BYTE[first_byte];
-        }
+            codepoint_bytes := ifx first_byte == #char "\r" then 2 else UTF8_LENGTH_FOR_STARTING_BYTE[first_byte];
 
-        index += codepoint_bytes;
+            index += codepoint_bytes;
+        }
     }
 
     return index;
