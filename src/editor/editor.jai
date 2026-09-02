@@ -3,7 +3,7 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
-- Control-Delete inserts a thing a delete
+- Control-Delete inserts a thing
 
 TODO(jt): Roadmap:
 
@@ -81,16 +81,15 @@ TODO(jt): Roadmap:
 - [ ] Animate opening of the mini panel.
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
+- [ ] CRLF
 
 ... things below here are only important if I want to share this with other people ...
 
-- [ ] CRLF
 - [ ] Config file
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
 - [ ] Render subtle symbols for whitespace characters (space, tab, cr, lf)
 - [ ] Support for dropping files into the window
-- [ ] Get non-idle power usage under control (OpenGL -> D3D12/Vulkan/Metal?)
 - [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
 - [ ] Flash pasted text
 - [ ] Flash text inserted by undo/redo
@@ -99,16 +98,11 @@ TODO(jt): Roadmap:
 - [~] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
-- [ ] Very nice text rendering + get rid of freetype (kb_text_shape + Slug)
+- [ ] Get rid of freetype without compromising quality (kb_text_shape + Slug)
 - [ ] Version control view (Git only?, via plugin interface?)
 - [ ] 4coder style floating annotations? (e.g. name of the function or if statement expresion after closing brace)
 - [ ] Customization and plugins
 - [ ] SEARCH items should render with syntax highlighting
-
-TODO(jt): @Stream Interesting side-projects to do:
-
-- [ ] Visual profiler triggered by an F-key
-- [X] Visual memory profiler triggered by an F-key
 
 */
 
