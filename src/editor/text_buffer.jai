@@ -918,7 +918,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
     return deleted;
 }
 
-// __line_gb_index is a trusted parameter. If you set it, it better be right! See :IncrementalGapBufferIndices.
+// __line_gb_index is a trusted parameter. If you set it, it better be right!
 text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_modifier := Undo_Modifier.NONE, __line_gb_index: s64 = -1) -> changed: bool {
     ProfileZone("text_buffer_trim_line");
 
@@ -1911,6 +1911,30 @@ text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, loc: Text
     return index;
 }
 
+text_buffer_lines :: (buffer: *Text_Buffer, body: Code, flags: For_Flags) #expand {
+    REVERSE :: cast(bool, flags & .REVERSE);
+    POINTER :: cast(bool, flags & .POINTER);
+    #assert !REVERSE "text_buffer_lines does not support reverse iteration";
+    #assert !POINTER "text_buffer_lines does not support pointer iteration";
+
+
+    // We go straight to the gap buffer and count its indices manually, so that
+    // we avoid the scan that text_buffer_get_gap_buffer_index_for_line
+    // would have to do each time through the loop.
+    //
+    // Note that even though we pass in temp, making of the view will only
+    // allocate for one of the lines - the one that crosses the gap.
+    gb_index := 0;
+    for i: 0..buffer.line_count - 1 {
+        `it_index := i;
+        `it       := cast(string, gap_buffer_make_view(buffer.gb, gb_index, buffer.line_bytes[i],, temp));
+
+        gb_index += buffer.line_bytes[i];
+
+        #insert(remove = #assert(false)) body;
+    }
+}
+
 #scope_file
 
 assert_valid :: (buffer: Text_Buffer, cursors: Text_Cursors) {
@@ -1955,6 +1979,24 @@ assert_valid_buffer :: (buffer: Text_Buffer) {
                 } else {
                     line_bytes[line_bytes.count - 1] += 1;
 
+                    // TODO(jt): @Bug We got a crash here! We for sure do get some weird characters sometimes.
+                    /*
+                    C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1962,13: Assertion failed!
+
+                    Stack trace:
+                    'editor_assertion_failed' at C:/Users/yanchith/workspace/editor/src/main.jai:1158
+                    'assert_helper' at C:/Users/yanchith/workspace/jai/modules/Basic/module.jai:86
+                    'assert_valid_buffer' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1962
+                    'assert_valid' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1917
+                    'text_buffer_insert' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:337
+                    'text_buffer_insert_char' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:256
+                    'route_event_to_panel' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:2780
+                    'update_and_render' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:1178
+                    'main' at C:/Users/yanchith/workspace/editor/src/main.jai:736
+
+                    Input events this frame:
+                    [0] {type = KEYBOARD; key_pressed = 1; key_code = UNKNOWN; modifier_flags = (untagged union); utf32 = 0; repeat = false; text_input_count = 0; typical_wheel_delta = 0; wheel_delta = 0; files = []; touch_type = MOVED; touch_index = 0; touch_x = 0; touch_y = 0; window_event_type = UNINITIALIZED; window = null; }
+                    */
                     advance(*view, 1);
                 }
             }

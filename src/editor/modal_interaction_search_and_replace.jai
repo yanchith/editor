@@ -243,13 +243,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
             // TODO(jt): @Speed This causes us to miss frames above 4MB buffers. It is serviceable
             // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
             // fan-out & collect threading, but we should also do SIMD.
-            gb_index := 0; // See :IncrementalGapBufferIndices
-            for 0..document.buffer.line_bytes.count - 1 {
-                gb_count := document.buffer.line_bytes[it];
-
-                line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
-                line_text  := cast(string, line_bytes);
-
+            for :text_buffer_lines line_text, line_index: document.buffer {
                 // This is number of bytes if we are in binary mode, otherwise number of characters.
                 processed_chars: s64 = 0;
 
@@ -260,16 +254,16 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
                         x0 = processed_chars + count_utf8_chars(String.slice(line_text, 0, found_index));
                     }
                     x1 := x0 + search_text_char_count;
-                    y  := it;
+                    y  := line_index;
 
                     highlight_index := panel.highlights.count;
 
                     highlight := array_add(*panel.highlights);
                     highlight.x0 = x0;
                     highlight.x1 = x1;
-                    highlight.y  = it;
+                    highlight.y  = line_index;
 
-                    if new_highlight_index == -1 && it >= old_cursor_y {
+                    if new_highlight_index == -1 && line_index >= old_cursor_y {
                         new_highlight_index = highlight_index;
                     }
 
@@ -282,8 +276,6 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
 
                     found_index = find_index_from_left_nocase(line_text, search_text);
                 }
-
-                gb_index += gb_count;
             }
 
             if new_highlight_index != -1 {

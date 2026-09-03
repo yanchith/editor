@@ -98,29 +98,13 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     // TODO(jt): @Speed This causes us to miss frames above 4MB buffers. It is serviceable
                     // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
                     // fan-out & collect threading, but we should also do SIMD.
-                    gb_index := 0;
-                    for 0..document.buffer.line_bytes.count - 1 {
-                        gb_count := document.buffer.line_bytes[it];
 
-                        // :IncrementalGapBufferIndices
-                        //
-                        // We go straight to the gap buffer and count its indices manually, so that
-                        // we avoid the quadratic behavior of calling get_gb_index_for_line each
-                        // time through the loop.
-                        //
-                        // Note that even though we pass in temp, making of the view will only
-                        // allocate for one of the lines - the one that crosses the gap.
-                        //
-                        // TODO(jt): @Cleanup Make a for_expansion that just does this line-oriented iteration
-                        // for us (including the manual gap buffer index counting?)
-                        line_bytes := gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp);
-                        line_text  := cast(string, line_bytes);
-
+                    for :text_buffer_lines line_text, line_index: document.buffer {
                         found, found_indices := line_search(line_text, search_parts, smartcase,, temp);
                         if found {
                             found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
-                            line_number_prefix := temp_right_pad(tprint("%  ", it + 1), 4);
+                            line_number_prefix := temp_right_pad(tprint("%  ", line_index + 1), 4);
 
                             // TODO(jt): @Cleanup We do additional manual copy into our arena here, because MEMORY_DEBUGGER otherwise
                             // flags this as 'an allocation for an address that the memory debugging system thought was still live'.
@@ -137,7 +121,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             highlight := array_add(*panel.highlights);
                             highlight.x0 = x0;
                             highlight.x1 = x1;
-                            highlight.y  = it;
+                            highlight.y  = line_index;
 
                             item_index := mini_panel.items.count;
                             item := array_add(*mini_panel.items);
@@ -150,16 +134,14 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
                             userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
                             userdata.x = x0;
-                            userdata.y = it;
+                            userdata.y = line_index;
 
                             item.userdata = userdata;
 
-                            if new_item_index == -1 && it >= old_cursor_y {
+                            if new_item_index == -1 && line_index >= old_cursor_y {
                                 new_item_index = item_index;
                             }
                         }
-
-                        gb_index += gb_count;
                     }
 
                     if new_item_index == -1 {

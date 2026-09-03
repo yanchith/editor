@@ -87,19 +87,11 @@ update_scopes :: (document: *Document) {
 
     block_comment_depth := 0;
 
-    // See :IncrementalGapBufferIndices
-    gb_index := 0;
-    for line_index: 0..document.buffer.line_count - 1 {
-        gb_count := document.buffer.line_bytes[line_index];
-        defer {
-            gb_index += gb_count;
-        }
-
+    for :text_buffer_lines line_text, line_index: document.buffer {
         // TODO(jt): @Cleanup @Speed This loop became a little gnarly. Also probably slow. Clean it up, so we can SIMD later.
-        line := cast(string, gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp));
         skip_due_to_block_comment_open_or_close := 0; // TODO(jt): @Cleanup This would normally just be a string advance, but our loop is structured unfortunately.
 
-        for byte, byte_index: line {
+        for byte, byte_index: line_text {
             if skip_due_to_block_comment_open_or_close > 0 {
                 skip_due_to_block_comment_open_or_close -= 1;
                 continue;
@@ -111,14 +103,14 @@ update_scopes :: (document: *Document) {
 
             // Note that we are comparing bytes with bytes in the comment detection code, but it shouldn't matter!
             if line_comment.count {
-                is_line_comment := block_comment_depth == 0 && String.starts_with(String.slice(line, byte_index, line.count - byte_index), line_comment);
+                is_line_comment := block_comment_depth == 0 && String.starts_with(String.slice(line_text, byte_index, line_text.count - byte_index), line_comment);
                 if is_line_comment {
                     continue line_index;
                 }
             }
 
             if block_comment_start.count {
-                is_block_comment_start := (block_comment_depth == 0 || block_comments_can_nest) && String.starts_with(String.slice(line, byte_index, line.count - byte_index), block_comment_start);
+                is_block_comment_start := (block_comment_depth == 0 || block_comments_can_nest) && String.starts_with(String.slice(line_text, byte_index, line_text.count - byte_index), block_comment_start);
                 if is_block_comment_start {
                     block_comment_depth += 1;
 
@@ -128,7 +120,7 @@ update_scopes :: (document: *Document) {
             }
 
             if block_comment_end.count {
-                is_block_comment_end := block_comment_depth > 0 && String.starts_with(String.slice(line, byte_index, line.count - byte_index), block_comment_end);
+                is_block_comment_end := block_comment_depth > 0 && String.starts_with(String.slice(line_text, byte_index, line_text.count - byte_index), block_comment_end);
                 if is_block_comment_end {
                     if block_comments_can_nest {
                         block_comment_depth -= 1;
@@ -157,7 +149,7 @@ update_scopes :: (document: *Document) {
                     parent := *document.scopes[parent_index];
 
                     scope: Scope;
-                    scope.loc0.x = count_utf8_chars(String.slice(cast(string, line), 0, byte_index));
+                    scope.loc0.x = count_utf8_chars(String.slice(line_text, 0, byte_index));
                     scope.loc0.y = line_index;
 
                     // loc1 is properly set when we find the closing paren, but until then we set it
@@ -178,16 +170,16 @@ update_scopes :: (document: *Document) {
 
                     for 0..byte_index - 1 {
                         // TODO(jt): @Speed We could SIMD this.
-                        if !String.is_any(line[it], String.DEFAULT_SPACES) {
+                        if !String.is_any(line_text[it], String.DEFAULT_SPACES) {
                             scope.indentation_flags |= .PREFIXED;
                             scope.indentation_level = it + INDENTATION_STEP; // DEFAULT_SPACES are all single-byte.
                             break;
                         }
                     }
 
-                    for byte_index + 1..line.count - 1 {
+                    for byte_index + 1..line_text.count - 1 {
                         // TODO(jt): @Speed We could SIMD this.
-                        if !String.is_any(line[it], String.DEFAULT_SPACES) {
+                        if !String.is_any(line_text[it], String.DEFAULT_SPACES) {
                             // HANGING scopes are indented Casey-style (or is it Microsoft-style?)
                             scope.indentation_flags |= .HANGING;
                             scope.indentation_level = scope.loc0.x + it - byte_index; // DEFAULT_SPACES are all single-byte.
@@ -215,7 +207,7 @@ update_scopes :: (document: *Document) {
                     scope := *document.scopes[scope_index];
                     if paren_pair.open == scope.open_paren_char {
                         // TODO(jt): @Speed Maintain count so we don't have to rescan the line?
-                        scope.loc1.x = count_utf8_chars(String.slice(cast(string, line), 0, byte_index));
+                        scope.loc1.x = count_utf8_chars(String.slice(cast(string, line_text), 0, byte_index));
                         scope.loc1.y = line_index;
 
                         scope.close_paren_char = byte;

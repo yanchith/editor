@@ -5652,21 +5652,12 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
 
     text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: % (exit type: %)\n", to_float64_seconds(time_elapsed), exit_code, exit_type), undo_modifier = .OMIT);
 
-    // See :IncrementalGapBufferIndices
-    gb_index := 0;
-    for line_index: 0..document.buffer.line_count - 1 {
-        gb_count := document.buffer.line_bytes[line_index];
-        defer {
-            gb_index += gb_count;
-        }
-
-        line := cast(string, gap_buffer_make_view(document.buffer.gb, gb_index, gb_count,, temp));
-
-        found, found_index, found_count, path, path_is_absolute, line_number, column_number := find_compilation_error(line);
+    for :text_buffer_lines line_text, line_index: document.buffer {
+        found, found_index, found_count, path, path_is_absolute, line_number, column_number := find_compilation_error(line_text);
         if found {
             ce := array_add(*document.compilation_errors);
-            ce.x0 = count_utf8_chars(String.slice(line, 0, found_index));
-            ce.x1 = ce.x0 + count_utf8_chars(String.slice(line, found_index, found_count));
+            ce.x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
+            ce.x1 = ce.x0 + count_utf8_chars(String.slice(line_text, found_index, found_count));
             ce.y  = line_index;
 
             ce.line_number   = line_number;

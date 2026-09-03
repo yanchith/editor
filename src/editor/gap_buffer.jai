@@ -39,9 +39,6 @@ gap_buffer_get_bytes_after_gap :: (gb: Gap_Buffer) -> [] u8 {
     view.count = gb.bytes.count - gb.gap_index - gb.gap_count;
     view.data = gb.bytes.data + gb.gap_index + gb.gap_count;
 
-    // TODO(jt): @CompilerBug This autocasts the integer to pointer.
-    // view.data = gb.gap_index + gb.gap_count;
-
     return view;
 }
 
@@ -226,7 +223,6 @@ for_expansion :: (gb: *Gap_Buffer, body: Code, flags: For_Flags) #expand {
     #assert !REVERSE "Gap_Buffer does not support reverse iteration (yet)";
     #assert !POINTER "Gap_Buffer does not support pointer iteration (yet)";
 
-    // TODO(jt): @Speed Byte iteration is slow, iterate by u64 or SIMD or something.
     for i: 0..gb.count - 1 {
         `it_index := i;
         `it: u8;
