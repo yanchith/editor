@@ -20,6 +20,8 @@ Scope :: struct {
     }
 }
 
+// TODO(jt): @Bug If a comment starts in a string, it continues. Need to track strings.
+
 // TODO(jt): @Speed When we indent the entirety of a 10000-line document, this takes ~8 seconds. Even if
 // we SIMD this, it will traverse the whole document contents too many times. We need an incremental
 // version, or perhaps some cooperative version that can work well with indenting large regions.
