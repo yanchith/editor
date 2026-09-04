@@ -24,7 +24,7 @@ LISTING_ACTION_NAMES  :: #run enum_names(Listing_Action);
 LISTING_ACTION_VALUES :: #run enum_values_as_s64(Listing_Action);
 
 Show_Commands_Item_Userdata :: struct {
-    kind:  enum { UNINITIALIZED; PANEL; DOCUMENT; LISTING; };
+    kind:  enum { UNINITIALIZED; PANEL; DOCUMENT; COMPILATION; LISTING; };
     value: s64;
 }
 
@@ -157,6 +157,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     userdata.kind = .PANEL;
                 } else if it_index >= document_actions_low && it_index < document_actions_high {
                     userdata.kind = .DOCUMENT;
+                } else if it_index >= compilation_actions_low && it_index < compilation_actions_high {
+                    userdata.kind = .COMPILATION;
                 } else if it_index >= listing_actions_low && it_index < listing_actions_high {
                     userdata.kind = .LISTING;
                 }
@@ -244,13 +246,20 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                 view := *panel.view._document;
                 document := view.document;
 
-                if document.kind == .COMPILATION {
-                    action := cast(Compilation_Action, userdata.value);
-                    execute_compilation_action(editor, platform, input, panel, view, document, action);
-                } else {
-                    action := cast(Document_Action, userdata.value);
-                    execute_document_action(editor, platform, input, panel, view, document, action);
-                }
+                sanity_assert(document.kind != .COMPILATION);
+                action := cast(Document_Action, userdata.value);
+                execute_document_action(editor, platform, input, panel, view, document, action);
+
+            }
+
+            case .COMPILATION; {
+                sanity_assert(panel.view.kind == .DOCUMENT);
+                view := *panel.view._document;
+                document := view.document;
+
+                sanity_assert(document.kind == .COMPILATION);
+                action := cast(Compilation_Action, userdata.value);
+                execute_compilation_action(editor, platform, input, panel, view, document, action);
             }
 
             case .LISTING; {
