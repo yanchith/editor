@@ -3,8 +3,6 @@
 TODO(jt): Known serious bugs:
 
 - On macOS, launching the app creates a console.
-- Control-Delete inserts a thing
-- ESCAPE inserts a thing
 
 TODO(jt): Roadmap:
 
@@ -2704,105 +2702,109 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                 did_execute_action |= execute_document_action(editor, platform, input, panel, view, document, action);
             }
 
-            if !did_buffer_event && !did_execute_action && event.flags & .PRESSED {
-                if event.type == .CODEPOINT {
-                    document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
-                    if !(document.flags & .READONLY) {
-                        view.selecting = false;
+            // TODO(jt): @Bug This is what our indentation does. I actually like it, but people will expect something else?
+            if !did_buffer_event
+            && !did_execute_action && event.flags & .PRESSED
+            && !(event.modifiers & (.CTRL | .ALT | .META))
+            && event.type == .CODEPOINT
+            && event.codepoint >= 32 && event.codepoint != .DELETE
+            {
+                document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+                if !(document.flags & .READONLY) {
+                    view.selecting = false;
 
-                        char := cast(u32, event.codepoint);
+                    char := cast(u32, event.codepoint);
 
-                        handled := false;
-                        opens, closes, paired_char := is_part_of_surround_pair(document, char);
+                    handled := false;
+                    opens, closes, paired_char := is_part_of_surround_pair(document, char);
 
-                        if closes {
-                            if view.cursors.c0 == view.cursors.c1 {
-                                c0 := view.cursors.c0;
-                                if text_buffer_can_read_at_location(document.buffer, c0) {
-                                    curr_byte := text_buffer_get_byte_at_location(document.buffer, c0);
-                                    if char == curr_byte {
-                                        text_buffer_move_x(document.buffer, *view.cursors, 1, false);
-                                        handled = true;
-                                    }
+                    if closes {
+                        if view.cursors.c0 == view.cursors.c1 {
+                            c0 := view.cursors.c0;
+                            if text_buffer_can_read_at_location(document.buffer, c0) {
+                                curr_byte := text_buffer_get_byte_at_location(document.buffer, c0);
+                                if char == curr_byte {
+                                    text_buffer_move_x(document.buffer, *view.cursors, 1, false);
+                                    handled = true;
                                 }
-                            } else {
-                                // Surrounding selection never cares for unbalanced parentheses
-                                c0 := view.cursors.c0;
-                                c1 := view.cursors.c1;
-                                text_location_sort(*c0, *c1);
-
-                                text_cursors_join(*view.cursors);
-
-                                text_buffer_move_to(document.buffer, *view.cursors, c0, false);
-                                text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .NONE);
-
-                                c1.x += 1; // Because we just inserted the starting paren.
-                                text_buffer_move_to(document.buffer, *view.cursors, c1, false);
-                                text_buffer_insert_char(*document.buffer, *view.cursors, char, .FUSE);
-
-                                handled = true;
                             }
+                        } else {
+                            // Surrounding selection never cares for unbalanced parentheses
+                            c0 := view.cursors.c0;
+                            c1 := view.cursors.c1;
+                            text_location_sort(*c0, *c1);
+
+                            text_cursors_join(*view.cursors);
+
+                            text_buffer_move_to(document.buffer, *view.cursors, c0, false);
+                            text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .NONE);
+
+                            c1.x += 1; // Because we just inserted the starting paren.
+                            text_buffer_move_to(document.buffer, *view.cursors, c1, false);
+                            text_buffer_insert_char(*document.buffer, *view.cursors, char, .FUSE);
+
+                            handled = true;
                         }
-
-                        if opens && !handled {
-                            if view.cursors.c0 == view.cursors.c1 {
-                                text_buffer_insert_char(*document.buffer, *view.cursors, char, .NONE);
-                                text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .FUSE);
-                                text_buffer_move_x(document.buffer, *view.cursors, -1, false);
-
-                                handled = true;
-                            } else {
-                                // Surrounding selection never cares for unbalanced parentheses
-                                c0 := view.cursors.c0;
-                                c1 := view.cursors.c1;
-                                text_location_sort(*c0, *c1);
-
-                                text_cursors_join(*view.cursors);
-
-                                text_buffer_move_to(document.buffer, *view.cursors, c1, false);
-                                text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .NONE);
-
-                                text_buffer_move_to(document.buffer, *view.cursors, c0, false);
-                                text_buffer_insert_char(*document.buffer, *view.cursors, char, .FUSE);
-
-                                handled = true;
-                            }
-                        }
-
-                        if !handled {
-                            // TODO(jt): @Bug If we Cmd-Q on macOS, the Q comes here.
-                            // Should we execute this only if there's no ctrl/alt/cmd? (shift is okay).
-                            undo_modifier: Undo_Modifier = .NONE;
-                            if input.time - document.time_of_last_simple_edit < UNDO_AUTOFUSE_PERIOD {
-                                undo_modifier = .CAN_AUTOFUSE;
-                            }
-
-                            text_buffer_insert_char(*document.buffer, *view.cursors, char, undo_modifier);
-
-                            document.time_of_last_simple_edit = input.time;
-                        }
-
-                        //
-                        // The code below is a slightly modified copypaste from
-                        // execute_documment_action, but here we know the cursor moved and buffer
-                        // changed for sure.
-                        //
-
-                        document.flags |= .MODIFIED_THIS_FRAME;
-                        document.flags |= .MODIFIED;
-
-                        // The cursor position interpolation gets setup in a centralized place instead of here, because the
-                        // cursor can be moved from other places than this one (e.g. mouse, SEARCH minipanel...).
-                        //
-                        // :CentralizedCursorInterpolationSetup
-                        view.flags |= .RECEIVED_DIRECT_KEYBOARD_INTERACTION;
-                        view.flags |= .CLAMP_SCROLL_TO_CURSOR;
-
-                        // We have to update these after every change, because the very next edit could be needing
-                        // this. We could start being smarter about this (e.g. by setting a specific dirty flag),
-                        // becuase not every subsequent action needs these up to date.  -jt, 22 July 2026.
-                        update_scopes(document);
                     }
+
+                    if opens && !handled {
+                        if view.cursors.c0 == view.cursors.c1 {
+                            text_buffer_insert_char(*document.buffer, *view.cursors, char, .NONE);
+                            text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .FUSE);
+                            text_buffer_move_x(document.buffer, *view.cursors, -1, false);
+
+                            handled = true;
+                        } else {
+                            // Surrounding selection never cares for unbalanced parentheses
+                            c0 := view.cursors.c0;
+                            c1 := view.cursors.c1;
+                            text_location_sort(*c0, *c1);
+
+                            text_cursors_join(*view.cursors);
+
+                            text_buffer_move_to(document.buffer, *view.cursors, c1, false);
+                            text_buffer_insert_char(*document.buffer, *view.cursors, paired_char, .NONE);
+
+                            text_buffer_move_to(document.buffer, *view.cursors, c0, false);
+                            text_buffer_insert_char(*document.buffer, *view.cursors, char, .FUSE);
+
+                            handled = true;
+                        }
+                    }
+
+                    if !handled {
+                        // TODO(jt): @Bug If we Cmd-Q on macOS, the Q comes here.
+                        // Should we execute this only if there's no ctrl/alt/cmd? (shift is okay).
+                        undo_modifier: Undo_Modifier = .NONE;
+                        if input.time - document.time_of_last_simple_edit < UNDO_AUTOFUSE_PERIOD {
+                            undo_modifier = .CAN_AUTOFUSE;
+                        }
+
+                        text_buffer_insert_char(*document.buffer, *view.cursors, char, undo_modifier);
+
+                        document.time_of_last_simple_edit = input.time;
+                    }
+
+                    //
+                    // The code below is a slightly modified copypaste from
+                    // execute_documment_action, but here we know the cursor moved and buffer
+                    // changed for sure.
+                    //
+
+                    document.flags |= .MODIFIED_THIS_FRAME;
+                    document.flags |= .MODIFIED;
+
+                    // The cursor position interpolation gets setup in a centralized place instead of here, because the
+                    // cursor can be moved from other places than this one (e.g. mouse, SEARCH minipanel...).
+                    //
+                    // :CentralizedCursorInterpolationSetup
+                    view.flags |= .RECEIVED_DIRECT_KEYBOARD_INTERACTION;
+                    view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+
+                    // We have to update these after every change, because the very next edit could be needing
+                    // this. We could start being smarter about this (e.g. by setting a specific dirty flag),
+                    // becuase not every subsequent action needs these up to date.  -jt, 22 July 2026.
+                    update_scopes(document);
                 }
             }
         }
