@@ -5783,6 +5783,28 @@ get_line_length_at_cursor :: (view: Document_View, font: Font) -> f64 {
     return line_length;
 }
 
+/*
+nocheckin
+
+Stack trace:
+'editor_assertion_failed' at C:/Users/yanchith/workspace/editor/src/main.jai:1158
+'assert_helper' at C:/Users/yanchith/workspace/jai/modules/Basic/module.jai:86
+'assert_line_valid' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:2116
+'text_buffer_make_view_for_line' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1366
+'get_position_for_location' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5787
+'get_position_at_cursor' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5770
+'panel_set_document' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5509
+'close_document' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5329
+'confirm' at C:/Users/yanchith/workspace/editor/src/editor/mini_panel_close_view.jai:194
+'route_event_to_mini_panel' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:2352
+'update_and_render' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:1174
+'main' at C:/Users/yanchith/workspace/editor/src/main.jai:736
+
+Input events this frame:
+[0] {type = KEYBOARD; key_pressed = 1; key_code = ENTER; modifier_flags = (untagged union); utf32 = 0; repeat = false; text_input_count = 0; typical_wheel_delta = 0; wheel_delta = 0; files = []; touch_type = MOVED; touch_index = 0; touch_x = 0; touch_y = 0; window_event_type = UNINITIALIZED; window = null; }
+
+*/
+
 get_position_for_location :: (document: Document, font: Font, loc: Text_Location) -> DVector2 {
     line_view := text_buffer_make_view_for_line(document.buffer, loc.y,, temp);
 
@@ -6005,9 +6027,9 @@ mark_and_advance_frame_profile :: (editor: *Editor, input: Input) {
     }
 
     current := *editor.debug_frame_profiles.entries[editor.debug_frame_profile_index];
-    array_copy(current.zones, input.debug_previous_frame_zones);
-    array_copy(current.zone_labels, input.debug_previous_frame_zone_labels);
-    current.time_scale = input.debug_previous_frame_time_scale;
+    array_copy(current.zones, input.previous_frame_profile_zones);
+    array_copy(current.zone_labels, input.previous_frame_profile_zone_labels);
+    current.time_scale = input.previous_frame_profile_time_scale;
 
     editor.debug_frame_profile_index += 1;
     editor.debug_frame_profile_index &= editor.DEBUG_FRAME_PROFILE_COUNT - 1;

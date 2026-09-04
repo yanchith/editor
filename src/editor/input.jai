@@ -22,9 +22,9 @@ Input :: struct {
     watched_directory_changes: [] Watched_Directory_Change; // Call platform.watch_directory() to get these.
     events: [] Input_Event;
 
-    debug_previous_frame_time_scale: f64;
-    debug_previous_frame_zones: [] Profiler_Zone;
-    debug_previous_frame_zone_labels: [] string;
+    previous_frame_profile_time_scale: f64;
+    previous_frame_profile_zones: [] Profiler_Zone;
+    previous_frame_profile_zone_labels: [] string;
 }
 
 Watched_Directory_Change :: struct {

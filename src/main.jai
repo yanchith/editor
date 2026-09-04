@@ -572,12 +572,14 @@ main :: () {
 
     time_of_last_frame_start := time_of_program_start;
 
+    input.previous_frame_profile_time_scale = profiler_end_frame(); // End of "init"
+
     should_run  := true;
     while should_run {
         frame_zones, frame_zone_labels := profiler_get_zones(.INCLUSIVE_TIME,, temp);
-        input.debug_previous_frame_zones       = frame_zones;
-        input.debug_previous_frame_zone_labels = frame_zone_labels;
-        // input.debug_previous_frame_time_scale got written on the previous frame.
+        input.previous_frame_profile_zones       = frame_zones;
+        input.previous_frame_profile_zone_labels = frame_zone_labels;
+        // input.previous_frame_time_scale got written on the previous frame.
 
         profiler_start_frame("frame");
 
@@ -737,8 +739,7 @@ main :: () {
 
         input.frame_requested_by_editor = wants_next_frame;
 
-        time_scale := profiler_end_frame();
-        input.debug_previous_frame_time_scale = time_scale;
+        input.previous_frame_profile_time_scale = profiler_end_frame(); // End of "frame"
         // The zones are transferred at the beginnning of the next frame, to survive reset_temporary_storage.
 
         array_reset_keeping_memory(*platform_state.watched_directory_changes);
