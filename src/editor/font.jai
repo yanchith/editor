@@ -436,7 +436,6 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             glyph_bitmap_width  = entry.glyph_bitmap_width;
             glyph_bitmap_height = entry.glyph_bitmap_height;
 
-            // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
             glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
             glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
 
@@ -498,10 +497,8 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             glyph_bitmap_width  = entry.glyph_bitmap_width;
             glyph_bitmap_height = entry.glyph_bitmap_height;
 
-            // TODO(jt): @Speed Compute this with bit operations, since the dimensions are a power of two.
             glyph_cell_x = entry_index % font.glyph_atlas_width_in_cells;
             glyph_cell_y = entry_index / font.glyph_atlas_width_in_cells;
-
 
             if font.subpixel {
                 sanity_assert(glyph_bitmap.pixel_mode == cast(u8, FT_Pixel_Mode.LCD), "Pixel mode is: %", glyph_bitmap.pixel_mode);
