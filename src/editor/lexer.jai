@@ -126,7 +126,7 @@ lexer_input_byte_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> b
     return false;
 }
 
-lexer_advance :: inline (lexer: *Lexer) -> bytes_advanced: s64 {
+lexer_advance :: (lexer: *Lexer) -> bytes_advanced: s64 {
     sanity_assert(lexer.input.count > 0);
 
     c := lexer.input[0];
@@ -141,7 +141,7 @@ lexer_advance :: inline (lexer: *Lexer) -> bytes_advanced: s64 {
     }
 }
 
-lexer_advance_horizontally :: inline (lexer: *Lexer) -> bytes_advanced: s64 {
+lexer_advance_horizontally :: (lexer: *Lexer) -> bytes_advanced: s64 {
     sanity_assert(lexer.input.count > 0);
     sanity_assert(lexer.input[0] != "\n");
 

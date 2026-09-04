@@ -444,6 +444,14 @@ parse_string_literal :: (lexer: *Lexer, token: *Token) {
 
 parse_char_literal :: (lexer: *Lexer, token: *Token) {
     Advance :: () #expand {
+        lexer_advance(lexer);
+        if lexer.input.count == 0 {
+            `return;
+        }
+        c = lexer.input[0];
+    }
+
+    AdvanceHorizontally :: () #expand {
         lexer_advance_horizontally(lexer);
         if lexer.input.count == 0 {
             `return;
@@ -456,29 +464,29 @@ parse_char_literal :: (lexer: *Lexer, token: *Token) {
     escape := false;
     c: u8;
 
-    Advance(); // Consume starting '
+    AdvanceHorizontally(); // Consume starting '
 
     if c == "\\" {
         escape = true;
-        Advance(); // Consume escape
+        AdvanceHorizontally(); // Consume escape
     }
 
     if c == "'" && !escape {
         token.type == .INVALID;
         lexer_set_token_end(lexer, token);
-        Advance(); // Consume invalid ending '
+        AdvanceHorizontally(); // Consume invalid ending '
 
         return;
     }
 
-    Advance(); // Consume the character itself
-
-    if c != "'" {
-        token.type == .INVALID;
-    }
+    Advance(); // Consume the character itself. This can be a newline in invalid inputs.
 
     lexer_set_token_end(lexer, token);
-    Advance(); // The ending '
+    if c == "'" {
+        AdvanceHorizontally(); // The ending '
+    } else {
+        token.type == .INVALID;
+    }
 }
 
 parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
