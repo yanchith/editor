@@ -19,7 +19,7 @@ Font :: struct {
     subpixel: bool;
 
     //
-    // Font info stuff. Does not change once we have loaded a font.
+    // Font info stuff.
     //
 
     ft_library:              FT_Library;
@@ -47,6 +47,12 @@ Font :: struct {
     max_glyph_height_in_integer_pixels: s32;
 
     //
+    // Cached stuff, so that we don't have to ask FreeType for it every time.
+    //
+
+    advance_for_space: s64; // 26:6
+
+    //
     // Glyph cache stuff
     //
 
@@ -65,8 +71,7 @@ Font :: struct {
     glyph_entries_head: s32;
     glyph_entries_tail: s32;
 
-    // TODO(jt): @Speed @Memory Remove this hash table and do hashing over glyph_entries
-    // directly. We'll have to make the size a power of two, etc.
+    // TODO(jt): @Speed @Memory Remove this hash table and do hashing over the glyph_entries array directly.
     glyph_table: Table(u64, s32);
 
     glyph_cache_stamp: u32; // This can overflow, but we only ever compare it for equality to detect same-frame evictions.
@@ -88,9 +93,7 @@ Glyph_Entry :: struct {
     // Metrics, metadata, anything that we know about the glyph.
     //
     // In the STBTT days, we didn't cache anything in here, but either I don't understand FreeType
-    // very well, or it seems like even extracting at least some of these (except for advance) is a
-    // heavyweight operation that involves actually rasterizing the glyph (or loading the bitmap
-    // version, if present), so just in case, they are here.
+    // very well, or it seems like even extracting at least some of these is a heavyweight operation.
     //
 
     // hole: u32
@@ -203,6 +206,11 @@ font_reset_for_options :: (font: *Font, pixel_height: s32, line_height_multiplie
     font.max_glyph_height_in_pixels = cast(f32, font.ft_face_for_regular.size.metrics.height) * R64;
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
     font.max_glyph_height_in_integer_pixels = cast(s32, ceil(font.max_glyph_height_in_pixels));
+
+    error = FT_Load_Char(font.ft_face_for_regular, #char " ", FT_LOAD_DEFAULT | cast(s32, ifx font.subpixel then FT_Load_Target.LCD else FT_Load_Target.NORMAL));
+    if !error {
+        font.advance_for_space += font.ft_face_for_regular.glyph.metrics.horiAdvance;
+    }
 
     // Because the atlas is bilinearly filtered, and we don't want to sample data from adjacent
     // cells. Also, asserts in copy_glyph_cell required us to increase the PADDING to 2, and asserts
@@ -361,11 +369,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
 
         if it == #char "\t" {
             current_char_index += 1;
-
-            error := FT_Load_Char(font.ft_face_for_regular, #char " ", FT_LOAD_DEFAULT | ft_load_target);
-            if !error {
-                cursor_x += INDENTATION_STEP * font.ft_face_for_regular.glyph.metrics.horiAdvance;
-            }
+            cursor_x += INDENTATION_STEP * font.advance_for_space;
 
             continue;
         }
@@ -389,10 +393,9 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             };
         }
 
-        // @Hack In this routine, we extract metrics based on the weight/style of the character. In
-        // the font_compute_xyz we always get metrics from the regular variant of the font. This is
-        // probably okay, unless the font is inconsistent or badly authored, but I assume this would
-        // be rare for popular fonts.
+        // TODO(jt): @Hack :MismatchingGlyphMetrics In this routine, we extract metrics based on the variant of the character.
+        // In the font_compute_xyz (via get_char_advance) we always get metrics from the regular variant of the font. We should
+        // probably fix this and account for style ranges in the other routines?
         ft_face: FT_Face;
         if #complete glyph_variant == {
             case .REGULAR;      ft_face = font.ft_face_for_regular;
@@ -460,11 +463,8 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             entry.glyph_variant = glyph_variant;
 
             {
-                ProfileZone("FT_Load_Glyph(FT_LOAD_RENDER)");
                 error := FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_RENDER | ft_load_target);
-
                 if error {
-                    // Perhaps we could set a per-frame error flag?
                     continue;
                 }
             }
@@ -483,7 +483,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
 
             // :SubpixelDivideByThree
             //
-            // Freetype automatically adjusts almost all relevant glyph metrics for subpixel
+            // FreeType automatically adjusts almost all relevant glyph metrics for subpixel
             // rendering, but it leaves the bitmap width as its actual thing. The bitmap is RGB (24
             // bits per pixel) coverages. To get the number of pixels, we divide by three. This is
             // important, because we derive all sorts of things from it (sizes of update regions,
@@ -603,21 +603,11 @@ _font_compute_line_length :: (font: Font, line_text: string, $binary: bool) -> f
         }
 
         if it == #char "\t" {
-            error := FT_Load_Char(font.ft_face_for_regular, #char " ", FT_LOAD_DEFAULT | ft_load_target);
-            if !error {
-                advance += INDENTATION_STEP * font.ft_face_for_regular.glyph.metrics.horiAdvance;
-            }
-
+            advance += INDENTATION_STEP * font.advance_for_space;
             continue;
         }
 
-        error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | ft_load_target);
-        if error {
-            // Perhaps we could set a per-frame error flag?
-            continue;
-        }
-
-        advance += font.ft_face_for_regular.glyph.metrics.horiAdvance;
+        advance += get_char_advance(font, it);
     }
 
     scaled_advance: f64 = cast(f64, advance) * R64;
@@ -661,21 +651,11 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
         }
 
         if it == #char "\t" {
-            error := FT_Load_Char(font.ft_face_for_regular, #char " ", FT_LOAD_DEFAULT | ft_load_target);
-            if !error {
-                advance += INDENTATION_STEP * font.ft_face_for_regular.glyph.metrics.horiAdvance;
-            }
-
+            advance += INDENTATION_STEP * font.advance_for_space;
             continue;
         }
 
-        error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | ft_load_target);
-        if error {
-            // Perhaps we could set a per-frame error flag?
-            continue;
-        }
-
-        advance += font.ft_face_for_regular.glyph.metrics.horiAdvance;
+        advance += get_char_advance(font, it);
     }
 
     scaled_advance: f64 = cast(f64, advance) * R64;
@@ -693,8 +673,6 @@ font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, 
 
 _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, $binary: bool) -> s64 {
     ProfileZone("font_compute_character_index_on_line");
-
-    ft_load_target := cast(s32, ifx font.subpixel then FT_Load_Target.LCD else FT_Load_Target.NORMAL);
 
     character_index: s64 = 0;
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
@@ -720,21 +698,11 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
         }
 
         if it == #char "\t" {
-            error := FT_Load_Char(font.ft_face_for_regular, #char " ", FT_LOAD_DEFAULT | ft_load_target);
-            if !error {
-                advance += INDENTATION_STEP * font.ft_face_for_regular.glyph.metrics.horiAdvance;
-            }
-
+            advance += INDENTATION_STEP * font.advance_for_space;
             continue;
         }
 
-        error := FT_Load_Char(font.ft_face_for_regular, it, FT_LOAD_DEFAULT | ft_load_target);
-        if error {
-            // Perhaps we could set a per-frame error flag?
-            continue;
-        }
-
-        advance += font.ft_face_for_regular.glyph.metrics.horiAdvance;
+        advance += get_char_advance(font, it);
     };
 
     return character_index;
@@ -781,6 +749,30 @@ move_back_glyph_entry :: (entries: [] Glyph_Entry, head_index: *s32, tail_index:
 
 compose_key :: inline (glyph_index: u32, glyph_variant: Font_Variant) -> u64 {
     return (cast(u64, glyph_index) << 32) | cast(u64, glyph_variant);
+}
+
+get_char_advance :: (font: Font, c: u32) -> s64 {
+    // See :MismatchingGlyphMetrics.
+    ft_face := font.ft_face_for_regular;
+
+    index := FT_Get_Char_Index(ft_face, c);
+
+    // Try hitting our glyph cache before loading from FreeType. I measured ~3ms for
+    // our position-counting rountines before doing this, now it's ~0.07ms.
+    entry_index_pointer := table_find_pointer(*font.glyph_table, compose_key(index, .REGULAR));
+    if entry_index_pointer {
+        entry_index := entry_index_pointer.*;
+        entry := *font.glyph_entries[entry_index];
+
+        return entry.glyph_advance;
+    }
+
+    error := FT_Load_Char(ft_face, c, FT_LOAD_DEFAULT | cast(s32, ifx font.subpixel then FT_Load_Target.LCD else FT_Load_Target.NORMAL));
+    if !error {
+        return ft_face.glyph.metrics.horiAdvance;
+    }
+
+    return 0;
 }
 
 clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
