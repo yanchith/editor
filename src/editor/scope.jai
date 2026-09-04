@@ -44,10 +44,10 @@ update_scopes :: (document: *Document) {
 
 
     indentation_pairs: [] Paren_Pair;
-    line_comment            := "";
-    block_comment_start     := "";
-    block_comment_end       := "";
-    block_comments_can_nest := false;
+    line_comment: string;
+    block_comment_start: string;
+    block_comment_end: string;
+    block_comments_can_nest: bool;
 
     if #complete document.lang == {
         case .PLAIN_TEXT; {
