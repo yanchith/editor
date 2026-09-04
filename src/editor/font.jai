@@ -283,7 +283,7 @@ Font_Variant :: enum u32 {
     BOLD_ITALIC :: 3;
 }
 
-Font_Text_Range :: struct {
+Font_Range :: struct {
     x0: s64;
     y0: s64;
     x1: s64; // Inclusive! The range would not exist, if it would be empty!
@@ -291,13 +291,13 @@ Font_Text_Range :: struct {
 }
 
 Font_Style_Range :: struct {
-    using range: Font_Text_Range;
+    using range: Font_Range;
     color: Vector4;
     variant: Font_Variant;
 }
 
 Font_Invert_Range :: struct {
-    using range: Font_Text_Range;
+    using range: Font_Range;
 }
 
 font_layout_and_draw_text :: (font: *Font, text: string,
@@ -404,8 +404,6 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             case .BOLD_ITALIC;  ft_face = ifx font.ft_face_for_bold_italic then font.ft_face_for_bold_italic else font.ft_face_for_regular;
         }
 
-        // FT_Get_Char_Index returns 0, if it can't find the character. 0 also automatically maps to
-        // 'missing glyph' in FT_Load_Glyph.
         glyph_index := FT_Get_Char_Index(ft_face, it);
 
         // These get filled in one of the branches below. Either we compute them, or we get them from the cache.
@@ -832,7 +830,7 @@ copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest
     }
 }
 
-maybe_advance_range_index_and_get_containing_range :: (range_index: *s64, ranges: [] $T/Font_Text_Range, line_index: s64, char_index: s64) -> *T{
+maybe_advance_range_index_and_get_containing_range :: (range_index: *s64, ranges: [] $T/Font_Range, line_index: s64, char_index: s64) -> *T {
     result: *T;
 
     if range_index.* < ranges.count {
