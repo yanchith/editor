@@ -454,25 +454,24 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, cha
     line_to_invalidate := cursors.c0.y;
 
     deleted_byte_count := 0;
-    while char_count {
-        newline_advance := string_starts_with_newline(text, binary = buffer.binary_mode);
-        if newline_advance {
+    while char_count && text.count {
+        if text[0] == "\n" {
             assert(cursors.c0.y < buffer.line_bytes.count - 1);          // The last line can't have a newline.
             assert(cursors.c0.x == buffer.line_chars[cursors.c0.y] - 1); // The newline has to be the last char.
 
             buffer.line_chars[cursors.c0.y] -= 1;
-            buffer.line_bytes[cursors.c0.y] -= newline_advance;
+            buffer.line_bytes[cursors.c0.y] -= 1;
 
             buffer.line_chars[cursors.c0.y] += buffer.line_chars[cursors.c0.y + 1];
             buffer.line_bytes[cursors.c0.y] += buffer.line_bytes[cursors.c0.y + 1];
 
             remove_line(buffer, cursors.c0.y + 1);
 
-            advance(*text, newline_advance);
+            advance(*text);
             assert(text.count >= 0);
 
             char_count         -= 1;
-            deleted_byte_count += newline_advance;
+            deleted_byte_count += 1;
         } else {
             codepoint_advance: s64 = 1;
             if !buffer.binary_mode {
@@ -553,15 +552,14 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
 
     line_to_invalidate := max(cursors.c0.y - 1, 0);
 
-    newline_advance := string_ends_with_newline(bytes, binary = buffer.binary_mode);
-    if newline_advance {
+    if bytes[bytes.count - 1] == "\n" {
         assert(cursors.c0.x == 0);
         assert(cursors.c0.y > 0);
 
         new_cursor_x := buffer.line_chars[cursors.c0.y - 1] - 1;
 
         buffer.line_chars[cursors.c0.y - 1] -= 1;
-        buffer.line_bytes[cursors.c0.y - 1] -= newline_advance;
+        buffer.line_bytes[cursors.c0.y - 1] -= 1;
 
         buffer.line_chars[cursors.c0.y - 1] += buffer.line_chars[cursors.c0.y];
         buffer.line_bytes[cursors.c0.y - 1] += buffer.line_bytes[cursors.c0.y];
@@ -573,8 +571,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
         cursors.c0.x = new_cursor_x;
         cursors.c0.y -= 1;
 
-        deleted := gap_buffer_delete_backward(*buffer.gb, newline_advance);
-        assert(newline_advance == deleted.count);
+        deleted := gap_buffer_delete_backward(*buffer.gb, 1);
 
         if undo_modifier != .OMIT {
             discard_unapplied_edits(buffer);
@@ -824,10 +821,6 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
 
     assert_valid(buffer, cursors);
 
-    // This used to just delegate work to text_buffer_delete_selection, but it had to make a
-    // (potentially large) temp view to check how much to delete. It also generated weird undo
-    // display cursors. So now we do everything in here, with just an occasional, tiny temp view.
-
     line_end := text_buffer_get_end_of_line(buffer, cursors.c0.y);
 
     start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
@@ -840,14 +833,14 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
         line_end     = text_buffer_get_end_of_line(buffer, cursors.c0.y, include_newline = true);
         end_gb_index = text_buffer_get_gap_buffer_index_for_location(buffer, line_end);
         delete_count = end_gb_index - start_gb_index;
-        sanity_assert(delete_count <= 2);
+        sanity_assert(delete_count <= 1);
 
         view := gap_buffer_make_view(buffer.gb, start_gb_index, delete_count,, temp);
-        newline_advance := string_starts_with_newline(view, binary = buffer.binary_mode);
 
-        sanity_assert(delete_count == newline_advance);
-
-        if newline_advance == 0 {
+        if view.count && view[0] == "\n" {
+            sanity_assert(delete_count == 1);
+        } else {
+            // nocheckin this should be the end of document, right?
             return "";
         }
 
@@ -879,12 +872,9 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
         // additional 1 or 2 bytes (depending CRLF or LF), and then modifying our deleted array. We
         // can do this, because we moved the gap before we started.
         bytes := gap_buffer_get_bytes_after_gap(buffer.gb);
-        newline_advance := string_starts_with_newline(bytes, binary = buffer.binary_mode);
-        if newline_advance {
-            deleted_newline := gap_buffer_delete_forward(*buffer.gb, newline_advance);
-            sanity_assert(deleted_newline.count == newline_advance);
-
-            deleted.count += newline_advance;
+        if bytes.count && bytes[0] == "\n" {
+            gap_buffer_delete_forward(*buffer.gb, 1);
+            deleted.count += 1;
         }
 
         // If there is no newline at the end, we should be on the last line of the document.
@@ -933,7 +923,7 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
     line_gb_index := ifx __line_gb_index == -1 then text_buffer_get_gap_buffer_index_for_line(buffer, cursors.c0.y) else __line_gb_index;
     line_view     := gap_buffer_make_view(buffer.gb, line_gb_index, buffer.line_bytes[cursors.c0.y],, temp);
 
-    newline_length := string_ends_with_newline(line_view, binary = buffer.binary_mode);
+    newline_length := ifx line_view.count && line_view[line_view.count - 1] == "\n" then 1 else 0;
 
     trailing_space_count := 0;
     for < String.slice(cast(string, line_view), 0, line_view.count - newline_length) {
@@ -950,8 +940,7 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
         original_cursor1 := cursors.c1;
 
         // Okay to sutract bytes from chars, because all the whitespace is single-byte.
-        // However, we count CRLF newline as a single character: clamp so that we don't end up with x: -1.
-        cursors.c0.x = buffer.line_chars[cursors.c0.y] - trailing_space_count - min(newline_length, 0);
+        cursors.c0.x = buffer.line_chars[cursors.c0.y] - trailing_space_count - newline_length;
         cursors.c1 = cursors.c0;
 
         gb_index := line_gb_index + line_view.count - trailing_space_count - newline_length;
@@ -1370,9 +1359,8 @@ text_buffer_make_view_for_line :: (buffer: Text_Buffer, line_index: s64, include
     start_index := text_buffer_get_gap_buffer_index_for_line(buffer, line_index);
     view        := gap_buffer_make_view(buffer.gb, start_index, line_bytes, force_allocate = force_allocate);
 
-    if !include_newline {
-        newline_advance := string_ends_with_newline(view, binary = buffer.binary_mode);
-        view.count -= newline_advance;
+    if !include_newline && view.count && view[view.count - 1] == "\n" {
+        view.count -= 1;
     }
 
     return cast(string, view);
@@ -1889,22 +1877,9 @@ text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, loc: Text
         index += loc.x;
     } else {
         // This is a UTF8 line. We have to count.
-        sanity_assert(!buffer.binary_mode);
-
         for 0..loc.x - 1 {
             first_byte := buffer.gb[index];
-
-            // :CarriageReturn
-            //
-            // Even if in ascii \r\n is two characters, we treat them as one character when moving
-            // cursors around, and we can't really have a byte index that goes in between these two,
-            // if they are next to each other.
-            //
-            // TODO(jt): @Bug We likely do not support bare \r in the text. Let's either support it
-            // (preferrable), or fall back to binary mode when we find it.
-            codepoint_bytes := ifx first_byte == #char "\r" then 2 else UTF8_LENGTH_FOR_STARTING_BYTE[first_byte];
-
-            index += codepoint_bytes;
+            index += UTF8_LENGTH_FOR_STARTING_BYTE[first_byte];
         }
     }
 
@@ -1968,14 +1943,11 @@ assert_valid_buffer :: (buffer: Text_Buffer) {
 
             view := cast(string, gap_buffer_make_view(buffer.gb, 0, buffer.gb.count,, temp));
             while view.count {
-                newline_advance := string_starts_with_newline(view, binary = true);
-                if newline_advance {
-                    assert(newline_advance == 1);
+                if view[0] == "\n" {
                     line_bytes[line_bytes.count - 1] += 1;
-
                     array_add(*line_bytes);
 
-                    advance(*view, newline_advance);
+                    advance(*view);
                 } else {
                     line_bytes[line_bytes.count - 1] += 1;
 
@@ -1997,7 +1969,7 @@ assert_valid_buffer :: (buffer: Text_Buffer) {
                     Input events this frame:
                     [0] {type = KEYBOARD; key_pressed = 1; key_code = UNKNOWN; modifier_flags = (untagged union); utf32 = 0; repeat = false; text_input_count = 0; typical_wheel_delta = 0; wheel_delta = 0; files = []; touch_type = MOVED; touch_index = 0; touch_x = 0; touch_y = 0; window_event_type = UNINITIALIZED; window = null; }
                     */
-                    advance(*view, 1);
+                    advance(*view);
                 }
             }
 
@@ -2027,15 +1999,14 @@ assert_valid_buffer :: (buffer: Text_Buffer) {
 
             view := cast(string, gap_buffer_make_view(buffer.gb, 0, buffer.gb.count,, temp));
             while view.count {
-                newline_advance := string_starts_with_newline(view, binary = false);
-                if newline_advance {
+                if view[0] == "\n" {
                     line_chars[line_chars.count - 1] += 1;
-                    line_bytes[line_bytes.count - 1] += newline_advance;
+                    line_bytes[line_bytes.count - 1] += 1;
 
                     array_add(*line_bytes);
                     array_add(*line_chars);
 
-                    advance(*view, newline_advance);
+                    advance(*view);
                 } else {
                     _, codepoint_advance := find_next_utf8_char_boundary(view, 0);
 
@@ -2270,14 +2241,13 @@ update_index_for_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, _text:
         }
     } else {
         while text.count {
-            newline_advance := string_starts_with_newline(text, binary = false);
-            if newline_advance {
+            if text[0] == "\n" {
                 byte_count_after_cursor := buffer.line_bytes[cursors.c0.y] - bytes_on_line_before_cursor;
                 char_count_after_cursor := buffer.line_chars[cursors.c0.y] - cursors.c0.x;
 
-                advance(*text, newline_advance);
+                advance(*text);
 
-                buffer.line_bytes[cursors.c0.y] += newline_advance - byte_count_after_cursor;
+                buffer.line_bytes[cursors.c0.y] += 1 - byte_count_after_cursor;
                 buffer.line_chars[cursors.c0.y] += 1 - char_count_after_cursor;
 
                 insert_line(buffer, cursors.c0.y + 1, byte_count_after_cursor, char_count_after_cursor);
@@ -2350,20 +2320,19 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors
     text := _text;
 
     while text.count {
-        newline_advance := string_starts_with_newline(text, binary = buffer.binary_mode);
-        if newline_advance {
+        if text[0] == "\n" {
             assert(cursors.c0.y < buffer.line_bytes.count - 1);          // The last line can't have a newline.
             assert(cursors.c0.x == buffer.line_chars[cursors.c0.y] - 1); // The newline has to be the last char.
 
             buffer.line_chars[cursors.c0.y] -= 1;
-            buffer.line_bytes[cursors.c0.y] -= newline_advance;
+            buffer.line_bytes[cursors.c0.y] -= 1;
 
             buffer.line_chars[cursors.c0.y] += buffer.line_chars[cursors.c0.y + 1];
             buffer.line_bytes[cursors.c0.y] += buffer.line_bytes[cursors.c0.y + 1];
 
             remove_line(buffer, cursors.c0.y + 1);
 
-            advance(*text, newline_advance);
+            advance(*text);
             assert(text.count >= 0);
         } else {
             codepoint_advance: s64 = 1;
@@ -2387,15 +2356,14 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursor
     text := _text;
 
     while text.count {
-        newline_advance := string_ends_with_newline(text, binary = buffer.binary_mode);
-        if newline_advance {
+        if text[text.count - 1] == "\n" {
             assert(cursors.c0.x == 0);
             assert(cursors.c0.y > 0);
 
             new_cursor_x := buffer.line_chars[cursors.c0.y - 1] - 1;
 
             buffer.line_chars[cursors.c0.y - 1] -= 1;
-            buffer.line_bytes[cursors.c0.y - 1] -= newline_advance;
+            buffer.line_bytes[cursors.c0.y - 1] -= 1;
 
             buffer.line_chars[cursors.c0.y - 1] += buffer.line_chars[cursors.c0.y];
             buffer.line_bytes[cursors.c0.y - 1] += buffer.line_bytes[cursors.c0.y];
@@ -2405,7 +2373,7 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursor
             cursors.c0.x = new_cursor_x;
             cursors.c0.y -= 1;
 
-            text.count -= newline_advance;
+            text.count -= 1;
             assert(text.count >= 0);
         } else {
             codepoint_advance: s64 = 1;

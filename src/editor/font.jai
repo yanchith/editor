@@ -356,22 +356,22 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             continue;
         }
 
-        #if binary {
-            if it < 32 || it >= 127 {
-                it = 0;
-            }
-        }
-
-        if it == #char "\r" {
-            current_char_index += 1;
-            continue;
-        }
-
         if it == #char "\t" {
             current_char_index += 1;
             cursor_x += INDENTATION_STEP * font.advance_for_space;
 
             continue;
+        }
+
+        #if binary {
+            if it < 32 || it >= 127 {
+                it = 0;
+            }
+        } else {
+            // This includes \r, \t, \n, so make sure we process the ones we want before that!
+            if it < 32 {
+                it = 0;
+            }
         }
 
         glyph_color   := default_color;
@@ -591,15 +591,20 @@ _font_compute_line_length :: (font: Font, line_text: string, $binary: bool) -> f
             it = #char " ";
         }
 
+        if it == #char "\t" {
+            advance += INDENTATION_STEP * font.advance_for_space;
+            continue;
+        }
+
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
             }
-        }
-
-        if it == #char "\t" {
-            advance += INDENTATION_STEP * font.advance_for_space;
-            continue;
+        } else {
+            // This includes \r, \t, \n, so make sure we process the ones we want before that!
+            if it < 32 {
+                it = 0;
+            }
         }
 
         advance += get_char_advance(font, it);
@@ -618,9 +623,6 @@ font_compute_position_on_line :: (font: Font, line_text: string, character_index
     }
 }
 
-// TODO(jt): @Speed For files with long lines (such as minified javascript), this very very
-// slow. We'll probably need to avoid calling it (or do early out, if position exceeds some given
-// value), or have make 100x faster.
 _font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, $binary: bool) -> f64 {
     ProfileZone("font_compute_position_on_line");
 
@@ -639,15 +641,20 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
             it = #char " ";
         }
 
+        if it == #char "\t" {
+            advance += INDENTATION_STEP * font.advance_for_space;
+            continue;
+        }
+
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
             }
-        }
-
-        if it == #char "\t" {
-            advance += INDENTATION_STEP * font.advance_for_space;
-            continue;
+        } else {
+            // This includes \r, \t, \n, so make sure we process the ones we want before that!
+            if it < 32 {
+                it = 0;
+            }
         }
 
         advance += get_char_advance(font, it);
@@ -686,15 +693,20 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
             it = #char " ";
         }
 
+        if it == #char "\t" {
+            advance += INDENTATION_STEP * font.advance_for_space;
+            continue;
+        }
+
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
             }
-        }
-
-        if it == #char "\t" {
-            advance += INDENTATION_STEP * font.advance_for_space;
-            continue;
+        } else {
+            // This includes \r, \t, \n, so make sure we process the ones we want before that!
+            if it < 32 {
+                it = 0;
+            }
         }
 
         advance += get_char_advance(font, it);

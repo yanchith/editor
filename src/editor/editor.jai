@@ -82,7 +82,7 @@ TODO(jt): Roadmap:
 - [ ] Animate opening of the mini panel.
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
-- [ ] CRLF
+- [~] CRLF ; (Still need to add special rendering for it)
 
 ... things below here are only important if I want to share this with other people ...
 

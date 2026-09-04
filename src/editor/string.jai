@@ -13,46 +13,6 @@ UTF8_LENGTH_FOR_STARTING_BYTE :: u8.[
     3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, 4,4,4,4,4,4,4,4,5,5,5,5,6,6,6,6,
 ];
 
-string_starts_with_newline :: (bytes: [] u8, binary: bool) -> newline_byte_length: u32 {
-    return inline string_starts_with_newline(cast(string, bytes), binary);
-}
-
-string_starts_with_newline :: (s: string, binary: bool) -> newline_byte_length: u32 {
-    if binary {
-        if s.count > 0 && s[0] == "\n" {
-            return 1;
-        }
-    } else {
-        if s.count > 1 && s[0] == "\r" && s[1] == "\n" {
-            return 2;
-        } else if s.count > 0 && s[0] == "\n" {
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-string_ends_with_newline :: (bytes: [] u8, binary: bool) -> newline_byte_length: u32 {
-    return inline string_ends_with_newline(cast(string, bytes), binary);
-}
-
-string_ends_with_newline :: (s: string, binary: bool) -> newline_byte_length: u32 {
-    if binary {
-        if s.count > 0 && s[s.count - 1] == "\n" {
-            return 1;
-        }
-    } else {
-        if s.count > 1 && s[s.count - 2] == "\r" && s[s.count - 1] == "\n" {
-            return 2;
-        } else if s.count > 0 && s[s.count - 1] == "\n" {
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
 // TODO(jt): @Speed @Cleanup This is a deprecated routine from the String module,
 // called index_of_string_nocase, slightly modified with find_index_from_left.
 // it is very slow, so either pick up the thing that's going to replace it in modules,
