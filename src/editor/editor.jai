@@ -2611,6 +2611,8 @@ Document_Action :: enum {
     LANGUAGE_JAI;
     LANGUAGE_GLSL;
 
+    BYTE_AT_CURSOR;
+
     BENCHGEN_TEXT;
 }
 
@@ -2644,6 +2646,8 @@ Compilation_Action :: enum {
     GO_TO_CURRENT_ERROR;
 
     REFRESH;
+
+    BYTE_AT_CURSOR;
 }
 
 Listing_Action :: enum {
@@ -3659,6 +3663,15 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .LANGUAGE_JAI;         document_change_lang(document, .JAI);
         case .LANGUAGE_GLSL;        document_change_lang(document, .GLSL);
 
+        case .BYTE_AT_CURSOR; {
+            if text_buffer_can_read_at_location(document.buffer, view.cursors.c0) {
+                byte := text_buffer_get_byte_at_location(document.buffer, view.cursors.c0);
+                editor_log(editor, "Byte at cursor: %", byte);
+            } else {
+                editor_log(editor, "Can't read at cursor");
+            }
+        }
+
         case .BENCHGEN_TEXT; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
@@ -3848,6 +3861,15 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
         }
 
         case .REFRESH;  run_compilation(editor, platform, panel);
+
+        case .BYTE_AT_CURSOR; {
+            if text_buffer_can_read_at_location(document.buffer, view.cursors.c0) {
+                byte := text_buffer_get_byte_at_location(document.buffer, view.cursors.c0);
+                editor_log(editor, "Byte at cursor: %", byte);
+            } else {
+                editor_log(editor, "Can't read at cursor");
+            }
+        }
     }
 
     if cursor_moved || buffer_changed {
@@ -5673,6 +5695,8 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     text_buffer_insert(*document.buffer, *view.cursors, "Compiling with args: ", .OMIT);
     text_buffer_insert(*document.buffer, *view.cursors, args, .OMIT);
     text_buffer_insert(*document.buffer, *view.cursors, "\n\n", .OMIT );
+
+    // TODO(jt): @Bug On Windows, compilation returns CRLF output?
 
     time_before := platform.get_current_time_monotonic();
     exit_code, exit_type, output, error := platform.run_in_process(args, working_directory,, temp);
