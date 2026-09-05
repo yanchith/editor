@@ -4197,6 +4197,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
     panel_w := rect_width(panel_rect);
     panel_h := rect_height(panel_rect);
     panel_content_w := rect_width(panel_content_rect);
+    panel_content_h := rect_height(panel_content_rect);
     panel_is_active := false;
     {
         _, active_panel_index := get_panel_for_active_view(editor);
@@ -4227,7 +4228,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
             // Clamp cursor to buffer
             //
             if view.flags & .CLAMP_CURSOR_TO_SCROLL {
-                viewport_rect := drect_from_point_and_size(panel.scroll.target.x, panel.scroll.target.y, panel_w, panel_h);
+                viewport_rect := drect_from_point_and_size(panel.scroll.target.x, panel.scroll.target.y, panel_content_w, panel_content_h);
                 cursor_rect   := drect_from_point_and_size(cursor0_position.x, cursor0_position.y, cell_w, cell_h);
 
                 cursor_position_dirty := false;
@@ -4258,7 +4259,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 scroll_padding_x := min(panel_w * 0.25, cell_w * PANEL_SCROLL_PADDING_CELLS_X);
                 scroll_padding_y := min(panel_h * 0.25, cell_h * PANEL_SCROLL_PADDING_CELLS_Y);
 
-                viewport_rect := drect_from_point_and_size(panel.scroll.target.x + GUTTER_PIXELS, panel.scroll.target.y, panel_content_w, panel_h);
+                viewport_rect := drect_from_point_and_size(panel.scroll.target.x + GUTTER_PIXELS, panel.scroll.target.y, panel_content_w, panel_content_h);
                 scroll_to_rect: DRect;
                 if view.flags & .CLAMP_SCROLL_TO_START_OF_LINE || cursor0_line_length < panel_content_w {
                     scroll_to_rect = drect_from_point_and_size(GUTTER_PIXELS, cursor0_position.y, cell_w, cell_h);
@@ -4366,7 +4367,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
             // Clamp item index to buffer
             //
             if view.flags & .CLAMP_ITEM_INDEX_TO_SCROLL {
-                viewport_rect := drect_from_point_and_size(panel.scroll.target.x, panel.scroll.target.y, panel_w, panel_h);
+                viewport_rect := drect_from_point_and_size(panel.scroll.target.x, panel.scroll.target.y, panel_content_w, panel_content_h);
                 line_rect   := drect_from_point_and_size(0, item_index_y, panel_w, cell_h);
 
                 if viewport_rect.y0 > line_rect.y1 {
@@ -4391,7 +4392,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
                 scroll_padding_x := min(panel_w * 0.25, cell_w * PANEL_SCROLL_PADDING_CELLS_X);
                 scroll_padding_y := min(panel_h * 0.25, cell_h * PANEL_SCROLL_PADDING_CELLS_Y);
 
-                viewport_rect := drect_from_point_and_size(panel.scroll.target.x + GUTTER_PIXELS, panel.scroll.target.y, panel_content_w, panel_h);
+                viewport_rect := drect_from_point_and_size(panel.scroll.target.x + GUTTER_PIXELS, panel.scroll.target.y, panel_content_w, panel_content_h);
                 scroll_to_rect := drect_from_point_and_size(GUTTER_PIXELS, item_index_y, cell_w, cell_h);
 
                 if scroll_to_rect.y1 > viewport_rect.y1 {
