@@ -1355,6 +1355,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             line_x    := _font_compute_line_length(editor.font, action_text, binary = false);
             cursor0_x := line_x + _font_compute_position_on_line(editor.font, line_view, mini_panel.cursors.c0.x, binary = false);
             cursor1_x := line_x + _font_compute_position_on_line(editor.font, line_view, mini_panel.cursors.c1.x, binary = false);
+            cursor_w  := ifx editor.theme.cursor_style == .FULL then cell_w else THIN_CURSOR_WIDTH;
 
             draw_rect(*render_commands,
                       mini_panel_x0 + cast(f32, cursor0_x), mini_panel_y,
@@ -1362,7 +1363,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                       editor.theme.selection_color);
             draw_rect(*render_commands,
                       mini_panel_x0 + cast(f32, cursor0_x), mini_panel_y,
-                      mini_panel_x0 + cast(f32, cursor0_x) + cell_w, mini_panel_y + cell_h,
+                      mini_panel_x0 + cast(f32, cursor0_x) + cursor_w, mini_panel_y + cell_h,
                       editor.theme.cursor_color);
 
             if editor.theme.invert_color_under_selection && mini_panel.item_index != -1 {
@@ -1450,6 +1451,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             line_x    := _font_compute_line_length(editor.font, action_text, binary = false);
             cursor0_x := line_x + _font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.cursors.c0.x, binary = false);
             cursor1_x := line_x + _font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.cursors.c1.x, binary = false);
+            cursor_w  := ifx editor.theme.cursor_style == .FULL then cell_w else THIN_CURSOR_WIDTH;
 
             draw_rect(*render_commands,
                       modal_interaction_line_x0 + cast(f32, cursor0_x), modal_interaction_line_y,
@@ -1457,7 +1459,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                       editor.theme.selection_color);
             draw_rect(*render_commands,
                       modal_interaction_line_x0 + cast(f32, cursor0_x), modal_interaction_line_y,
-                      modal_interaction_line_x0 + cast(f32, cursor0_x) + cell_w, modal_interaction_line_y + cell_h,
+                      modal_interaction_line_x0 + cast(f32, cursor0_x) + cursor_w, modal_interaction_line_y + cell_h,
                       editor.theme.cursor_color);
 
             if editor.theme.invert_color_under_selection {
@@ -3622,6 +3624,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
+        // TODO(jt): @Bug Also traverse other panels to change the color, they can be visiting the same document.
         case .TOGGLE_READONLY; {
             if document.flags & .READONLY_BECAUSE_OF_MANUAL_LOCK {
                 document.flags &= ~.READONLY_BECAUSE_OF_MANUAL_LOCK;
