@@ -2,7 +2,7 @@
 
 TODO(jt): Known serious bugs:
 
-- On macOS, launching the app creates a console.
+(none currently)
 
 TODO(jt): Roadmap:
 
@@ -17,7 +17,7 @@ TODO(jt): Roadmap:
 - [X] Find in mini panel
 - [X] Cut/Copy/Paste
 - [X] Undo!
-- [~] Messages (still need to do a messages view)
+- [~] Messages ; Still need to do a messages view
 - [X] Modeline
 - [X] Keymap support
 - [X] Find/replace and modal/interactive commands.
@@ -26,11 +26,11 @@ TODO(jt): Roadmap:
 - [X] Syntax Highlighting
 - [X] Mode defined parentheses (surround, autoclose)
 - [X] Matching parentheses highlight
-- [~] Syntax aware indentation (C-i)
+- [X] Syntax aware indentation (C-i)
 - [X] Watch opened files for changes on disk
-- [~] Panel tiling
+- [~] Panel tiling ; Needs a few more features? 4-split/N-split, moving split boundaries
 - [X] FreeType subpixel rendering
-- [~] Directory Lister panel
+- [~] Directory Lister panel ; Needs a few more info like directory size, item type, etc.
 - [X] *compilation* buffer
 - [X] DIRECTORY_SEARCH
 - [X] SHOW_COMMANDS (M-x)
@@ -44,12 +44,12 @@ TODO(jt): Roadmap:
 - [X] Refresh lister
 - [X] Delete file in lister
 - [X] Click to open file in lister
-- [X] Mode defined comments (C-x C-;) ; (Still want to play with single-line block comments)
-- [~] Themes (got some basic ones, could have more (need to add delphi, and at least more one good light theme)
+- [X] Mode defined comments (C-x C-;) ; Still want to play with single-line block comments
+- [~] Themes ; Add some good light themes (Delphi, Visual Studio light)
 - [X] Dark text color under bright rectangles (cursor, selection, line)
-- [~] ~Rotated session logs
+- [~] Session logs ; Needs log rotation so logs don't pile up
 - [X] M-g g (go to line)
-- [X] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN
+- [~] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN ; Should also work for selections
 - [X] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
 - [X] C-j join-next-line
 - [X] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
@@ -60,7 +60,7 @@ TODO(jt): Roadmap:
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [X] Language: JAI
 - [X] Language: C
-- [~] Language: C++
+- [~] Language: C++ ; Currently serviced by the C lexer
 - [X] Language: GLSL
 - [ ] Language: HLSL
 - [ ] Language: Rust
@@ -80,11 +80,13 @@ TODO(jt): Roadmap:
 - [ ] Animate opening of the mini panel.
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
-- [~] CRLF ; (Still need to add special rendering for it)
-
-... things below here are only important if I want to share this with other people ...
-
+- [~] CRLF ; Still need to add special rendering for it
 - [ ] Config file
+- [ ] macOS package
+
+... after alpha ...
+
+- [ ] Linux
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
 - [ ] Render subtle symbols for whitespace characters (space, tab, cr, lf)
@@ -97,7 +99,7 @@ TODO(jt): Roadmap:
 - [~] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
 - [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
 - [ ] Font Kerning
-- [ ] Get rid of freetype without compromising quality (kb_text_shape + Slug)
+- [ ] Get rid of FreeType without compromising quality (kb_text_shape + Slug)
 - [ ] Version control view (Git only?, via plugin interface?)
 - [ ] 4coder style floating annotations? (e.g. name of the function or if statement expresion after closing brace)
 - [ ] Customization and plugins
@@ -2773,8 +2775,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
                     }
 
                     if !handled {
-                        // TODO(jt): @Bug If we Cmd-Q on macOS, the Q comes here.
-                        // Should we execute this only if there's no ctrl/alt/cmd? (shift is okay).
                         undo_modifier: Undo_Modifier = .NONE;
                         if input.time - document.time_of_last_simple_edit < UNDO_AUTOFUSE_PERIOD {
                             undo_modifier = .CAN_AUTOFUSE;
