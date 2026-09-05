@@ -1126,12 +1126,15 @@ editor_logger :: (message: string, data: *void, info: Log_Info) {
         sb: String_Builder;
         sb.allocator = temp;
 
-        print(*sb, time_prefix);
-        print(*sb, log_level_prefix);
-        print(*sb, source_prefix);
-        print(*sb, " ");
-        print(*sb, message);
-        print(*sb, "\n");
+        // WARNING: Use append for unknown string builder content! Message may contain unescaped % characters.
+        // If it does, print_to_builder will log an error: 'Invalid \% index % in the format string \"%\" at character %. %',
+        // which once turned to string will once again contain unescaped %. This continues until we stack overflow.
+        append(*sb, time_prefix);
+        append(*sb, log_level_prefix);
+        append(*sb, source_prefix);
+        append(*sb, " ");
+        append(*sb, message);
+        append(*sb, "\n");
 
         File.file_write(*logger_data.log_file, *sb, do_reset = true);
         File.file_flush(logger_data.log_file); // On macOS, this wasn't really flushing without us being explicit about it.

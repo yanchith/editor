@@ -67,11 +67,12 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
         array_reserve(*actions_to_search_names, PANEL_ACTION_NAMES.count);
         array_reserve(*actions_to_search_values, PANEL_ACTION_NAMES.count);
-        for action_name, action_index: PANEL_ACTION_NAMES {
-            if action_name != "NONE" {
-                action := PANEL_ACTIONS_VALUES[action_index];
-                action_text := build_action_text(action, action_name, editor.panel_key_map);
+        for PANEL_ACTION_NAMES {
+            if it != "NONE" {
+                key_map := *editor.panel_key_map;
+                action  := PANEL_ACTIONS_VALUES[it_index];
 
+                action_text := build_action_text(action, it, key_map);
                 array_add(*actions_to_search_names, action_text);
                 array_add(*actions_to_search_values, action);
             }
@@ -97,8 +98,12 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     array_reserve(*actions_to_search_values, actions_to_search_values.count + COMPILATION_ACTION_NAMES.count);
                     for COMPILATION_ACTION_NAMES {
                         if it != "NONE" {
-                            array_add(*actions_to_search_names, it);
-                            array_add(*actions_to_search_values, COMPILATION_ACTION_VALUES[it_index]);
+                            key_map := *editor.compilation_key_map;
+                            action  := COMPILATION_ACTION_VALUES[it_index];
+
+                            action_text := build_action_text(action, it, key_map);
+                            array_add(*actions_to_search_names, action_text);
+                            array_add(*actions_to_search_values, action);
                         }
                     }
                     assert(actions_to_search_names.count == actions_to_search_values.count);
@@ -110,8 +115,12 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     for DOCUMENT_ACTION_NAMES {
                         // nocheckin finish the rest
                         if it != "NONE" {
-                            array_add(*actions_to_search_names, it);
-                            array_add(*actions_to_search_values, DOCUMENT_ACTION_VALUES[it_index]);
+                            key_map := *editor.document_key_map;
+                            action  := DOCUMENT_ACTION_VALUES[it_index];
+
+                            action_text := build_action_text(action, it, key_map);
+                            array_add(*actions_to_search_names, action_text);
+                            array_add(*actions_to_search_values, action);
                         }
                     }
                     assert(actions_to_search_names.count == actions_to_search_values.count);
@@ -124,8 +133,12 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 array_reserve(*actions_to_search_values, actions_to_search_values.count + LISTING_ACTION_NAMES.count);
                 for LISTING_ACTION_NAMES {
                     if it != "NONE" {
-                        array_add(*actions_to_search_names, it);
-                        array_add(*actions_to_search_values, LISTING_ACTION_VALUES[it_index]);
+                        key_map := *editor.listing_key_map;
+                        action  := LISTING_ACTION_VALUES[it_index];
+
+                        action_text := build_action_text(action, it, key_map);
+                        array_add(*actions_to_search_names, action_text);
+                        array_add(*actions_to_search_values, action);
                     }
                 }
                 assert(actions_to_search_names.count == actions_to_search_values.count);
@@ -142,7 +155,6 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 x0 := count_utf8_chars(String.slice(it, 0, found_index));
 
                 s := arena_push_string(mini_panel.items_arena, it);
-                String.to_lower_in_place(s);
 
                 item := array_add(*mini_panel.items);
                 item.text = s;
@@ -284,17 +296,20 @@ cancel :: (editor: *Editor, platform: Platform, input: Input) {
 }
 
 
-build_action_text :: (action: s64, action_name: string, key_map: Key_Map) -> /* Temporary_Storage */string {
+build_action_text :: (action: s64, action_name: string, key_map: Key_Map) -> /* Temporary_Storage */ string {
     sb: String_Builder;
     sb.allocator = temp;
 
-    print(*sb, temp_right_pad(action_name, 40));
+    action_padded := temp_right_pad(action_name, 40);
+    String.to_lower_in_place(action_padded);
+
+    append(*sb, action_padded);
 
     first := true;
     for registered_action, registered_index: key_map.registered_actions {
         if cast(s64, registered_action) == action {
             if !first {
-                print(*sb, ", ");
+                append(*sb, ", ");
             }
             shortcut_print_to_builder(key_map.registered_shortcuts[registered_index], *sb);
             first = false;

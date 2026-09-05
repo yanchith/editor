@@ -173,54 +173,54 @@ shortcut_begins_with_nocase :: (shortcut: Shortcut, prefix: Shortcut) -> bool {
     return true;
 }
 
-shortcut_print_to_builder :: (shortcut: Shortcut, b: *String_Builder) {
+shortcut_print_to_builder :: (shortcut: Shortcut, sb: *String_Builder) {
     for 0..shortcut.count - 1 {
         key := shortcut.sequence[it];
 
-        if key.modifier_flags & .CTRL   print(b, "C-");
-        if key.modifier_flags & .ALT    print(b, "M-");
-        if key.modifier_flags & .SHIFT  print(b, "S-");
-        if key.modifier_flags & .META   print(b, "X-");
+        if key.modifier_flags & .CTRL   append(sb, "C-");
+        if key.modifier_flags & .ALT    append(sb, "M-");
+        if key.modifier_flags & .SHIFT  append(sb, "S-");
+        if key.modifier_flags & .META   append(sb, "X-");
 
         if key.type == {
             case .KEY; {
                 if key.key == {
-                    case .ARROW_UP;      print(b, "<up>");
-                    case .ARROW_DOWN;    print(b, "<down>");
-                    case .ARROW_LEFT;    print(b, "<left>");
-                    case .ARROW_RIGHT;   print(b, "<right>");
+                    case .ARROW_UP;      append(sb, "<up>");
+                    case .ARROW_DOWN;    append(sb, "<down>");
+                    case .ARROW_LEFT;    append(sb, "<left>");
+                    case .ARROW_RIGHT;   append(sb, "<right>");
 
-                    case .HOME;          print(b, "<home>");
-                    case .END;           print(b, "<end>");
+                    case .HOME;          append(sb, "<home>");
+                    case .END;           append(sb, "<end>");
 
-                    case .PAGE_UP;       print(b, "<pageup>");
-                    case .PAGE_DOWN;     print(b, "<pagedown>");
+                    case .PAGE_UP;       append(sb, "<pageup>");
+                    case .PAGE_DOWN;     append(sb, "<pagedown>");
 
-                    case .F1;            print(b, "<f1>");
-                    case .F2;            print(b, "<f2>");
-                    case .F3;            print(b, "<f3>");
-                    case .F4;            print(b, "<f4>");
-                    case .F5;            print(b, "<f5>");
-                    case .F6;            print(b, "<f6>");
-                    case .F7;            print(b, "<f7>");
-                    case .F8;            print(b, "<f8>");
-                    case .F9;            print(b, "<f9>");
-                    case .F10;           print(b, "<f10>");
-                    case .F11;           print(b, "<f11>");
-                    case .F12;           print(b, "<f12>");
+                    case .F1;            append(sb, "<f1>");
+                    case .F2;            append(sb, "<f2>");
+                    case .F3;            append(sb, "<f3>");
+                    case .F4;            append(sb, "<f4>");
+                    case .F5;            append(sb, "<f5>");
+                    case .F6;            append(sb, "<f6>");
+                    case .F7;            append(sb, "<f7>");
+                    case .F8;            append(sb, "<f8>");
+                    case .F9;            append(sb, "<f9>");
+                    case .F10;           append(sb, "<f10>");
+                    case .F11;           append(sb, "<f11>");
+                    case .F12;           append(sb, "<f12>");
 
-                    case;                print(b, "<unknown>");
+                    case;                append(sb, "<unknown>");
                 }
             }
 
             case .CODEPOINT; {
                 if key.codepoint == {
-                    case .SPACEBAR;      print(b, "<space>");
-                    case .TAB;           print(b, "<tab>");
+                    case .SPACEBAR;      append(sb, "<space>");
+                    case .TAB;           append(sb, "<tab>");
 
-                    case .ENTER;         print(b, "<enter>");
-                    case .DELETE;        print(b, "<delete>");
-                    case .BACKSPACE;     print(b, "<backspace>");
+                    case .ENTER;         append(sb, "<enter>");
+                    case .DELETE;        append(sb, "<delete>");
+                    case .BACKSPACE;     append(sb, "<backspace>");
 
                     case; {
                         buf: [4] u8;
@@ -229,14 +229,14 @@ shortcut_print_to_builder :: (shortcut: Shortcut, b: *String_Builder) {
 
                         Unicode.character_utf32_to_utf8(cast(u32, key.codepoint), *s);
 
-                        print(b, s);
+                        append(sb, s);
                     }
                 }
             }
         }
 
         if it < shortcut.count - 1 {
-            print(b, " ");
+            append(sb, " ");
         }
     }
 }

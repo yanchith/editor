@@ -2029,6 +2029,28 @@ assert_valid_buffer :: (buffer: Text_Buffer) {
     }
 }
 
+/* TODO(jt): @Bug Crash here!
+
+C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:2033,5: Assertion failed:Invalid line! line_index: 18, line_count: 18
+
+Stack trace:
+'editor_assertion_failed' at C:/Users/yanchith/workspace/editor/src/main.jai:1159
+'assert_helper' at C:/Users/yanchith/workspace/jai/modules/Basic/module.jai:86
+'assert_line_valid' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:2033
+'text_buffer_make_view_for_line' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:1355
+'get_position_for_location' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5852
+'get_position_at_cursor' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5835
+'panel_set_document' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:5572
+'confirm' at C:/Users/yanchith/workspace/editor/src/editor/mini_panel_switch_view.jai:187
+'route_event_to_mini_panel' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:2357
+'update_and_render' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:1177
+'main' at C:/Users/yanchith/workspace/editor/src/main.jai:738
+
+Input events this frame:
+[0] {type = KEYBOARD; key_pressed = 1; key_code = ENTER; modifier_flags = (untagged union); utf32 = 0; repeat = false; text_input_count = 0; typical_wheel_delta = 0; wheel_delta = 0; files = []; touch_type = MOVED; touch_index = 0; touch_x = 0; touch_y = 0; window_event_type = UNINITIALIZED; window = null; }
+
+*/
+
 assert_line_valid :: (buffer: Text_Buffer, line_index: s64) {
     assert(is_line_valid(buffer, line_index), "Invalid line! line_index: %, line_count: %",
            line_index, buffer.line_count);
