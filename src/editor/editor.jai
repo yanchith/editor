@@ -3405,6 +3405,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
+        // TODO(jt): @Bug This doesn't align the comment well across multiple lines.
         case .TOGGLE_COMMENT; {
             line_comment, block_comment_start, block_comment_end := document_get_comment_style(document);
             line_comment_length := count_utf8_chars(line_comment);
@@ -6080,9 +6081,12 @@ toggle_debug_view :: (editor: *Editor, value: Editor.Debug_View) {
 
 WELCOME :: #string DONE
 
+Welcome to the untitled text editor!
 
+This is a pre-alpha release, so minor bugs and occasional crashes can happen.
+I apologize for the inconvenience.
 
-
-    Welcome to the untitled text editor!
+If you are coming from Emacs, most of the keyboard shortcuts will be familiar to you.
+I plan to add config files and the ability to start from a editor specific template soon.
 
 DONE;
