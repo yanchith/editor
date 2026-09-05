@@ -1,8 +1,9 @@
 // TODO(jt): Make themes configurable. :Config
 Theme :: struct {
     cursor_color: Vector4;
-    cursor_color_active: Vector4;
+    cursor_color_hot: Vector4;
     cursor_color_readonly: Vector4;
+    cursor_style: enum { FULL :: 0; THIN :: 1; };
     line_color: Vector4;
     selection_color: Vector4;
     highlight_color: Vector4;
@@ -56,7 +57,7 @@ abulafia_theme :: () -> Theme {
 
     t: Theme;
     t.cursor_color               = cursor_color;
-    t.cursor_color_active        = unpack_srgba(0xffffffff);
+    t.cursor_color_hot           = unpack_srgba(0xffffffff);
     t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
     t.line_color                 = { 0, 0, 0, 0 };
     t.selection_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.150);
@@ -99,7 +100,7 @@ naysayer_theme :: () -> Theme {
 
     t: Theme;
     t.cursor_color               = cursor_color;
-    t.cursor_color_active        = unpack_srgba(0xffffffff);
+    t.cursor_color_hot           = unpack_srgba(0xffffffff);
     t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
     t.line_color                 = { 0, 0, 0, 0 };
     t.selection_color            = unpack_srgba(0x0000ffff);
@@ -141,7 +142,7 @@ handmade_theme :: () -> Theme {
 
     t: Theme;
     t.cursor_color               = cursor_color;
-    t.cursor_color_active        = unpack_srgba(0xffffffff);
+    t.cursor_color_hot           = unpack_srgba(0xffffffff);
     t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
     t.line_color                 = { 0, 0, 0, 0 };
     t.selection_color            = unpack_srgba(0x0000ffff);
@@ -184,7 +185,7 @@ zenburn_theme :: () -> Theme {
 
     t: Theme;
     t.cursor_color               = cursor_color;
-    t.cursor_color_active        = unpack_srgba(0xffffffff);
+    t.cursor_color_hot           = unpack_srgba(0xffffffff);
     t.cursor_color_readonly      = unpack_srgba(0xcc9393ff);
     t.line_color                 = { 0, 0, 0, 0 };
     t.selection_color            = unpack_srgba(0x2b2b2bff);
@@ -222,12 +223,12 @@ zenburn_theme :: () -> Theme {
 
 stb_theme :: () -> Theme {
     foreground_color := Vector4.{ 0, 0, 0, 1 };
-    background_color := Vector4.{ 1, 1, 1, 1 };
 
     t: Theme;
     t.cursor_color               = foreground_color;
-    t.cursor_color_active        = foreground_color;
+    t.cursor_color_hot           = foreground_color;
     t.cursor_color_readonly      = unpack_srgba(0xa0a0a0ff);
+    t.cursor_style               = .THIN;
     t.line_color                 = { 0, 0, 0, 0 };
     t.selection_color            = foreground_color;
     t.highlight_color            = { 0, 0, 0, 0.1 };
@@ -236,7 +237,7 @@ stb_theme :: () -> Theme {
     t.modeline_color             = unpack_srgba(0xa0a0a0ff);
     t.modeline_color_active      = unpack_srgba(0xa0a0a0ff);
 
-    t.background_color           = background_color;
+    t.background_color           = Vector4.{ 1, 1, 1, 1 };
     t.separator_color            = foreground_color;
 
     t.listing_item_text_color          = foreground_color;

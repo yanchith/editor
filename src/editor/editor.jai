@@ -203,6 +203,9 @@ CURSOR_ANIM_DURATION_KEYBOARD_DIRECT:   f32 : 0.00; // TODO(jt): Make keyboard a
 CURSOR_ANIM_DURATION_KEYBOARD_INDIRECT: f32 : 0.15; // TODO(jt): Make keyboard anim time configurable. :Config
 CURSOR_ANIM_DURATION_MOUSE:             f32 : 0.15; // TODO(jt): Make mouse anim time configurable. :Config
 
+THIN_CURSOR_WIDTH:          f32 : 6;
+THIN_CURSOR_WIDTH_INACTIVE: f32 : 2;
+
 // TODO(jt): Make fonts configurable. :Config
 FONT_LINE_HEIGHT_MULTIPLIER: f32 : 1.1;
 FONT :: "LiberationMono";
@@ -2196,7 +2199,7 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                                 view := *it.view._document;
                                 if view.document == document {
                                     interpolation_start(*view.cursor_color,
-                                                        editor.theme.cursor_color_active, editor.theme.cursor_color_readonly,
+                                                        editor.theme.cursor_color_hot, editor.theme.cursor_color_readonly,
                                                         input.time, CURSOR_FLASH_DURATION);
                                 }
                             }
@@ -3061,7 +3064,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                         document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
 
                         interpolation_start(*view.cursor_color,
-                                            editor.theme.cursor_color_active, editor.theme.cursor_color,
+                                            editor.theme.cursor_color_hot, editor.theme.cursor_color,
                                             input.time, CURSOR_FLASH_DURATION);
 
 
@@ -3113,7 +3116,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
 
                     interpolation_start(*view.cursor_color,
-                                        editor.theme.cursor_color_active, editor.theme.cursor_color,
+                                        editor.theme.cursor_color_hot, editor.theme.cursor_color,
                                         input.time, CURSOR_FLASH_DURATION);
 
                     update_scopes(document);
@@ -3319,6 +3322,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
+        // nocheckin investigate additional spaces!
         case .JOIN_WITH_NEXT_LINE; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
@@ -3625,14 +3629,14 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     editor_log(editor, "% is now unlocked; however, it is still read-only for other reasons.", document.backing_file_path);
                 } else {
                     interpolation_start(*view.cursor_color,
-                                        editor.theme.cursor_color_active, editor.theme.cursor_color,
+                                        editor.theme.cursor_color_hot, editor.theme.cursor_color,
                                         input.time, CURSOR_FLASH_DURATION);
                     editor_log(editor, "% is now unlocked", document.backing_file_path);
                 }
             } else {
                 document.flags |= .READONLY_BECAUSE_OF_MANUAL_LOCK;
                 interpolation_start(*view.cursor_color,
-                                    editor.theme.cursor_color_active, editor.theme.cursor_color_readonly,
+                                    editor.theme.cursor_color_hot, editor.theme.cursor_color_readonly,
                                     input.time, CURSOR_FLASH_DURATION);
 
                 editor_log(editor, "% is now locked (read-only)", document.backing_file_path);
@@ -4333,7 +4337,7 @@ update_panel :: (editor: *Editor, platform: Platform, input: Input, panel: *Pane
 
                 if document.flags & (.MODIFIED_THIS_FRAME | .MODIFY_ATTEMPT_THIS_FRAME) {
                     color := ifx document.flags & .READONLY then editor.theme.cursor_color_readonly else editor.theme.cursor_color;
-                    interpolation_start(*view.cursor_color, editor.theme.cursor_color_active, color, input.time, CURSOR_FLASH_DURATION);
+                    interpolation_start(*view.cursor_color, editor.theme.cursor_color_hot, color, input.time, CURSOR_FLASH_DURATION);
                 }
 
                 interpolation_running := false;
@@ -4640,24 +4644,39 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             //
             // Draw cursor
             //
-            if panel_is_active {
+            {
                 cursor_position := view.cursor_position.value;
 
-                line_rect := rect_from_point_and_size(
-                    panel_content_x,
-                    cast(f32, cursor_position.y - panel.scroll.value.y),
-                    panel_w,
-                    cell_h,
-                );
+                if panel_is_active {
+                    line_rect := rect_from_point_and_size(panel_content_x, cast(f32, cursor_position.y - panel.scroll.value.y),
+                                                          panel_w, cell_h);
+                    draw_rect(render_commands, line_rect, editor.theme.line_color);
 
-                draw_rect(render_commands, line_rect, editor.theme.line_color);
 
-                r := drect_from_point_and_size(panel_content_x + cursor_position.x, cursor_position.y, cell_w, cell_h) - panel.scroll.value;
+                    cursor_w        := ifx editor.theme.cursor_style == .FULL then cell_w else THIN_CURSOR_WIDTH;
+                    cursor_rect64   := drect_from_point_and_size(panel_content_x + cursor_position.x, cursor_position.y, cursor_w, cell_h) - panel.scroll.value;
+                    cursor_rect     := drect_to_rect(cursor_rect64);
 
-                cursor_rect := drect_to_rect(r);
-                cursor_rect = rect_clamp(cursor_rect, panel_content_rect);
+                    draw_rect(render_commands, cursor_rect, view.cursor_color.value);
+                } else if editor.theme.cursor_style == .FULL {
+                    cursor_rect64   := drect_from_point_and_size(panel_content_x + cursor_position.x, cursor_position.y, cell_w, cell_h) - panel.scroll.value;
+                    cursor_rect     := drect_to_rect(cursor_rect64);
 
-                draw_rect(render_commands, cursor_rect, view.cursor_color.value);
+                    left:   Rect = { cursor_rect.x0,     cursor_rect.y0,     cursor_rect.x0 + 1, cursor_rect.y1 };
+                    right:  Rect = { cursor_rect.x1 - 1, cursor_rect.y0,     cursor_rect.x1,     cursor_rect.y1 };
+                    top:    Rect = { cursor_rect.x0,     cursor_rect.y0,     cursor_rect.x1,     cursor_rect.y0 + 1 };
+                    bottom: Rect = { cursor_rect.x0,     cursor_rect.y1 - 1, cursor_rect.x1,     cursor_rect.y1 };
+
+                    draw_rect(render_commands, left, view.cursor_color.value);
+                    draw_rect(render_commands, right, view.cursor_color.value);
+                    draw_rect(render_commands, top, view.cursor_color.value);
+                    draw_rect(render_commands, bottom, view.cursor_color.value);
+                } else if editor.theme.cursor_style == .THIN {
+                    cursor_rect64   := drect_from_point_and_size(panel_content_x + cursor_position.x, cursor_position.y, THIN_CURSOR_WIDTH_INACTIVE, cell_h) - panel.scroll.value;
+                    cursor_rect     := drect_to_rect(cursor_rect64);
+
+                    draw_rect(render_commands, cursor_rect, view.cursor_color.value);
+                }
             }
 
             //
@@ -4728,16 +4747,19 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 invert_ranges: [..] Font_Invert_Range;
                 invert_ranges.allocator = temp;
-                if editor.theme.invert_color_under_selection {
+                if panel_is_active && editor.theme.invert_color_under_selection {
                     c0 := view.cursors.c0;
                     c1 := view.cursors.c1;
-                    text_location_sort(*c0, *c1);
 
-                    invert_range := array_add(*invert_ranges);
-                    invert_range.x0 = c0.x;
-                    invert_range.y0 = c0.y - viewport_line0;
-                    invert_range.x1 = c1.x;
-                    invert_range.y1 = c1.y - viewport_line0;
+                    if c0 != c1 {
+                        text_location_sort(*c0, *c1);
+
+                        invert_range := array_add(*invert_ranges);
+                        invert_range.x0 = c0.x;
+                        invert_range.y0 = c0.y - viewport_line0;
+                        invert_range.x1 = c1.x - 1; // -1, because font ranges are inclusive
+                        invert_range.y1 = c1.y - viewport_line0;
+                    }
                 }
 
                 scissor_rect := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
@@ -4804,12 +4826,24 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 invert_ranges.allocator = temp;
 
                 if it == view.item_index {
-                    draw_rect(render_commands, line_rect_screen, editor.theme.selection_color);
+                    if panel_is_active {
+                        draw_rect(render_commands, line_rect_screen, editor.theme.selection_color);
 
-                    if editor.theme.invert_color_under_selected_listing_line {
-                        invert_range := array_add(*invert_ranges);
-                        invert_range.x0 = 0;
-                        invert_range.x1 = S64_MAX; // @Hack We want to invert the whole line anyway.
+                        if editor.theme.invert_color_under_selected_listing_line {
+                            invert_range := array_add(*invert_ranges);
+                            invert_range.x0 = 0;
+                            invert_range.x1 = S64_MAX; // @Hack We want to invert the whole line anyway.
+                        }
+                    } else {
+                        r := line_rect_screen;
+                        left:   Rect = { r.x0,     r.y0,     r.x0 + 1, r.y1 };
+                        right:  Rect = { r.x1 - 1, r.y0,     r.x1,     r.y1 };
+                        top:    Rect = { r.x0,     r.y0,     r.x1,     r.y0 + 1 };
+                        bottom: Rect = { r.x0,     r.y1 - 1, r.x1,     r.y1 };
+                        draw_rect(render_commands, left, editor.theme.selection_color);
+                        draw_rect(render_commands, right, editor.theme.selection_color);
+                        draw_rect(render_commands, top, editor.theme.selection_color);
+                        draw_rect(render_commands, bottom, editor.theme.selection_color);
                     }
                 }
 
