@@ -11,8 +11,8 @@ mini_panel_show_commands_procs: Mini_Panel_Procs = {
 
 #scope_file
 
-PANEL_ACTION_NAMES  :: #run enum_names(Panel_Action);
-PANEL_ACTION_VALUES :: #run enum_values_as_s64(Panel_Action);
+PANEL_ACTION_NAMES   :: #run enum_names(Panel_Action);
+PANEL_ACTIONS_VALUES :: #run enum_values_as_s64(Panel_Action);
 
 DOCUMENT_ACTION_NAMES  :: #run enum_names(Document_Action);
 DOCUMENT_ACTION_VALUES :: #run enum_values_as_s64(Document_Action);
@@ -65,12 +65,15 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         actions_to_search_values: [..] s64;
         actions_to_search_values.allocator = temp;
 
-        array_reserve(*actions_to_search_names, actions_to_search_names.count + PANEL_ACTION_NAMES.count);
-        array_reserve(*actions_to_search_values, actions_to_search_values.count + PANEL_ACTION_NAMES.count);
-        for PANEL_ACTION_NAMES {
-            if it != "NONE" {
-                array_add(*actions_to_search_names, it);
-                array_add(*actions_to_search_values, PANEL_ACTION_VALUES[it_index]);
+        array_reserve(*actions_to_search_names, PANEL_ACTION_NAMES.count);
+        array_reserve(*actions_to_search_values, PANEL_ACTION_NAMES.count);
+        for action_name, action_index: PANEL_ACTION_NAMES {
+            if action_name != "NONE" {
+                action := PANEL_ACTIONS_VALUES[action_index];
+                action_text := build_action_text(action, action_name, editor.panel_key_map);
+
+                array_add(*actions_to_search_names, action_text);
+                array_add(*actions_to_search_values, action);
             }
         }
         assert(actions_to_search_names.count == actions_to_search_values.count);
@@ -105,6 +108,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     array_reserve(*actions_to_search_names, actions_to_search_names.count + DOCUMENT_ACTION_NAMES.count);
                     array_reserve(*actions_to_search_values, actions_to_search_values.count + DOCUMENT_ACTION_NAMES.count);
                     for DOCUMENT_ACTION_NAMES {
+                        // nocheckin finish the rest
                         if it != "NONE" {
                             array_add(*actions_to_search_names, it);
                             array_add(*actions_to_search_values, DOCUMENT_ACTION_VALUES[it_index]);
@@ -268,4 +272,25 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
 cancel :: (editor: *Editor, platform: Platform, input: Input) {
     close_mini_panel(editor, platform, input);
+}
+
+
+build_action_text :: (action: s64, action_name: string, key_map: Key_Map) -> /* Temporary_Storage */string {
+    sb: String_Builder;
+    sb.allocator = temp;
+
+    print(*sb, temp_right_pad(action_name, 40));
+
+    first := true;
+    for registered_action, registered_index: key_map.registered_actions {
+        if cast(s64, registered_action) == action {
+            if !first {
+                print(*sb, ", ");
+            }
+            shortcut_print_to_builder(key_map.registered_shortcuts[registered_index], *sb);
+            first = false;
+        }
+    }
+
+    return builder_to_string(*sb,, temp);
 }
