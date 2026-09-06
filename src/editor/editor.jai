@@ -13,6 +13,7 @@ TODO(jt): if I had to release (on Windows) today:
 - Add config file for theme customization
 - Add config file for at least some of visual :Config things
 - Add config file for extension to language association
+- Hide CR from rendering
 - Welcome message should have some introduction
 
 TODO(jt): Roadmap:
@@ -65,7 +66,7 @@ TODO(jt): Roadmap:
 - [X] C-j join-next-line
 - [X] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
 - [ ] C-: Expand region
-- [ ] C-u C-<space> and cursor undo.
+- [ ] C-u C-<space> Cursor undo
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
@@ -74,23 +75,20 @@ TODO(jt): Roadmap:
 - [~] Language: C++ ; Currently serviced by the C lexer
 - [X] Language: GLSL
 - [ ] Language: HLSL
+- [ ] Language: Slang
+- [ ] Language: WGSL
 - [ ] Language: Rust
 - [ ] Language: Javascript
 - [ ] Language: Typescript
 - [ ] Language: C#
 - [ ] Language: Odin
-- [ ] Language: Lua
-- [ ] Language: Java
-- [ ] Language: Python
-- [ ] System fonts
+- [ ] Load System fonts
 - [ ] Multiple Cursors
-- [ ] Emacs-like kill ring
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
 - [ ] Mouse interaction in the mini panel (text selection, item selection, item hover?)
 - [ ] Mouse interaction in the modal interaction (text selection)
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
-- [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
 - [~] CRLF ; Still need to add special rendering for it
 - [ ] Config files
@@ -98,7 +96,12 @@ TODO(jt): Roadmap:
 
 ... after alpha ...
 
-- [ ] Linux
+- [ ] Linux build
+- [ ] Language: Lua
+- [ ] Language: Java
+- [ ] Language: Python
+- [ ] Emacs-like kill ring
+- [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Double click to select word (expand region)
 - [ ] Triple click to select line.
 - [ ] Render subtle symbols for whitespace characters (space, tab, cr, lf)
