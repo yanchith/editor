@@ -15,7 +15,6 @@ TODO(jt): if I had to release (on Windows) today:
 - Add config file for extension to language association
 - Rotate logs (clean up old logs)
 - Welcome message
-- Print build version in welcome message
 
 TODO(jt): Roadmap:
 
@@ -121,7 +120,7 @@ TODO(jt): Roadmap:
 
 */
 
-#module_parameters()(SANITY := false);
+#module_parameters()(VERSION_MAJOR := 0, VERSION_MINOR := 0, VERSION_PATCH := 0, BUILD_TIMESTAMP := "unknown date", SANITY := false);
 
 f32 :: float32;
 f64 :: float64;
@@ -6119,11 +6118,15 @@ toggle_debug_view :: (editor: *Editor, value: Editor.Debug_View) {
     }
 }
 
-WELCOME :: #string DONE
+WELCOME :: #run -> string {
+    return sprint(WELCOME_TEMPLATE, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP);
+}
 
-Welcome to the untitled text editor!
+WELCOME_TEMPLATE :: #string DONE
 
-This is a pre-alpha release, so minor bugs and occasional crashes can happen.
+Welcome to the untitled text editor! (Version %.%.%, built on %)
+
+This is an alpha release, so minor bugs and occasional crashes can happen.
 I apologize for the inconvenience.
 
 If you are coming from Emacs, most of the keyboard shortcuts will be familiar to you.

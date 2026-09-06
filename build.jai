@@ -18,6 +18,11 @@ Optimization_Level :: enum {
 }
 
 build :: () {
+    build_version_major := 0;
+    build_version_minor := 0;
+    build_version_patch := 1;
+    build_timestamp := to_calendar(current_time_consensus());
+
     optimization_level := Optimization_Level.DEBUG;
 
     profiler_plugin: Profiler_Plugin.Profiler_Plugin;
@@ -107,6 +112,13 @@ build :: () {
 
     compiler_begin_intercept(w);
 
+    build_info_declaration := tprint(BUILD_INFO_DECLARATION_TEMPLATE, build_version_major, build_version_minor, build_version_patch,
+                                     build_timestamp.day_of_month_starting_at_0 + 1,
+                                     month_text(build_timestamp.month_starting_at_0),
+                                     build_timestamp.year);
+
+    add_build_string(build_info_declaration, w);
+
     if do_sanity           add_build_string("__SANITY :: true;\n", w);
     if do_windows_console  add_build_string("__WINDOWS_CONSOLE :: true;\n", w);
 
@@ -135,6 +147,13 @@ build :: () {
 
 #run build();
 
+BUILD_INFO_DECLARATION_TEMPLATE :: #string DONE
+__VERSION_MAJOR    :: %;
+__VERSION_MINOR    :: %;
+__VERSION_PATCH    :: %;
+__BUILD_TIMESTAMP  :: "% % %";
+DONE;
+
 HELP :: #string DONE
 
 Usage: jai [DEFAULT_METAPROGRAM_OPTIONS] FILE... - [OPTIONS]
@@ -162,3 +181,21 @@ OPTIONS:
 For DEFAULT_METAPROGRAM_OPTIONS, type 'jai -help'.
 
 DONE;
+
+month_text :: (month_starting_at_0: s8) -> string {
+    if month_starting_at_0 == {
+        case 0;   return "January";
+        case 1;   return "February";
+        case 2;   return "March";
+        case 3;   return "April";
+        case 4;   return "May";
+        case 5;   return "June";
+        case 6;   return "July";
+        case 7;   return "August";
+        case 8;   return "September";
+        case 9;   return "October";
+        case 10;  return "November";
+        case 11;  return "December";
+        case;     return "Unknown";
+    }
+}

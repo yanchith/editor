@@ -85,6 +85,30 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
     };
 */
 
+#if #exists(__VERSION_MAJOR) {
+    VERSION_MAJOR :: __VERSION_MAJOR;
+} else {
+    VERSION_MAJOR :: 0;
+}
+
+#if #exists(__VERSION_MINOR) {
+    VERSION_MINOR :: __VERSION_MINOR;
+} else {
+    VERSION_MINOR :: 0;
+}
+
+#if #exists(__VERSION_PATCH) {
+    VERSION_PATCH :: __VERSION_PATCH;
+} else {
+    VERSION_PATCH :: 0;
+}
+
+#if #exists(__BUILD_TIMESTAMP) {
+    BUILD_TIMESTAMP :: __BUILD_TIMESTAMP;
+} else {
+    BUILD_TIMESTAMP :: "unknown date";
+}
+
 // SANITY enables additional costly asserts for operations.
 #if #exists(__SANITY) {
     SANITY :: __SANITY;
@@ -145,7 +169,7 @@ Window         :: #import "Window_Creation";
 Input          :: #import "Input";   // This is our modified version. See :ModifiedInputModule.
 Process        :: #import "Process"; // This is our modified version. See :ModifiedProcessModule.
 Clipboard      :: #import "Clipboard";
-Editor         :: #import,file "editor/editor.jai"()(SANITY = SANITY);
+Editor         :: #import,file "editor/editor.jai"()(VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP, SANITY);
 
 Vector4 :: Editor.Vector4;
 IRect   :: Editor.IRect;
@@ -239,6 +263,8 @@ main :: () {
         // TODO(jt): Log rotation. Only keep last N logs around. Clean them up asynchronously?
         logger_data.log_file = File.file_open(log_filename, for_writing = true);
     }
+
+    log("Editor version %.%.%, built on %.",  VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP);
 
     window := Window.create_window(1920, 1200, "editor");
     renderer_init(window);
