@@ -5540,16 +5540,13 @@ panel_deinit :: (panel: *Panel) {
 }
 
 panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
-    // For now, each (Document_View) panel must have a document. We may later relax this and show
-    // some default background, or something.
+    // For now, each panel must have the underlying thing attached.
+    // We may later relax this and show default background, or something.
     assert(document != null);
 
     panel_content_changed := true;
 
-    // If this was a document-viewing panel, save the cursors on the document, so that they can be
-    // restored later, once the document comes back to the foreground.
-    //
-    // Analogous for listing-viewing panel and item_index.
+    // Save the view's cursors/item_index to the underlying thing.
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
@@ -5574,12 +5571,11 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
 
     if panel_content_changed {
         panel.view.kind = .DOCUMENT;
-
         view := *panel.view._document;
-
         view.document = document;
 
         view.cursors = document.cursors_cold;
+        text_buffer_clamp_cursors(document.buffer, *view.cursors);
         view.selecting = false;
 
         cursor_position := get_position_at_cursor(view, editor.font);
@@ -5597,16 +5593,13 @@ panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {
 }
 
 panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
-    // For now, each (Listing_View) panel must have a document. We may later relax this and show
-    // some default background, or something.
+    // For now, each panel must have the underlying thing attached.
+    // We may later relax this and show default background, or something.
     assert(listing != null);
 
     panel_content_changed := true;
 
-    // If this was a document-viewing panel, save the cursors on the document, so that they can be
-    // restored later, once the document comes back to the foreground.
-    //
-    // Analogous for listing-viewing panel and item_index.
+    // Save the view's cursors/item_index to the underlying thing.
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
@@ -5631,11 +5624,10 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
 
     if panel_content_changed {
         panel.view.kind = .LISTING;
-
         view := *panel.view._listing;
-
         view.listing = listing;
-        view.item_index = listing.item_index_cold;
+
+        view.item_index = clamp(listing.item_index_cold, 0, listing.items.count);
 
         interpolation_init(*panel.scroll, { 0, 0 });
     }
@@ -5853,7 +5845,7 @@ get_position_at_cursor :: (view: Document_View, font: Font) -> DVector2 {
 get_line_length_at_cursor :: (view: Document_View, font: Font) -> f64 {
     document := view.document;
     if !document {
-        0;
+        return 0;
     }
 
     line_length := get_line_length_for_line_index(document, font, view.cursors.c0.y);
@@ -5862,6 +5854,11 @@ get_line_length_at_cursor :: (view: Document_View, font: Font) -> f64 {
 }
 
 get_position_for_location :: (document: Document, font: Font, loc: Text_Location) -> DVector2 {
+    if loc.y >= document.buffer.line_count {
+        log_error("Tried to get position for a line out of document bounds. Line index is %. Document has % lines.", loc.y, document.buffer.line_count);
+        return { 0, 0 };
+    }
+
     line_view := text_buffer_make_view_for_line(document.buffer, loc.y,, temp);
 
     position: DVector2;
@@ -5872,6 +5869,11 @@ get_position_for_location :: (document: Document, font: Font, loc: Text_Location
 }
 
 get_line_length_for_line_index :: (document: Document, font: Font, line_index: s64) -> f64 {
+    if line_index >= document.buffer.line_count {
+        log_error("Tried to get length for a line out of document bounds. Line index is %. Document has % lines.", line_index, document.buffer.line_count);
+        return 0;
+    }
+
     line_view   := text_buffer_make_view_for_line(document.buffer, line_index,, temp);
     line_length := font_compute_line_length(font, line_view, binary = document.buffer.binary_mode);
 

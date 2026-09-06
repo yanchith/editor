@@ -113,7 +113,6 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     array_reserve(*actions_to_search_names, actions_to_search_names.count + DOCUMENT_ACTION_NAMES.count);
                     array_reserve(*actions_to_search_values, actions_to_search_values.count + DOCUMENT_ACTION_NAMES.count);
                     for DOCUMENT_ACTION_NAMES {
-                        // nocheckin finish the rest
                         if it != "NONE" {
                             key_map := *editor.document_key_map;
                             action  := DOCUMENT_ACTION_VALUES[it_index];
