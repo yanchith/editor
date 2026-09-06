@@ -4,6 +4,18 @@ TODO(jt): Known serious bugs:
 
 (none currently)
 
+nocheckin, if I had to release today:
+
+- print shortcuts in full form
+- good light theme
+- portable windows zip
+- config file for keybinds
+- config file for theme customization
+- config file for at least some of visual :Config things
+- config file for extension to language association
+- rotated logs
+- welcome message
+
 TODO(jt): Roadmap:
 
 - [X] Display text on screen
@@ -71,6 +83,7 @@ TODO(jt): Roadmap:
 - [ ] Language: Lua
 - [ ] Language: Java
 - [ ] Language: Python
+- [ ] System fonts
 - [ ] Multiple Cursors
 - [ ] Emacs-like kill ring
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
