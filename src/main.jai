@@ -156,7 +156,9 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
 }
 
 #import "Basic"()(MEMORY_DEBUGGER = DEBUG_MEMORY);
+#import "Sort";
 #import "Hash_Table";
+#import "Thread";
 #import "GL";
 #import "Profiler"()(IMPORT_MODE = .RUNTIME);
 
@@ -171,9 +173,9 @@ Process        :: #import "Process"; // This is our modified version. See :Modif
 Clipboard      :: #import "Clipboard";
 Editor         :: #import,file "editor/editor.jai"()(VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP, SANITY);
 
+floor   :: Math.floor;
 Vector4 :: Editor.Vector4;
 IRect   :: Editor.IRect;
-floor   :: Math.floor;
 
 // TODO(jt): Simp/OpenGL works everywhere, but Simp is a little big and OpenGL drivers a little buggy.
 // Also it would be good if we could control the latency a little. Do our own backends?
@@ -183,6 +185,8 @@ floor   :: Math.floor;
 #load "logger.jai";
 
 SCHEDULER_PRECISION_MILLIS :: 1;
+
+MAX_LOGFILES :: 10;
 
 // :OperatingSystemSpecificHacks
 //
@@ -245,6 +249,7 @@ main :: () {
         }
     }
 
+    // Create a log file for the current session.
     {
         File.make_directory_if_it_does_not_exist("./logs");
         t := calendar_time_of_program_start;
@@ -265,6 +270,51 @@ main :: () {
     }
 
     log("Editor version %.%.%, built on %.",  VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP);
+
+    // Clean up old log files; keep MAX_LOGFILES recent files.
+    {
+        // TODO(jt): @Incomplete We can't do this for macOS .app, where the logs will not be stored next to the executable.
+        thread_proc :: (thread: *Thread) -> s64 {
+            if File_Utilities.is_directory("./logs") {
+                files: [..] string;
+                files.allocator = temp;
+
+                visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] string) {
+                    if String.starts_with(visit_info.short_name, "editor_") && String.ends_with(visit_info.short_name, ".log") {
+                        array_add(userdata, visit_info.full_name);
+                    }
+                }
+
+                File_Utilities.visit_files("./logs", false, *files, visitor,
+                                           visit_files = true,
+                                           visit_directories = false,
+                                           visit_symlinks = false,
+                                           follow_directory_symlinks = false);
+
+
+                if files.count > MAX_LOGFILES {
+                    files_to_delete_count := files.count - MAX_LOGFILES;
+                    quick_sort(files, compare_strings);
+
+                    files_to_delete := array_view(files, 0, files_to_delete_count);
+
+                    log("Cleaning % old logs", files_to_delete_count);
+                    for files_to_delete {
+                        log("Deleting log: %", it);
+                        File.file_delete(it);
+                    }
+
+                    log("Done deleting % old logs", files_to_delete_count);
+                }
+            }
+
+            return 0;
+        };
+
+        thread: Thread;
+        thread_init(*thread, thread_proc, name = "Log Cleanup");
+        thread_start(*thread);
+    }
 
     window := Window.create_window(1920, 1200, "editor");
     renderer_init(window);
@@ -431,7 +481,11 @@ main :: () {
             file_info.is_directory = visit_info.is_directory;
         }
 
-        File_Utilities.visit_files(path, recursive, *file_infos, visitor, visit_files = files, visit_directories = directories, visit_symlinks = true, follow_directory_symlinks = true);
+        File_Utilities.visit_files(path, recursive, *file_infos, visitor,
+                                   visit_files = files,
+                                   visit_directories = directories,
+                                   visit_symlinks = true,
+                                   follow_directory_symlinks = true);
 
         return file_infos;
     }

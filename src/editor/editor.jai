@@ -13,8 +13,7 @@ TODO(jt): if I had to release (on Windows) today:
 - Add config file for theme customization
 - Add config file for at least some of visual :Config things
 - Add config file for extension to language association
-- Rotate logs (clean up old logs)
-- Welcome message
+- Welcome message should have some introduction
 
 TODO(jt): Roadmap:
 
@@ -59,7 +58,7 @@ TODO(jt): Roadmap:
 - [X] Mode defined comments (C-x C-;) ; Still want to play with single-line block comments
 - [~] Themes ; Add some good light themes (Delphi, Visual Studio light)
 - [X] Dark text color under bright rectangles (cursor, selection, line)
-- [~] Session logs ; Needs log rotation so logs don't pile up
+- [X] Rotated session logs
 - [X] M-g g (go to line)
 - [~] C-M-p, C-M-n (move line up/down) SWAP_LINE_UP/SWAP_LINE_DOWN ; Should also work for selections
 - [X] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
