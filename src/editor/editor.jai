@@ -4,17 +4,18 @@ TODO(jt): Known serious bugs:
 
 (none currently)
 
-nocheckin, if I had to release today:
+TODO(jt): if I had to release (on Windows) today:
 
-- print shortcuts in full form
-- good light theme
-- portable windows zip
-- config file for keybinds
-- config file for theme customization
-- config file for at least some of visual :Config things
-- config file for extension to language association
-- rotated logs
-- welcome message
+- Print shortcuts in full form
+- Add good light theme
+- Portable windows zip created from build.jai
+- Add config file for keybinds
+- Add config file for theme customization
+- Add config file for at least some of visual :Config things
+- Add config file for extension to language association
+- Rotate logs (clean up old logs)
+- Welcome message
+- Print build version in welcome message
 
 TODO(jt): Roadmap:
 
@@ -94,7 +95,7 @@ TODO(jt): Roadmap:
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
 - [~] CRLF ; Still need to add special rendering for it
-- [ ] Config file
+- [ ] Config files
 - [ ] macOS package
 
 ... after alpha ...

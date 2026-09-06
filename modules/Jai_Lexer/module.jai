@@ -1341,6 +1341,32 @@ make_string_constant :: (lexer: *Lexer) -> *Token {
             }
         }
 
+/* nocheckin Jai_Lexer crashed here!
+
+  31.310006  INFO Jai_Lexer/module.jai           End of file during string constant!
+
+  31.310129  INFO Jai_Lexer/module.jai           ... at line 179, character 45.
+
+Cast bounds check failed.  Number must be in [0, 255]; it was -1.  Site is /Users/yanchith/workspace/editor/modules/Jai_Lexer/module.jai:1347.
+Panic.
+Breakpoint hit. Stack trace:
+0   editor                              0x000000010485720c handle_signal_60000041f + 4396
+1   libsystem_platform.dylib            0x000000019caf56a4 _sigtramp + 56
+2   editor                              0x0000000104827234 my_panic_900000232 + 92
+3   editor                              0x0000000104827234 my_panic_900000232 + 92
+4   editor                              0x000000010491043c __cast_bounds_check_fail_90000022a + 1504
+5   editor                              0x00000001048b8e20 make_string_constant_f0000044d + 4776
+6   editor                              0x00000001048514cc compose_new_token_f00000454 + 19192
+7   editor                              0x0000000104843034 peek_next_token_f00000435 + 824
+8   editor                              0x000000010480fe0c lang_jai_update_tokens_700000334 + 2016
+9   editor                              0x00000001048adb54 document_update_tokens_f000003eb + 436
+10  editor                              0x0000000104885c80 update_panel_f000003d9 + 9492
+11  editor                              0x0000000104904524 update_and_render_f000003bf + 12616
+12  editor                              0x00000001047eae3c __program_main + 16956
+13  editor                              0x00000001049276a4 main + 192
+14  dyld                                0x000000019c71ab98 start + 6076
+ */
+
         // NOTE: In the case of Unicode characters, we continue
         // rather than falling through to the bottom, so don't depend
         // on that!
