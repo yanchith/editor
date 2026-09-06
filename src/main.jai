@@ -5,12 +5,9 @@ f64 :: float64;
 //
 // :MemoryDebuggerVsArenas
 //
-// Know that MEMORY_DEBUGGER doesn't work well with arena-style allocation unless someone calls free.
-// but we don't want to call even a no-op free on each array iteme. JAI's Temporary_Storage, Pool and Flat_Pool
+// MEMORY_DEBUGGER doesn't work well with arena-style allocation unless someone calls free.
+// but we don't want to call even a no-op free on each array item. JAI's Temporary_Storage, Pool and Flat_Pool
 // are all ignored by MEMORY_DEBUGGER, but for now there is no way to add a custom ignore.
-//
-// TODO(jt): @CompilerBug I'd like to make this a switch supplied by the metaprogram (like SANITY, etc.),
-// but it causes cycles. Hardcode-enabled for this reason, at least until I seal the leaks.
 //
 // TODO(jt): @Cleanup Memory_Debugger.jai needs to be modified so that our arena allocations get omitted from the report:
 //
@@ -25,6 +22,9 @@ f64 :: float64;
 // *but* that doesn't work with this_allocation_is_not_a_leak (locking of address_table_mutex crashes). See comment block below.
 //
 // TODO(jt): @Bug @LibraryBug? make_leak_report crashes on macOS! Investigate.
+//
+// TODO(jt): @CompilerBug I'd like to make this a switch supplied by the metaprogram (like SANITY, etc.),
+// but it causes cycles. Hardcode-enabled for this reason, at least until I seal the leaks.
 DEBUG_MEMORY :: false;
 DEBUG_MEMORY_LEAK_REPORT_PERIOD: Apollo_Time : #run seconds_to_apollo(10);
 
@@ -111,7 +111,7 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
 
     // TODO(jt): @Cleanup We define a few functions that are either not present in modules/Windows,
     // or are commented out there. Eventually remove our version? Or eventually have just our
-    // version of modules/Windows?
+    // version of modules/Windows and compile less stuff?
     user32 :: #library,system "user32";
 
     TRUE:  s32 : 1;
@@ -119,9 +119,6 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
 
     UINT :: u32;
 
-    // TODO(jt): GetDpiForWindow is relatively new (Windows 10, version 1607), but we could switch
-    // to GetDpiForMonitor (Windows 8.1) in Shcore.dll, or the venerable GetDeviceCaps(LOGPIXELSX)
-    // (Windows 2000) in Gdi32.dll.
     GetDpiForWindow :: (hWnd: HWND) -> UINT #foreign user32;
     WaitMessage     :: ()           -> BOOL #foreign user32;
 } else #if OS == .MACOS {
@@ -154,22 +151,18 @@ Vector4 :: Editor.Vector4;
 IRect   :: Editor.IRect;
 floor   :: Math.floor;
 
-// TODO(jt): Simp works everywhere, but is a little big. Also would be good if we could control
-// the latency a little. Do our own backends? Sounds like a lot of work, though:
-// High end: D3D11 (probably not 12?!), Metal and Vulkan
-// Mid end:
-//   - D3D11, Metal and OpenGL
-//   - Vulkan, Metal and Vulkan (again for Linux)
-// Low end: OpenGL (still slimmer than Simp, and maybe we could control queue depth and vsync)
+// TODO(jt): Simp/OpenGL works everywhere, but Simp is a little big and OpenGL drivers a little buggy.
+// Also it would be good if we could control the latency a little. Do our own backends?
+// High end: Windows->D3D11 (probably not 12?!), macOS->Metal and Linux->Vulkan
+// Mid end:  Windows->Vulkan, macOS->Metal
 #load "renderer_simp.jai";
 
 SCHEDULER_PRECISION_MILLIS :: 1;
 
 // :OperatingSystemSpecificHacks
 //
-// TODO(jt): @Cleanup @Hack For file watching, we have a #c_call callback, but we know it is called
-// from the main thread, and we want it to use the main thread's temporary storage. Maybe we should
-// just have an arena for that?
+// For file watching on macOS, we have a #c_call callback, but we want it to use the main
+// thread's temporary storage. Fortunately, we know the callback is called from the main thread.
 #if OS == .MACOS {
     main_thread_temporary_storage: *Temporary_Storage;
 }
@@ -197,10 +190,10 @@ main :: () {
         // okay, if you do your own text rendering. We could further improve this with
         // per-monitor awareness: SetProcessDpiAwarenessContext.
         SetProcessDPIAware();
-        // :OperatingSystemSpecifiHacks
+        // :OperatingSystemSpecificHacks
         //
-        // Unless we set this, our end of frame nap time on Windows is too course grained.
-        // See :BatterySaver tag in this file.
+        // Unless we set timing resolution, our end of frame naptime on Windows is too course grained.
+        // See :BatterySaver in this file.
         timeBeginPeriod(SCHEDULER_PRECISION_MILLIS);
     } else #if OS == .MACOS {
         // :OperatingSystemSpecificHacks
@@ -606,9 +599,7 @@ main :: () {
         scale_factor := platform_get_window_scale_factor(window);
         // TODO(jt): @Cleanup The way the Windows Input module handles the .QUIT event (WM_QUIT)
         // causes the window to be destroyed before we are done with our last frame, and thus
-        // the scale_factor becomes 0. This confuses the font system inside the editor. (And, in
-        // general, the platform layer should give good information to the app, so the app
-        // doesn't need to hack around stuff like this.)
+        // the scale_factor becomes 0. This confuses the font system inside the editor.
         #if OS == .WINDOWS {
             if scale_factor != 0.0 {
                 input.window_scale_factor = scale_factor;
@@ -654,7 +645,7 @@ main :: () {
                         case .LINEFEED;             array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.LINEFEED) });
                         case .ENTER;                array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.ENTER) });
                         case .ESCAPE;               array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.ESCAPE) });
-                        // SPACEBAR also gets sent as a text event, so we capture it there.
+                        // SPACEBAR also gets sent as a text event, so we don't capture it here.
                         case .DELETE;               array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.DELETE) });
 
                         // keycodes that are not in ASCII
@@ -697,10 +688,8 @@ main :: () {
 
                         case; {
                             // TODO(jt): @Cleanup @Hack On Windows, holding down control suppresses the text event,
-                            // so we emit it here.
-                            //
-                            // This is a temporary hack. We should eventually rewrite the platform layers and do the
-                            // minimal necessary hacks there.
+                            // so we emit it here. This is a temporary hack. We should eventually rewrite the
+                            // platform layers and do the minimal necessary hacks there.
 
                             if it.ctrl_pressed && it.text_input_count == 0 {
                                 array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, it.key_code) });
@@ -861,11 +850,8 @@ platform_state: Platform_State;
 
 platform_wait_for_events :: () {
     #if OS == .WINDOWS {
-        // On Windows (TM), we wait for new events with WaitMessage.
         WaitMessage();
     } else #if OS == .MACOS {
-        // On macOS, we wait for events by checking the queue with nextEventMatchingMask
-        // (with NO as the last parameter so that we don't dequeue).
         NSApplication.nextEventMatchingMask(NSApp, NSEventMaskAny, NSDate.distantFuture(), NSDefaultRunLoopMode, NO);
     }
 }
@@ -876,8 +862,7 @@ platform_get_window_scale_factor :: (window: Window.Window_Type) -> f32 {
     } else #if OS == .MACOS {
         // backingScaleFactor is only tells us, if we are on a Retina display (by returning 2.0),
         // but it doesn't tell us what scaling the user has picked. Still, we can use it to
-        // approximate how large we want things to be. Maybe there is a better solution, but winit
-        // also does backingScaleFactor.
+        // approximate how large we want things to be. Maybe there is a better solution?
         return cast(f32, window.backingScaleFactor(window));
     }
 
@@ -886,10 +871,6 @@ platform_get_window_scale_factor :: (window: Window.Window_Type) -> f32 {
 
 platform_get_monitor_refresh_rate :: (window: Window.Window_Type) -> s64 {
     #if OS == .WINDOWS {
-        // We are using the A versions of some functions here, because JAI doesn't define the
-        // W versions of some of the structs/functions.
-        // Should be fine, because we are not interacting with the strings.
-
         monitor := MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
         monitor_info: MONITORINFOEXA;
         monitor_info.cbSize = size_of(type_of(monitor_info));
@@ -1004,9 +985,9 @@ platform_process_watched_directory_changes :: () {
             }
         }
     } else #if OS == .MACOS {
-        // TODO(jt): @Audit Unlike modules/File_Watcher, we actually don't need to call this,
-        // because (presumably) AppKit calls this for us, which in turn calls event_stream_callback.
-        // I wish I understood the Apple ecosystem more.
+        // Unlike modules/File_Watcher, we actually don't need to call this, because
+        // (presumably) AppKit calls this for us, which in turn calls event_stream_callback.
+        // I wish I understood the Apple ecosystem.
         //
         // CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, false);
     }
@@ -1092,19 +1073,16 @@ editor_logger :: (message: string, data: *void, info: Log_Info) {
 
     logger_data := cast(*Editor_Logger_Data, data);
 
-    // Add time since launch. Pad to up to 4 leading digits and 6 decimal digits.
     time_start           := logger_data.time_of_program_start;
     time_now             := current_time_monotonic();
     time_since_start     := time_now - time_start;
     time_since_start_str := tprint("% ", formatFloat(to_float64_seconds(time_since_start), trailing_width = 6, zero_removal = .NO));
     time_prefix          := temp_left_pad(time_since_start_str, 12);
 
-    // Add log level.
     log_level_prefix := " INFO ";
     if info.common_flags & .WARNING  log_level_prefix = " WARN ";
     if info.common_flags & .ERROR    log_level_prefix = "ERROR ";
 
-    // Add source file.
     source_prefix: string;
     {
         PAD_LENGTH :: 30;
@@ -1126,9 +1104,6 @@ editor_logger :: (message: string, data: *void, info: Log_Info) {
         sb: String_Builder;
         sb.allocator = temp;
 
-        // WARNING: Use append for unknown string builder content! Message may contain unescaped % characters.
-        // If it does, print_to_builder will log an error: 'Invalid \% index % in the format string \"%\" at character %. %',
-        // which once turned to string will once again contain unescaped %. This continues until we stack overflow.
         append(*sb, time_prefix);
         append(*sb, log_level_prefix);
         append(*sb, source_prefix);
@@ -1136,8 +1111,8 @@ editor_logger :: (message: string, data: *void, info: Log_Info) {
         append(*sb, message);
         append(*sb, "\n");
 
-        File.file_write(*logger_data.log_file, *sb, do_reset = true);
-        File.file_flush(logger_data.log_file); // On macOS, this wasn't really flushing without us being explicit about it.
+        File.file_write(*logger_data.log_file, *sb);
+        File.file_flush(logger_data.log_file);
     }
 
     write_strings(time_prefix, log_level_prefix, source_prefix, " ", message, "\n", to_standard_error = (info.common_flags & .ERROR) != 0);
