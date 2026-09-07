@@ -11,7 +11,6 @@ TODO(jt): if I had to release (on Windows) today:
 - Add config file for theme customization
 - Add config file for at least some of visual :Config things
 - Add config file for extension to language association
-- Hide CR from rendering
 
 TODO(jt): Roadmap:
 
