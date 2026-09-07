@@ -189,7 +189,7 @@ arena_new :: (procs: Arena_Procs, reserve_size := ARENA_DEFAULT_RESERVE_SIZE, co
 }
 
 arena_init :: (arena: *Arena) {
-    assert(arena.procs.page_size > 0 && is_power_of_two(arena.procs.page_size));
+    assert(is_nonzero_power_of_two(arena.procs.page_size));
 
     given_reserve := arena.reserve_size;
     given_commit  := arena.commit_size;
@@ -268,7 +268,7 @@ arena_contains :: (arena: Arena, pointer: *void) -> bool {
 
 arena_push :: (arena: *Arena, _size: s64, alignment: s64 = DEFAULT_ALIGNMENT) -> *void {
     assert(_size > 0, "Can not push zero size");
-    assert(alignment > 0 && is_power_of_two(alignment));
+    assert(is_nonzero_power_of_two(alignment));
 
     if !arena.memory_start {
         arena_init(arena);
@@ -370,7 +370,7 @@ arena_push_array :: (arena: *Arena, a: [] $T, min_alignment := 1) -> [] T {
 
 // TODO(jt): arena_push_print :: (arena: *Arena, format_string: string, args: .. Any), so that
 // we don't have to tprint, only to copy into the arena. This won't be super trivial, because sprint/tprint
-// use String_Builder under the hood, and we for sure don't want to import that.
+// use String_Builder under the hood.
 
 arena_push_string :: (arena: *Arena, s: string, min_alignment := 1) -> string {
     assert(s.count > 0, "Can not push empty strings");
@@ -431,7 +431,14 @@ arena_pop_to_mark :: (arena: *Arena, _mark: Arena_Mark, overwrite_memory := DEFA
     mark: Arena_Mark;
     mark.allocated = max(_mark.allocated, arena.low_water_mark);
 
-    sanity_assert(arena.allocated >= mark.allocated);
+    // Make sure we can pop this much. Otherwise the mark is not ours or otherwise invalid.
+    assert(arena.allocated >= mark.allocated);
+    // Code below would break horribly, if we the mark is not below, so we just early return
+    // in case assertions are disabled.
+    if arena.allocated < mark.allocated {
+        return;
+    }
+
     if overwrite_memory && arena.allocated > mark.allocated {
         STAMP :: 0xcd;
         overwrite_base := arena.memory_start + mark.allocated;
@@ -483,7 +490,7 @@ align_of :: ($T: Type) -> s64 #expand {
 }
 
 align :: inline (address: s64, alignment: s64) -> s64 {
-    sanity_assert(alignment > 0 && is_power_of_two(alignment));
+    sanity_assert(is_nonzero_power_of_two(alignment));
     mask := alignment - 1;
     return (address + mask) & ~mask;
 }
@@ -493,7 +500,7 @@ align :: inline (pointer: *void, alignment: s64) -> *void {
 }
 
 is_aligned :: inline (address: s64, alignment: s64) -> bool {
-    sanity_assert(alignment > 0 && is_power_of_two(alignment));
+    sanity_assert(is_nonzero_power_of_two(alignment));
     mask := alignment - 1;
     return address == address & ~mask;
 }
@@ -502,8 +509,8 @@ is_aligned :: inline (pointer: *void, alignment: s64) -> bool {
     return is_aligned(cast(s64, pointer), alignment);
 }
 
-is_power_of_two :: inline (value: s64) -> bool {
-    return value & (value - 1) == 0;
+is_nonzero_power_of_two :: inline (value: s64) -> bool {
+    return value >= 0 && value & (value - 1) == 0;
 }
 
 min :: inline (a: s64, b: s64) -> s64 {
