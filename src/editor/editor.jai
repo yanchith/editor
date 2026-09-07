@@ -6,7 +6,6 @@ TODO(jt): Known serious bugs:
 
 TODO(jt): if I had to release (on Windows) today:
 
-- Add good light theme
 - Portable windows zip created from build.jai
 - Add config file for keybinds
 - Add config file for theme customization
@@ -1057,8 +1056,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_this_frame: bool, wants_next_frame: bool {
     ProfileZone("Editor.update_and_render");
 
-    mark_on_frame_timeline(editor, platform, input, .START);
-    mark_and_advance_frame_profile(editor, input);
+    mark_frame_timeline_point(editor, platform, input, .START);
+    mark_frame_profile(editor, input);
 
     dt: f64;
     if input.frame_requested_by_editor {
@@ -1851,7 +1850,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // and atlas_update_regions should be empty, but there could be mistakes.
     //
     // See :BatterySaver.
-    mark_on_frame_timeline(editor, platform, input, .RENDER);
+    mark_frame_timeline_point(editor, platform, input, .RENDER);
 
     if wants_this_frame {
         if atlas_update_regions.count {
@@ -1872,8 +1871,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         renderer.submit_frame();
     }
 
-    mark_on_frame_timeline(editor, platform, input, .END);
-    advance_frame_timeline(editor);
+    mark_frame_timeline_point(editor, platform, input, .END);
 
     editor.is_first_frame = false;
 
@@ -6090,7 +6088,7 @@ make_arena_debug_procs :: (editor: *Editor) -> Arena_Debug_Procs {
     return debug_procs;
 }
 
-mark_and_advance_frame_profile :: (editor: *Editor, input: Input) {
+mark_frame_profile :: (editor: *Editor, input: Input) {
     #assert is_power_of_two(editor.DEBUG_FRAME_PROFILE_COUNT); // So that we can use bit ops modulo.
 
     if editor.debug_view == .FRAME_PROFILE {
@@ -6109,19 +6107,22 @@ mark_and_advance_frame_profile :: (editor: *Editor, input: Input) {
     editor.debug_frame_profile_index &= editor.DEBUG_FRAME_PROFILE_COUNT - 1;
 }
 
-mark_on_frame_timeline :: (editor: *Editor, platform: Platform, input: Input, marker: enum { START; RENDER; END; }) {
+mark_frame_timeline_point :: (editor: *Editor, platform: Platform, input: Input, marker: enum { START; RENDER; END; }) {
     if #complete marker == {
-        case .START;   editor.debug_frame_timeline.entries[editor.debug_frame_timeline_index].time_start = input.time;
-        case .RENDER;  editor.debug_frame_timeline.entries[editor.debug_frame_timeline_index].time_render = platform.get_current_time_monotonic() - input.time_of_program_start;
-        case .END;     editor.debug_frame_timeline.entries[editor.debug_frame_timeline_index].time_end = platform.get_current_time_monotonic() - input.time_of_program_start;
+        case .START; {
+            editor.debug_frame_timeline.entries[editor.debug_frame_timeline_index].time_start = input.time;
+        }
+        case .RENDER; {
+            editor.debug_frame_timeline.entries[editor.debug_frame_timeline_index].time_render = platform.get_current_time_monotonic() - input.time_of_program_start;
+        }
+        case .END; {
+            editor.debug_frame_timeline.entries[editor.debug_frame_timeline_index].time_end = platform.get_current_time_monotonic() - input.time_of_program_start;
+
+            #assert is_power_of_two(editor.DEBUG_FRAME_TIMELINE_COUNT); // So that we can use bit ops modulo.
+            editor.debug_frame_timeline_index += 1;
+            editor.debug_frame_timeline_index &= editor.DEBUG_FRAME_TIMELINE_COUNT - 1;
+        }
     }
-}
-
-advance_frame_timeline :: (editor: *Editor) {
-    #assert is_power_of_two(editor.DEBUG_FRAME_TIMELINE_COUNT); // So that we can use bit ops modulo.
-
-    editor.debug_frame_timeline_index += 1;
-    editor.debug_frame_timeline_index &= editor.DEBUG_FRAME_TIMELINE_COUNT - 1;
 }
 
 toggle_debug_view :: (editor: *Editor, value: Editor.Debug_View) {
