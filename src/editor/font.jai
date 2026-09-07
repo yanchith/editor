@@ -356,19 +356,24 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             continue;
         }
 
-        if it == #char "\t" {
-            current_char_index += 1;
-            cursor_x += INDENTATION_STEP * font.advance_for_space;
-
-            continue;
-        }
-
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
             }
         } else {
-            // This includes \r, \t, \n, so make sure we process the ones we want before that!
+            if it == #char "\r" {
+                current_char_index += 1;
+
+                continue;
+            }
+
+            if it == #char "\t" {
+                current_char_index += 1;
+                cursor_x += INDENTATION_STEP * font.advance_for_space;
+
+                continue;
+            }
+
             if it < 32 {
                 it = 0;
             }
@@ -591,17 +596,20 @@ _font_compute_line_length :: (font: Font, line_text: string, $binary: bool) -> f
             it = #char " ";
         }
 
-        if it == #char "\t" {
-            advance += INDENTATION_STEP * font.advance_for_space;
-            continue;
-        }
-
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
             }
         } else {
-            // This includes \r, \t, \n, so make sure we process the ones we want before that!
+            if it == #char "\r" {
+                continue;
+            }
+
+            if it == #char "\t" {
+                advance += INDENTATION_STEP * font.advance_for_space;
+                continue;
+            }
+
             if it < 32 {
                 it = 0;
             }
@@ -641,17 +649,20 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
             it = #char " ";
         }
 
-        if it == #char "\t" {
-            advance += INDENTATION_STEP * font.advance_for_space;
-            continue;
-        }
-
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
             }
         } else {
-            // This includes \r, \t, \n, so make sure we process the ones we want before that!
+            if it == #char "\r" {
+                continue;
+            }
+
+            if it == #char "\t" {
+                advance += INDENTATION_STEP * font.advance_for_space;
+                continue;
+            }
+
             if it < 32 {
                 it = 0;
             }
@@ -693,17 +704,20 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
             it = #char " ";
         }
 
-        if it == #char "\t" {
-            advance += INDENTATION_STEP * font.advance_for_space;
-            continue;
-        }
-
         #if binary {
             if it < 32 || it >= 127 {
                 it = 0;
             }
         } else {
-            // This includes \r, \t, \n, so make sure we process the ones we want before that!
+            if it == #char "\r" {
+                continue;
+            }
+
+            if it == #char "\t" {
+                advance += INDENTATION_STEP * font.advance_for_space;
+                continue;
+            }
+
             if it < 32 {
                 it = 0;
             }
