@@ -158,6 +158,7 @@ Input_State :: struct {
     time: Apollo_Time;
 
     window_size: IVector2;
+    window_scale_factor: f32;
 
     keys: [KEY_COUNT] Key_State;
     modifiers: Modifier_Flags; // Modifier state as of last event. See Event.modifiers for precise information.
@@ -175,6 +176,7 @@ input_state_update_on_frame_start :: (input_state: *Input_State, input: Input) {
     input_state.time = input.time;
 
     input_state.window_size = input.window_size;
+    input_state.window_scale_factor = input.window_scale_factor;
 
     for * input_state.keys {
         it.* &= ~(.PRESSED | .RELEASED);

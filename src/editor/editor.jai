@@ -1083,12 +1083,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     wants_this_frame :=
         editor.is_first_frame ||
         input.window_size != editor.input_state.window_size ||
-        // TODO(jt): input.window_scale_factor != editor.input_state.window_scale_factor ||
+        input.window_scale_factor != editor.input_state.window_scale_factor ||
         input.frame_requested_by_editor ||
         input.mouse_wheel_delta != 0 ||
         input.watched_directory_changes.count > 0 ||
         input.events.count > 0;
-    wants_next_frame := false;
+
+    // TODO(jt): @Cleanup @Hack Our Simp/OpenGL rendering backend has some render target synchronization issue.
+    // After we resize the window, it clears and draws to the old surface on the first frame after resize.
+    // We just poll the next frame here, so people don't notice. We really need a better rendering backend.
+    //
+    // wants_next_frame := false;
+    wants_next_frame := input.window_size != editor.input_state.window_size ||
+        input.window_scale_factor != editor.input_state.window_scale_factor;
 
     render_commands: [..] Render_Command;
     render_commands.allocator = temp;
