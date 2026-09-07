@@ -2383,13 +2383,14 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     // TODO(jt): Animated cursor in mini panel
     // TODO(jt): Do animated horizontal scroll of buffer in mini panel.
     // TODO(jt): Do animated vertical scroll of item list in mini panel.
-    if !buffered && action == .NONE && event.flags & .PRESSED {
-        if event.type == .CODEPOINT {
-            if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
-                char := cast(u32, event.codepoint);
-                buffer_changed |= text_buffer_insert_char(*mp.buffer, *mp.cursors, char);
-            }
-        }
+    if !buffered
+    && action == .NONE && event.flags & .PRESSED
+    && !(event.modifiers & (.CTRL | .ALT | .META))
+    && event.type == .CODEPOINT
+    && event.codepoint >= 32 && event.codepoint != .DELETE
+    {
+        char := cast(u32, event.codepoint);
+        buffer_changed |= text_buffer_insert_char(*mp.buffer, *mp.cursors, char);
     }
 
     if mp.open {
@@ -2510,13 +2511,15 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
     }
 
     // TODO(jt): Animated cursor in modal interaction
-    if !buffered && action == .NONE && event.flags & .PRESSED {
-        if event.type == .CODEPOINT {
-            if !(editor.input_state.modifiers & .CTRL) && !(editor.input_state.modifiers & .ALT) {
-                char := cast(u32, event.codepoint);
-                buffer_changed |= text_buffer_insert_char(*mi.buffer, *mi.cursors, char);
-            }
-        }
+    if !buffered
+    && action == .NONE
+    && event.flags & .PRESSED
+    && !(event.modifiers & (.CTRL | .ALT | .META))
+    && event.type == .CODEPOINT
+    && event.codepoint >= 32 && event.codepoint != .DELETE
+    {
+        char := cast(u32, event.codepoint);
+        buffer_changed |= text_buffer_insert_char(*mi.buffer, *mi.cursors, char);
     }
 }
 
