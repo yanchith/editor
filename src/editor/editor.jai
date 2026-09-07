@@ -4178,7 +4178,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
 
                         target := panel.scroll.target;
                         target.y += SCROLL_SPEED * boost * dt;
-                        target.y = min(target.y, cell_h * cast(f64, document.buffer.line_bytes.count - 1));
+                        target.y = min(target.y, cell_h * cast(f64, document.buffer.line_count - 1));
                         interpolation_init(*panel.scroll, target);
 
                         wants_this_frame = true;
@@ -4196,8 +4196,8 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                 if row < 0 {
                     row = 0;
                     col = 0;
-                } else if row > document.buffer.line_bytes.count - 1 {
-                    row = document.buffer.line_bytes.count - 1;
+                } else if row > document.buffer.line_count - 1 {
+                    row = document.buffer.line_count - 1;
 
                     // Include newline, so that the cursor can go there.
                     line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
@@ -4514,8 +4514,8 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 return;
             }
 
-            viewport_line0 := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.line_bytes.count - 1);
-            viewport_line1 := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_bytes.count - 1);
+            viewport_line0 := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, document.buffer.line_count - 1);
+            viewport_line1 := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_count - 1);
 
             //
             // Draw Highlights
@@ -4830,7 +4830,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 draw_rect(render_commands, modeline_rect, ifx panel_is_active then editor.theme.modeline_color_active else editor.theme.modeline_color);
 
                 cursor  := view.cursors.c0;
-                percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, document.buffer.line_bytes.count));
+                percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, document.buffer.line_count));
 
                 document_name := get_document_name(document);
                 document_lang: string;

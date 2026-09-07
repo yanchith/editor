@@ -40,7 +40,7 @@ Font :: struct {
     // Scaled metrics for currently set pixel_height in pixels.
     //
 
-    line_height_in_pixels: f32; // line_height_multiplier applied.
+    line_height_in_pixels: f32; // WARNING: line_height_multiplier applied. You need to round if you multiply with this.
     max_glyph_width_in_pixels: f32;
     max_glyph_height_in_pixels: f32;
     max_glyph_width_in_integer_pixels: s32;
@@ -539,11 +539,17 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             sanity_assert(font.glyph_entries_tail == entry_index);
         }
 
-        // Order of operations here is to make sure we are in f64 before converting to local coordinates.
-        // We round after multiplying with line_height_multiplier, so we make sure we don't destroy whole-pixel snapping,
-        // if the caller is aligned to pixels.
+        // A couple of things to notice here:
+        //
+        // Order of operations here is careful to convert to f64 for global coordinates and only converts to f32 for local coordinates.
+        //
+        // line_height_multiplier causes line_height_in_pixels to have fractional digits.
+        // If outside code multiplies with it to compute the offset passed in here, that offset will also likely have fractional
+        // digits, and possible different for every invocation. This will cause us to emit fractional pixel coordinates, blurring
+        // and otherwise deforming the font. We round offset.y on the caller's behalf here to make sure the whole-pixel snapping
+        // is preserved.
         rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
-        ry := round(cast(f64, cursor_y) * R64 * font.line_height_multiplier) + offset.y + glyph_offset_y;
+        ry := round(cast(f64, cursor_y) * R64 * font.line_height_multiplier) + round(offset.y) + glyph_offset_y;
 
         r := rect_from_point_and_size(
             cast(f32, rx),
