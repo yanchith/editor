@@ -776,6 +776,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "C-<space>", .START_SELECTING);
         key_map_add(key_map, "C-g",     .STOP_SELECTING);
+        key_map_add(key_map, "<escape>", .STOP_SELECTING);
 
         key_map_add(key_map, "C-k",     .DELETE_LINE);
         key_map_add(key_map, "C-d",     .DELETE_FORWARD);
@@ -830,15 +831,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "M->",     .MOVE_TO_END);
         key_map_add(key_map, "<end>",   .MOVE_TO_END);
 
-        // Disabled, because we use those to move around errors.
-        // key_map_add(key_map, "M-p",     .MOVE_TO_PREVIOUS_BLANK_LINE);
-        // key_map_add(key_map, "M-n",     .MOVE_TO_NEXT_BLANK_LINE);
-
         key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
         key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
 
         key_map_add(key_map, "C-<space>", .START_SELECTING);
         key_map_add(key_map, "C-g",     .STOP_SELECTING);
+        key_map_add(key_map, "<escape>", .STOP_SELECTING);
 
         key_map_add(key_map, "M-w",     .COPY);
         key_map_add(key_map, "C-w",     .COPY);
@@ -852,6 +850,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<enter>", .GO_TO_CURRENT_ERROR);
 
         key_map_add(key_map, "g",       .REFRESH);
+        key_map_add(key_map, "C-r",     .REFRESH);
     }
 
     {
@@ -877,6 +876,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "x",       .DELETE_MARKED_ITEMS);
 
         key_map_add(key_map, "g",       .REFRESH);
+        key_map_add(key_map, "C-r",     .REFRESH);
     }
 
     editor.theme = abulafia_theme();
@@ -944,7 +944,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
         key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
 
-        key_map_add(key_map, "M-d",         .DELETE_FORWARD_WORD);
+        key_map_add(key_map, "M-d",           .DELETE_FORWARD_WORD);
         key_map_add(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
         key_map_add(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
 
@@ -965,6 +965,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<enter>",     .CONFIRM);
         key_map_add(key_map, "C-m",         .CONFIRM);
         key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
+        key_map_add(key_map, "<escape>",    .CANCEL_OR_STOP_SELECTING);
 
         // Mini text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*mini_panel.buffer, make_arena(editor, platform, .SMALL, "Minipanel Buffer"));
@@ -1000,7 +1001,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
         key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
 
-        key_map_add(key_map, "M-d",         .DELETE_FORWARD_WORD);
+        key_map_add(key_map, "M-d",           .DELETE_FORWARD_WORD);
         key_map_add(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
         key_map_add(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
 
@@ -1016,6 +1017,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<enter>",     .CONFIRM);
         key_map_add(key_map, "C-m",         .CONFIRM);
         key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
+        key_map_add(key_map, "<escape>",    .CANCEL_OR_STOP_SELECTING);
 
         // Modal text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*modal_interaction.buffer, make_arena(editor, platform, .SMALL, "Modal Buffer"));
