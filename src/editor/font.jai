@@ -110,6 +110,8 @@ Glyph_Entry :: struct {
 //
 // TOOD(jt): Also be able to load font variants from a font collection.
 make_font :: (arena: *Arena, ttf_regular: [] u8, ttf_bold: [] u8, ttf_italic: [] u8, ttf_bold_italic: [] u8, texture_id: Texture_ID, pixel_height: s32, line_height_multiplier: f32, subpixel: bool) -> Font {
+    ProfileZone("make_font");
+
     font: Font;
     font.arena      = arena;
     font.arena_mark = arena_get_mark(arena); // So that we don't hose whatever else is stored in there when we reset.
@@ -159,6 +161,8 @@ make_font :: (arena: *Arena, ttf_regular: [] u8, ttf_bold: [] u8, ttf_italic: []
 
 // Reset all font structures for new options. Implies you'll also do font_new_frame, so don't do this in the middle of the frame.
 font_reset_for_options :: (font: *Font, pixel_height: s32, line_height_multiplier: f32, subpixel: bool) {
+    ProfileZone("font_reset_for_options");
+
     arena_pop_to_mark(font.arena, font.arena_mark);
 
     error: FT_Error;
@@ -803,7 +807,6 @@ get_char_advance :: (font: Font, c: u32) -> s64 {
 }
 
 clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
-    ProfileZone("clear_glyph_cell");
     for y: 0..height - 1 {
         for x: 0..width - 1 {
             p := dest + y * pitch + x;
@@ -813,7 +816,6 @@ clear_glyph_cell :: (dest: *u8, width: s32, height: s32, pitch: s32) {
 }
 
 clear_glyph_cell_subpixel :: (dest: *u32, width: s32, height: s32, pitch: s32) {
-    ProfileZone("clear_glyph_cell_subpixel");
     for y: 0..height - 1 {
         for x: 0..width - 1 {
             p := dest + y * pitch + x;
@@ -823,8 +825,6 @@ clear_glyph_cell_subpixel :: (dest: *u32, width: s32, height: s32, pitch: s32) {
 }
 
 copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
-    ProfileZone("copy_glyph_cell");
-
     sanity_assert(dest_width >= source_width, "source_width (%) does not fit in dest_width (%)", source_width, dest_width);
     sanity_assert(dest_height >= source_height, "source_height (%) does not fit in dest_height (%)", source_height, dest_height);
     w := min(dest_width, source_width);
@@ -839,8 +839,6 @@ copy_glyph_cell :: (dest: *u8, dest_width: s32, dest_height: s32, dest_pitch: s3
 }
 
 copy_glyph_cell_subpixel :: (dest: *u32, dest_width: s32, dest_height: s32, dest_pitch: s32, source: *u8, source_width: s32, source_height: s32, source_pitch: s32) {
-    ProfileZone("copy_glyph_cell_subpixel");
-
     // See :SubpixelDivideByThree.
     sanity_assert(dest_width >= source_width / 3, "source_width/3 (%) does not fit in dest_width (%)", source_width / 3, dest_width);
     sanity_assert(dest_height >= source_height, "source_height (%) does not fit in dest_height (%)", source_height, dest_height);
