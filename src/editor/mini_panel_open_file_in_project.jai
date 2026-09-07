@@ -1,4 +1,4 @@
-mini_panel_open_project_file_procs: Mini_Panel_Procs = {
+mini_panel_open_file_in_project_procs: Mini_Panel_Procs = {
     get_action_text,
     can_select_text_line,
     init,
@@ -40,7 +40,7 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    success, working_directory, working_directory_is_project := get_working_directory_for_active_view(editor);
+    success, working_directory, working_directory_is_project := get_working_directory_for_active_view(editor, search_for_project = true);
     if !success {
         editor_log(editor, "Failed to get working directory for open project file");
         close_mini_panel(editor, platform, input);

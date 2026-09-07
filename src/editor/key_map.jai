@@ -96,10 +96,15 @@ shortcut_parse :: (_s: string) -> success: bool, Shortcut {
         dash_found, l, r := String.split_from_left(left, #char "-");
         while dash_found {
             if l == {
-                case "C"; key.modifier_flags |= .CTRL;
-                case "M"; key.modifier_flags |= .ALT;
-                case "S"; key.modifier_flags |= .SHIFT;
-                case "X"; key.modifier_flags |= .META;
+                case "Ctrl";   #through;
+                case "C";      key.modifier_flags |= .CTRL;
+                case "Alt";    #through;
+                case "M";      key.modifier_flags |= .ALT;
+                case "Shift";  #through;
+                case "S";      key.modifier_flags |= .SHIFT;
+                case "Meta";   #through;
+                case "Cmd";    #through;
+                case "X";      key.modifier_flags |= .META;
 
                 case; return false, shortcut;
             }
@@ -116,9 +121,10 @@ shortcut_parse :: (_s: string) -> success: bool, Shortcut {
             case "<space>";      key.type = .CODEPOINT; key.codepoint = .SPACEBAR;
             case "<tab>";        key.type = .CODEPOINT; key.codepoint = .TAB;
 
-            case "<enter>";      key.type = .CODEPOINT; key.codepoint = .ENTER;
-            case "<delete>";     key.type = .CODEPOINT; key.codepoint = .DELETE;
             case "<backspace>";  key.type = .CODEPOINT; key.codepoint = .BACKSPACE;
+            case "<enter>";      key.type = .CODEPOINT; key.codepoint = .ENTER;
+            case "<escape>";     key.type = .CODEPOINT; key.codepoint = .ESCAPE;
+            case "<delete>";     key.type = .CODEPOINT; key.codepoint = .DELETE;
 
             case "<home>";       key.type = .KEY; key.key = .HOME;
             case "<end>";        key.type = .KEY; key.key = .END;
@@ -177,10 +183,10 @@ shortcut_print_to_builder :: (shortcut: Shortcut, sb: *String_Builder) {
     for 0..shortcut.count - 1 {
         key := shortcut.sequence[it];
 
-        if key.modifier_flags & .CTRL   append(sb, "C-");
-        if key.modifier_flags & .ALT    append(sb, "M-");
-        if key.modifier_flags & .SHIFT  append(sb, "S-");
-        if key.modifier_flags & .META   append(sb, "X-");
+        if key.modifier_flags & .CTRL   append(sb, "Ctrl-");
+        if key.modifier_flags & .ALT    append(sb, "Alt-");
+        if key.modifier_flags & .SHIFT  append(sb, "Shift-");
+        if key.modifier_flags & .META   append(sb, "Meta-");
 
         if key.type == {
             case .KEY; {
@@ -218,9 +224,10 @@ shortcut_print_to_builder :: (shortcut: Shortcut, sb: *String_Builder) {
                     case .SPACEBAR;      append(sb, "<space>");
                     case .TAB;           append(sb, "<tab>");
 
-                    case .ENTER;         append(sb, "<enter>");
-                    case .DELETE;        append(sb, "<delete>");
                     case .BACKSPACE;     append(sb, "<backspace>");
+                    case .ENTER;         append(sb, "<enter>");
+                    case .ESCAPE;        append(sb, "<escape>");
+                    case .DELETE;        append(sb, "<delete>");
 
                     case; {
                         buf: [4] u8;

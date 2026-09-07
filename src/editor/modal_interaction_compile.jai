@@ -1,4 +1,4 @@
-modal_interaction_compile_project_procs: Modal_Interaction_Procs = {
+modal_interaction_compile_procs: Modal_Interaction_Procs = {
     get_action_text,
     init,
     handle_event,
@@ -8,10 +8,23 @@ modal_interaction_compile_project_procs: Modal_Interaction_Procs = {
 
 #scope_file
 
+Mode :: enum u64 {
+    PROJECT_OR_DIRECTORY;
+    DIRECTORY;
+}
+
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage or Static */ string {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
+        return "";
+    }
+
+    mode := cast(Mode, mi.userdata);
+
     action_text: string;
 
-    success, working_directory, working_directory_is_project := get_working_directory_for_active_view(editor);
+    success, working_directory, working_directory_is_project := get_working_directory_for_active_view(editor, search_for_project = mode == .PROJECT_OR_DIRECTORY);
     if success {
         if working_directory_is_project {
             action_text = tprint("Compile project %: ", working_directory);
@@ -25,8 +38,14 @@ get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Tem
     return action_text;
 }
 
-init :: (editor: *Editor, platform: Platform, input: Input) {
+init :: (editor: *Editor, platform: Platform, input: Input, params: *void) {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
+        return;
+    }
 
+    mi.userdata = params;
 }
 
 handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) -> handled: bool {
@@ -34,20 +53,22 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
 }
 
 advance :: (editor: *Editor, platform: Platform, input: Input) {
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
         return;
     }
 
-    success, working_directory, working_directory_is_project := get_working_directory_for_active_view(editor);
+    mode := cast(Mode, mi.userdata);
+
+    success, working_directory, working_directory_is_project := get_working_directory_for_active_view(editor, search_for_project = mode == .PROJECT_OR_DIRECTORY);
     if !success {
         editor_log(editor, "Failed to get working directory for *compilation*");
         close_modal_interaction(editor, platform, input);
         return;
     }
 
-    args := text_buffer_make_view_for_line(modal_interaction.buffer, 0,, temp);
+    args := text_buffer_make_view_for_line(mi.buffer, 0,, temp);
 
     // TODO(jt): @Incomplete Remember the last compile command and pre-fill it.
 

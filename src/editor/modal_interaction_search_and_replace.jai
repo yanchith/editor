@@ -55,11 +55,15 @@ get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Tem
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH;   return "Text to replace: ";
         case .INPUT_TO_REPLACE;  return tprint("Replace % with: ", userdata.input_to_search);
-        case .REPLACING;         return tprint("Replacing % with % (%/%)", userdata.input_to_search, userdata.input_to_replace, userdata.processed_count + 1, userdata.found_count);
+        case .REPLACING;         return tprint("Replacing % with % (%/%): (y to confirm, n to reject, q to stop)",
+                                               userdata.input_to_search,
+                                               userdata.input_to_replace,
+                                               userdata.processed_count + 1,
+                                               userdata.found_count);
     }
 }
 
-init :: (editor: *Editor, platform: Platform, input: Input) {
+init :: (editor: *Editor, platform: Platform, input: Input, params: *void) {
     modal_interaction := *editor.modal_interaction;
     sanity_assert(modal_interaction.open);
     if !modal_interaction.open {

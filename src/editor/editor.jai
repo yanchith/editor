@@ -6,7 +6,6 @@ TODO(jt): Known serious bugs:
 
 TODO(jt): if I had to release (on Windows) today:
 
-- Print shortcuts in full form
 - Add good light theme
 - Portable windows zip created from build.jai
 - Add config file for keybinds
@@ -14,7 +13,6 @@ TODO(jt): if I had to release (on Windows) today:
 - Add config file for at least some of visual :Config things
 - Add config file for extension to language association
 - Hide CR from rendering
-- Welcome message should have some introduction
 
 TODO(jt): Roadmap:
 
@@ -178,15 +176,15 @@ operator==     :: Math.operator==;
 #load "lang_jai.jai";
 #load "lang_glsl.jai";
 #load "mini_panel_search.jai";
-#load "mini_panel_search_project.jai";
+#load "mini_panel_search_in_project.jai";
 #load "mini_panel_open_file.jai";
-#load "mini_panel_open_project_file.jai";
+#load "mini_panel_open_file_in_project.jai";
 #load "mini_panel_switch_view.jai";
 #load "mini_panel_close_view.jai";
 #load "mini_panel_show_commands.jai";
 #load "modal_interaction_search_and_replace.jai";
 #load "modal_interaction_go_to_line.jai";
-#load "modal_interaction_compile_project.jai";
+#load "modal_interaction_compile.jai";
 #load "modal_interaction_benchgen.jai";
 
 TEXTURE_ID_NONE:                 Texture_ID : 0; // Not really used, just a 0 default.
@@ -628,7 +626,7 @@ Modal_Interaction_Procs :: struct {
 }
 
 Modal_Interaction_Get_Action_Text_Proc :: #type (editor: *Editor, platform: Platform, input: Input) -> /* Possibly short lifetime */ string;
-Modal_Interaction_Init_Proc            :: #type (editor: *Editor, platform: Platform, input: Input);
+Modal_Interaction_Init_Proc            :: #type (editor: *Editor, platform: Platform, input: Input, params: *void);
 Modal_Interaction_Handle_Event_Proc    :: #type (editor: *Editor, event: Input_Event, platform: Platform, input: Input) -> handled: bool;
 Modal_Interaction_Advance_Proc         :: #type (editor: *Editor, platform: Platform, input: Input);
 Modal_Interaction_Cancel_Proc          :: #type (editor: *Editor, platform: Platform, input: Input);
@@ -722,18 +720,16 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-v",     .MOVE_DOWN_ONE_SCREEN);
         key_map_add(key_map, "<pageup>", .MOVE_UP_ONE_SCREEN);
         key_map_add(key_map, "<pagedown>", .MOVE_DOWN_ONE_SCREEN);
-        key_map_add(key_map, "<prior>", .MOVE_UP_ONE_SCREEN);
-        key_map_add(key_map, "<next>",  .MOVE_DOWN_ONE_SCREEN);
 
         key_map_add(key_map, "C-x 3",   .SPLIT_PANEL_HORIZONTALLY);
         key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_PANEL);
         key_map_add(key_map, "C-x 1",   .CLOSE_OTHER_PANELS);
-        key_map_add(key_map, "C-x o",   .GO_TO_NEXT_PANEL);
+        key_map_add(key_map, "C-x o",   .GO_TO_OTHER_PANEL);
 
-        key_map_add(key_map, "C-x p f", .OPEN_PROJECT_FILE);
-        key_map_add(key_map, "C-c s r", .SEARCH_PROJECT); // For my muscle memory.
-        key_map_add(key_map, "C-x p s", .SEARCH_PROJECT);
-        key_map_add(key_map, "C-x p c", .COMPILE_PROJECT);
+        key_map_add(key_map, "C-x p f", .OPEN_FILE_IN_PROJECT);
+        key_map_add(key_map, "C-x p s", .SEARCH_IN_PROJECT);
+        key_map_add(key_map, "C-c s r", .SEARCH_IN_PROJECT); // For my muscle memory.
+        key_map_add(key_map, "C-x p c", .COMPILE_IN_PROJECT_OR_DIRECTORY);
     }
 
     {
@@ -954,6 +950,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "M-v",         .MOVE_UP_ONE_SCREEN);
         key_map_add(key_map, "C-v",         .MOVE_DOWN_ONE_SCREEN);
+        key_map_add(key_map, "<pageup>",    .MOVE_UP_ONE_SCREEN);
+        key_map_add(key_map, "<pagedown>",  .MOVE_DOWN_ONE_SCREEN);
 
         key_map_add(key_map, "C-<space>",   .START_SELECTING);
 
@@ -2543,22 +2541,23 @@ Panel_Action :: enum {
     SPLIT_PANEL_HORIZONTALLY;
     CLOSE_CURRENT_PANEL;
     CLOSE_OTHER_PANELS;
-    GO_TO_NEXT_PANEL;
+    GO_TO_OTHER_PANEL;
 
     // TODO(jt): @Cleanup Move things below to the Global_Action, because they don't need a panel to do their thing.
 
-    OPEN_PROJECT_FILE;
-    SEARCH_PROJECT;
-    COMPILE_PROJECT;
+    OPEN_FILE_IN_PROJECT;
+    SEARCH_IN_PROJECT;
+    COMPILE_IN_PROJECT_OR_DIRECTORY;
+    COMPILE_IN_DIRECTORY;
 
-    ENABLE_SUBPIXEL_RENDERING;
-    DISABLE_SUBPIXEL_RENDERING;
+    SUBPIXEL_RENDERING_ENABLE;
+    SUBPIXEL_RENDERING_DISABLE;
 
-    ABULAFIA_THEME;
-    NAYSAYER_THEME;
-    HANDMADE_THEME;
-    STB_THEME;
-    ZENBURN_THEME;
+    THEME_ABULAFIA;
+    THEME_NAYSAYER;
+    THEME_HANDMADE;
+    THEME_STB;
+    THEME_ZENBURN;
 }
 
 Document_Action :: enum {
@@ -2629,9 +2628,8 @@ Document_Action :: enum {
     LANGUAGE_JAI;
     LANGUAGE_GLSL;
 
-    BYTE_AT_CURSOR;
-
-    BENCHGEN_TEXT;
+    DEBUG_PRINT_BYTE_AT_CURSOR;
+    DEBUG_INSERT_BENCHMARK_TEXT;
 }
 
 Compilation_Action :: enum {
@@ -2964,7 +2962,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
                 touch_panel(newly_active_panel, input.time);
             }
         }
-        case .GO_TO_NEXT_PANEL; {
+        case .GO_TO_OTHER_PANEL; {
             if #complete editor.active_view == {
                 case .FULL;   // No-op
                 case .LEFT; {
@@ -2982,18 +2980,19 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
             }
         }
 
-        case .OPEN_PROJECT_FILE;  open_mini_panel(editor, platform, input, mini_panel_open_project_file_procs);
-        case .SEARCH_PROJECT;     open_mini_panel(editor, platform, input, mini_panel_search_project_procs);
-        case .COMPILE_PROJECT;    open_modal_interaction(editor, platform, input, modal_interaction_compile_project_procs);
+        case .OPEN_FILE_IN_PROJECT;             open_mini_panel(editor, platform, input, mini_panel_open_file_in_project_procs);
+        case .SEARCH_IN_PROJECT;                open_mini_panel(editor, platform, input, mini_panel_search_in_project_procs);
+        case .COMPILE_IN_PROJECT_OR_DIRECTORY;  open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
+        case .COMPILE_IN_DIRECTORY;             open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
 
-        case .ENABLE_SUBPIXEL_RENDERING;   font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, true);
-        case .DISABLE_SUBPIXEL_RENDERING;  font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, false);
+        case .SUBPIXEL_RENDERING_ENABLE;   font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, true); editor_log(editor, "Subpixel rendering on");
+        case .SUBPIXEL_RENDERING_DISABLE;  font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, false); editor_log(editor, "Subpixel rendering off");
 
-        case .ABULAFIA_THEME;     editor.theme = abulafia_theme(); theme_changed = true;
-        case .NAYSAYER_THEME;     editor.theme = naysayer_theme(); theme_changed = true;
-        case .HANDMADE_THEME;     editor.theme = handmade_theme(); theme_changed = true;
-        case .STB_THEME;          editor.theme = stb_theme(); theme_changed = true;
-        case .ZENBURN_THEME;      editor.theme = zenburn_theme();  theme_changed = true;
+        case .THEME_ABULAFIA;     editor.theme = abulafia_theme(); theme_changed = true;
+        case .THEME_NAYSAYER;     editor.theme = naysayer_theme(); theme_changed = true;
+        case .THEME_HANDMADE;     editor.theme = handmade_theme(); theme_changed = true;
+        case .THEME_STB;          editor.theme = stb_theme(); theme_changed = true;
+        case .THEME_ZENBURN;      editor.theme = zenburn_theme(); theme_changed = true;
     }
 
     //
@@ -3681,7 +3680,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .LANGUAGE_JAI;         document_change_lang(document, .JAI);
         case .LANGUAGE_GLSL;        document_change_lang(document, .GLSL);
 
-        case .BYTE_AT_CURSOR; {
+        case .DEBUG_PRINT_BYTE_AT_CURSOR; {
             if text_buffer_can_read_at_location(document.buffer, view.cursors.c0) {
                 byte := text_buffer_get_byte_at_location(document.buffer, view.cursors.c0);
                 editor_log(editor, "Byte at cursor: %", byte);
@@ -3690,7 +3689,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .BENCHGEN_TEXT; {
+        case .DEBUG_INSERT_BENCHMARK_TEXT; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
                 open_modal_interaction(editor, platform, input, modal_interaction_benchgen_procs);
@@ -4987,7 +4986,7 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 
 #scope_file
 
-open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, procs: Modal_Interaction_Procs) {
+open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, procs: Modal_Interaction_Procs, params: *void = null) {
     modal_interaction := *editor.modal_interaction;
 
     assert(!modal_interaction.open);
@@ -4995,7 +4994,7 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, pr
     modal_interaction.procs = procs;
     modal_interaction.open = true;
 
-    procs.init(editor, platform, input);
+    procs.init(editor, platform, input, params);
 }
 
 #scope_module
@@ -5146,7 +5145,7 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
     return panel;
 }
 
-get_working_directory_for_active_view :: (editor: Editor) -> success: bool, directory: string, directory_is_project: bool {
+get_working_directory_for_active_view :: (editor: Editor, search_for_project: bool) -> success: bool, directory: string, directory_is_project: bool {
     // Search the current directory, unless it is part of a project, in which case search the (parent) project directory.
 
     working_directory: string;
@@ -5167,10 +5166,12 @@ get_working_directory_for_active_view :: (editor: Editor) -> success: bool, dire
         return false, "", false;
     }
 
-    success, project_directory := get_project_directory_for_path(editor, working_directory);
-    if success {
-        working_directory = project_directory;
-        working_directory_is_project = true;
+    if search_for_project {
+        success, project_directory := get_project_directory_for_path(editor, working_directory);
+        if success {
+            working_directory = project_directory;
+            working_directory_is_project = true;
+        }
     }
 
     return true, working_directory, working_directory_is_project;
@@ -6131,10 +6132,12 @@ WELCOME_TEMPLATE :: #string DONE
 
 Welcome to the untitled text editor! (Version %.%.%, built on %)
 
-This is an alpha release, so minor bugs and occasional crashes can happen.
+This is an alpha release, so expect minor bugs and the occasional crash.
 I apologize for the inconvenience.
 
 If you are coming from Emacs, most of the keyboard shortcuts will be familiar to you.
 I plan to add config files and the ability to start from a editor specific template soon.
+
+To list available commands and their bound shortcuts, type Alt-x or Ctrl-Shift-p.
 
 DONE;

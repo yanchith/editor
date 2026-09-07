@@ -34,7 +34,7 @@ get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* sta
     return "Insert benchmark text of size: ";
 }
 
-init :: (editor: *Editor, platform: Platform, input: Input) {
+init :: (editor: *Editor, platform: Platform, input: Input, params: *void) {
 
 }
 

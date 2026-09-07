@@ -12,7 +12,7 @@ get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* sta
     return "Go to line: ";
 }
 
-init :: (editor: *Editor, platform: Platform, input: Input) {
+init :: (editor: *Editor, platform: Platform, input: Input, params: *void) {
 
 }
 
