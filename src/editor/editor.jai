@@ -2443,17 +2443,17 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
     buffered, action := key_map_input(*mi.key_map, event);
     if action == {
-        case .MOVE_LEFT;                 text_buffer_move_x(mi.buffer, *mi.cursors, -1, mi.selecting);
-        case .MOVE_RIGHT;                text_buffer_move_x(mi.buffer, *mi.cursors,  1, mi.selecting);
+        case .MOVE_LEFT;               text_buffer_move_x(mi.buffer, *mi.cursors, -1, mi.selecting);
+        case .MOVE_RIGHT;              text_buffer_move_x(mi.buffer, *mi.cursors,  1, mi.selecting);
 
-        case .MOVE_TO_START_OF_LINE;     text_buffer_move_to_start_of_line(mi.buffer, *mi.cursors, mi.selecting);
-        case .MOVE_TO_END_OF_LINE;       text_buffer_move_to_end_of_line(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_TO_START_OF_LINE;   text_buffer_move_to_start_of_line(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_TO_END_OF_LINE;     text_buffer_move_to_end_of_line(mi.buffer, *mi.cursors, mi.selecting);
 
-        case .MOVE_FORWARD_WORD;         text_buffer_move_to_next_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
-        case .MOVE_BACKWARD_WORD;        text_buffer_move_to_previous_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_FORWARD_WORD;       text_buffer_move_to_next_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_BACKWARD_WORD;      text_buffer_move_to_previous_word_boundary(mi.buffer, *mi.cursors, mi.selecting);
 
-        case .DELETE_FORWARD;            text_buffer_delete_forward(*mi.buffer, *mi.cursors, 1); buffer_changed = true;
-        case .DELETE_BACKWARD;           text_buffer_delete_backward(*mi.buffer, *mi.cursors); buffer_changed = true;
+        case .DELETE_FORWARD;          text_buffer_delete_forward(*mi.buffer, *mi.cursors, 1); buffer_changed = true;
+        case .DELETE_BACKWARD;         text_buffer_delete_backward(*mi.buffer, *mi.cursors); buffer_changed = true;
 
         case .DELETE_FORWARD_WORD; {
             deleted := text_buffer_delete_forward_word(*mi.buffer, *mi.cursors);
@@ -2470,9 +2470,9 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
             }
         }
 
-        case .START_SELECTING;           mi.selecting = true; text_cursors_join(*mi.cursors);
+        case .START_SELECTING;         mi.selecting = true; text_cursors_join(*mi.cursors);
 
-        case .INDENT_OR_AUTOCOMPLETE;    // No-op, we just want to prevent inserting a tab for now.
+        case .INDENT_OR_AUTOCOMPLETE;  // No-op for now.
 
         case .COPY; {
             mi.selecting = false;
@@ -2499,7 +2499,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
             }
         }
 
-        case .CONFIRM;                   mi.procs.advance(editor, platform, input);
+        case .CONFIRM;                 mi.procs.advance(editor, platform, input);
         case .CANCEL_OR_STOP_SELECTING; {
             if mi.selecting {
                 text_cursors_join(*mi.cursors);
