@@ -218,7 +218,7 @@ THIN_CURSOR_WIDTH:          f32 : 4;
 THIN_CURSOR_WIDTH_INACTIVE: f32 : 2;
 
 // TODO(jt): Make fonts configurable. :Config
-FONT_LINE_HEIGHT_MULTIPLIER: f32 : 1.1;
+FONT_LINE_HEIGHT_MULTIPLIER: f32 : 1.2;
 FONT :: "LiberationMono";
 // FONT :: "FiraCode";
 

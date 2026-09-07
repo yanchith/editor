@@ -196,8 +196,8 @@ stb_theme :: () -> Theme {
     cursor_color_readonly  := unpack_srgba(0xa0a0a0ff);
     highlight_color        := Vector4.{ 0, 0, 0, 0.1 };
     highlight_color_active := Vector4.{ 0, 0, 0, 0.2 };
-    modeline_color         := unpack_srgba(0xa0a0a0ff);
-    modeline_color_active  := unpack_srgba(0x808080ff);
+    modeline_color         := unpack_srgba(0xd0d0d0ff);
+    modeline_color_active  := unpack_srgba(0xb0b0b0ff);
 
     t: Theme;
     t.cursor_color               = foreground_color;
@@ -294,8 +294,8 @@ visual_studio_light_theme :: () -> Theme {
     highlight_color        := unpack_srgba(0xf6cdb5ff);
     highlight_color_active := unpack_srgba(0xa6ad95ff);
 
-    modeline_color         := unpack_srgba(0xa0a0a0ff);
-    modeline_color_active  := unpack_srgba(0x808080ff);
+    modeline_color         := unpack_srgba(0xd0d0d0ff);
+    modeline_color_active  := unpack_srgba(0xb0b0b0ff);
 
     keyword_color          := unpack_srgba(0x5400faff);
     number_color           := unpack_srgba(0x0e8559ff);
