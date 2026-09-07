@@ -16,6 +16,7 @@ Theme :: struct {
     background_color: Vector4;
     separator_color: Vector4;
 
+    listing_line_color: Vector4;
     listing_item_text_color: Vector4;
     listing_item_text_variant: Font_Variant;
     listing_item_text_color_marked: Vector4;
@@ -55,13 +56,16 @@ abulafia_theme :: () -> Theme {
     modeline_color_active := unpack_srgba(0x090909ff);
     keyword_color         := unpack_srgba(0xe95410ff);
 
+    cursor_minus_1 := set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
+    cursor_minus_2 := set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
+
     t: Theme;
     t.cursor_color               = cursor_color;
-    t.cursor_color_hot           = unpack_srgba(0xffffffff);
-    t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
+    t.cursor_color_hot           = { 1, 1, 1, 1 };
+    t.cursor_color_readonly      = { 1, 0, 0, 1 };
     t.line_color                 = { 0, 0, 0, 0 };
-    t.selection_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.150);
-    t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
+    t.selection_color            = cursor_minus_2;
+    t.highlight_color            = cursor_minus_1;
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
     t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
     t.modeline_color             = unpack_srgba(0x252525ff);
@@ -70,6 +74,7 @@ abulafia_theme :: () -> Theme {
     t.background_color           = background_color;
     t.separator_color            = modeline_color_active;
 
+    t.listing_line_color               = cursor_minus_2;
     t.listing_item_text_color          = text_color;
     t.listing_item_text_color_marked   = keyword_color;
     t.listing_item_text_variant_marked = .BOLD;
@@ -85,7 +90,7 @@ abulafia_theme :: () -> Theme {
     t.number_literal_color = unpack_srgba(0x759fbfff);
     t.comment_color        = unpack_srgba(0xa0a0a0ff);
 
-    t.mini_panel_line_color      = set_alpha(adjust_saturation_and_value(cursor_color, 0.5, 1.2), 0.1);
+    t.mini_panel_line_color      = cursor_minus_2;
     t.mini_panel_item_text_color = text_color;
     t.mini_panel_item_warning_text_color = unpack_srgba(0xe95410ff);
 
@@ -98,13 +103,16 @@ naysayer_theme :: () -> Theme {
     background_color      := unpack_srgba(0x072626ff);
     keyword_color         := unpack_srgba(0xffffffff);
 
+    cursor_minus_1 := set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
+    cursor_minus_2 := set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
+
     t: Theme;
     t.cursor_color               = cursor_color;
-    t.cursor_color_hot           = unpack_srgba(0xffffffff);
-    t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
+    t.cursor_color_hot           = { 1, 1, 1, 1 };
+    t.cursor_color_readonly      = { 1, 0, 0, 1 };
     t.line_color                 = { 0, 0, 0, 0 };
-    t.selection_color            = unpack_srgba(0x0000ffff);
-    t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
+    t.selection_color            = { 0, 0, 1, 1 };
+    t.highlight_color            = cursor_minus_1;
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
     t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
     t.modeline_color             = unpack_srgba(0xc5c5c9ff);
@@ -113,6 +121,7 @@ naysayer_theme :: () -> Theme {
     t.background_color           = background_color;
     t.separator_color            = unpack_srgba(0x000000ff);
 
+    t.listing_line_color               = cursor_minus_2;
     t.listing_item_text_color          = text_color;
     t.listing_item_text_color_marked   = keyword_color;
     t.listing_item_text_variant_marked = .BOLD;
@@ -126,7 +135,7 @@ naysayer_theme :: () -> Theme {
     t.number_literal_color = unpack_srgba(0x92e5cfff); // Jon also uses this for boolean literals
     t.comment_color        = unpack_srgba(0x3ddf23ff);
 
-    t.mini_panel_line_color      = set_alpha(adjust_saturation_and_value(cursor_color, 0.5, 1.2), 0.1);
+    t.mini_panel_line_color      = cursor_minus_2;
     t.mini_panel_item_text_color = text_color;
     t.mini_panel_item_warning_text_color = unpack_srgba(0xe95410ff);
 
@@ -140,13 +149,16 @@ handmade_theme :: () -> Theme {
     modeline_color_active := unpack_srgba(0x090909ff);
     keyword_color         := unpack_srgba(0xc38d03ff);
 
+    cursor_minus_1 := set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
+    cursor_minus_2 := set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.100);
+
     t: Theme;
     t.cursor_color               = cursor_color;
-    t.cursor_color_hot           = unpack_srgba(0xffffffff);
-    t.cursor_color_readonly      = unpack_srgba(0xff0000ff);
+    t.cursor_color_hot           = { 1, 1, 1, 1 };
+    t.cursor_color_readonly      = { 1, 0, 0, 1 };
     t.line_color                 = { 0, 0, 0, 0 };
-    t.selection_color            = unpack_srgba(0x0000ffff);
-    t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
+    t.selection_color            = { 0, 0, 1, 1 };
+    t.highlight_color            = cursor_minus_1;
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
     t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
     t.modeline_color             = unpack_srgba(0x252525ff);
@@ -155,6 +167,7 @@ handmade_theme :: () -> Theme {
     t.background_color           = background_color;
     t.separator_color            = modeline_color_active;
 
+    t.listing_line_color               = cursor_minus_2;
     t.listing_item_text_color          = text_color;
     t.listing_item_text_color_marked   = keyword_color;
     t.listing_item_text_variant_marked = .BOLD;
@@ -170,9 +183,60 @@ handmade_theme :: () -> Theme {
     t.number_literal_color = unpack_srgba(0x759fbfff);
     t.comment_color        = unpack_srgba(0xa0a0a0ff);
 
-    t.mini_panel_line_color      = set_alpha(adjust_saturation_and_value(cursor_color, 0.5, 1.2), 0.1);
+    t.mini_panel_line_color      = cursor_minus_2;
     t.mini_panel_item_text_color = text_color;
     t.mini_panel_item_warning_text_color = unpack_srgba(0xe95410ff);
+
+    return t;
+}
+
+stb_theme :: () -> Theme {
+    foreground_color       := Vector4.{ 0, 0, 0, 1 };
+    background_color       := Vector4.{ 1, 1, 1, 1 };
+    cursor_color_readonly  := unpack_srgba(0xa0a0a0ff);
+    highlight_color        := Vector4.{ 0, 0, 0, 0.1 };
+    highlight_color_active := Vector4.{ 0, 0, 0, 0.2 };
+    modeline_color         := unpack_srgba(0xa0a0a0ff);
+    modeline_color_active  := unpack_srgba(0x808080ff);
+
+    t: Theme;
+    t.cursor_color               = foreground_color;
+    t.cursor_color_hot           = foreground_color;
+    t.cursor_color_readonly      = cursor_color_readonly;
+    t.cursor_style               = .THIN;
+    t.line_color                 = { 0, 0, 0, 0 };
+    t.selection_color            = foreground_color;
+    t.highlight_color            = highlight_color;
+    t.highlight_color_active     = highlight_color_active;
+    t.matching_parenthesis_color = { 0, 0, 0, 0 };
+    t.modeline_color             = modeline_color;
+    t.modeline_color_active      = modeline_color_active;
+
+    t.background_color           = background_color;
+    t.separator_color            = foreground_color;
+
+    t.listing_line_color               = foreground_color;
+    t.listing_item_text_color          = foreground_color;
+    t.listing_item_text_color_marked   = foreground_color;
+    t.listing_item_text_variant_marked = .BOLD;
+
+    t.system_text_color    = foreground_color;
+    t.text_color           = foreground_color;
+    t.keyword_color        = foreground_color;
+    t.attribute_color      = foreground_color;
+    t.directive_color      = foreground_color;
+    t.string_literal_color = foreground_color;
+    t.number_literal_color = foreground_color;
+    t.comment_color        = foreground_color;
+
+    t.mini_panel_line_color      = foreground_color;
+    t.mini_panel_item_text_color = foreground_color;
+    t.mini_panel_item_warning_text_color = foreground_color;
+
+    t.invert_color_under_selection = true;
+    // t.invert_color_under_highlight = true;
+    t.invert_color_under_selected_mini_panel_line = true;
+    t.invert_color_under_selected_listing_line = true;
 
     return t;
 }
@@ -198,6 +262,7 @@ zenburn_theme :: () -> Theme {
     t.background_color           = background_color;
     t.separator_color            = unpack_srgba(0x000000ff);
 
+    t.listing_line_color               = unpack_srgba(0x2b2b2bff);
     t.listing_item_text_color          = text_color;
     t.listing_item_text_color_marked   = keyword_color;
     t.listing_item_text_variant_marked = .BOLD;
@@ -221,46 +286,55 @@ zenburn_theme :: () -> Theme {
     return t;
 }
 
-stb_theme :: () -> Theme {
-    foreground_color := Vector4.{ 0, 0, 0, 1 };
+visual_studio_light_theme :: () -> Theme {
+    background_color       := unpack_srgba(0xffffffff);
+    foreground_color       := unpack_srgba(0x000000ff);
+    cursor_color_readonly  := unpack_srgba(0xa0a0a0ff);
+    selection_color        := unpack_srgba(0xb5d3fdff);
+    highlight_color        := unpack_srgba(0xf6cdb5ff);
+    highlight_color_active := unpack_srgba(0xa6ad95ff);
+
+    modeline_color         := unpack_srgba(0xa0a0a0ff);
+    modeline_color_active  := unpack_srgba(0x808080ff);
+
+    keyword_color          := unpack_srgba(0x5400faff);
+    number_color           := unpack_srgba(0x0e8559ff);
+    string_color           := unpack_srgba(0x9f281dff);
+    comment_color          := unpack_srgba(0x008012ff);
 
     t: Theme;
     t.cursor_color               = foreground_color;
-    t.cursor_color_hot           = foreground_color;
-    t.cursor_color_readonly      = unpack_srgba(0xa0a0a0ff);
+    t.cursor_color_hot           = keyword_color;
+    t.cursor_color_readonly      = cursor_color_readonly;
     t.cursor_style               = .THIN;
     t.line_color                 = { 0, 0, 0, 0 };
-    t.selection_color            = foreground_color;
-    t.highlight_color            = { 0, 0, 0, 0.1 };
-    t.highlight_color_active     = { 0, 0, 0, 0.2 };
-    t.matching_parenthesis_color = { 0, 0, 0, 0 };
-    t.modeline_color             = unpack_srgba(0xa0a0a0ff);
-    t.modeline_color_active      = unpack_srgba(0xa0a0a0ff);
+    t.selection_color            = selection_color;
+    t.highlight_color            = highlight_color;
+    t.highlight_color_active     = highlight_color_active;
+    t.matching_parenthesis_color = highlight_color_active;
+    t.modeline_color             = modeline_color;
+    t.modeline_color_active      = modeline_color_active;
 
-    t.background_color           = Vector4.{ 1, 1, 1, 1 };
+    t.background_color           = background_color;
     t.separator_color            = foreground_color;
 
+    t.listing_line_color               = selection_color;
     t.listing_item_text_color          = foreground_color;
-    t.listing_item_text_color_marked   = foreground_color;
+    t.listing_item_text_color_marked   = keyword_color;
     t.listing_item_text_variant_marked = .BOLD;
 
     t.system_text_color    = foreground_color;
     t.text_color           = foreground_color;
-    t.keyword_color        = foreground_color;
-    t.attribute_color      = foreground_color;
-    t.directive_color      = foreground_color;
-    t.string_literal_color = foreground_color;
-    t.number_literal_color = foreground_color;
-    t.comment_color        = foreground_color;
+    t.keyword_color        = keyword_color;
+    t.attribute_color      = keyword_color;
+    t.directive_color      = keyword_color;
+    t.string_literal_color = string_color;
+    t.number_literal_color = number_color;
+    t.comment_color        = comment_color;
 
-    t.mini_panel_line_color      = foreground_color;
+    t.mini_panel_line_color      = selection_color;
     t.mini_panel_item_text_color = foreground_color;
-    t.mini_panel_item_warning_text_color = foreground_color;
-
-    t.invert_color_under_selection = true;
-    // t.invert_color_under_highlight = true;
-    t.invert_color_under_selected_mini_panel_line = true;
-    t.invert_color_under_selected_listing_line = true;
+    t.mini_panel_item_warning_text_color = keyword_color;
 
     return t;
 }

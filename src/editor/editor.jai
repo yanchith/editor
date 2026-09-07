@@ -211,12 +211,12 @@ MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 STRIP_TRAILING_WHITESPACE_ON_SAVE :: true; // TODO(jt): Make this configurable. :Config
 
 PANEL_SCROLL_DURATION:                  f32 : 0.15; // TODO(jt): Make this configurable. :Config
-CURSOR_FLASH_DURATION:                  f32 : 0.20; // TODO(jt): Make flash time configurable. :Config
+CURSOR_FLASH_DURATION:                  f32 : 0.50; // TODO(jt): Make flash time configurable. :Config
 CURSOR_ANIM_DURATION_KEYBOARD_DIRECT:   f32 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
 CURSOR_ANIM_DURATION_KEYBOARD_INDIRECT: f32 : 0.15; // TODO(jt): Make keyboard anim time configurable. :Config
 CURSOR_ANIM_DURATION_MOUSE:             f32 : 0.15; // TODO(jt): Make mouse anim time configurable. :Config
 
-THIN_CURSOR_WIDTH:          f32 : 6;
+THIN_CURSOR_WIDTH:          f32 : 4;
 THIN_CURSOR_WIDTH_INACTIVE: f32 : 2;
 
 // TODO(jt): Make fonts configurable. :Config
@@ -1643,7 +1643,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     y1 := y + cell_h;
 
                     draw_rect(*render_commands, x0, y0, x1, y1, { 0.2, 0.2, 0.2, 1 });
-                    draw_rect(*render_commands, x0, y0, x_total, y1, { 0.5, 0.5, 0.5, 1 });
+                    draw_rect(*render_commands, x0, y0, x_total, y1, { 0.7, 0.7, 0.7, 1 });
                     draw_rect(*render_commands, x0, y0, x_allocated, y1, { 0, 1, 0, 1 });
 
                     y += cell_h;
@@ -1679,7 +1679,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     y1 := y + cell_h;
 
                     draw_rect(*render_commands, x0, y0, x1, y1, { 0.2, 0.2, 0.2, 1 });
-                    draw_rect(*render_commands, x0, y0, x_total, y1, { 0.5, 0.5, 0.5, 1 });
+                    draw_rect(*render_commands, x0, y0, x_total, y1, { 0.7, 0.7, 0.7, 1 });
                     draw_rect(*render_commands, x0, y0, x_committed, y1, { 0, 0, 1, 1 });
                     draw_rect(*render_commands, x0, y0, x_allocated, y1, { 0, 1, 0, 1 });
 
@@ -1752,8 +1752,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         tx := profile_index * R_COUNT;
                         x := PADDING_X + tx * graph_width;
 
-                        color: Vector4 = { 0.5, 0.5, 0.5, 1 };
-
+                        color: Vector4 = { 0.7, 0.7, 0.7, 1 };
                         if profile_index == displayed_frame_index {
                             color = { 1, 1, 1, 1 };
                         }
@@ -2560,6 +2559,7 @@ Panel_Action :: enum {
     THEME_HANDMADE;
     THEME_STB;
     THEME_ZENBURN;
+    THEME_VISUAL_STUDIO_LIGHT;
 }
 
 Document_Action :: enum {
@@ -2990,11 +2990,12 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .SUBPIXEL_RENDERING_ENABLE;   font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, true); editor_log(editor, "Subpixel rendering on");
         case .SUBPIXEL_RENDERING_DISABLE;  font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, false); editor_log(editor, "Subpixel rendering off");
 
-        case .THEME_ABULAFIA;     editor.theme = abulafia_theme(); theme_changed = true;
-        case .THEME_NAYSAYER;     editor.theme = naysayer_theme(); theme_changed = true;
-        case .THEME_HANDMADE;     editor.theme = handmade_theme(); theme_changed = true;
-        case .THEME_STB;          editor.theme = stb_theme(); theme_changed = true;
-        case .THEME_ZENBURN;      editor.theme = zenburn_theme(); theme_changed = true;
+        case .THEME_ABULAFIA;             editor.theme = abulafia_theme(); theme_changed = true;
+        case .THEME_NAYSAYER;             editor.theme = naysayer_theme(); theme_changed = true;
+        case .THEME_HANDMADE;             editor.theme = handmade_theme(); theme_changed = true;
+        case .THEME_STB;                  editor.theme = stb_theme(); theme_changed = true;
+        case .THEME_ZENBURN;              editor.theme = zenburn_theme(); theme_changed = true;
+        case .THEME_VISUAL_STUDIO_LIGHT;  editor.theme = visual_studio_light_theme(); theme_changed = true;
     }
 
     //
@@ -4872,7 +4873,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 if it == view.item_index {
                     if panel_is_active {
-                        draw_rect(render_commands, line_rect_screen, editor.theme.selection_color);
+                        draw_rect(render_commands, line_rect_screen, editor.theme.listing_line_color);
 
                         if editor.theme.invert_color_under_selected_listing_line {
                             invert_range := array_add(*invert_ranges);
@@ -4885,10 +4886,10 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                         right:  Rect = { r.x1 - 1, r.y0,     r.x1,     r.y1 };
                         top:    Rect = { r.x0,     r.y0,     r.x1,     r.y0 + 1 };
                         bottom: Rect = { r.x0,     r.y1 - 1, r.x1,     r.y1 };
-                        draw_rect(render_commands, left, editor.theme.selection_color);
-                        draw_rect(render_commands, right, editor.theme.selection_color);
-                        draw_rect(render_commands, top, editor.theme.selection_color);
-                        draw_rect(render_commands, bottom, editor.theme.selection_color);
+                        draw_rect(render_commands, left, editor.theme.listing_line_color);
+                        draw_rect(render_commands, right, editor.theme.listing_line_color);
+                        draw_rect(render_commands, top, editor.theme.listing_line_color);
+                        draw_rect(render_commands, bottom, editor.theme.listing_line_color);
                     }
                 }
 
