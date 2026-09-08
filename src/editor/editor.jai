@@ -2,7 +2,7 @@
 
 TODO(jt): Known serious bugs:
 
-(none currently)
+When mouse selecting, we can't go past the last character on the last line.
 
 TODO(jt): if I had to release (on Windows) today:
 
