@@ -735,14 +735,15 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_reserve(key_map, 128);
 
+        // nocheckin move_left -> move_backward, move_right -> move_forward
         key_map_add(key_map, "C-p",     .MOVE_UP);
         key_map_add(key_map, "<up>",    .MOVE_UP);
         key_map_add(key_map, "C-n",     .MOVE_DOWN);
         key_map_add(key_map, "<down>",  .MOVE_DOWN);
-        key_map_add(key_map, "C-b",     .MOVE_LEFT);
-        key_map_add(key_map, "<left>",  .MOVE_LEFT);
-        key_map_add(key_map, "C-f",     .MOVE_RIGHT);
-        key_map_add(key_map, "<right>", .MOVE_RIGHT);
+        key_map_add(key_map, "C-b",     .MOVE_BACKWARD);
+        key_map_add(key_map, "<left>",  .MOVE_BACKWARD);
+        key_map_add(key_map, "C-f",     .MOVE_FORWARD);
+        key_map_add(key_map, "<right>", .MOVE_FORWARD);
 
         key_map_add(key_map, "M-%",     .SEARCH_AND_REPLACE);
 
@@ -815,10 +816,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "<up>",    .MOVE_UP);
         key_map_add(key_map, "C-n",     .MOVE_DOWN);
         key_map_add(key_map, "<down>",  .MOVE_DOWN);
-        key_map_add(key_map, "C-b",     .MOVE_LEFT);
-        key_map_add(key_map, "<left>",  .MOVE_LEFT);
-        key_map_add(key_map, "C-f",     .MOVE_RIGHT);
-        key_map_add(key_map, "<right>", .MOVE_RIGHT);
+        key_map_add(key_map, "C-b",     .MOVE_BACKWARD);
+        key_map_add(key_map, "<left>",  .MOVE_BACKWARD);
+        key_map_add(key_map, "C-f",     .MOVE_FORWARD);
+        key_map_add(key_map, "<right>", .MOVE_FORWARD);
 
         key_map_add(key_map, "C-a",     .MOVE_TO_START_OF_LINE);
         key_map_add(key_map, "C-e",     .MOVE_TO_END_OF_LINE);
@@ -919,12 +920,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "C-p",         .MOVE_UP);
         key_map_add(key_map, "C-n",         .MOVE_DOWN);
-        key_map_add(key_map, "C-b",         .MOVE_LEFT);
-        key_map_add(key_map, "C-f",         .MOVE_RIGHT);
+        key_map_add(key_map, "C-b",         .MOVE_BACKWARD);
+        key_map_add(key_map, "C-f",         .MOVE_FORWARD);
         key_map_add(key_map, "<up>",        .MOVE_UP);
         key_map_add(key_map, "<down>",      .MOVE_DOWN);
-        key_map_add(key_map, "<left>",      .MOVE_LEFT);
-        key_map_add(key_map, "<right>",     .MOVE_RIGHT);
+        key_map_add(key_map, "<left>",      .MOVE_BACKWARD);
+        key_map_add(key_map, "<right>",     .MOVE_FORWARD);
 
         key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
         key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
@@ -983,10 +984,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map.allocator = arena_allocator(editor.perm_arena);
         key_map_reserve(key_map, 128);
 
-        key_map_add(key_map, "C-b",         .MOVE_LEFT);
-        key_map_add(key_map, "C-f",         .MOVE_RIGHT);
-        key_map_add(key_map, "<left>",      .MOVE_LEFT);
-        key_map_add(key_map, "<right>",     .MOVE_RIGHT);
+        key_map_add(key_map, "C-b",         .MOVE_BACKWARD);
+        key_map_add(key_map, "C-f",         .MOVE_FORWARD);
+        key_map_add(key_map, "<left>",      .MOVE_BACKWARD);
+        key_map_add(key_map, "<right>",     .MOVE_FORWARD);
 
         key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
         key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
@@ -2264,8 +2265,8 @@ Mini_Panel_Action :: enum {
 
     MOVE_UP;
     MOVE_DOWN;
-    MOVE_LEFT;
-    MOVE_RIGHT;
+    MOVE_BACKWARD;
+    MOVE_FORWARD;
 
     MOVE_TO_START_OF_LINE;
     MOVE_TO_END_OF_LINE;
@@ -2309,8 +2310,8 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     if action == {
         case .MOVE_UP;                 mp.item_index = clamp(mp.item_index - 1, min_item_index, mp.items.count - 1);
         case .MOVE_DOWN;               mp.item_index = clamp(mp.item_index + 1, min_item_index, mp.items.count - 1);
-        case .MOVE_LEFT;               text_buffer_move_x(mp.buffer, *mp.cursors, -1, mp.selecting);
-        case .MOVE_RIGHT;              text_buffer_move_x(mp.buffer, *mp.cursors,  1, mp.selecting);
+        case .MOVE_BACKWARD;               text_buffer_move_x(mp.buffer, *mp.cursors, -1, mp.selecting);
+        case .MOVE_FORWARD;              text_buffer_move_x(mp.buffer, *mp.cursors,  1, mp.selecting);
 
         case .MOVE_TO_START_OF_LINE;   text_buffer_move_to_start_of_line(mp.buffer, *mp.cursors, mp.selecting);
         case .MOVE_TO_END_OF_LINE;     text_buffer_move_to_end_of_line(mp.buffer, *mp.cursors, mp.selecting);
@@ -2407,8 +2408,8 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
 Modal_Interaction_Action :: enum {
     NONE;
 
-    MOVE_LEFT;
-    MOVE_RIGHT;
+    MOVE_BACKWARD;
+    MOVE_FORWARD;
 
     MOVE_TO_START_OF_LINE;
     MOVE_TO_END_OF_LINE;
@@ -2445,8 +2446,8 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
     buffered, action := key_map_input(*mi.key_map, event);
     if action == {
-        case .MOVE_LEFT;               text_buffer_move_x(mi.buffer, *mi.cursors, -1, mi.selecting);
-        case .MOVE_RIGHT;              text_buffer_move_x(mi.buffer, *mi.cursors,  1, mi.selecting);
+        case .MOVE_BACKWARD;           text_buffer_move_x(mi.buffer, *mi.cursors, -1, mi.selecting);
+        case .MOVE_FORWARD;            text_buffer_move_x(mi.buffer, *mi.cursors,  1, mi.selecting);
 
         case .MOVE_TO_START_OF_LINE;   text_buffer_move_to_start_of_line(mi.buffer, *mi.cursors, mi.selecting);
         case .MOVE_TO_END_OF_LINE;     text_buffer_move_to_end_of_line(mi.buffer, *mi.cursors, mi.selecting);
@@ -2570,8 +2571,8 @@ Document_Action :: enum {
 
     MOVE_UP;
     MOVE_DOWN;
-    MOVE_LEFT;
-    MOVE_RIGHT;
+    MOVE_BACKWARD;
+    MOVE_FORWARD;
 
     SEARCH_AND_REPLACE;
 
@@ -2642,8 +2643,8 @@ Compilation_Action :: enum {
 
     MOVE_UP;
     MOVE_DOWN;
-    MOVE_LEFT;
-    MOVE_RIGHT;
+    MOVE_BACKWARD;
+    MOVE_FORWARD;
 
     MOVE_TO_START_OF_LINE;
     MOVE_TO_END_OF_LINE;
@@ -3050,14 +3051,14 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 view.selecting = false;
             }
         }
-        case .MOVE_LEFT; {
+        case .MOVE_BACKWARD; {
             cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
-        case .MOVE_RIGHT; {
+        case .MOVE_FORWARD; {
             cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
@@ -3755,14 +3756,14 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
                 view.selecting = false;
             }
         }
-        case .MOVE_LEFT; {
+        case .MOVE_BACKWARD; {
             cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
-        case .MOVE_RIGHT; {
+        case .MOVE_FORWARD; {
             cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
