@@ -213,7 +213,7 @@ font_reset_for_options :: (font: *Font, pixel_height: s32, line_height_multiplie
 
     error = FT_Load_Char(font.ft_face_for_regular, #char " ", FT_LOAD_DEFAULT | cast(s32, ifx font.subpixel then FT_Load_Target.LCD else FT_Load_Target.NORMAL));
     if !error {
-        font.advance_for_space += font.ft_face_for_regular.glyph.metrics.horiAdvance;
+        font.advance_for_space = font.ft_face_for_regular.glyph.metrics.horiAdvance;
     }
 
     // Because the atlas is bilinearly filtered, and we don't want to sample data from adjacent
