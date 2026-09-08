@@ -36,7 +36,14 @@ apply_config :: (editor: *Editor, _input: string) {
             }
         } else {
             if section == {
-                case .GLOBAL;
+                case .GLOBAL; {
+                    success=, pairs := parse_pair(*lexer);
+                    if !success {
+                        editor_log(editor, "Failed to parse value at %:%", lexer.line_index + 1, lexer.column_index + 1);
+                        return;
+                    }
+
+                }
                 case .KEYBINDS;
             }
         }
@@ -127,7 +134,10 @@ eat_whitespace :: (lexer: *Config_Lexer) -> string {
 
 Section :: enum {
     GLOBAL;
-    KEYBINDS;
+    KEYBINDS_PANEL;
+    KEYBINDS_DOCUMENT;
+    KEYBINDS_COMPILATION;
+    KEYBINDS_LISTING;
 }
 
 GLOBAL_SECTION_KEYS: [] string : .[
