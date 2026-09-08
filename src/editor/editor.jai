@@ -730,6 +730,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "C-+",     .FONT_SIZE_INCREASE);
         key_map_add(key_map, "C--",     .FONT_SIZE_DECREASE);
+
+        key_map_add(key_map, "<f1>",    .DEBUG_VIEW_ATLAS_TEXTURE);
+        key_map_add(key_map, "<f2>",    .DEBUG_VIEW_MEMORY_ABSOLUTE);
+        key_map_add(key_map, "<f3>",    .DEBUG_VIEW_MEMORY_RELATIVE);
+        key_map_add(key_map, "<f4>",    .DEBUG_VIEW_FRAME_PROFILE);
+        key_map_add(key_map, "<f5>",    .DEBUG_VIEW_FRAME_TIMELINE);
     }
 
     {
@@ -1150,39 +1156,19 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     }
 
     for input.events {
-        handled := false;
-
         input_state_update_with_event(*editor.input_state, it);
-
         if it.flags & .PRESSED {
             if !(it.flags & .REPEAT) {
                 editor.last_message_seen = true;
             }
-
-            if it.type == {
-                case .KEY; {
-                    if it.key == {
-                        case .F1;  toggle_debug_view(editor, .ATLAS_TEXTURE); handled = true;
-                        case .F2;  toggle_debug_view(editor, .MEMORY_ABSOLUTE); handled = true;
-                        case .F3;  toggle_debug_view(editor, .MEMORY_RELATIVE); handled = true;
-                        case .F4;  toggle_debug_view(editor, .FRAME_PROFILE); handled = true;
-                        case .F5;  toggle_debug_view(editor, .FRAME_TIMELINE); handled = true;
-                    }
-                }
-            }
         }
 
-        //
-        // Events that trickle down to the active panel.
-        //
-        if !handled {
-            if editor.mini_panel.open {
-                route_event_to_mini_panel(editor, it, platform, input);
-            } else if editor.modal_interaction.open {
-                route_event_to_modal_interaction(editor, it, platform, input);
-            } else {
-                route_event_to_panel(editor, it, platform, input);
-            }
+        if editor.mini_panel.open {
+            route_event_to_mini_panel(editor, it, platform, input);
+        } else if editor.modal_interaction.open {
+            route_event_to_modal_interaction(editor, it, platform, input);
+        } else {
+            route_event_to_panel(editor, it, platform, input);
         }
     }
 
@@ -2531,12 +2517,12 @@ Panel_Action :: enum {
     CLOSE_OTHER_PANELS;
     GO_TO_OTHER_PANEL;
 
-    // TODO(jt): @Cleanup Move things below to the Global_Action, because they don't need a panel to do their thing.
-
     OPEN_FILE_IN_PROJECT;
     SEARCH_IN_PROJECT;
     COMPILE_IN_PROJECT_OR_DIRECTORY;
     COMPILE_IN_DIRECTORY;
+
+    // Things below could be in Global_Action, if we ever create it.
 
     FONT_SIZE_INCREASE;
     FONT_SIZE_DECREASE;
@@ -2550,6 +2536,12 @@ Panel_Action :: enum {
     THEME_STB;
     THEME_ZENBURN;
     THEME_VISUAL_STUDIO_LIGHT;
+
+    DEBUG_VIEW_ATLAS_TEXTURE;
+    DEBUG_VIEW_MEMORY_ABSOLUTE;
+    DEBUG_VIEW_MEMORY_RELATIVE;
+    DEBUG_VIEW_FRAME_PROFILE;
+    DEBUG_VIEW_FRAME_TIMELINE;
 }
 
 Document_Action :: enum {
@@ -2956,7 +2948,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         }
         case .GO_TO_OTHER_PANEL; {
             if #complete editor.active_view == {
-                case .FULL;   // No-op
+                case .FULL; // No-op
                 case .LEFT; {
                     editor.active_view = .RIGHT;
 
@@ -2982,12 +2974,18 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .FONT_SUBPIXEL_RENDERING_ENABLE;   font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, true); editor_log(editor, "Subpixel rendering on");
         case .FONT_SUBPIXEL_RENDERING_DISABLE;  font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, false); editor_log(editor, "Subpixel rendering off");
 
-        case .THEME_ABULAFIA;             editor.theme = abulafia_theme(); theme_changed = true;
-        case .THEME_NAYSAYER;             editor.theme = naysayer_theme(); theme_changed = true;
-        case .THEME_HANDMADE;             editor.theme = handmade_theme(); theme_changed = true;
-        case .THEME_STB;                  editor.theme = stb_theme(); theme_changed = true;
-        case .THEME_ZENBURN;              editor.theme = zenburn_theme(); theme_changed = true;
-        case .THEME_VISUAL_STUDIO_LIGHT;  editor.theme = visual_studio_light_theme(); theme_changed = true;
+        case .THEME_ABULAFIA;                   editor.theme = abulafia_theme(); theme_changed = true;
+        case .THEME_NAYSAYER;                   editor.theme = naysayer_theme(); theme_changed = true;
+        case .THEME_HANDMADE;                   editor.theme = handmade_theme(); theme_changed = true;
+        case .THEME_STB;                        editor.theme = stb_theme(); theme_changed = true;
+        case .THEME_ZENBURN;                    editor.theme = zenburn_theme(); theme_changed = true;
+        case .THEME_VISUAL_STUDIO_LIGHT;        editor.theme = visual_studio_light_theme(); theme_changed = true;
+
+        case .DEBUG_VIEW_ATLAS_TEXTURE;         toggle_debug_view(editor, .ATLAS_TEXTURE);
+        case .DEBUG_VIEW_MEMORY_ABSOLUTE;       toggle_debug_view(editor, .MEMORY_ABSOLUTE);
+        case .DEBUG_VIEW_MEMORY_RELATIVE;       toggle_debug_view(editor, .MEMORY_RELATIVE);
+        case .DEBUG_VIEW_FRAME_PROFILE;         toggle_debug_view(editor, .FRAME_PROFILE);
+        case .DEBUG_VIEW_FRAME_TIMELINE;        toggle_debug_view(editor, .FRAME_TIMELINE);
     }
 
     //
