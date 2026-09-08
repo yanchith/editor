@@ -889,6 +889,8 @@ main :: () {
             }
         }
     }
+
+    log("Shutting down");
 }
 
 //
