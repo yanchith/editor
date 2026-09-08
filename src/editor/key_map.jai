@@ -109,7 +109,14 @@ shortcut_parse :: (_s: string) -> success: bool, Shortcut {
                 case; return false, shortcut;
             }
 
-            dash_found, l, r = String.split_from_left(r, #char "-");
+            if r == "-" {
+                // Allow things like "C--" where the last dash is not a separator.
+                dash_found = false;
+                l = r;
+                r = "";
+            } else {
+                dash_found, l, r = String.split_from_left(r, #char "-");
+            }
         }
 
         if l == {

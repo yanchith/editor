@@ -727,6 +727,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         key_map_add(key_map, "C-x p s", .SEARCH_IN_PROJECT);
         key_map_add(key_map, "C-c s r", .SEARCH_IN_PROJECT); // For my muscle memory.
         key_map_add(key_map, "C-x p c", .COMPILE_IN_PROJECT_OR_DIRECTORY);
+
+        key_map_add(key_map, "C-+",     .FONT_SIZE_INCREASE);
+        key_map_add(key_map, "C--",     .FONT_SIZE_DECREASE);
     }
 
     {
@@ -1151,9 +1154,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
         input_state_update_with_event(*editor.input_state, it);
 
-        //
-        // Global events handled at the editor level.
-        //
         if it.flags & .PRESSED {
             if !(it.flags & .REPEAT) {
                 editor.last_message_seen = true;
@@ -1167,23 +1167,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         case .F3;  toggle_debug_view(editor, .MEMORY_RELATIVE); handled = true;
                         case .F4;  toggle_debug_view(editor, .FRAME_PROFILE); handled = true;
                         case .F5;  toggle_debug_view(editor, .FRAME_TIMELINE); handled = true;
-                    }
-                }
-
-                case .CODEPOINT; {
-                    if editor.input_state.modifiers & .CTRL {
-                        if it.codepoint == {
-                            // TODO(jt): Move this to a global keymap.
-                            //
-                            // TODO(jt): This works a little too well on Windows, we don't even need
-                            // to press shift for the +. The problem is that Windows doesn't send us
-                            // the TEXT_INPUT (WM_CHAR/WM_SYSCHAR) event at all if CTRL is down, so
-                            // we are left with our shitty synthetic TEXT_INPUT in main.jai. We
-                            // could try translating the message without the CTRL and then glueing
-                            // the CTRL back in? I don't know.
-                            case #char "+";  editor.font_size += 1; handled = true;
-                            case #char "-";  editor.font_size = max(editor.font_size - 1, 4); handled = true;
-                        }
                     }
                 }
             }
@@ -2555,8 +2538,11 @@ Panel_Action :: enum {
     COMPILE_IN_PROJECT_OR_DIRECTORY;
     COMPILE_IN_DIRECTORY;
 
-    SUBPIXEL_RENDERING_ENABLE;
-    SUBPIXEL_RENDERING_DISABLE;
+    FONT_SIZE_INCREASE;
+    FONT_SIZE_DECREASE;
+
+    FONT_SUBPIXEL_RENDERING_ENABLE;
+    FONT_SUBPIXEL_RENDERING_DISABLE;
 
     THEME_ABULAFIA;
     THEME_NAYSAYER;
@@ -2669,7 +2655,7 @@ Compilation_Action :: enum {
 
     REFRESH;
 
-    BYTE_AT_CURSOR;
+    DEBUG_BYTE_AT_CURSOR;
 }
 
 Listing_Action :: enum {
@@ -2991,8 +2977,10 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .COMPILE_IN_PROJECT_OR_DIRECTORY;  open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
         case .COMPILE_IN_DIRECTORY;             open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
 
-        case .SUBPIXEL_RENDERING_ENABLE;   font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, true); editor_log(editor, "Subpixel rendering on");
-        case .SUBPIXEL_RENDERING_DISABLE;  font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, false); editor_log(editor, "Subpixel rendering off");
+        case .FONT_SIZE_INCREASE;               editor.font_size += 1;
+        case .FONT_SIZE_DECREASE;               editor.font_size = max(editor.font_size - 1, 1);
+        case .FONT_SUBPIXEL_RENDERING_ENABLE;   font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, true); editor_log(editor, "Subpixel rendering on");
+        case .FONT_SUBPIXEL_RENDERING_DISABLE;  font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, false); editor_log(editor, "Subpixel rendering off");
 
         case .THEME_ABULAFIA;             editor.theme = abulafia_theme(); theme_changed = true;
         case .THEME_NAYSAYER;             editor.theme = naysayer_theme(); theme_changed = true;
@@ -3886,7 +3874,7 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
 
         case .REFRESH;  run_compilation(editor, platform, panel);
 
-        case .BYTE_AT_CURSOR; {
+        case .DEBUG_BYTE_AT_CURSOR; {
             if text_buffer_can_read_at_location(document.buffer, view.cursors.c0) {
                 byte := text_buffer_get_byte_at_location(document.buffer, view.cursors.c0);
                 editor_log(editor, "Byte at cursor: %", byte);
