@@ -2,7 +2,6 @@
 
 TODO(jt): Known serious bugs:
 
-- Recenter only sometimes works!!! (line 414)
 - When mouse selecting, we can't go past the last character on the last line.
 - Directory listers are not sorted on macOS!
 
@@ -5787,6 +5786,10 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
 // TODO(jt): The user experience of this kind of sucks. The first C-l should always recenter. But
 // then we need to remember if it is the first press.
 recenter_panel :: (panel: *Panel, editor: Editor, input: Input, force_center := false, skip_interpolation := false) {
+    is_near :: inline (a: f64, b: f64, epsilon: f64) -> bool {
+        return a + epsilon >= b && a - epsilon <= b;
+    }
+
     if !panel {
         return;
     }
@@ -5809,11 +5812,13 @@ recenter_panel :: (panel: *Panel, editor: Editor, input: Input, force_center := 
     target: DVector2;
     target.x = panel.scroll.target.x;
 
+    epsilon := editor.font.line_height_in_pixels;
+
     if force_center {
         target.y = center;
-    } else if panel.scroll.target.y == center {
+    } else if is_near(panel.scroll.target.y, center, epsilon) {
         target.y = top;
-    } else if panel.scroll.target.y == top {
+    } else if is_near(panel.scroll.target.y, top, epsilon) {
         target.y = bottom;
     } else {
         target.y = center;
