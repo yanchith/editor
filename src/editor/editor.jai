@@ -653,6 +653,9 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     }
     editor.debug_frame_timeline = arena_push(editor.perm_arena, Editor.Frame_Timeline);
 
+    //
+    // Init font
+    //
     {
         font_arena     := make_arena(editor, platform, .MEDIUM, "Font");
         font_allocator := arena_allocator(font_arena);
