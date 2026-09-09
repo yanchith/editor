@@ -53,7 +53,7 @@ TODO(jt): Roadmap:
 - [X] Delete file in lister
 - [X] Click to open file in lister
 - [X] Mode defined comments (C-x C-;) ; Still want to play with single-line block comments
-- [~] Themes ; Add some good light themes (Delphi, Visual Studio light)
+- [X] Themes
 - [X] Dark text color under bright rectangles (cursor, selection, line)
 - [X] Rotated session logs
 - [X] M-g g (go to line)
@@ -96,6 +96,8 @@ TODO(jt): Roadmap:
 - [ ] Language: Lua
 - [ ] Language: Java
 - [ ] Language: Python
+- [ ] Theme: Visual Studio Dark
+- [ ] Theme: Delphi
 - [ ] Emacs-like kill ring
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Double click to select word (expand region)

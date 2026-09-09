@@ -57,7 +57,7 @@ adjust_saturation :: (rgba: Vector4, multiplier: f32) -> Vector4 {
     return { rgb.x, rgb.y, rgb.z, rgba.w };
 }
 
-adjust_saturation :: (rgb: Vector3, multiplier: f32) -> Vector4 {
+adjust_saturation :: (rgb: Vector3, multiplier: f32) -> Vector3 {
     hsv := rgb_to_hsv(rgb);
     hsv.y = clamp(hsv.y * multiplier, 0, 1);
 
@@ -73,7 +73,7 @@ adjust_value :: (rgba: Vector4, multiplier: f32) -> Vector4 {
     return { rgb.x, rgb.y, rgb.z, rgba.w };
 }
 
-adjust_value :: (rgb: Vector3, multiplier: f32) -> Vector4 {
+adjust_value :: (rgb: Vector3, multiplier: f32) -> Vector3 {
     hsv := rgb_to_hsv(rgb);
     hsv.z = clamp(hsv.z * multiplier, 0, 1);
 
