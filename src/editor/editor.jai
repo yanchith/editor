@@ -2,7 +2,6 @@
 
 TODO(jt): Known serious bugs:
 
-- ctrl-arrows should move by words
 - Directory listers are not sorted on macOS!
 
 TODO(jt): Roadmap:
@@ -776,6 +775,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
         key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
+        key_map_add(key_map, "C-<right>", .MOVE_FORWARD_WORD);
+        key_map_add(key_map, "C-<left>", .MOVE_BACKWARD_WORD);
 
         key_map_add(key_map, "C-M-b",   .MOVE_TO_START_OF_SCOPE);
         key_map_add(key_map, "C-M-f",   .MOVE_TO_END_OF_SCOPE);
@@ -841,6 +842,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
         key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
+        key_map_add(key_map, "C-<right>", .MOVE_FORWARD_WORD);
+        key_map_add(key_map, "C-<left>", .MOVE_BACKWARD_WORD);
 
         key_map_add(key_map, "C-<space>", .START_SELECTING);
         key_map_add(key_map, "C-g",     .STOP_SELECTING);
