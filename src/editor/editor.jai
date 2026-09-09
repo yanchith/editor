@@ -214,8 +214,8 @@ CURSOR_ANIM_DURATION_KEYBOARD_DIRECT:   f32 : 0.00; // TODO(jt): Make keyboard a
 CURSOR_ANIM_DURATION_KEYBOARD_INDIRECT: f32 : 0.15; // TODO(jt): Make keyboard anim time configurable. :Config
 CURSOR_ANIM_DURATION_MOUSE:             f32 : 0.15; // TODO(jt): Make mouse anim time configurable. :Config
 
-THIN_CURSOR_WIDTH:          f32 : 4;
-THIN_CURSOR_WIDTH_INACTIVE: f32 : 2;
+THIN_CURSOR_WIDTH:          f32 : 2;
+THIN_CURSOR_WIDTH_INACTIVE: f32 : 1;
 
 // TODO(jt): Make fonts configurable. :Config
 FONT_LINE_HEIGHT_MULTIPLIER: f32 : 1.2;
@@ -1344,7 +1344,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             line_x    := _font_compute_line_length(editor.font, action_text, binary = false);
             cursor0_x := line_x + _font_compute_position_on_line(editor.font, line_view, mini_panel.cursors.c0.x, binary = false);
             cursor1_x := line_x + _font_compute_position_on_line(editor.font, line_view, mini_panel.cursors.c1.x, binary = false);
-            cursor_w  := ifx editor.theme.cursor_style == .FULL then cell_w else THIN_CURSOR_WIDTH;
+
+            cursor_w := cell_w;
+            if editor.theme.cursor_style == .THIN {
+                w  := round(THIN_CURSOR_WIDTH * editor.input_state.window_scale_factor);
+                hw := round(0.5 * w);
+
+                cursor_w = w;
+                cursor0_x -= hw;
+            }
 
             draw_rect(*render_commands,
                       mini_panel_x0 + cast(f32, cursor0_x), mini_panel_y,
@@ -1440,7 +1448,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             line_x    := _font_compute_line_length(editor.font, action_text, binary = false);
             cursor0_x := line_x + _font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.cursors.c0.x, binary = false);
             cursor1_x := line_x + _font_compute_position_on_line(editor.font, line_view, editor.modal_interaction.cursors.c1.x, binary = false);
-            cursor_w  := ifx editor.theme.cursor_style == .FULL then cell_w else THIN_CURSOR_WIDTH;
+
+            cursor_w := cell_w;
+            if editor.theme.cursor_style == .THIN {
+                w  := round(THIN_CURSOR_WIDTH * editor.input_state.window_scale_factor);
+                hw := round(0.5 * w);
+
+                cursor_w = w;
+                cursor0_x -= hw;
+            }
 
             draw_rect(*render_commands,
                       modal_interaction_line_x0 + cast(f32, cursor0_x), modal_interaction_line_y,
@@ -4681,20 +4697,32 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             // Draw cursor
             //
             {
-                cursor_position := view.cursor_position.value;
+                set_scissor(render_commands, panel_rect);
+                // So that thin cursors can be rendered at the edges of panel content without becoming even thinner!
 
                 if panel_is_active {
+                    cursor_position := view.cursor_position.value;
+
                     line_rect := rect_from_point_and_size(panel_content_x, cast(f32, cursor_position.y - panel.scroll.value.y),
                                                           panel_w, cell_h);
                     draw_rect(render_commands, line_rect, editor.theme.line_color);
 
+                    cursor_w := cell_w;
+                    if editor.theme.cursor_style == .THIN {
+                        w  := round(THIN_CURSOR_WIDTH * editor.input_state.window_scale_factor);
+                        hw := round(0.5 * w);
 
-                    cursor_w        := ifx editor.theme.cursor_style == .FULL then cell_w else THIN_CURSOR_WIDTH;
+                        cursor_w = w;
+                        cursor_position.x -= hw;
+                    }
+
                     cursor_rect64   := drect_from_point_and_size(panel_content_x + cursor_position.x, cursor_position.y, cursor_w, cell_h) - panel.scroll.value;
                     cursor_rect     := drect_to_rect(cursor_rect64);
 
                     draw_rect(render_commands, cursor_rect, view.cursor_color.value);
                 } else if editor.theme.cursor_style == .FULL {
+                    cursor_position := view.cursor_position.value;
+
                     cursor_rect64   := drect_from_point_and_size(panel_content_x + cursor_position.x, cursor_position.y, cell_w, cell_h) - panel.scroll.value;
                     cursor_rect     := drect_to_rect(cursor_rect64);
 
@@ -4708,11 +4736,19 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                     draw_rect(render_commands, top, view.cursor_color.value);
                     draw_rect(render_commands, bottom, view.cursor_color.value);
                 } else if editor.theme.cursor_style == .THIN {
-                    cursor_rect64   := drect_from_point_and_size(panel_content_x + cursor_position.x, cursor_position.y, THIN_CURSOR_WIDTH_INACTIVE, cell_h) - panel.scroll.value;
+                    w  := round(THIN_CURSOR_WIDTH_INACTIVE * editor.input_state.window_scale_factor);
+                    hw := round(0.5 * w);
+
+                    cursor_position := view.cursor_position.value;
+                    cursor_position.x -= hw;
+
+                    cursor_rect64   := drect_from_point_and_size(panel_content_x + cursor_position.x, cursor_position.y, w, cell_h) - panel.scroll.value;
                     cursor_rect     := drect_to_rect(cursor_rect64);
 
                     draw_rect(render_commands, cursor_rect, view.cursor_color.value);
                 }
+
+                set_scissor(render_commands, panel_content_rect);
             }
 
             //
