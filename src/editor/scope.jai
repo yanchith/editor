@@ -20,6 +20,12 @@ Scope :: struct {
     }
 }
 
+// TODO(jt): Support indentation like this:
+// (
+//     asdfasdfdfas)
+//
+// (This is how things can look when we switch from a single-line parenthesized block to a multiline one.)
+
 // TODO(jt): @Bug If a comment starts in a string, it continues. Need to track strings.
 
 // TODO(jt): @Speed When we indent the entirety of a 10000-line document, this takes ~8 seconds. Even if

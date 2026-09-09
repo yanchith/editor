@@ -185,6 +185,7 @@ operator==     :: Math.operator==;
 #load "modal_interaction_go_to_line.jai";
 #load "modal_interaction_compile.jai";
 #load "modal_interaction_benchgen.jai";
+#load "config.jai";
 
 TEXTURE_ID_NONE:                 Texture_ID : 0; // Not really used, just a 0 default.
 TEXTURE_ID_GLYPH_ATLAS:          Texture_ID : 1;
@@ -698,199 +699,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         input_state_update_with_event(*editor.input_state, it);
     }
 
-    {
-        key_map := *editor.panel_key_map;
-        key_map.allocator = arena_allocator(editor.perm_arena);
+    editor.panel_key_map.allocator = arena_allocator(editor.perm_arena);
+    editor.document_key_map.allocator = arena_allocator(editor.perm_arena);
+    editor.compilation_key_map.allocator = arena_allocator(editor.perm_arena);
+    editor.listing_key_map.allocator = arena_allocator(editor.perm_arena);
 
-        key_map_reserve(key_map, 128);
-
-        key_map_add(key_map, "M-x",     .SHOW_COMMANDS);
-        key_map_add(key_map, "C-S-p",   .SHOW_COMMANDS);
-        key_map_add(key_map, "C-s",     .SEARCH);
-
-        key_map_add(key_map, "C-x C-f", .OPEN_FILE);
-
-        key_map_add(key_map, "C-x b",   .SWITCH_VIEW);
-        key_map_add(key_map, "C-x k",   .CLOSE_VIEW);
-
-        key_map_add(key_map, "C-l",     .RECENTER);
-        key_map_add(key_map, "M-v",     .MOVE_UP_ONE_SCREEN);
-        key_map_add(key_map, "C-v",     .MOVE_DOWN_ONE_SCREEN);
-        key_map_add(key_map, "<pageup>", .MOVE_UP_ONE_SCREEN);
-        key_map_add(key_map, "<pagedown>", .MOVE_DOWN_ONE_SCREEN);
-
-        key_map_add(key_map, "C-x 3",   .SPLIT_PANEL_HORIZONTALLY);
-        key_map_add(key_map, "C-x 0",   .CLOSE_CURRENT_PANEL);
-        key_map_add(key_map, "C-x 1",   .CLOSE_OTHER_PANELS);
-        key_map_add(key_map, "C-x o",   .GO_TO_OTHER_PANEL);
-
-        key_map_add(key_map, "C-x p f", .OPEN_FILE_IN_PROJECT);
-        key_map_add(key_map, "C-x p s", .SEARCH_IN_PROJECT);
-        key_map_add(key_map, "C-c s r", .SEARCH_IN_PROJECT); // For my muscle memory.
-        key_map_add(key_map, "C-x p c", .COMPILE_IN_PROJECT_OR_DIRECTORY);
-
-        key_map_add(key_map, "C-+",     .FONT_SIZE_INCREASE);
-        key_map_add(key_map, "C--",     .FONT_SIZE_DECREASE);
-
-        key_map_add(key_map, "<f1>",    .DEBUG_VIEW_ATLAS_TEXTURE);
-        key_map_add(key_map, "<f2>",    .DEBUG_VIEW_MEMORY_ABSOLUTE);
-        key_map_add(key_map, "<f3>",    .DEBUG_VIEW_MEMORY_RELATIVE);
-        key_map_add(key_map, "<f4>",    .DEBUG_VIEW_FRAME_PROFILE);
-        key_map_add(key_map, "<f5>",    .DEBUG_VIEW_FRAME_TIMELINE);
-    }
-
-    {
-        key_map := *editor.document_key_map;
-        key_map.allocator = arena_allocator(editor.perm_arena);
-
-        key_map_reserve(key_map, 128);
-
-        key_map_add(key_map, "C-p",     .MOVE_UP);
-        key_map_add(key_map, "<up>",    .MOVE_UP);
-        key_map_add(key_map, "C-n",     .MOVE_DOWN);
-        key_map_add(key_map, "<down>",  .MOVE_DOWN);
-        key_map_add(key_map, "C-b",     .MOVE_BACKWARD);
-        key_map_add(key_map, "<left>",  .MOVE_BACKWARD);
-        key_map_add(key_map, "C-f",     .MOVE_FORWARD);
-        key_map_add(key_map, "<right>", .MOVE_FORWARD);
-
-        key_map_add(key_map, "M-%",     .SEARCH_AND_REPLACE);
-
-        key_map_add(key_map, "C-x C-s", .SAVE_DOCUMENT);
-        key_map_add(key_map, "C-x C-r", .RELOAD_DOCUMENT);
-
-        key_map_add(key_map, "C-M-p",   .SWAP_LINE_UP);
-        key_map_add(key_map, "C-M-n",   .SWAP_LINE_DOWN);
-
-        key_map_add(key_map, "C-a",     .MOVE_TO_START_OF_LINE);
-        key_map_add(key_map, "C-e",     .MOVE_TO_END_OF_LINE);
-
-        key_map_add(key_map, "M-<",     .MOVE_TO_START);
-        key_map_add(key_map, "<home>",  .MOVE_TO_START);
-        key_map_add(key_map, "M->",     .MOVE_TO_END);
-        key_map_add(key_map, "<end>",   .MOVE_TO_END);
-
-        key_map_add(key_map, "M-p",     .MOVE_TO_PREVIOUS_BLANK_LINE);
-        key_map_add(key_map, "M-n",     .MOVE_TO_NEXT_BLANK_LINE);
-
-        key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
-        key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
-        key_map_add(key_map, "C-<right>", .MOVE_FORWARD_WORD);
-        key_map_add(key_map, "C-<left>", .MOVE_BACKWARD_WORD);
-
-        key_map_add(key_map, "C-M-b",   .MOVE_TO_START_OF_SCOPE);
-        key_map_add(key_map, "C-M-f",   .MOVE_TO_END_OF_SCOPE);
-
-        key_map_add(key_map, "M-g g",   .MOVE_TO_LINE);
-
-        key_map_add(key_map, "C-<space>", .START_SELECTING);
-        key_map_add(key_map, "C-g",     .STOP_SELECTING);
-        key_map_add(key_map, "<escape>", .STOP_SELECTING);
-
-        key_map_add(key_map, "C-k",     .DELETE_LINE);
-        key_map_add(key_map, "C-d",     .DELETE_FORWARD);
-        key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
-        key_map_add(key_map, "<delete>", .DELETE_FORWARD);
-
-        key_map_add(key_map, "M-d",     .DELETE_FORWARD_WORD);
-        key_map_add(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
-        key_map_add(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
-
-        key_map_add(key_map, "C-j",     .JOIN_WITH_NEXT_LINE);
-
-        key_map_add(key_map, "C-m",     .INSERT_LINE_BEFORE);
-        key_map_add(key_map, "<enter>", .INSERT_LINE_BEFORE);
-        key_map_add(key_map, "C-o",     .INSERT_LINE_AFTER);
-
-        key_map_add(key_map, "<tab>",   .INDENT_OR_AUTOCOMPLETE);
-        key_map_add(key_map, "C-i",     .INDENT_OR_AUTOCOMPLETE);
-
-        key_map_add(key_map, "C-x C-;", .TOGGLE_COMMENT);
-
-        key_map_add(key_map, "C-/",     .UNDO_EDIT);
-        key_map_add(key_map, "M-/",     .REDO_EDIT);
-
-        key_map_add(key_map, "M-w",     .COPY);
-        key_map_add(key_map, "C-w",     .CUT);
-        key_map_add(key_map, "C-y",     .PASTE);
-
-        key_map_add(key_map, "C-x C-q", .TOGGLE_READONLY);
-    }
-
-    {
-        key_map := *editor.compilation_key_map;
-        key_map.allocator = arena_allocator(editor.perm_arena);
-
-        key_map_reserve(key_map, 128);
-
-        key_map_add(key_map, "C-p",     .MOVE_UP);
-        key_map_add(key_map, "<up>",    .MOVE_UP);
-        key_map_add(key_map, "C-n",     .MOVE_DOWN);
-        key_map_add(key_map, "<down>",  .MOVE_DOWN);
-        key_map_add(key_map, "C-b",     .MOVE_BACKWARD);
-        key_map_add(key_map, "<left>",  .MOVE_BACKWARD);
-        key_map_add(key_map, "C-f",     .MOVE_FORWARD);
-        key_map_add(key_map, "<right>", .MOVE_FORWARD);
-
-        key_map_add(key_map, "C-a",     .MOVE_TO_START_OF_LINE);
-        key_map_add(key_map, "C-e",     .MOVE_TO_END_OF_LINE);
-
-        key_map_add(key_map, "M-<",     .MOVE_TO_START);
-        key_map_add(key_map, "<home>",  .MOVE_TO_START);
-        key_map_add(key_map, "M->",     .MOVE_TO_END);
-        key_map_add(key_map, "<end>",   .MOVE_TO_END);
-
-        key_map_add(key_map, "M-f",     .MOVE_FORWARD_WORD);
-        key_map_add(key_map, "M-b",     .MOVE_BACKWARD_WORD);
-        key_map_add(key_map, "C-<right>", .MOVE_FORWARD_WORD);
-        key_map_add(key_map, "C-<left>", .MOVE_BACKWARD_WORD);
-
-        key_map_add(key_map, "C-<space>", .START_SELECTING);
-        key_map_add(key_map, "C-g",     .STOP_SELECTING);
-        key_map_add(key_map, "<escape>", .STOP_SELECTING);
-
-        key_map_add(key_map, "M-w",     .COPY);
-        key_map_add(key_map, "C-w",     .COPY);
-
-        key_map_add(key_map, "M-p",     .MOVE_TO_PREVIOUS_ERROR);
-        key_map_add(key_map, "M-n",     .MOVE_TO_NEXT_ERROR);
-        key_map_add(key_map, "p",       .MOVE_TO_PREVIOUS_ERROR);
-        key_map_add(key_map, "n",       .MOVE_TO_NEXT_ERROR);
-
-        key_map_add(key_map, "C-m",     .GO_TO_CURRENT_ERROR);
-        key_map_add(key_map, "<enter>", .GO_TO_CURRENT_ERROR);
-
-        key_map_add(key_map, "g",       .REFRESH);
-        key_map_add(key_map, "C-r",     .REFRESH);
-    }
-
-    {
-        key_map := *editor.listing_key_map;
-        key_map.allocator = arena_allocator(editor.perm_arena);
-
-        key_map_reserve(key_map, 128);
-
-        key_map_add(key_map, "p",       .MOVE_UP);
-        key_map_add(key_map, "C-p",     .MOVE_UP);
-        key_map_add(key_map, "<up>",    .MOVE_UP);
-        key_map_add(key_map, "n",       .MOVE_DOWN);
-        key_map_add(key_map, "C-n",     .MOVE_DOWN);
-        key_map_add(key_map, "<down>",  .MOVE_DOWN);
-
-        key_map_add(key_map, "C-m",     .OPEN);
-        key_map_add(key_map, "<enter>", .OPEN);
-        key_map_add(key_map, "C-o",     .OPEN_IN_OTHER_PANEL);
-
-        key_map_add(key_map, "d",       .MARK_ITEM);
-        key_map_add(key_map, "u",       .UNMARK_ITEM);
-
-        key_map_add(key_map, "x",       .DELETE_MARKED_ITEMS);
-
-        key_map_add(key_map, "g",       .REFRESH);
-        key_map_add(key_map, "C-r",     .REFRESH);
-    }
-
-    editor.theme = abulafia_theme();
+    editor.theme = abulafia_theme(); // In case config doesn't load.
 
     editor.watched_files.allocator = arena_allocator(editor.perm_arena);
 
@@ -927,57 +741,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     {
         mini_panel := *editor.mini_panel;
 
-        key_map := *mini_panel.key_map;
-        key_map.allocator = arena_allocator(editor.perm_arena);
-
-        key_map_reserve(key_map, 128);
-
-        key_map_add(key_map, "C-p",         .MOVE_UP);
-        key_map_add(key_map, "C-n",         .MOVE_DOWN);
-        key_map_add(key_map, "C-b",         .MOVE_BACKWARD);
-        key_map_add(key_map, "C-f",         .MOVE_FORWARD);
-        key_map_add(key_map, "<up>",        .MOVE_UP);
-        key_map_add(key_map, "<down>",      .MOVE_DOWN);
-        key_map_add(key_map, "<left>",      .MOVE_BACKWARD);
-        key_map_add(key_map, "<right>",     .MOVE_FORWARD);
-
-        key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
-        key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
-
-        key_map_add(key_map, "M-<",         .MOVE_TO_START);
-        key_map_add(key_map, "<home>",      .MOVE_TO_START);
-        key_map_add(key_map, "M->",         .MOVE_TO_END);
-        key_map_add(key_map, "<end>",       .MOVE_TO_END);
-
-        key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
-        key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
-
-        key_map_add(key_map, "C-d",         .DELETE_FORWARD);
-        key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
-        key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
-
-        key_map_add(key_map, "M-d",           .DELETE_FORWARD_WORD);
-        key_map_add(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
-        key_map_add(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
-
-        key_map_add(key_map, "M-v",         .MOVE_UP_ONE_SCREEN);
-        key_map_add(key_map, "C-v",         .MOVE_DOWN_ONE_SCREEN);
-        key_map_add(key_map, "<pageup>",    .MOVE_UP_ONE_SCREEN);
-        key_map_add(key_map, "<pagedown>",  .MOVE_DOWN_ONE_SCREEN);
-
-        key_map_add(key_map, "C-<space>",   .START_SELECTING);
-
-        key_map_add(key_map, "<tab>",       .INDENT_OR_AUTOCOMPLETE);
-        key_map_add(key_map, "C-i",         .INDENT_OR_AUTOCOMPLETE);
-
-        key_map_add(key_map, "M-w",         .COPY);
-        key_map_add(key_map, "C-w",         .CUT);
-        key_map_add(key_map, "C-y",         .PASTE);
-
-        key_map_add(key_map, "<enter>",     .CONFIRM);
-        key_map_add(key_map, "C-m",         .CONFIRM);
-        key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
-        key_map_add(key_map, "<escape>",    .CANCEL_OR_STOP_SELECTING);
+        mini_panel.key_map.allocator = arena_allocator(editor.perm_arena);
 
         // Mini text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*mini_panel.buffer, make_arena(editor, platform, .SMALL, "Minipanel Buffer"));
@@ -994,42 +758,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     {
         modal_interaction := *editor.modal_interaction;
 
-        key_map := *modal_interaction.key_map;
-        key_map.allocator = arena_allocator(editor.perm_arena);
-        key_map_reserve(key_map, 128);
-
-        key_map_add(key_map, "C-b",         .MOVE_BACKWARD);
-        key_map_add(key_map, "C-f",         .MOVE_FORWARD);
-        key_map_add(key_map, "<left>",      .MOVE_BACKWARD);
-        key_map_add(key_map, "<right>",     .MOVE_FORWARD);
-
-        key_map_add(key_map, "C-a",         .MOVE_TO_START_OF_LINE);
-        key_map_add(key_map, "C-e",         .MOVE_TO_END_OF_LINE);
-
-        key_map_add(key_map, "M-f",         .MOVE_FORWARD_WORD);
-        key_map_add(key_map, "M-b",         .MOVE_BACKWARD_WORD);
-
-        key_map_add(key_map, "C-d",         .DELETE_FORWARD);
-        key_map_add(key_map, "<delete>",    .DELETE_FORWARD);
-        key_map_add(key_map, "<backspace>", .DELETE_BACKWARD);
-
-        key_map_add(key_map, "M-d",           .DELETE_FORWARD_WORD);
-        key_map_add(key_map, "C-<backspace>", .DELETE_BACKWARD_WORD);
-        key_map_add(key_map, "M-<backspace>", .DELETE_BACKWARD_WORD);
-
-        key_map_add(key_map, "C-<space>",   .START_SELECTING);
-
-        key_map_add(key_map, "<tab>",       .INDENT_OR_AUTOCOMPLETE);
-        key_map_add(key_map, "C-i",         .INDENT_OR_AUTOCOMPLETE);
-
-        key_map_add(key_map, "M-w",         .COPY);
-        key_map_add(key_map, "C-w",         .CUT);
-        key_map_add(key_map, "C-y",         .PASTE);
-
-        key_map_add(key_map, "<enter>",     .CONFIRM);
-        key_map_add(key_map, "C-m",         .CONFIRM);
-        key_map_add(key_map, "C-g",         .CANCEL_OR_STOP_SELECTING);
-        key_map_add(key_map, "<escape>",    .CANCEL_OR_STOP_SELECTING);
+        modal_interaction.key_map.allocator = arena_allocator(editor.perm_arena);
 
         // Modal text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*modal_interaction.buffer, make_arena(editor, platform, .SMALL, "Modal Buffer"));
@@ -1064,6 +793,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     }
 
     editor.is_first_frame = true;
+
+    // TODO(jt): Insert emergency keybinds in case config doesn't load?
+    // How would this work exactly? Would they be overridable by config, or would they always win?
+    // OR.... we could have the default config in text form in our binary and revert to that if the one on filesystem doesn't exist?
+    // Maybe we could event save it out?
+    load_config(editor, platform);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_this_frame: bool, wants_next_frame: bool {
@@ -2250,44 +1985,6 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
 
 #scope_file
 
-Mini_Panel_Action :: enum {
-    NONE;
-
-    MOVE_UP;
-    MOVE_DOWN;
-    MOVE_BACKWARD;
-    MOVE_FORWARD;
-
-    MOVE_TO_START_OF_LINE;
-    MOVE_TO_END_OF_LINE;
-
-    MOVE_TO_START;
-    MOVE_TO_END;
-
-    MOVE_FORWARD_WORD;
-    MOVE_BACKWARD_WORD;
-
-    DELETE_FORWARD;
-    DELETE_BACKWARD;
-
-    DELETE_FORWARD_WORD;
-    DELETE_BACKWARD_WORD;
-
-    MOVE_UP_ONE_SCREEN;
-    MOVE_DOWN_ONE_SCREEN;
-
-    START_SELECTING;
-
-    INDENT_OR_AUTOCOMPLETE;
-
-    COPY;
-    CUT;
-    PASTE;
-
-    CONFIRM;
-    CANCEL_OR_STOP_SELECTING;
-}
-
 route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
     mp := *editor.mini_panel;
 
@@ -2396,36 +2093,6 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     }
 }
 
-Modal_Interaction_Action :: enum {
-    NONE;
-
-    MOVE_BACKWARD;
-    MOVE_FORWARD;
-
-    MOVE_TO_START_OF_LINE;
-    MOVE_TO_END_OF_LINE;
-
-    MOVE_FORWARD_WORD;
-    MOVE_BACKWARD_WORD;
-
-    DELETE_FORWARD;
-    DELETE_BACKWARD;
-
-    DELETE_FORWARD_WORD;
-    DELETE_BACKWARD_WORD;
-
-    START_SELECTING;
-
-    INDENT_OR_AUTOCOMPLETE;
-
-    COPY;
-    CUT;
-    PASTE;
-
-    CONFIRM;
-    CANCEL_OR_STOP_SELECTING;
-}
-
 route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
     mi := *editor.modal_interaction;
 
@@ -2527,7 +2194,6 @@ Panel_Action :: enum {
     SEARCH;
 
     OPEN_FILE;
-
     SWITCH_VIEW;
     CLOSE_VIEW;
 
@@ -2560,6 +2226,8 @@ Panel_Action :: enum {
     THEME_ZENBURN;
     THEME_VISUAL_STUDIO_LIGHT;
 
+    RELOAD_CONFIG;
+
     DEBUG_VIEW_ATLAS_TEXTURE;
     DEBUG_VIEW_MEMORY_ABSOLUTE;
     DEBUG_VIEW_MEMORY_RELATIVE;
@@ -2567,6 +2235,7 @@ Panel_Action :: enum {
     DEBUG_VIEW_FRAME_TIMELINE;
 }
 
+// nocheckin reorder switch statements
 Document_Action :: enum {
     NONE;
 
@@ -2574,6 +2243,21 @@ Document_Action :: enum {
     MOVE_DOWN;
     MOVE_BACKWARD;
     MOVE_FORWARD;
+
+    MOVE_TO_START_OF_LINE;
+    MOVE_TO_END_OF_LINE;
+
+    MOVE_TO_START;
+    MOVE_TO_END;
+
+    MOVE_FORWARD_WORD;
+    MOVE_BACKWARD_WORD;
+
+    MOVE_TO_PREVIOUS_BLANK_LINE;
+    MOVE_TO_NEXT_BLANK_LINE;
+
+    MOVE_TO_START_OF_SCOPE;
+    MOVE_TO_END_OF_SCOPE;
 
     SEARCH_AND_REPLACE;
 
@@ -2583,34 +2267,19 @@ Document_Action :: enum {
     SWAP_LINE_UP;
     SWAP_LINE_DOWN;
 
-    MOVE_TO_START_OF_LINE;
-    MOVE_TO_END_OF_LINE;
-
-    MOVE_TO_START;
-    MOVE_TO_END;
-
-    MOVE_TO_PREVIOUS_BLANK_LINE;
-    MOVE_TO_NEXT_BLANK_LINE;
-
-    MOVE_FORWARD_WORD;
-    MOVE_BACKWARD_WORD;
-
-    MOVE_TO_START_OF_SCOPE;
-    MOVE_TO_END_OF_SCOPE;
-
-    MOVE_TO_LINE;
+    GO_TO_LINE;
 
     START_SELECTING;
     STOP_SELECTING;
 
-    DELETE_LINE;
     DELETE_FORWARD;
     DELETE_BACKWARD;
 
     DELETE_FORWARD_WORD;
     DELETE_BACKWARD_WORD;
 
-    JOIN_WITH_NEXT_LINE;
+    DELETE_LINE;
+    JOIN_NEXT_LINE;
 
     INSERT_LINE_BEFORE;
     INSERT_LINE_AFTER;
@@ -2691,6 +2360,72 @@ Listing_Action :: enum {
 
     ADD_PROJECT_DIRECTORY;
     REMOVE_PROJECT_DIRECTORY;
+}
+
+Mini_Panel_Action :: enum {
+    NONE;
+
+    MOVE_UP;
+    MOVE_DOWN;
+    MOVE_BACKWARD;
+    MOVE_FORWARD;
+
+    MOVE_TO_START_OF_LINE;
+    MOVE_TO_END_OF_LINE;
+
+    MOVE_TO_START;
+    MOVE_TO_END;
+
+    MOVE_FORWARD_WORD;
+    MOVE_BACKWARD_WORD;
+
+    MOVE_UP_ONE_SCREEN;
+    MOVE_DOWN_ONE_SCREEN;
+
+    DELETE_FORWARD;
+    DELETE_BACKWARD;
+    DELETE_FORWARD_WORD;
+    DELETE_BACKWARD_WORD;
+
+    START_SELECTING;
+
+    INDENT_OR_AUTOCOMPLETE;
+
+    COPY;
+    CUT;
+    PASTE;
+
+    CONFIRM;
+    CANCEL_OR_STOP_SELECTING;
+}
+
+Modal_Interaction_Action :: enum {
+    NONE;
+
+    MOVE_BACKWARD;
+    MOVE_FORWARD;
+
+    MOVE_TO_START_OF_LINE;
+    MOVE_TO_END_OF_LINE;
+
+    MOVE_FORWARD_WORD;
+    MOVE_BACKWARD_WORD;
+
+    DELETE_FORWARD;
+    DELETE_BACKWARD;
+    DELETE_FORWARD_WORD;
+    DELETE_BACKWARD_WORD;
+
+    START_SELECTING;
+
+    INDENT_OR_AUTOCOMPLETE;
+
+    COPY;
+    CUT;
+    PASTE;
+
+    CONFIRM;
+    CANCEL_OR_STOP_SELECTING;
 }
 
 #scope_file
@@ -2998,12 +2733,14 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .FONT_SUBPIXEL_RENDERING_ENABLE;   font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, true); editor_log(editor, "Subpixel rendering on");
         case .FONT_SUBPIXEL_RENDERING_DISABLE;  font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, false); editor_log(editor, "Subpixel rendering off");
 
-        case .THEME_ABULAFIA;                   editor.theme = abulafia_theme(); theme_changed = true;
-        case .THEME_NAYSAYER;                   editor.theme = naysayer_theme(); theme_changed = true;
-        case .THEME_HANDMADE;                   editor.theme = handmade_theme(); theme_changed = true;
-        case .THEME_STB;                        editor.theme = stb_theme(); theme_changed = true;
-        case .THEME_ZENBURN;                    editor.theme = zenburn_theme(); theme_changed = true;
-        case .THEME_VISUAL_STUDIO_LIGHT;        editor.theme = visual_studio_light_theme(); theme_changed = true;
+        case .THEME_ABULAFIA;                   change_theme(editor, "abulafia");
+        case .THEME_NAYSAYER;                   change_theme(editor, "naysayer");
+        case .THEME_HANDMADE;                   change_theme(editor, "handmade");
+        case .THEME_STB;                        change_theme(editor, "stb");
+        case .THEME_ZENBURN;                    change_theme(editor, "zenburn");
+        case .THEME_VISUAL_STUDIO_LIGHT;        change_theme(editor, "visual_studio_light");
+
+        case .RELOAD_CONFIG;                    load_config(editor, platform);
 
         case .DEBUG_VIEW_ATLAS_TEXTURE;         toggle_debug_view(editor, .ATLAS_TEXTURE);
         case .DEBUG_VIEW_MEMORY_ABSOLUTE;       toggle_debug_view(editor, .MEMORY_ABSOLUTE);
@@ -3016,18 +2753,6 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
     // Careful, even though we get a valid panel as an argument in this function, the things we do here (e.g. CLOSE_CURRENT_PANEL)
     // can destroy it. Don't assume it is still valid down here.
     //
-
-    if theme_changed {
-        for * panel: editor.panels {
-            if panel.view.kind == .DOCUMENT {
-                view := *panel.view._document;
-                document := view.document;
-
-                color := ifx document.flags & .READONLY then editor.theme.cursor_color_readonly else editor.theme.cursor_color;
-                interpolation_init(*view.cursor_color, color);
-            }
-        }
-    }
 
     return true;
 }
@@ -3281,7 +3006,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .MOVE_TO_LINE;       open_modal_interaction(editor, platform, input, modal_interaction_go_to_line_procs);
+        case .GO_TO_LINE;       open_modal_interaction(editor, platform, input, modal_interaction_go_to_line_procs);
 
         case .START_SELECTING;  view.selecting = true;  text_cursors_join(*view.cursors);
         case .STOP_SELECTING;   view.selecting = false; text_cursors_join(*view.cursors);
@@ -3362,7 +3087,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .JOIN_WITH_NEXT_LINE; {
+        case .JOIN_NEXT_LINE; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
                 cursors := view.cursors;
@@ -5106,6 +4831,49 @@ is_part_of_surround_pair :: (document: Document, char: u32) -> opens: bool, clos
     }
 
     return opens, closes, paired_char;
+}
+
+load_config :: (editor: *Editor, platform: Platform) {
+    // TODO(jt): @Cleanup On macOS, we won't have the config next to the executable!
+    CONFIG_PATH :: "./editor.config";
+
+    success, config := platform.read_file(CONFIG_PATH,, temp);
+    if success {
+        parse_and_apply_config(editor, cast(string, config));
+    } else {
+        success=, config_path := platform.get_absolute_path(CONFIG_PATH,, temp);
+        if success {
+            editor_log(editor, "Failed to read config file at %", config_path);
+        } else {
+            editor_log(editor, "Failed to read config file");
+        }
+    }
+}
+
+// TODO(jt): @Cleanup maybe we should define a Theme enum and a way to get that from a string for config?
+change_theme :: (editor: *Editor, theme: string) {
+    theme_changed := false;
+
+    if theme == {
+        case "abulafia";             editor.theme = abulafia_theme(); theme_changed = true;
+        case "naysayer";             editor.theme = naysayer_theme(); theme_changed = true;
+        case "handmade";             editor.theme = handmade_theme(); theme_changed = true;
+        case "stb";                  editor.theme = stb_theme(); theme_changed = true;
+        case "zenburn";              editor.theme = zenburn_theme(); theme_changed = true;
+        case "visual_studio_light";  editor.theme = visual_studio_light_theme(); theme_changed = true;
+    }
+
+    if theme_changed {
+        for * panel: editor.panels {
+            if panel.view.kind == .DOCUMENT {
+                view := *panel.view._document;
+                document := view.document;
+
+                color := ifx document.flags & .READONLY then editor.theme.cursor_color_readonly else editor.theme.cursor_color;
+                interpolation_init(*view.cursor_color, color);
+            }
+        }
+    }
 }
 
 open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: string, open_in_panel: *Panel = null) -> opened_in_panel: *Panel {
