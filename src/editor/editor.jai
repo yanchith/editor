@@ -2,15 +2,8 @@
 
 TODO(jt): Known serious bugs:
 
-When mouse selecting, we can't go past the last character on the last line.
-
-TODO(jt): if I had to release (on Windows) today:
-
-- Portable windows zip created from build.jai
-- Add config file for keybinds
-- Add config file for theme customization
-- Add config file for at least some of visual :Config things
-- Add config file for extension to language association
+- When mouse selecting, we can't go past the last character on the last line.
+- Directory listers are not sorted on macOS!
 
 TODO(jt): Roadmap:
 
@@ -61,15 +54,32 @@ TODO(jt): Roadmap:
 - [X] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
 - [X] C-j join-next-line
 - [X] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
-- [ ] C-: Expand region
-- [ ] C-u C-<space> Cursor undo
+- [ ] C-: or double-click (expand region)
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
-- [ ] M-q (reflow)
-- [ ] M-u, M-l (upcase/downcase word and move cursor)
+- [X] Reading tabs
+- [X] Writintg tabs
 - [X] Language: JAI
 - [X] Language: C
 - [~] Language: C++ ; Currently serviced by the C lexer
 - [X] Language: GLSL
+- [X] Reading and rendering CRLF
+- [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
+- [ ] Minimal config files (keybinds, theme, language file association)
+
+... after alpha ...
+
+- [ ] C-u C-<space> (cursor undo)
+- [ ] M-q (reflow)
+- [ ] M-u, M-l (upcase/downcase word and move cursor)
+- [ ] Mouse interaction in the mini panel (text selection, item selection, item hover?)
+- [ ] Mouse interaction in the modal interaction (text selection)
+- [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
+- [ ] Animate scrolling in mini panel.
+- [ ] Animate opening of the mini panel.
+- [ ] macOS packaging
+- [ ] Linux build
+- [ ] Load System fonts
+- [ ] Multiple Cursors
 - [ ] Language: HLSL
 - [ ] Language: Slang
 - [ ] Language: WGSL
@@ -78,21 +88,6 @@ TODO(jt): Roadmap:
 - [ ] Language: Typescript
 - [ ] Language: C#
 - [ ] Language: Odin
-- [ ] Load System fonts
-- [ ] Multiple Cursors
-- [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
-- [ ] Mouse interaction in the mini panel (text selection, item selection, item hover?)
-- [ ] Mouse interaction in the modal interaction (text selection)
-- [ ] Animate scrolling in mini panel.
-- [ ] Animate opening of the mini panel.
-- [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
-- [~] CRLF ; Still need to add special rendering for it
-- [ ] Config files
-- [ ] macOS package
-
-... after alpha ...
-
-- [ ] Linux build
 - [ ] Language: Lua
 - [ ] Language: Java
 - [ ] Language: Python
@@ -107,6 +102,10 @@ TODO(jt): Roadmap:
 - [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
 - [ ] Flash pasted text
 - [ ] Flash text inserted by undo/redo
+- [ ] Writing CRLF
+
+... after beta ...
+
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode view
 - [~] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
@@ -746,7 +745,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         key_map_reserve(key_map, 128);
 
-        // nocheckin move_left -> move_backward, move_right -> move_forward
         key_map_add(key_map, "C-p",     .MOVE_UP);
         key_map_add(key_map, "<up>",    .MOVE_UP);
         key_map_add(key_map, "C-n",     .MOVE_DOWN);
@@ -899,7 +897,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.project_directories.allocator = arena_allocator(editor.perm_arena);
 
     // Create *scratch* document
-    scratch_document: *Document;
     {
         success, working_directory := platform.get_absolute_path(".",, temp);
         if !success {
@@ -908,15 +905,17 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         canonicalize_path(*working_directory);
 
-        scratch_document = find_or_add_document(editor, platform, .SCRATCH, working_directory, "");
+        scratch_document := find_or_add_document(editor, platform, .SCRATCH, working_directory, "");
+
+        text_buffer_insert(*scratch_document.buffer, *scratch_document.cursors_cold, WELCOME, .OMIT);
+        text_buffer_move_to(scratch_document.buffer, *scratch_document.cursors_cold, 0, 0, false);
+
+        // Create first panel.
+        panel := array_add(*editor.panels);
+        panel_init_with_document(panel, editor, platform, scratch_document);
+
+        update_scopes(scratch_document);
     }
-
-    text_buffer_insert(*scratch_document.buffer, *scratch_document.cursors_cold, WELCOME, .OMIT);
-    text_buffer_move_to(scratch_document.buffer, *scratch_document.cursors_cold, 0, 0, false);
-
-    // Create first panel.
-    panel := array_add(*editor.panels);
-    panel_init_with_document(panel, editor, platform, scratch_document);
 
     //
     // Init mini panel
@@ -2377,7 +2376,8 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     && action == .NONE && event.flags & .PRESSED
     && !(event.modifiers & (.CTRL | .ALT | .META))
     && event.type == .CODEPOINT
-    && event.codepoint >= 32 && event.codepoint != .DELETE
+    && (event.codepoint >= 32 || event.codepoint == .TAB)
+    && event.codepoint != .DELETE
     {
         char := cast(u32, event.codepoint);
         buffer_changed |= text_buffer_insert_char(*mp.buffer, *mp.cursors, char);
@@ -2506,7 +2506,8 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
     && event.flags & .PRESSED
     && !(event.modifiers & (.CTRL | .ALT | .META))
     && event.type == .CODEPOINT
-    && event.codepoint >= 32 && event.codepoint != .DELETE
+    && (event.codepoint >= 32 || event.codepoint == .TAB)
+    && event.codepoint != .DELETE
     {
         char := cast(u32, event.codepoint);
         buffer_changed |= text_buffer_insert_char(*mi.buffer, *mi.cursors, char);
@@ -2736,7 +2737,8 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             && !did_execute_action && event.flags & .PRESSED
             && !(event.modifiers & (.CTRL | .ALT | .META))
             && event.type == .CODEPOINT
-            && event.codepoint >= 32 && event.codepoint != .DELETE
+            && (event.codepoint >= 32 || event.codepoint == .TAB)
+            && event.codepoint != .DELETE
             {
                 document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
                 if !(document.flags & .READONLY) {
@@ -3356,7 +3358,6 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        // nocheckin investigate additional spaces!
         case .JOIN_WITH_NEXT_LINE; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
@@ -3607,7 +3608,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     }
                 } else {
                     if view.cursors.c0 == view.cursors.c1 {
-                        buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "    ", .NONE);
+                        spaces := temp_right_pad("", INDENTATION_STEP);
+                        buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, spaces, .NONE);
                     }
                 }
             }

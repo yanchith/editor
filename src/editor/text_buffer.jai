@@ -757,8 +757,6 @@ text_buffer_delete_indentation_forward :: (buffer: *Text_Buffer, cursors: *Text_
 
     assert_valid(buffer, cursors);
 
-    KEEP :: 1;
-
     start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
     gb_index       := start_gb_index;
     gap_buffer_move_gap_to(*buffer.gb, gb_index);
@@ -772,7 +770,7 @@ text_buffer_delete_indentation_forward :: (buffer: *Text_Buffer, cursors: *Text_
         gb_index += 1;
     }
 
-    delete_count := max(gb_index - start_gb_index - KEEP, 0);
+    delete_count := max(gb_index - start_gb_index, 0);
     if delete_count == 0 {
         return "";
     }
@@ -828,21 +826,17 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
     delete_count   := end_gb_index - start_gb_index;
 
     is_only_newline := false;
-
     if delete_count == 0 {
         line_end     = text_buffer_get_end_of_line(buffer, cursors.c0.y, include_newline = true);
         end_gb_index = text_buffer_get_gap_buffer_index_for_location(buffer, line_end);
         delete_count = end_gb_index - start_gb_index;
         sanity_assert(delete_count <= 1);
 
-        view := gap_buffer_make_view(buffer.gb, start_gb_index, delete_count,, temp);
-
-        if view.count && view[0] == "\n" {
-            sanity_assert(delete_count == 1);
-        } else {
-            // nocheckin this should be the end of document, right?
-            return "";
+        if delete_count == 0 {
+            return ""; // End of document
         }
+
+        sanity_assert(buffer.gb[start_gb_index] == "\n");
 
         is_only_newline = true;
     }
