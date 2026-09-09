@@ -2,6 +2,7 @@
 
 TODO(jt): Known serious bugs:
 
+- Recenter only sometimes works!!! (line 414)
 - When mouse selecting, we can't go past the last character on the last line.
 - Directory listers are not sorted on macOS!
 
@@ -55,6 +56,8 @@ TODO(jt): Roadmap:
 - [X] C-j join-next-line
 - [X] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
 - [ ] C-: or double-click (expand region)
+- [ ] Double click to select word (expand region)
+- [ ] Triple click to select line. (expand to line)
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Reading tabs
 - [X] Writintg tabs
@@ -76,6 +79,7 @@ TODO(jt): Roadmap:
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
+- [ ] F11 fullscreen on Windows
 - [ ] macOS packaging
 - [ ] Linux build
 - [ ] Load System fonts
@@ -95,11 +99,9 @@ TODO(jt): Roadmap:
 - [ ] Theme: Delphi
 - [ ] Emacs-like kill ring
 - [ ] Keep displaying (and updating) panel selection while SEARCH is active.
-- [ ] Double click to select word (expand region)
-- [ ] Triple click to select line.
 - [ ] Render subtle symbols for whitespace characters (space, tab, cr, lf)
 - [ ] Support for dropping files into the window
-- [ ] Pretty things: blinking cursor (careful about timer precision), cursor trail, minimap, ...
+- [ ] Pretty things: blinking cursor, cursor trail, ...
 - [ ] Flash pasted text
 - [ ] Flash text inserted by undo/redo
 - [ ] Writing CRLF
