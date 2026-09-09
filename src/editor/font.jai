@@ -601,9 +601,9 @@ _font_compute_line_length :: (font: Font, line_text: string, $binary: bool) -> f
 
     ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
     for :ITERATOR line_text {
-        // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
         if it == #char "\n" {
-            it = #char " ";
+            advance += font.advance_for_space;
+            break;
         }
 
         #if binary {
@@ -633,30 +633,36 @@ _font_compute_line_length :: (font: Font, line_text: string, $binary: bool) -> f
     return scaled_advance;
 }
 
-font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, binary: bool) -> f64 {
+// Overflow signifies that we read the entire line before getting to the input character index.
+font_compute_position_on_line :: (font: Font, line_text: string, char_index: s64, binary: bool) -> f64, overflow: bool {
     if binary {
-        return _font_compute_position_on_line(font, line_text, character_index, true);
+        x, overflow := _font_compute_position_on_line(font, line_text, char_index, true);
+        return x, overflow;
     } else {
-        return _font_compute_position_on_line(font, line_text, character_index, false);
+        x, overflow := _font_compute_position_on_line(font, line_text, char_index, false);
+        return x, overflow;
     }
 }
 
-_font_compute_position_on_line :: (font: Font, line_text: string, character_index: s64, $binary: bool) -> f64 {
+_font_compute_position_on_line :: (font: Font, line_text: string, char_index: s64, $binary: bool) -> f64, overflow: bool {
     ProfileZone("font_compute_position_on_line");
 
     ft_load_target := cast(s32, ifx font.subpixel then FT_Load_Target.LCD else FT_Load_Target.NORMAL);
 
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
+    overflow := true;
 
     ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
     for :ITERATOR line_text {
-        if it_index >= character_index {
+        if it_index >= char_index {
+            overflow = false;
             break;
         }
 
-        // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
         if it == #char "\n" {
-            it = #char " ";
+            advance += font.advance_for_space;
+            overflow = false;
+            break;
         }
 
         #if binary {
@@ -683,35 +689,38 @@ _font_compute_position_on_line :: (font: Font, line_text: string, character_inde
 
     scaled_advance: f64 = cast(f64, advance) * R64;
 
-    return scaled_advance;
+    return scaled_advance, overflow;
 }
 
-font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, binary: bool) -> s64 {
+font_compute_char_index_on_line :: (font: Font, line_text: string, x: f64, binary: bool) -> s64, overflow: bool {
     if binary {
-        return _font_compute_character_index_on_line(font, line_text, x, true);
+        index, overflow := _font_compute_char_index_on_line(font, line_text, x, true);
+        return index, overflow;
     } else {
-        return _font_compute_character_index_on_line(font, line_text, x, false);
+        index, overflow := _font_compute_char_index_on_line(font, line_text, x, false);
+        return index, overflow;
     }
 }
 
-_font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64, $binary: bool) -> s64 {
-    ProfileZone("font_compute_character_index_on_line");
+// Overflow signifies that we read the entire line before getting to the input position.
+_font_compute_char_index_on_line :: (font: Font, line_text: string, x: f64, $binary: bool) -> s64, overflow: bool {
+    ProfileZone("font_compute_char_index_on_line");
 
-    character_index: s64 = 0;
+    char_index: s64 = 0;
     advance: s64 = 0; // In FreeType's 26:6 fixed point pixels.
 
     ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
     for :ITERATOR line_text {
-        scaled_advance: f64 = cast(f64, advance) * R64;
+        scaled_advance := cast(f64, advance) * R64;
         if scaled_advance >= x {
             break;
         }
 
-        character_index = it_index;
+        char_index = it_index;
 
-        // This is here for consistent selection rendering: we want to highlight the place occupied by the newline.
         if it == #char "\n" {
-            it = #char " ";
+            advance += font.advance_for_space;
+            break;
         }
 
         #if binary {
@@ -736,7 +745,9 @@ _font_compute_character_index_on_line :: (font: Font, line_text: string, x: f64,
         advance += get_char_advance(font, it);
     };
 
-    return character_index;
+    scaled_advance := cast(f64, advance) * R64;
+
+    return char_index, scaled_advance < x;
 }
 
 #scope_file

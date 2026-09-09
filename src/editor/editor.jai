@@ -2,7 +2,7 @@
 
 TODO(jt): Known serious bugs:
 
-- When mouse selecting, we can't go past the last character on the last line.
+- ctrl-arrows should move by words
 - Directory listers are not sorted on macOS!
 
 TODO(jt): Roadmap:
@@ -4209,14 +4209,19 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                     col = 0;
                 } else if row > document.buffer.line_count - 1 {
                     row = document.buffer.line_count - 1;
+                    col = 1 + document.buffer.line_chars[row];
+                } else if row == document.buffer.line_count - 1 {
+                    line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = false,, temp);
+                    col=, overflow := font_compute_char_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
 
-                    // Include newline, so that the cursor can go there.
-                    line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
-                    col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
+                    // Include synthetic newline at the end of document.
+                    if overflow {
+                        col += 1;
+                    }
                 } else {
                     // Include newline, so that the cursor can go there.
                     line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
-                    col = font_compute_character_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
+                    col = font_compute_char_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
                 }
 
                 text_buffer_move_to(document.buffer, *view.cursors, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
