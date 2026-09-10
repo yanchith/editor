@@ -2,7 +2,9 @@
 
 TODO(jt): Known serious bugs:
 
-- Directory listers are not sorted on macOS!
+- macOS:   Directory listers are not sorted
+- Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
+- Windows: Can't open most recent log file, because we already have it open...
 
 TODO(jt): Roadmap:
 
@@ -54,8 +56,6 @@ TODO(jt): Roadmap:
 - [X] C-j join-next-line
 - [X] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
 - [ ] C-: or double-click (expand region)
-- [ ] Double click to select word (expand region)
-- [ ] Triple click to select line. (expand to line)
 - [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Reading tabs
 - [X] Writintg tabs
@@ -65,10 +65,12 @@ TODO(jt): Roadmap:
 - [X] Language: GLSL
 - [X] Reading and rendering CRLF
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
-- [ ] Minimal config files (keybinds, theme, language file association)
+- [X] Minimal config files (keybinds, theme, language file association)
+- [ ] Prettier modeline layout
 
 ... after alpha ...
 
+- [ ] Triple click to select line. (expand to line)
 - [ ] Speed improvements to scope parsing
 - [ ] Speed improvements to lexing for syntax highlighting
 - [ ] C-u C-<space> (cursor undo)
@@ -710,6 +712,11 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.compilation_key_map.allocator = arena_allocator(editor.perm_arena);
     editor.listing_key_map.allocator = arena_allocator(editor.perm_arena);
 
+    key_map_reserve(*editor.panel_key_map, 128);
+    key_map_reserve(*editor.document_key_map, 128);
+    key_map_reserve(*editor.compilation_key_map, 128);
+    key_map_reserve(*editor.listing_key_map, 128);
+
     editor.theme = abulafia_theme(); // In case config doesn't load.
 
     editor.watched_files.allocator = arena_allocator(editor.perm_arena);
@@ -748,6 +755,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         mini_panel := *editor.mini_panel;
 
         mini_panel.key_map.allocator = arena_allocator(editor.perm_arena);
+        key_map_reserve(*mini_panel.key_map, 128);
 
         // Mini text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*mini_panel.buffer, make_arena(editor, platform, .SMALL, "Minipanel Buffer"));
@@ -765,6 +773,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         modal_interaction := *editor.modal_interaction;
 
         modal_interaction.key_map.allocator = arena_allocator(editor.perm_arena);
+        key_map_reserve(*editor.modal_interaction.key_map, 128);
 
         // Modal text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*modal_interaction.buffer, make_arena(editor, platform, .SMALL, "Modal Buffer"));
@@ -800,11 +809,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     editor.is_first_frame = true;
 
-    // TODO(jt): Insert emergency keybinds in case config doesn't load?
-    // How would this work exactly? Would they be overridable by config, or would they always win?
-    // OR.... we could have the default config in text form in our binary and revert to that if the one on filesystem doesn't exist?
-    // Maybe we could event save it out?
-    load_config(editor, platform);
+    load_config(editor, platform, fall_back_to_emergency_config = true);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_this_frame: bool, wants_next_frame: bool {
@@ -2746,7 +2751,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .THEME_ZENBURN;                    change_theme(editor, "zenburn");
         case .THEME_VISUAL_STUDIO_LIGHT;        change_theme(editor, "visual_studio_light");
 
-        case .RELOAD_CONFIG;                    load_config(editor, platform);
+        case .RELOAD_CONFIG;                    load_config(editor, platform, fall_back_to_emergency_config = false);
 
         case .DEBUG_VIEW_ATLAS_TEXTURE;         toggle_debug_view(editor, .ATLAS_TEXTURE);
         case .DEBUG_VIEW_MEMORY_ABSOLUTE;       toggle_debug_view(editor, .MEMORY_ABSOLUTE);
@@ -4841,13 +4846,19 @@ is_part_of_surround_pair :: (document: Document, char: u32) -> opens: bool, clos
     return opens, closes, paired_char;
 }
 
-load_config :: (editor: *Editor, platform: Platform) {
+load_config :: (editor: *Editor, platform: Platform, fall_back_to_emergency_config: bool) {
     // TODO(jt): @Cleanup On macOS, we won't have the config next to the executable!
     CONFIG_PATH :: "./editor.config";
 
     success, config := platform.read_file(CONFIG_PATH,, temp);
     if success {
-        parse_and_apply_config(editor, cast(string, config));
+        success = parse_and_apply_config(editor, cast(string, config));
+        if success {
+            editor_log(editor, "Applied config");
+        } else if fall_back_to_emergency_config {
+            apply_emergency_config(editor);
+            editor_log(editor, "Applied emergency config");
+        }
     } else {
         success=, config_path := platform.get_absolute_path(CONFIG_PATH,, temp);
         if success {

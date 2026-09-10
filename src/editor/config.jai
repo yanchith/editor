@@ -1,6 +1,6 @@
 CONFIG_VERSION :: 1;
 
-parse_and_apply_config :: (editor: *Editor, _input: string) {
+parse_and_apply_config :: (editor: *Editor, _input: string) -> success: bool {
     success := true;
 
     lexer: Config_Lexer;
@@ -9,12 +9,12 @@ parse_and_apply_config :: (editor: *Editor, _input: string) {
     success=, version := parse_version(*lexer);
     if !success {
         editor_log(editor, "Failed to parse version on line %", lexer.line_index + 1);
-        return;
+        return false;
     }
 
     if version != CONFIG_VERSION {
         editor_log(editor, "Invalid config version: % (supported is %)", version, CONFIG_VERSION);
-        return;
+        return false;
     }
 
     config_theme: string;
@@ -32,7 +32,7 @@ parse_and_apply_config :: (editor: *Editor, _input: string) {
     config_keybinds_mp.allocator = temp;
     config_keybinds_mi.allocator = temp;
 
-    section := Section.GLOBAL;
+    section := Config_Section.GLOBAL;
 
     while 1 {
         eat_whitespace(*lexer);
@@ -45,7 +45,7 @@ parse_and_apply_config :: (editor: *Editor, _input: string) {
             success= , parsed_section := parse_section(*lexer);
             if !success {
                 editor_log(editor, "Failed to parse section on line %", lexer.line_index + 1);
-                return;
+                return false;
             }
 
             if parsed_section == {
@@ -57,7 +57,7 @@ parse_and_apply_config :: (editor: *Editor, _input: string) {
                 case "keybinds.modal_interaction";  section = .KEYBINDS_MODAL_INTERACTION;
                 case; {
                     editor_log(editor, "Invalid section on line %", lexer.line_index + 1);
-                    return;
+                    return false;
                 }
             }
         } else {
@@ -66,14 +66,14 @@ parse_and_apply_config :: (editor: *Editor, _input: string) {
                     success=, key, value := parse_pair(*lexer);
                     if !success {
                         editor_log(editor, "Failed to parse key-value pair on line %", lexer.line_index + 1);
-                        return;
+                        return false;
                     }
 
                     if key == {
                         case "theme";  config_theme = value;
                         case; {
                             editor_log(editor, "Unknown key on line %", lexer.line_index + 1);
-                            return;
+                            return false;
                         }
                     }
                 }
@@ -87,13 +87,13 @@ parse_and_apply_config :: (editor: *Editor, _input: string) {
                     success=, _shortcut, _action := parse_keybind_pair(*lexer);
                     if !success {
                         editor_log(editor, "Failed to parse keybind pair on line %", lexer.line_index + 1);
-                        return;
+                        return false;
                     }
 
                     success=, shortcut := shortcut_parse(_shortcut);
                     if !success {
                         editor_log(editor, "Failed to parse keyboard shortcut on line %", lexer.line_index + 1);
-                        return;
+                        return false;
                     }
 
                     if section == {
@@ -108,7 +108,7 @@ parse_and_apply_config :: (editor: *Editor, _input: string) {
 
                     if !success {
                         editor_log(editor, "Failed to recognize keybind action on line %", lexer.line_index + 1);
-                        return;
+                        return false;
                     }
                 }
             }
@@ -128,13 +128,6 @@ parse_and_apply_config :: (editor: *Editor, _input: string) {
     key_map_reset_keeping_memory(*editor.mini_panel.key_map);
     key_map_reset_keeping_memory(*editor.modal_interaction.key_map);
 
-    key_map_reserve(*editor.panel_key_map, 128);
-    key_map_reserve(*editor.document_key_map, 128);
-    key_map_reserve(*editor.compilation_key_map, 128);
-    key_map_reserve(*editor.listing_key_map, 128);
-    key_map_reserve(*editor.mini_panel.key_map, 128);
-    key_map_reserve(*editor.modal_interaction.key_map, 128);
-
     for config_keybinds_panel        key_map_add(*editor.panel_key_map, it.shortcut, it.action);
     for config_keybinds_document     key_map_add(*editor.document_key_map, it.shortcut, it.action);
     for config_keybinds_compilation  key_map_add(*editor.compilation_key_map, it.shortcut, it.action);
@@ -142,12 +135,143 @@ parse_and_apply_config :: (editor: *Editor, _input: string) {
     for config_keybinds_mp           key_map_add(*editor.mini_panel.key_map, it.shortcut, it.action);
     for config_keybinds_mi           key_map_add(*editor.modal_interaction.key_map, it.shortcut, it.action);
 
-    editor_log(editor, "Applied config");
+    return true;
+}
+
+// In case we fail to load a config, this is a minimal set of things people can use to fix the environment.
+// Or they could jus use VS Code.
+apply_emergency_config :: (editor: *Editor) {
+    change_theme(editor, "abulafia"); // TODO(jt): Emergency theme.
+
+    key_map_reset_keeping_memory(*editor.panel_key_map);
+    key_map_reset_keeping_memory(*editor.document_key_map);
+    key_map_reset_keeping_memory(*editor.compilation_key_map);
+    key_map_reset_keeping_memory(*editor.listing_key_map);
+    key_map_reset_keeping_memory(*editor.mini_panel.key_map);
+    key_map_reset_keeping_memory(*editor.modal_interaction.key_map);
+
+    {
+        km := *editor.panel_key_map;
+
+        key_map_add(km, "M-x",                .SHOW_COMMANDS);
+        key_map_add(km, "C-S-p",              .SHOW_COMMANDS);
+
+        key_map_add(km, "C-x C-f",            .OPEN_FILE);
+        key_map_add(km, "C-x b",              .SWITCH_VIEW);
+        key_map_add(km, "C-x k",              .CLOSE_VIEW);
+    }
+
+    {
+        km := *editor.document_key_map;
+
+        key_map_add(km, "C-p",                .MOVE_UP);
+        key_map_add(km, "<up>",               .MOVE_UP);
+        key_map_add(km, "C-n",                .MOVE_DOWN);
+        key_map_add(km, "<down>",             .MOVE_DOWN);
+        key_map_add(km, "C-f",                .MOVE_FORWARD);
+        key_map_add(km, "<right>",            .MOVE_FORWARD);
+        key_map_add(km, "C-b",                .MOVE_BACKWARD);
+        key_map_add(km, "<left>",             .MOVE_BACKWARD);
+
+        key_map_add(km, "C-x C-s",            .SAVE_DOCUMENT);
+        key_map_add(km, "C-x C-r",            .RELOAD_DOCUMENT);
+
+        key_map_add(km, "C-d",                .DELETE_FORWARD);
+        key_map_add(km, "<delete>",           .DELETE_FORWARD);
+        key_map_add(km, "<backspace>",        .DELETE_BACKWARD);
+
+        key_map_add(km, "C-m",                .INSERT_LINE_BEFORE);
+        key_map_add(km, "<enter>",            .INSERT_LINE_BEFORE);
+
+        key_map_add(km, "M-w",                .COPY);
+        key_map_add(km, "C-w",                .CUT);
+        key_map_add(km, "C-y",                .PASTE);
+    }
+
+    {
+        km := *editor.compilation_key_map;
+
+        key_map_add(km, "C-p",                .MOVE_UP);
+        key_map_add(km, "<up>",               .MOVE_UP);
+        key_map_add(km, "C-n",                .MOVE_DOWN);
+        key_map_add(km, "<down>",             .MOVE_DOWN);
+        key_map_add(km, "C-f",                .MOVE_FORWARD);
+        key_map_add(km, "<right>",            .MOVE_FORWARD);
+        key_map_add(km, "C-b",                .MOVE_BACKWARD);
+        key_map_add(km, "<left>",             .MOVE_BACKWARD);
+
+        key_map_add(km, "M-w",                .COPY);
+        key_map_add(km, "C-w",                .COPY);
+    }
+
+    {
+        km := *editor.listing_key_map;
+
+        key_map_add(km, "C-p",                .MOVE_UP);
+        key_map_add(km, "p",                  .MOVE_UP);
+        key_map_add(km, "<up>",               .MOVE_UP);
+        key_map_add(km, "C-n",                .MOVE_DOWN);
+        key_map_add(km, "n",                  .MOVE_DOWN);
+        key_map_add(km, "<down>",             .MOVE_DOWN);
+
+        key_map_add(km, "C-m",                .OPEN);
+        key_map_add(km, "<enter>",            .OPEN);
+    }
+
+    {
+        km := *editor.mini_panel.key_map;
+
+        key_map_add(km, "C-p",                .MOVE_UP);
+        key_map_add(km, "<up>",               .MOVE_UP);
+        key_map_add(km, "C-n",                .MOVE_DOWN);
+        key_map_add(km, "<down>",             .MOVE_DOWN);
+        key_map_add(km, "C-f",                .MOVE_FORWARD);
+        key_map_add(km, "<right>",            .MOVE_FORWARD);
+        key_map_add(km, "C-b",                .MOVE_BACKWARD);
+        key_map_add(km, "<left>",             .MOVE_BACKWARD);
+
+        key_map_add(km, "C-d",                .DELETE_FORWARD);
+        key_map_add(km, "<delete>",           .DELETE_FORWARD);
+        key_map_add(km, "<backspace>",        .DELETE_BACKWARD);
+
+        key_map_add(km, "M-w",                .COPY);
+        key_map_add(km, "C-w",                .CUT);
+        key_map_add(km, "C-y",                .PASTE);
+
+        key_map_add(km, "C-m",                .CONFIRM);
+        key_map_add(km, "<enter>",            .CONFIRM);
+
+        key_map_add(km, "C-g",                .CANCEL_OR_STOP_SELECTING);
+        key_map_add(km, "<escape>",           .CANCEL_OR_STOP_SELECTING);
+    }
+
+    {
+        km := *editor.modal_interaction.key_map;
+
+        key_map_add(km, "C-f",                .MOVE_FORWARD);
+        key_map_add(km, "<right>",            .MOVE_FORWARD);
+        key_map_add(km, "C-b",                .MOVE_BACKWARD);
+        key_map_add(km, "<left>",             .MOVE_BACKWARD);
+
+        key_map_add(km, "C-d",                .DELETE_FORWARD);
+        key_map_add(km, "<delete>",           .DELETE_FORWARD);
+        key_map_add(km, "<backspace>",        .DELETE_BACKWARD);
+
+        key_map_add(km, "M-w",                .COPY);
+        key_map_add(km, "C-w",                .CUT);
+        key_map_add(km, "C-y",                .PASTE);
+
+        key_map_add(km, "C-m",                .CONFIRM);
+        key_map_add(km, "<enter>",            .CONFIRM);
+
+        key_map_add(km, "C-g",                .CANCEL_OR_STOP_SELECTING);
+        key_map_add(km, "<escape>",           .CANCEL_OR_STOP_SELECTING);
+    }
 }
 
 #scope_file
 
-Section :: enum {
+Config_Section :: enum {
     GLOBAL;
     KEYBINDS_PANEL;
     KEYBINDS_DOCUMENT;
