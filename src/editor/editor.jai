@@ -69,11 +69,14 @@ TODO(jt): Roadmap:
 
 ... after alpha ...
 
+- [ ] Speed improvements to scope parsing
+- [ ] Speed improvements to lexing for syntax highlighting
 - [ ] C-u C-<space> (cursor undo)
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
-- [ ] Mouse interaction in the mini panel (text selection, item selection, item hover?)
+- [ ] Mouse interaction in the mini panel (text selection, item clicking, item hover?)
 - [ ] Mouse interaction in the modal interaction (text selection)
+- [ ] Mouse interaction in the mode line (click change view, lang, crlf, indentation level)
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
@@ -2873,12 +2876,14 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     document.backing_file_last_synced_size = size;
                     document.backing_file_last_synced_hash = hash_file_contents(file_contents);
 
+                    original_cursor := view.cursors.c0;
+
                     view.cursors.c0 = { 0, 0 };
                     view.cursors.c1 = { 0, 0 };
                     text_buffer_reset(*document.buffer);
 
                     text_buffer_insert(*document.buffer, *view.cursors, file_contents, .OMIT);
-                    text_buffer_move_to(document.buffer, *view.cursors, 0, 0, false);
+                    text_buffer_move_to(document.buffer, *view.cursors, original_cursor, false);
 
                     document.flags &= ~.MODIFIED;
                     document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
