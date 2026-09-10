@@ -114,13 +114,10 @@ TODO(jt): Roadmap:
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode view
 - [~] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
-- [ ] if (0) and #if 0 behave like comments w.r.t. to highlighting.
-- [ ] Font Kerning
+- [ ] if (0) and #if 0 produce desaturated syntax highlighting
 - [ ] Get rid of FreeType without compromising quality (kb_text_shape + Slug)
 - [ ] Version control view (Git only?, via plugin interface?)
 - [ ] 4coder style floating annotations? (e.g. name of the function or if statement expresion after closing brace)
-- [ ] Customization and plugins
-- [ ] SEARCH items should render with syntax highlighting
 
 */
 
