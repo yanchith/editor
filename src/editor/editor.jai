@@ -66,7 +66,7 @@ TODO(jt): Roadmap:
 - [X] Reading and rendering CRLF
 - [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
 - [X] Minimal config files (keybinds, theme, language file association)
-- [ ] Prettier modeline layout
+- [X] Prettier modeline layout
 
 ... after alpha ...
 
@@ -4607,7 +4607,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 draw_rect(render_commands, modeline_rect, ifx panel_is_active then editor.theme.modeline_color_active else editor.theme.modeline_color);
 
                 cursor  := view.cursors.c0;
-                percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, document.buffer.line_count));
+                percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, document.buffer.line_count - 1));
 
                 document_name := get_document_name(document);
                 document_lang: string;
@@ -4618,9 +4618,12 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                     case .GLSL;        document_lang = "GLSL";
                 }
 
-                percent_string := temp_right_pad(tprint("%\%", percent), 4);
+                left_part  := tprint("% %", temp_right_pad(document_lang, 10), document_name);
+                right_part := tprint("%\% L% C%", percent, cursor.y + 1, temp_right_pad(tprint("%", cursor.x + 1), 4));
 
-                s := tprint("    % % % L% C%", temp_right_pad(document_name, 15), temp_right_pad(document_lang, 15), percent_string, cursor.y + 1, cursor.x + 1);
+                padding := cast(s64, round(panel_w / cell_w)) - count_utf8_chars(left_part) - 10;
+                s := tprint("     % %", left_part, temp_left_pad(right_part, padding));
+
                 _font_layout_and_draw_text(*editor.font, s,
                                            render_commands, atlas_update_regions,
                                            modeline_offset, modeline_rect,
@@ -4706,13 +4709,16 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 draw_rect(render_commands, modeline_rect, ifx panel_is_active then editor.theme.modeline_color_active else editor.theme.modeline_color);
 
                 item_index := view.item_index;
-                percent := cast(s64, 100.0 * cast(f32, item_index) / cast(f32, listing.items.count));
+                percent := cast(s64, 100.0 * cast(f32, item_index) / cast(f32, listing.items.count - 1));
 
                 listing_name := get_listing_name(listing);
 
-                percent_string := temp_right_pad(tprint("%\%", percent), 4);
+                left_part  := tprint("Directory  %", listing_name);
+                right_part := tprint("%\% L%    ", percent, item_index + 1);
 
-                s := tprint("    % % L%", temp_right_pad(listing_name, 15), percent_string, item_index + 1);
+                padding := cast(s64, round(panel_w / cell_w)) - count_utf8_chars(left_part) - 10;
+                s := tprint("     % %", left_part, temp_left_pad(right_part, padding));
+
                 _font_layout_and_draw_text(*editor.font, s,
                                            render_commands, atlas_update_regions,
                                            modeline_offset, modeline_rect,
