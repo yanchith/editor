@@ -3236,95 +3236,61 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     y0 := min(view.cursors.c0.y, view.cursors.c1.y);
                     y1 := max(view.cursors.c0.y, view.cursors.c1.y);
 
-                    adding_comments: bool;
-                    adding_comments_level: s64;
+                    comments_action: enum { UNINITIALIZED; ADD; REMOVE; };
+                    comments_add_at_level: s64;
                     {
-                        // First line. Detect whether we are adding or removing comments and do so for the first line.
-                        // All operations send .NONE undo modifier.
+                        // First line. Detect, whether we are adding or removing comments and do so for the first line.
+                        // All operations pass .NONE undo modifier.
                         text_buffer_move_to(document.buffer, *view.cursors, 0, y0, false);
-                        text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .ALWAYS_START_OF_TEXT);
+                        text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .START_OF_TEXT);
 
-                        loc0 := view.cursors.c0;
-                        loc1 := loc0;
-                        loc1.x += line_comment_length;
+                        line_end  := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y);
+                        line_view := text_buffer_make_view_for_interval(document.buffer, view.cursors.c0, line_end,, temp);
 
-                        if document.buffer.line_chars[loc1.y] > loc1.x {
-                            line_view := text_buffer_make_view_for_interval(document.buffer, loc0, loc1,, temp);
-                            if String.starts_with(line_view, line_comment) {
-                                loc1_with_space := loc1;
-                                loc1_with_space.x += 1; // +1 okay, because space is ASCII.
-
-                                removed_with_space := false;
-
-                                if document.buffer.line_chars[loc1_with_space.y] > loc1_with_space.x {
-                                    line_view_with_space := text_buffer_make_view_for_interval(document.buffer, loc0, loc1_with_space,, temp);
-                                    if String.starts_with(line_view_with_space, line_comment_with_space) {
-                                        text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_with_space_length, .NONE);
-                                        adding_comments = false;
-
-                                        removed_with_space = true;
-                                    }
-                                }
-
-                                if !removed_with_space {
-                                    text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_length, .NONE);
-                                    adding_comments = false;
-                                }
-                            } else {
-                                adding_comments = true;
-                                adding_comments_level = view.cursors.c0.x;
-
-                                text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .NONE);
-                            }
-                        } else {
-                            adding_comments = true;
-                            adding_comments_level = view.cursors.c0.x;
-
+                        if String.starts_with(line_view, line_comment_with_space) {
+                            comments_action = .REMOVE;
+                            text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_with_space_length, .NONE);
+                        } else if String.starts_with(line_view, line_comment) {
+                            comments_action = .REMOVE;
+                            text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_length, .NONE);
+                        } else  {
+                            comments_action = .ADD;
+                            comments_add_at_level = view.cursors.c0.x;
                             text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .NONE);
                         }
                     }
 
                     for y0 + 1..y1 {
                         // Subsequent lines. Do what we did ont the first line, but don't remove a comment if there is none.
-                        // All operations send .FUSE undo modifier.
+                        // All operations pass .FUSE undo modifier.
 
                         text_buffer_move_to(document.buffer, *view.cursors, 0, it, false);
-                        text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .ALWAYS_START_OF_TEXT);
+                        text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .START_OF_TEXT);
 
-                        if adding_comments {
-                            if adding_comments_level > view.cursors.c0.x {
+                        if comments_action == .ADD {
+                            if comments_add_at_level < view.cursors.c0.x {
+                                text_buffer_move_to(document.buffer, *view.cursors, comments_add_at_level, it, false);
+                            } else if comments_add_at_level > view.cursors.c0.x {
+                                // We are before the comment level. If there is text on this line, tough luck.
+                                // However, if the line is just short, we can indent it.
                                 end := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y);
                                 if view.cursors.c0 == end {
-                                    text_buffer_indent_line(*document.buffer, *view.cursors, adding_comments_level, .FUSE);
+                                    // This should also move us to the right spot!
+                                    text_buffer_indent_line(*document.buffer, *view.cursors, comments_add_at_level, .FUSE);
                                 }
                             }
 
                             text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .FUSE);
-                        } else {
-                            loc0 := view.cursors.c0;
-                            loc1 := loc0;
-                            loc1.x += line_comment_length;
+                        } else if comments_action == .REMOVE {
+                            line_end  := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y);
+                            line_view := text_buffer_make_view_for_interval(document.buffer, view.cursors.c0, line_end,, temp);
 
-                            if document.buffer.line_chars[loc1.y] > loc1.x {
-                                line_view := text_buffer_make_view_for_interval(document.buffer, loc0, loc1,, temp);
-                                if String.starts_with(line_view, line_comment) {
-                                    loc1_with_space := loc1;
-                                    loc1_with_space.x += 1; // +1 okay, because space is ASCII.
-
-                                    removed_with_space := false;
-
-                                    if document.buffer.line_chars[loc1_with_space.y] > loc1_with_space.x {
-                                        line_view_with_space := text_buffer_make_view_for_interval(document.buffer, loc0, loc1_with_space,, temp);
-                                        if String.starts_with(line_view_with_space, line_comment_with_space) {
-                                            text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_with_space_length, .FUSE);
-                                            removed_with_space = true;
-                                        }
-                                    }
-
-                                    if !removed_with_space {
-                                        text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_length, .FUSE);
-                                    }
-                                }
+                            if String.starts_with(line_view, line_comment_with_space) {
+                                text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_with_space_length, .NONE);
+                                comments_action = .REMOVE;
+                            } else if String.starts_with(line_view, line_comment) {
+                                text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_length, .NONE);
+                                comments_action = .REMOVE;
                             }
                         }
                     }
@@ -3332,7 +3298,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     if y0 == y1 {
                         moved := text_buffer_move_y(document.buffer, *view.cursors, 1, false);
                         if moved {
-                            text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .ALWAYS_START_OF_TEXT);
+                            text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .START_OF_TEXT);
                         }
                     } else {
                         text_buffer_move_to(document.buffer, *view.cursors, 0, y1, false);
@@ -3341,7 +3307,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     buffer_changed = true;
                     view.selecting = false;
                 } else {
-                    editor_log(editor, "No line comment defined for language: %", document.lang);
+                    editor_log(editor, "No line comment defined for language: %", get_document_lang(document));
                 }
             } else if view.cursors.c0.y == view.cursors.c1.y {
                 // TODO(jt): Add single line block comments (if we have a selection going)

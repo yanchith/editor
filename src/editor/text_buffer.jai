@@ -1563,12 +1563,12 @@ text_buffer_move_to_end :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecti
 }
 
 Modifier_For_Move_To_Start_Of_Line :: enum {
-    DEFAULT;
-    ALWAYS_START_OF_LINE;
-    ALWAYS_START_OF_TEXT;
+    AUTO;
+    START_OF_LINE;
+    START_OF_TEXT;
 }
 
-text_buffer_move_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool, modifier := Modifier_For_Move_To_Start_Of_Line.DEFAULT) -> cursor_moved: bool {
+text_buffer_move_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool, modifier := Modifier_For_Move_To_Start_Of_Line.AUTO) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_to_start_of_line");
 
     assert_valid(buffer, cursors);
@@ -1588,17 +1588,17 @@ text_buffer_move_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursor
     }
 
     if #complete modifier == {
-        case .DEFAULT; {
+        case .AUTO; {
             if first_nonspace_index == -1 || cursors.c0.x == first_nonspace_index {
                 cursors.c0.x = 0;
             } else {
                 cursors.c0.x = first_nonspace_index;
             }
         }
-        case .ALWAYS_START_OF_LINE; {
+        case .START_OF_LINE; {
             cursors.c0.x = 0;
         }
-        case .ALWAYS_START_OF_TEXT; {
+        case .START_OF_TEXT; {
             if first_nonspace_index == -1 {
                 cursors.c0.x = 0;
             } else {
