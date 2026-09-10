@@ -5,6 +5,7 @@ TODO(jt): Known serious bugs:
 - macOS:   Directory listers are not sorted
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
 - Windows: Can't open most recent log file, because we already have it open...
+- indent_line inconsistencies
 
 TODO(jt): Roadmap:
 
@@ -56,7 +57,7 @@ TODO(jt): Roadmap:
 - [X] C-j join-next-line
 - [X] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
 - [ ] C-: or double-click (expand region)
-- [ ] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
+- [X] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Reading tabs
 - [X] Writintg tabs
 - [X] Language: JAI

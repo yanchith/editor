@@ -75,10 +75,15 @@ Text_Buffer :: struct {
 Text_Cursors :: struct {
     c0: Text_Location;
     c1: Text_Location;
+    x0_explicit: s64;
 }
 
-text_cursors_join :: (cursors: *Text_Cursors) {
+text_cursors_join :: inline (cursors: *Text_Cursors) {
     cursors.c1 = cursors.c0;
+}
+
+text_cursors_horizontal_move_was_explicit :: inline (cursors: *Text_Cursors) {
+    cursors.x0_explicit = cursors.c0.x;
 }
 
 Text_Location :: struct {
@@ -330,7 +335,8 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
         edit.cursor1_for_display_after = cursors.c0;
     }
 
-    cursors.c1 = cursors.c0;
+    text_cursors_join(cursors);
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     invalidate_chunk_for_line(buffer, line_to_invalidate);
 
@@ -343,12 +349,11 @@ text_buffer_delete_all :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* P
     start := text_buffer_get_start(buffer);
     end   := text_buffer_get_end(buffer);
 
-    c: Text_Cursors = { start, end };
+    c: Text_Cursors = { start, end, start.x };
 
     view := /*inline?*/ text_buffer_delete_selection(buffer, *c);
 
-    cursors.c0 = { 0, 0 };
-    cursors.c1 = { 0, 0 };
+    cursors.* = {};
 
     return view;
 }
@@ -415,6 +420,8 @@ text_buffer_delete_selection :: (buffer: *Text_Buffer, cursors: *Text_Cursors, u
     buffer.applied_edit_count = buffer.edits.count;
 
     update_index_for_delete_forward(buffer, cursors, deleted);
+
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     invalidate_chunk_for_line(buffer, line_to_invalidate);
 
@@ -516,7 +523,8 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, cha
         buffer.applied_edit_count = buffer.edits.count;
     }
 
-    cursors.c1 = cursors.c0;
+    text_cursors_join(cursors);
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     invalidate_chunk_for_line(buffer, line_to_invalidate);
 
@@ -641,7 +649,8 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
         }
     }
 
-    cursors.c1 = cursors.c0;
+    text_cursors_join(cursors);
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     invalidate_chunk_for_line(buffer, line_to_invalidate);
 
@@ -692,7 +701,8 @@ text_buffer_delete_forward_word :: (buffer: *Text_Buffer, cursors: *Text_Cursors
 
     update_index_for_delete_forward(buffer, cursors, deleted);
 
-    cursors.c1 = cursors.c0;
+    text_cursors_join(cursors);
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     invalidate_chunk_for_line(buffer, line_to_invalidate);
 
@@ -744,6 +754,9 @@ text_buffer_delete_backward_word :: (buffer: *Text_Buffer, cursors: *Text_Cursor
     update_index_for_delete_backward(buffer, cursors, deleted);
 
     cursors.* = search_cursors;
+
+    text_cursors_join(cursors);
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     invalidate_chunk_for_line(buffer, line_to_invalidate);
 
@@ -805,7 +818,8 @@ text_buffer_delete_indentation_forward :: (buffer: *Text_Buffer, cursors: *Text_
 
     update_index_for_delete_forward(buffer, cursors, deleted);
 
-    cursors.c1 = cursors.c0;
+    text_cursors_join(cursors);
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     invalidate_chunk_for_line(buffer, line_to_invalidate);
 
@@ -893,7 +907,8 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
 
     update_index_for_delete_forward(buffer, cursors, deleted);
 
-    cursors.c1 = cursors.c0;
+    text_cursors_join(cursors);
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     invalidate_chunk_for_line(buffer, line_to_invalidate);
 
@@ -970,6 +985,9 @@ text_buffer_trim_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, undo_mod
         }
 
         update_index_for_delete_forward(buffer, cursors, deleted);
+
+        text_cursors_join(cursors);
+        text_cursors_horizontal_move_was_explicit(cursors);
 
         invalidate_chunk_for_line(buffer, line_to_invalidate);
 
@@ -1062,6 +1080,8 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
         cursors.c0 = display_cursor_after;
         cursors.c1 = display_cursor_after;
 
+        text_cursors_horizontal_move_was_explicit(cursors);
+
         invalidate_chunk_for_line(buffer, line_to_invalidate);
 
         changed = true;
@@ -1115,12 +1135,16 @@ text_buffer_indent_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors, indent
         cursors.c0 = display_cursor_after;
         cursors.c1 = display_cursor_after;
 
+        text_cursors_horizontal_move_was_explicit(cursors);
+
         invalidate_chunk_for_line(buffer, line_to_invalidate);
 
         changed = true;
     } else {
         cursors.c0.x = indentation_level;
         cursors.c1.x = indentation_level;
+
+        text_cursors_horizontal_move_was_explicit(cursors);
     }
 
     assert_valid(buffer, cursors);
@@ -1199,6 +1223,8 @@ text_buffer_undo_edit :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> chang
         cursors.c1 = edit.cursor1_for_display_before;
 
         applied_count += 1;
+
+        text_cursors_horizontal_move_was_explicit(cursors);
 
         invalidate_chunk_for_line(buffer, min(edit.cursor0_for_edit_before.y, edit.cursor0_for_edit_after.y));
 
@@ -1279,6 +1305,8 @@ text_buffer_redo_edit :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> chang
         cursors.c1 = edit.cursor1_for_display_after;
 
         applied_count += 1;
+
+        text_cursors_horizontal_move_was_explicit(cursors);
 
         invalidate_chunk_for_line(buffer, min(edit.cursor0_for_edit_before.y, edit.cursor0_for_edit_after.y));
 
@@ -1434,8 +1462,9 @@ text_buffer_move_x :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta: s64, 
     }
 
     if !selecting {
-        cursors.c1 = cursors.c0;
+        text_cursors_join(cursors);
     }
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     assert_valid_cursors(buffer, cursors);
 
@@ -1451,14 +1480,15 @@ text_buffer_move_y :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta: s64, 
 
     cursors.c0.y = clamp(cursors.c0.y + delta, 0, buffer.line_chars.count - 1);
     if cursors.c0.y == buffer.line_chars.count - 1 {
-        cursors.c0.x = clamp(cursors.c0.x, 0, buffer.line_chars[cursors.c0.y]);
+        cursors.c0.x = clamp(cursors.x0_explicit, 0, buffer.line_chars[cursors.c0.y]);
     } else {
-        cursors.c0.x = clamp(cursors.c0.x, 0, buffer.line_chars[cursors.c0.y] - 1);
+        cursors.c0.x = clamp(cursors.x0_explicit, 0, buffer.line_chars[cursors.c0.y] - 1);
     }
 
     if !selecting {
-        cursors.c1 = cursors.c0;
+        text_cursors_join(cursors);
     }
+    // horizontal move was *not* explicit
 
     assert_valid_cursors(buffer, cursors);
 
@@ -1485,8 +1515,9 @@ text_buffer_move_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, loc: Text_L
     cursors.c0 = { x, y };
 
     if !selecting {
-        cursors.c1 = cursors.c0;
+        text_cursors_join(cursors);
     }
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     assert_valid_cursors(buffer, cursors);
 }
@@ -1501,8 +1532,9 @@ text_buffer_move_to_start :: (buffer: Text_Buffer, cursors: *Text_Cursors, selec
     cursors.c0 = { 0, 0 };
 
     if !selecting {
-        cursors.c1 = cursors.c0;
+        text_cursors_join(cursors);
     }
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     assert_valid_cursors(buffer, cursors);
 
@@ -1521,8 +1553,9 @@ text_buffer_move_to_end :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecti
     cursors.c0 = { x, y };
 
     if !selecting {
-        cursors.c1 =  cursors.c0;
+        text_cursors_join(cursors);
     }
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     assert_valid_cursors(buffer, cursors);
 
@@ -1575,8 +1608,9 @@ text_buffer_move_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursor
     }
 
     if !selecting {
-        cursors.c1 = cursors.c0;
+        text_cursors_join(cursors);
     }
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     assert_valid_cursors(buffer, cursors);
 
@@ -1593,8 +1627,9 @@ text_buffer_move_to_end_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors,
     cursors.c0 = text_buffer_get_end_of_line(buffer, cursors.c0.y);
 
     if !selecting {
-        cursors.c1 = cursors.c0;
+        text_cursors_join(cursors);
     }
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     assert_valid_cursors(buffer, cursors);
 
@@ -1635,8 +1670,9 @@ text_buffer_move_to_previous_word_boundary :: (buffer: Text_Buffer, cursors: *Te
     }
 
     if !selecting {
-        cursors.c1 = cursors.c0;
+        text_cursors_join(cursors);
     }
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     assert_valid_cursors(buffer, cursors);
 
@@ -1677,8 +1713,9 @@ text_buffer_move_to_next_word_boundary :: (buffer: Text_Buffer, cursors: *Text_C
     }
 
     if !selecting {
-        cursors.c1 = cursors.c0;
+        text_cursors_join(cursors);
     }
+    text_cursors_horizontal_move_was_explicit(cursors);
 
     assert_valid_cursors(buffer, cursors);
 
@@ -1812,8 +1849,7 @@ text_buffer_switch_to_binary_mode :: (buffer: *Text_Buffer, cursors: *Text_Curso
     // TODO(jt): Preserve cursor when pasting binary data from clipboard, although apparently it
     // isn't that easy to get binary data from the clipboard. We can preserve cursors by converting
     // them to gap buffer indices and back.
-    cursors.c0 = { 0, 0 };
-    cursors.c1 = { 0, 0 };
+    cursors.* = {};
 
     buffer.line_count = buffer.line_bytes.count;
 
