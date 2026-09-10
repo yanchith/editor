@@ -13,13 +13,11 @@ UTF8_LENGTH_FOR_STARTING_BYTE :: u8.[
     3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3, 4,4,4,4,4,4,4,4,5,5,5,5,6,6,6,6,
 ];
 
-// TODO(jt): @Speed @Cleanup This is a deprecated routine from the String module,
+// TODO(jt): @Speed @Cleanup This is a deprecated routine from modules/String,
 // called index_of_string_nocase, slightly modified with find_index_from_left.
-// it is very slow, so either pick up the thing that's going to replace it in modules,
-// or optimize it yourself.
+// It is very slow, so let's either pick up the thing that's going to replace it in modules,
+// or optimize it ourselves.
 find_index_from_left_nocase :: (s: string, substring: string, start_index := 0) -> s64 {
-    ProfileZone("find_index_from_left_nocase");
-
     if !substring return -1;
 
     // This is SO SLOW! @Cleanup.
@@ -32,8 +30,8 @@ find_index_from_left_nocase :: (s: string, substring: string, start_index := 0) 
 }
 
 // TODO(jt): @Cleanup This is find_index_from_right from modules/String that also supports a start_index.
-// It is a todo in the module's code.
-find_index_from_right :: (s: string, byte: u8, start_index := s64_MAX) -> s64  #no_abc {  // Returns -1 if the byte is not found in the string.
+// It is a todo in the module's code, so we should mail this in.
+find_index_from_right :: (s: string, byte: u8, start_index := S64_MAX) -> s64  #no_abc {  // Returns -1 if the byte is not found in the string.
     cursor := min(start_index, s.count - 1);
     while cursor >= 0 {
         if s[cursor] == byte  return cursor;
@@ -185,19 +183,26 @@ string_bytes_iter :: (s: *string, body: Code, flags: For_Flags) #expand {
 // Path stuff
 //
 
-// Like path_filename, but extracts last N parts.
+// Like path_filename, but extracts last N parts of the path. Returns actual number of paths.
 path_trailing_parts :: (path: string, n: s64) -> string, count: s64 {
     count := 1;
+
+    index := find_index_from_right(path, "/");
+    if index == -1 {
+        return path, count;
+    }
+
     while count < n {
-        index := find_index_from_right(path, "/");
+        count += 1;
+
+        index = find_index_from_right(path, "/", index - 1);
         if index == -1 {
             return path, count;
         }
-
-        // nocheckin
-
-        index += 1;
     }
+
+    index += 1;
+    return String.slice(path, index, path.count - index), count;
 }
 
 //

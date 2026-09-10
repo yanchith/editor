@@ -5,6 +5,8 @@ TODO(jt): Known serious bugs:
 - macOS:   Directory listers are not sorted
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
 - Windows: Can't open most recent log file, because we already have it open...
+- open-file slot index is not reset on autocomplete, so if we select the second item from the list, we ge the second item in the new list
+- join-next-line should move cursor to the end of the current line
 
 TODO(jt): Roadmap:
 
@@ -64,7 +66,7 @@ TODO(jt): Roadmap:
 - [~] Language: C++ ; Currently serviced by the C lexer
 - [X] Language: GLSL
 - [X] Reading and rendering CRLF
-- [ ] Deduplicate path prefixes in SWITCH_VIEW, CLOSE_VIEW, and modeline
+- [X] Disambiguate path prefixes in SWITCH_VIEW, CLOSE_VIEW, and modeline
 - [X] Minimal config files (keybinds, theme, language file association)
 - [X] Prettier modeline layout
 
@@ -131,6 +133,8 @@ f64 :: float64;
 
 #import "Basic";
 #import "Arena"(ENABLE_DEBUG = true, ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY);
+// TODO(jt): @Speed We could do a better job at the bucket array without complicating it too much by bitpacking
+// the occupancy mask and having a freelist for insertion.
 #import "Bucket_Array";
 #import "Hash_Table";
 #import "Profiler";
@@ -1843,32 +1847,6 @@ get_panel_rect :: (editor: Editor, panel_index: s64) -> Rect, content_rect: Rect
     return panel_rect, panel_content_rect;
 }
 
-get_document_name :: (editor: Editor, document: Document) -> string {
-    if #complete document.kind == {
-        case .SCRATCH;      return "*scratch*";
-        case .COMPILATION;  return "*compilation*";
-        case .FILE; {
-            name_segments := 1;
-            name          := String.path_filename(document.backing_file_path);
-
-            for editor.documents {
-                if it.kind == .SCRATCH             continue;
-                if it.kind == .COMPILATION         continue;
-                if it.locator == document.locator  continue;
-
-                it_name, it_name_segments := path_traling_segments(it.backing_file_path, name_segments);
-
-                while name != document.backing_file_path && it_name != it.backing_file_path && it_name_segments == name_segments && it_name == name {
-                    name, name_segments = path_trailing_segments(document.backing_file_path, name_segments + 1);
-                    it_name, it_name_segments = path_traling_segments(it.backing_file_path, name_segments);
-                }
-            }
-
-            return name;
-        }
-    }
-}
-
 get_document_lang :: (document: Document) -> string {
     if #complete document.lang == {
         case .TEXT;  return "Text";
@@ -1878,12 +1856,52 @@ get_document_lang :: (document: Document) -> string {
     }
 }
 
+get_document_name :: (editor: Editor, document: Document) -> string {
+    if #complete document.kind == {
+        case .SCRATCH;      return "*scratch*";
+        case .COMPILATION;  return "*compilation*";
+        case .FILE; {
+            name_parts := 1;
+            name       := String.path_filename(document.backing_file_path);
+
+            // TODO(jt): @Speed This is slow, and it doesn't help that we also call get_document_name in a loop. Do better!
+            for editor.documents {
+                if it.kind != .FILE                continue;
+                if it.locator == document.locator  continue;
+
+                it_name, it_name_parts := path_trailing_parts(it.backing_file_path, name_parts);
+
+                while name != document.backing_file_path && it_name != it.backing_file_path && it_name_parts == name_parts && it_name == name {
+                    name, name_parts = path_trailing_parts(document.backing_file_path, name_parts + 1);
+                    it_name, it_name_parts = path_trailing_parts(it.backing_file_path, name_parts);
+                }
+            }
+
+            return name;
+        }
+    }
+}
+
 get_listing_name :: (editor: Editor, listing: Listing) -> string {
     if #complete listing.kind == {
         case .DIRECTORY; {
-            name := String.path_filename(listing.backing_directory_path);
+            name_parts := 1;
+            name       := String.path_filename(listing.backing_directory_path);
             if name.count == 0 {
                 name = listing.backing_directory_path;
+            } else {
+                // TODO(jt): @Speed This is slow, and it doesn't help that we also call get_listing_name in a loop. Do better!
+                for editor.listings {
+                    if it.kind != .DIRECTORY          continue;
+                    if it.locator == listing.locator  continue;
+
+                    it_name, it_name_parts := path_trailing_parts(it.backing_directory_path, name_parts);
+
+                    while name != listing.backing_directory_path && it_name != it.backing_directory_path && it_name_parts == name_parts && it_name == name {
+                        name, name_parts = path_trailing_parts(listing.backing_directory_path, name_parts + 1);
+                        it_name, it_name_parts = path_trailing_parts(it.backing_directory_path, name_parts);
+                    }
+                }
             }
 
             return name;
@@ -5987,6 +6005,11 @@ toggle_debug_view :: (editor: *Editor, value: Editor.Debug_View) {
     } else {
         editor.debug_view = value;
     }
+}
+
+// TODO(jt): @Cleanup Remove this, if we do our own bucket array, or if it gets added to modules/Bucket_Array.
+operator== :: (a: Bucket_Locator, b: Bucket_Locator) -> bool {
+    return a.bucket_index == b.bucket_index && a.slot_index == b.slot_index;
 }
 
 WELCOME :: #run -> string {
