@@ -3362,25 +3362,21 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     y0 := min(view.cursors.c0.y, view.cursors.c1.y);
                     y1 := max(view.cursors.c0.y, view.cursors.c1.y);
 
-                    if y0 == y1 {
-                        // The general multiline loop would also work for the single line case,
-                        // but we undo the cursor for display better here.
-                        level := find_indentation_level_for_location(document, view.cursors.c0);
-                        buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .NONE);
-                    } else {
-                        first := true;
-                        for y0..y1 {
-                            level := find_indentation_level_for_location(document, { 0, it });
-                            text_buffer_move_to(document.buffer, *view.cursors, { 0, it }, false);
-                            changed := text_buffer_indent_line(*document.buffer, *view.cursors, level, ifx first then .NONE else .FUSE);
+                    first := true;
+                    for y0..y1 {
+                        level := find_indentation_level_for_location(document, { 0, it });
+                        text_buffer_move_to(document.buffer, *view.cursors, { 0, it }, false);
+                        changed := text_buffer_indent_line(*document.buffer, *view.cursors, level, ifx first then .NONE else .FUSE);
 
-                            if changed {
+                        if changed {
+                            if it != y1 {
+                                // Scopes will be updated at the bottom of this procedure anyway.
                                 update_scopes(document);
-                                first = false;
                             }
-
-                            buffer_changed |= changed;
+                            first = false;
                         }
+
+                        buffer_changed |= changed;
                     }
 
                     // Restore cursor's vertical position if the selection is backwards.
