@@ -31,6 +31,18 @@ find_index_from_left_nocase :: (s: string, substring: string, start_index := 0) 
     return -1;
 }
 
+// TODO(jt): @Cleanup This is find_index_from_right from modules/String that also supports a start_index.
+// It is a todo in the module's code.
+find_index_from_right :: (s: string, byte: u8, start_index := s64_MAX) -> s64  #no_abc {  // Returns -1 if the byte is not found in the string.
+    cursor := min(start_index, s.count - 1);
+    while cursor >= 0 {
+        if s[cursor] == byte  return cursor;
+        cursor -= 1;
+    }
+
+    return -1;
+}
+
 count_leading_whitespace_chars :: (bytes: [] u8) -> s64 {
     return inline count_leading_whitespace_chars(cast(string, bytes));
 }
@@ -169,7 +181,28 @@ string_bytes_iter :: (s: *string, body: Code, flags: For_Flags) #expand {
     }
 }
 
-// The javascript stuff...
+//
+// Path stuff
+//
+
+// Like path_filename, but extracts last N parts.
+path_trailing_parts :: (path: string, n: s64) -> string, count: s64 {
+    count := 1;
+    while count < n {
+        index := find_index_from_right(path, "/");
+        if index == -1 {
+            return path, count;
+        }
+
+        // nocheckin
+
+        index += 1;
+    }
+}
+
+//
+// Formatting stuff
+//
 
 left_pad :: (s: string, length: s64) -> string {
     builder: String_Builder;

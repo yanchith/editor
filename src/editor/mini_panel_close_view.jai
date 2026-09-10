@@ -60,7 +60,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 continue;
             }
 
-            document_name := get_document_name(it); // TODO(jt): Add path prefix to disambiguate.
+            document_name := get_document_name(editor, it); // TODO(jt): @Speed The name deduplication is quadratic!
 
             found, found_indices := line_search(document_name, search_parts, smartcase,, temp);
             if found {
@@ -100,7 +100,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 mini_panel.item_index = mini_panel.items.count;
             }
 
-            listing_name := get_listing_name(it);
+            listing_name := get_listing_name(editor, it); // TODO(jt): @Speed The name deduplication is quadratic!
 
             found, found_indices := line_search(listing_name, search_parts, smartcase,, temp);
             if found {

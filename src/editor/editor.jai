@@ -1843,12 +1843,29 @@ get_panel_rect :: (editor: Editor, panel_index: s64) -> Rect, content_rect: Rect
     return panel_rect, panel_content_rect;
 }
 
-// TODO(jt): Add option to add path prefix to disambiguate.
-get_document_name :: (document: Document) -> string {
+get_document_name :: (editor: Editor, document: Document) -> string {
     if #complete document.kind == {
         case .SCRATCH;      return "*scratch*";
         case .COMPILATION;  return "*compilation*";
-        case .FILE;         return String.path_filename(document.backing_file_path);
+        case .FILE; {
+            name_segments := 1;
+            name          := String.path_filename(document.backing_file_path);
+
+            for editor.documents {
+                if it.kind == .SCRATCH             continue;
+                if it.kind == .COMPILATION         continue;
+                if it.locator == document.locator  continue;
+
+                it_name, it_name_segments := path_traling_segments(it.backing_file_path, name_segments);
+
+                while name != document.backing_file_path && it_name != it.backing_file_path && it_name_segments == name_segments && it_name == name {
+                    name, name_segments = path_trailing_segments(document.backing_file_path, name_segments + 1);
+                    it_name, it_name_segments = path_traling_segments(it.backing_file_path, name_segments);
+                }
+            }
+
+            return name;
+        }
     }
 }
 
@@ -1861,7 +1878,7 @@ get_document_lang :: (document: Document) -> string {
     }
 }
 
-get_listing_name :: (listing: Listing) -> string {
+get_listing_name :: (editor: Editor, listing: Listing) -> string {
     if #complete listing.kind == {
         case .DIRECTORY; {
             name := String.path_filename(listing.backing_directory_path);
@@ -4618,7 +4635,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 cursor  := view.cursors.c0;
                 percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, document.buffer.line_count - 1));
 
-                document_name := get_document_name(document);
+                document_name := get_document_name(editor, document);
                 document_lang := get_document_lang(document);
 
                 left_part  := tprint("% %", temp_right_pad(document_lang, 10), document_name);
@@ -4714,7 +4731,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 item_index := view.item_index;
                 percent := cast(s64, 100.0 * cast(f32, item_index) / cast(f32, listing.items.count - 1));
 
-                listing_name := get_listing_name(listing);
+                listing_name := get_listing_name(editor, listing);
 
                 left_part  := tprint("Directory  %", listing_name);
                 right_part := tprint("%\% L%    ", percent, item_index + 1);
@@ -5743,6 +5760,7 @@ canonicalize_path :: (path: *string) {
 //
 // TODO(jt): @Cleanup The routine is really bad. Do a proper parser.
 // TODO(jt): @Incomplete This routine can't find relative paths without a separator. Those regexes would sure come in handy.
+// nocheckin wildcard match!
 find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64, path: string, path_is_absolute: bool, line_number: s64, column_number: s64 {
     if !_line.count {
         return false, -1, -1, "", false, -1, -1;
