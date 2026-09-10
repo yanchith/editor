@@ -5,7 +5,6 @@ TODO(jt): Known serious bugs:
 - macOS:   Directory listers are not sorted
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
 - Windows: Can't open most recent log file, because we already have it open...
-- open-file slot index is not reset on autocomplete, so if we select the second item from the list, we ge the second item in the new list
 
 TODO(jt): Roadmap:
 
