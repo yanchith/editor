@@ -6,7 +6,6 @@ TODO(jt): Known serious bugs:
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
 - Windows: Can't open most recent log file, because we already have it open...
 - open-file slot index is not reset on autocomplete, so if we select the second item from the list, we ge the second item in the new list
-- join-next-line should move cursor to the end of the current line
 
 TODO(jt): Roadmap:
 
@@ -3147,19 +3146,18 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .JOIN_NEXT_LINE; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
-                cursors := view.cursors;
-
                 text_buffer_move_to_end_of_line(document.buffer, *view.cursors, false);
 
                 deleted := text_buffer_delete_forward(*document.buffer, *view.cursors, 1, .NONE);
+                cursors := view.cursors;
+
                 if deleted.count {
                     text_buffer_insert(*document.buffer, *view.cursors, " ", .FUSE);
                     text_buffer_delete_indentation_forward(*document.buffer, *view.cursors, .FUSE);
 
+                    view.cursors = cursors;
                     buffer_changed = true;
                 }
-
-                view.cursors = cursors;
             }
         }
 
