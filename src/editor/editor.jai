@@ -64,7 +64,7 @@ TODO(jt): Roadmap:
 - [~] Language: C++ ; Currently serviced by the C lexer
 - [X] Language: GLSL
 - [X] Reading and rendering CRLF
-- [ ] Deduplicate path prefixes in SWITCH_VIEW and CLOSE_VIEW
+- [ ] Deduplicate path prefixes in SWITCH_VIEW, CLOSE_VIEW, and modeline
 - [X] Minimal config files (keybinds, theme, language file association)
 - [X] Prettier modeline layout
 
@@ -477,7 +477,7 @@ Document :: struct {
     }
 
     Lang :: enum u32 {
-        PLAIN_TEXT;
+        TEXT;
         C;
         JAI;
         GLSL;
@@ -1852,6 +1852,15 @@ get_document_name :: (document: Document) -> string {
     }
 }
 
+get_document_lang :: (document: Document) -> string {
+    if #complete document.lang == {
+        case .TEXT;  return "Text";
+        case .C;     return "C";
+        case .JAI;   return "Jai";
+        case .GLSL;  return "GLSL";
+    }
+}
+
 get_listing_name :: (listing: Listing) -> string {
     if #complete listing.kind == {
         case .DIRECTORY; {
@@ -2310,7 +2319,7 @@ Document_Action :: enum {
 
     STRIP_TRAILING_WHITESPACE;
 
-    LANGUAGE_PLAIN_TEXT;
+    LANGUAGE_TEXT;
     LANGUAGE_C;
     LANGUAGE_JAI;
     LANGUAGE_GLSL;
@@ -3430,10 +3439,10 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .LANGUAGE_PLAIN_TEXT;  document_change_lang(document, .PLAIN_TEXT);
-        case .LANGUAGE_C;           document_change_lang(document, .C);
-        case .LANGUAGE_JAI;         document_change_lang(document, .JAI);
-        case .LANGUAGE_GLSL;        document_change_lang(document, .GLSL);
+        case .LANGUAGE_TEXT;  document_change_lang(document, .TEXT);
+        case .LANGUAGE_C;     document_change_lang(document, .C);
+        case .LANGUAGE_JAI;   document_change_lang(document, .JAI);
+        case .LANGUAGE_GLSL;  document_change_lang(document, .GLSL);
 
         case .DEBUG_PRINT_BYTE_AT_CURSOR; {
             if text_buffer_can_read_at_location(document.buffer, view.cursors.c0) {
@@ -4610,13 +4619,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 percent := cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, document.buffer.line_count - 1));
 
                 document_name := get_document_name(document);
-                document_lang: string;
-                if #complete document.lang == {
-                    case .PLAIN_TEXT;  document_lang = "Text";
-                    case .C;           document_lang = "C";
-                    case .JAI;         document_lang = "Jai";
-                    case .GLSL;        document_lang = "GLSL";
-                }
+                document_lang := get_document_lang(document);
 
                 left_part  := tprint("% %", temp_right_pad(document_lang, 10), document_name);
                 right_part := tprint("%\% L% C%", percent, cursor.y + 1, temp_right_pad(tprint("%", cursor.x + 1), 4));
@@ -4809,13 +4812,13 @@ Paren_Pair :: struct {
     close: u32;
 }
 
-PLAIN_TEXT_INDENTATION_PAREN_PAIRS: [] Paren_Pair = .[
+TEXT_INDENTATION_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
     { #char "[", #char "]" },
 ];
 
-PLAIN_TEXT_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
+TEXT_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
     { #char "[", #char "]" },
@@ -4824,10 +4827,10 @@ PLAIN_TEXT_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
 
 get_surround_pairs :: (document: Document) -> /* Static */ [] Paren_Pair {
     if #complete document.lang == {
-        case .PLAIN_TEXT;  return PLAIN_TEXT_SURROUND_PAREN_PAIRS;
-        case .C;           return LANG_C_SURROUND_PAREN_PAIRS;
-        case .JAI;         return LANG_JAI_SURROUND_PAREN_PAIRS;
-        case .GLSL;        return LANG_GLSL_SURROUND_PAREN_PAIRS;
+        case .TEXT;  return TEXT_SURROUND_PAREN_PAIRS;
+        case .C;     return LANG_C_SURROUND_PAREN_PAIRS;
+        case .JAI;   return LANG_JAI_SURROUND_PAREN_PAIRS;
+        case .GLSL;  return LANG_GLSL_SURROUND_PAREN_PAIRS;
     }
 }
 
@@ -5117,7 +5120,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     document: Document;
     document.kind = kind;
-    document.lang = .PLAIN_TEXT;
+    document.lang = .TEXT;
     {
         ext, ext_found := String.path_extension(backing_file_path);
         if ext_found {
@@ -5324,10 +5327,10 @@ close_listing :: (editor: *Editor, input: Input, listing: *Listing) {
 
 document_get_comment_style :: (document: Document) -> /* Static */ line: string, block_start: string, block_end: string {
     if #complete document.lang == {
-        case .PLAIN_TEXT;  return "", "", "";
-        case .C;           return LANG_C_LINE_COMMENT, LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END;
-        case .JAI;         return LANG_JAI_LINE_COMMENT, LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END;
-        case .GLSL;        return LANG_GLSL_LINE_COMMENT, LANG_GLSL_BLOCK_COMMENT_START, LANG_GLSL_BLOCK_COMMENT_END;
+        case .TEXT;  return "", "", "";
+        case .C;     return LANG_C_LINE_COMMENT, LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END;
+        case .JAI;   return LANG_JAI_LINE_COMMENT, LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END;
+        case .GLSL;  return LANG_GLSL_LINE_COMMENT, LANG_GLSL_BLOCK_COMMENT_START, LANG_GLSL_BLOCK_COMMENT_END;
     }
 }
 
@@ -5340,10 +5343,10 @@ document_update_tokens :: (document: *Document) {
     }
 
     if #complete document.lang == {
-        case .PLAIN_TEXT;  // Nothing
-        case .C;           lang_c_update_tokens(document);
-        case .JAI;         lang_jai_update_tokens(document);
-        case .GLSL;        lang_glsl_update_tokens(document);
+        case .TEXT;  // Nothing
+        case .C;     lang_c_update_tokens(document);
+        case .JAI;   lang_jai_update_tokens(document);
+        case .GLSL;  lang_glsl_update_tokens(document);
     }
 }
 

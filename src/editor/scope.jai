@@ -56,8 +56,8 @@ update_scopes :: (document: *Document) {
     block_comments_can_nest: bool;
 
     if #complete document.lang == {
-        case .PLAIN_TEXT; {
-            indentation_pairs = PLAIN_TEXT_INDENTATION_PAREN_PAIRS;
+        case .TEXT; {
+            indentation_pairs       = TEXT_INDENTATION_PAREN_PAIRS;
         }
         case .C; {
             indentation_pairs       = LANG_C_INDENTATION_PAREN_PAIRS;
