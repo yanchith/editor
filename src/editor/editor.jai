@@ -54,7 +54,6 @@ TODO(jt): Roadmap:
 - [X] M-d, M-<backspace> DELETE_FORWARD_WORD/DELETE_BACKWARD_WORD
 - [X] C-j join-next-line
 - [X] GO_TO_MATCHING_PAREN (forward/backward)? Maybe we want to go to start/end of current scope to be more flexible than Emacs?
-- [ ] C-: or double-click (expand region)
 - [X] Sticky cursor (navigate to the end of long line, move up/down to a shorter line, move back to the long line and cursor goes to its original place)
 - [X] Reading tabs
 - [X] Writintg tabs
@@ -69,12 +68,14 @@ TODO(jt): Roadmap:
 
 ... after alpha ...
 
+- [ ] C-: or double-click (expand region)
 - [ ] Triple click to select line. (expand to line)
 - [ ] Speed improvements to scope parsing
 - [ ] Speed improvements to lexing for syntax highlighting
 - [ ] C-u C-<space> (cursor undo)
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
+- [ ] q to hide compilation or listing
 - [ ] Mouse interaction in the mini panel (text selection, item clicking, item hover?)
 - [ ] Mouse interaction in the modal interaction (text selection)
 - [ ] Mouse interaction in the mode line (click change view, lang, crlf, indentation level)
