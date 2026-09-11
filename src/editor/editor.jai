@@ -2058,9 +2058,11 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .MOVE_FORWARD_WORD;       text_buffer_move_to_next_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
         case .MOVE_BACKWARD_WORD;      text_buffer_move_to_previous_word_boundary(mp.buffer, *mp.cursors, mp.selecting);
 
+        case .MOVE_UP_ONE_SCREEN;      mp.item_index = clamp(mp.item_index - MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
+        case .MOVE_DOWN_ONE_SCREEN;    mp.item_index = clamp(mp.item_index + MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
+
         case .DELETE_FORWARD;          text_buffer_delete_forward(*mp.buffer, *mp.cursors, 1); buffer_changed = true;
         case .DELETE_BACKWARD;         buffer_changed |= mp.procs.delete_backward(editor, platform, input);
-
         case .DELETE_FORWARD_WORD; {
             deleted := text_buffer_delete_forward_word(*mp.buffer, *mp.cursors);
             if deleted.count {
@@ -2075,9 +2077,6 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
                 platform.set_clipboard_text(deleted);
             }
         }
-
-        case .MOVE_UP_ONE_SCREEN;      mp.item_index = clamp(mp.item_index - MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
-        case .MOVE_DOWN_ONE_SCREEN;    mp.item_index = clamp(mp.item_index + MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
 
         case .START_SELECTING;         mp.selecting = true; text_cursors_join(*mp.cursors);
 
@@ -2164,7 +2163,6 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
         case .DELETE_FORWARD;          text_buffer_delete_forward(*mi.buffer, *mi.cursors, 1); buffer_changed = true;
         case .DELETE_BACKWARD;         text_buffer_delete_backward(*mi.buffer, *mi.cursors); buffer_changed = true;
-
         case .DELETE_FORWARD_WORD; {
             deleted := text_buffer_delete_forward_word(*mi.buffer, *mi.cursors);
             if deleted.count {
@@ -2264,7 +2262,6 @@ Panel_Action :: enum {
 
     FONT_SIZE_INCREASE;
     FONT_SIZE_DECREASE;
-
     FONT_SUBPIXEL_RENDERING_ENABLE;
     FONT_SUBPIXEL_RENDERING_DISABLE;
 
@@ -2333,9 +2330,9 @@ Document_Action :: enum {
     INSERT_LINE_BEFORE;
     INSERT_LINE_AFTER;
 
-    TOGGLE_COMMENT;
-
     INDENT_OR_AUTOCOMPLETE;
+
+    TOGGLE_COMMENT;
 
     UNDO_EDIT;
     REDO_EDIT;
@@ -2371,19 +2368,17 @@ Compilation_Action :: enum {
     MOVE_TO_START;
     MOVE_TO_END;
 
-    MOVE_TO_PREVIOUS_BLANK_LINE;
-    MOVE_TO_NEXT_BLANK_LINE;
-
     MOVE_FORWARD_WORD;
     MOVE_BACKWARD_WORD;
+
+    MOVE_TO_PREVIOUS_ERROR;
+    MOVE_TO_NEXT_ERROR;
 
     START_SELECTING;
     STOP_SELECTING;
 
     COPY;
 
-    MOVE_TO_PREVIOUS_ERROR;
-    MOVE_TO_NEXT_ERROR;
     GO_TO_CURRENT_ERROR;
 
     REFRESH;
@@ -2665,7 +2660,6 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .SEARCH;                open_mini_panel(editor, platform, input, mini_panel_search_procs);
 
         case .OPEN_FILE;             open_mini_panel(editor, platform, input, mini_panel_open_file_procs);
-
         case .SWITCH_VIEW;           open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
         case .CLOSE_VIEW;            open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
 
@@ -2775,7 +2769,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .OPEN_FILE_IN_PROJECT;             open_mini_panel(editor, platform, input, mini_panel_open_file_in_project_procs);
         case .SEARCH_IN_PROJECT;                open_mini_panel(editor, platform, input, mini_panel_search_in_project_procs);
         case .COMPILE_IN_PROJECT_OR_DIRECTORY;  open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
-        case .COMPILE_IN_DIRECTORY;             open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
+        case .COMPILE_IN_DIRECTORY;             open_modal_interaction(editor, platform, input, modal_interaction_compile_procs); // nocheckin param?
 
         case .FONT_SIZE_INCREASE;               editor.font_size += 1;
         case .FONT_SIZE_DECREASE;               editor.font_size = max(editor.font_size - 1, 1);
@@ -2847,6 +2841,43 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
+            }
+        }
+
+        case .MOVE_TO_START_OF_LINE;  cursor_moved |= text_buffer_move_to_start_of_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_END_OF_LINE;    cursor_moved |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, view.selecting);
+
+        case .MOVE_TO_START;          cursor_moved |= text_buffer_move_to_start(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_END;            cursor_moved |= text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting);
+
+        case .MOVE_FORWARD_WORD; {
+            cursor_moved=, cursor_y_moved := text_buffer_move_to_next_word_boundary(document.buffer, *view.cursors, view.selecting);
+            if cursor_y_moved {
+                view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
+            }
+        }
+        case .MOVE_BACKWARD_WORD; {
+            cursor_moved=, cursor_y_moved := text_buffer_move_to_previous_word_boundary(document.buffer, *view.cursors, view.selecting);
+            if cursor_y_moved {
+                view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
+            }
+        }
+
+        case .MOVE_TO_PREVIOUS_BLANK_LINE;  cursor_moved |= text_buffer_move_to_previous_blank_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_NEXT_BLANK_LINE;      cursor_moved |= text_buffer_move_to_next_blank_line(document.buffer, *view.cursors, view.selecting);
+
+        case .MOVE_TO_START_OF_SCOPE; {
+            scope := find_scope_for_location(document, view.cursors.c0);
+            if scope {
+                text_buffer_move_to(document.buffer, *view.cursors, scope.loc0, view.selecting);
+                cursor_moved = true;
+            }
+        }
+        case .MOVE_TO_END_OF_SCOPE; {
+            scope := find_scope_for_location(document, view.cursors.c0);
+            if scope {
+                text_buffer_move_to(document.buffer, *view.cursors, scope.loc1, view.selecting);
+                cursor_moved = true;
             }
         }
 
@@ -3020,59 +3051,11 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .MOVE_TO_START_OF_LINE;        cursor_moved |= text_buffer_move_to_start_of_line(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_END_OF_LINE;          cursor_moved |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, view.selecting);
-
-        case .MOVE_TO_START;                cursor_moved |= text_buffer_move_to_start(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_END;                  cursor_moved |= text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting);
-
-        case .MOVE_TO_PREVIOUS_BLANK_LINE;  cursor_moved |= text_buffer_move_to_previous_blank_line(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_NEXT_BLANK_LINE;      cursor_moved |= text_buffer_move_to_next_blank_line(document.buffer, *view.cursors, view.selecting);
-
-        case .MOVE_FORWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_to_next_word_boundary(document.buffer, *view.cursors, view.selecting);
-            if cursor_y_moved {
-                view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
-            }
-        }
-        case .MOVE_BACKWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_to_previous_word_boundary(document.buffer, *view.cursors, view.selecting);
-            if cursor_y_moved {
-                view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
-            }
-        }
-
-        case .MOVE_TO_START_OF_SCOPE; {
-            scope := find_scope_for_location(document, view.cursors.c0);
-            if scope {
-                text_buffer_move_to(document.buffer, *view.cursors, scope.loc0, view.selecting);
-                cursor_moved = true;
-            }
-        }
-        case .MOVE_TO_END_OF_SCOPE; {
-            scope := find_scope_for_location(document, view.cursors.c0);
-            if scope {
-                text_buffer_move_to(document.buffer, *view.cursors, scope.loc1, view.selecting);
-                cursor_moved = true;
-            }
-        }
-
         case .GO_TO_LINE;       open_modal_interaction(editor, platform, input, modal_interaction_go_to_line_procs);
 
         case .START_SELECTING;  view.selecting = true;  text_cursors_join(*view.cursors);
         case .STOP_SELECTING;   view.selecting = false; text_cursors_join(*view.cursors);
 
-        case .DELETE_LINE; {
-            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
-            if !(document.flags & .READONLY) {
-                view.selecting = false;
-                deleted := text_buffer_delete_line(*document.buffer, *view.cursors);
-                if deleted.count {
-                    buffer_changed = true;
-                    platform.set_clipboard_text(deleted);
-                }
-            }
-        }
         case .DELETE_FORWARD; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
@@ -3138,6 +3121,17 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
+        case .DELETE_LINE; {
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                view.selecting = false;
+                deleted := text_buffer_delete_line(*document.buffer, *view.cursors);
+                if deleted.count {
+                    buffer_changed = true;
+                    platform.set_clipboard_text(deleted);
+                }
+            }
+        }
         case .JOIN_NEXT_LINE; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
@@ -3214,6 +3208,48 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, "\n", .NONE);
                 cursor_moved   |= text_buffer_move_y(document.buffer, *view.cursors, -1, false);
                 cursor_moved   |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, false);
+            }
+        }
+
+        // TODO(jt): Preserve tabness in tab-only documents.
+        case .INDENT_OR_AUTOCOMPLETE; {
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+            if !(document.flags & .READONLY) {
+                if document.scopes.count {
+                    view.selecting = false;
+
+                    original_y0 := view.cursors.c0.y;
+                    original_y1 := view.cursors.c1.y;
+                    y0 := min(view.cursors.c0.y, view.cursors.c1.y);
+                    y1 := max(view.cursors.c0.y, view.cursors.c1.y);
+
+                    first := true;
+                    for y0..y1 {
+                        level := find_indentation_level_for_location(document, { 0, it });
+                        text_buffer_move_to(document.buffer, *view.cursors, { 0, it }, false);
+                        changed := text_buffer_indent_line(*document.buffer, *view.cursors, level, ifx first then .NONE else .FUSE);
+
+                        if changed {
+                            if it != y1 {
+                                // Scopes will be updated at the bottom of this procedure anyway.
+                                update_scopes(document);
+                            }
+                            first = false;
+                        }
+
+                        buffer_changed |= changed;
+                    }
+
+                    // Restore cursor's vertical position if the selection is backwards.
+                    if original_y0 < original_y1 {
+                        text_buffer_move_to(document.buffer, *view.cursors, view.cursors.c0.x, original_y0, false);
+                    }
+                } else {
+                    if view.cursors.c0 == view.cursors.c1 {
+                        spaces := temp_right_pad("", INDENTATION_STEP);
+                        buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, spaces, .NONE);
+                    }
+                }
             }
         }
 
@@ -3311,48 +3347,6 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 // TODO(jt): Add single line block comments (if we have a selection going)
             } else {
                 // TODO(jt): Add multiline block comments.
-            }
-        }
-
-        // TODO(jt): Preserve tabness in tab-only documents.
-        case .INDENT_OR_AUTOCOMPLETE; {
-            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
-            if !(document.flags & .READONLY) {
-                if document.scopes.count {
-                    view.selecting = false;
-
-                    original_y0 := view.cursors.c0.y;
-                    original_y1 := view.cursors.c1.y;
-                    y0 := min(view.cursors.c0.y, view.cursors.c1.y);
-                    y1 := max(view.cursors.c0.y, view.cursors.c1.y);
-
-                    first := true;
-                    for y0..y1 {
-                        level := find_indentation_level_for_location(document, { 0, it });
-                        text_buffer_move_to(document.buffer, *view.cursors, { 0, it }, false);
-                        changed := text_buffer_indent_line(*document.buffer, *view.cursors, level, ifx first then .NONE else .FUSE);
-
-                        if changed {
-                            if it != y1 {
-                                // Scopes will be updated at the bottom of this procedure anyway.
-                                update_scopes(document);
-                            }
-                            first = false;
-                        }
-
-                        buffer_changed |= changed;
-                    }
-
-                    // Restore cursor's vertical position if the selection is backwards.
-                    if original_y0 < original_y1 {
-                        text_buffer_move_to(document.buffer, *view.cursors, view.cursors.c0.x, original_y0, false);
-                    }
-                } else {
-                    if view.cursors.c0 == view.cursors.c1 {
-                        spaces := temp_right_pad("", INDENTATION_STEP);
-                        buffer_changed |= text_buffer_insert(*document.buffer, *view.cursors, spaces, .NONE);
-                    }
-                }
             }
         }
 
@@ -3524,9 +3518,6 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
         case .MOVE_TO_START;                cursor_moved |= text_buffer_move_to_start(document.buffer, *view.cursors, view.selecting);
         case .MOVE_TO_END;                  cursor_moved |= text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting);
 
-        case .MOVE_TO_PREVIOUS_BLANK_LINE;  cursor_moved |= text_buffer_move_to_previous_blank_line(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_NEXT_BLANK_LINE;      cursor_moved |= text_buffer_move_to_next_blank_line(document.buffer, *view.cursors, view.selecting);
-
         case .MOVE_FORWARD_WORD; {
             cursor_moved=, cursor_y_moved := text_buffer_move_to_next_word_boundary(document.buffer, *view.cursors, view.selecting);
             if cursor_y_moved {
@@ -3538,19 +3529,6 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
             }
-        }
-
-        case .START_SELECTING;              view.selecting = true;  text_cursors_join(*view.cursors);
-        case .STOP_SELECTING;               view.selecting = false; text_cursors_join(*view.cursors);
-
-        case .COPY; {
-            view.selecting = false;
-            text := text_buffer_make_view_for_interval(document.buffer, view.cursors.c0, view.cursors.c1,, temp);
-            if text {
-                platform.set_clipboard_text(text);
-            }
-
-            text_cursors_join(*view.cursors);
         }
 
         case .MOVE_TO_PREVIOUS_ERROR; {
@@ -3580,6 +3558,20 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
                 view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             }
         }
+
+        case .START_SELECTING;              view.selecting = true;  text_cursors_join(*view.cursors);
+        case .STOP_SELECTING;               view.selecting = false; text_cursors_join(*view.cursors);
+
+        case .COPY; {
+            view.selecting = false;
+            text := text_buffer_make_view_for_interval(document.buffer, view.cursors.c0, view.cursors.c1,, temp);
+            if text {
+                platform.set_clipboard_text(text);
+            }
+
+            text_cursors_join(*view.cursors);
+        }
+
         case .GO_TO_CURRENT_ERROR; {
             for document.compilation_errors {
                 contains_y := it.y == view.cursors.c0.y;
