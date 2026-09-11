@@ -8,7 +8,9 @@ This is a small text editor I wrote for myself. The design goals are roughly:
 
 If you want to make this editor yours, there's two options:
 
-1) Use a binary build and customize `editor.config`. There's a few templates you can start with.
+1) Use a binary build and customize `editor.config`. There's a few starter templates,
+   depending on what editor you are coming from, but note that these don't map precisely
+   to their source behavior, as this editor has some Emacs weirdness built in.
 
 2) Modify the code and compile your own build. See building from source section below.
    The editor is written in Jai, which is not publicly available yet, but should be out soon.
