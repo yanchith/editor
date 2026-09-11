@@ -6,8 +6,6 @@ This is a small text editor I wrote for myself. The design goals are roughly:
 - Fast, unless it conflicts too much with the previous point.
 - Preserve the nice parts of my Emacs experience.
 
-The editor is currently in alpha. Bugs and infrequent crashes may happen. Save often.
-
 If you want to make this editor yours, there's two options:
 
 1) Use a binary build and customize `editor.config`. There's a few templates you can start with, like
@@ -25,13 +23,15 @@ Run `jai [-x64] build.jai` for a debug build.
 The binary release was compiled with `jai -optimized_debug build.jai - -no-windows-console`
 
 Run `jai build.jai - -help` to get the full list of options.
-Some particularly useful ones are `-no-windows-console` and `-no-sanity`.
+In particular, `-no-windows-console` and `-no-sanity` are useful.
 
-Tested on Jai version `beta 0.2.030, 2 July 2026`.
+Tested on Jai version `0.2.030`.
 
 The editor currently runs on Windows and macOS. Linux support coming soon.
 
 ## Temporary limitations
+
+The editor is currently in alpha. Bugs and infrequent crashes may happen. Save often.
 
 ### Programming language support
 
