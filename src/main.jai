@@ -1,13 +1,37 @@
 f32 :: float32;
 f64 :: float64;
 
+#if #exists(__VERSION_MAJOR) {
+    VERSION_MAJOR :: __VERSION_MAJOR;
+} else {
+    VERSION_MAJOR :: 0;
+}
+
+#if #exists(__VERSION_MINOR) {
+    VERSION_MINOR :: __VERSION_MINOR;
+} else {
+    VERSION_MINOR :: 0;
+}
+
+#if #exists(__VERSION_PATCH) {
+    VERSION_PATCH :: __VERSION_PATCH;
+} else {
+    VERSION_PATCH :: 0;
+}
+
+#if #exists(__BUILD_TIMESTAMP) {
+    BUILD_TIMESTAMP :: __BUILD_TIMESTAMP;
+} else {
+    BUILD_TIMESTAMP :: "unknown date";
+}
+
 // DEBUG_MEMORY enables runtime allocation tracking and leak reporting.
 //
 // :MemoryDebuggerVsArenas
 //
 // MEMORY_DEBUGGER doesn't work well with arena-style allocation unless someone calls free.
-// but we don't want to call even a no-op free on each array item. JAI's Temporary_Storage, Pool and Flat_Pool
-// are all ignored by MEMORY_DEBUGGER, but for now there is no way to add a custom ignore.
+// JAI's Temporary_Storage, Pool and Flat_Pool are all ignored by MEMORY_DEBUGGER,
+// but for now there is no way to add a custom ignore.
 //
 // TODO(jt): @Cleanup Memory_Debugger.jai needs to be modified so that our arena allocations get omitted from the report:
 //
@@ -18,13 +42,12 @@ f64 :: float64;
 //     ... snip ...
 // }
 //
-// I mailed this in, but now we have to wait. We could theoretically make a replacement interface for MEMORY_DEBUGGER,
-// *but* that doesn't work with this_allocation_is_not_a_leak (locking of address_table_mutex crashes). See comment block below.
+// I mailed this in, but now we have to wait.
 //
 // TODO(jt): @Bug @LibraryBug? make_leak_report crashes on macOS! Investigate.
 //
 // TODO(jt): @CompilerBug I'd like to make this a switch supplied by the metaprogram (like SANITY, etc.),
-// but it causes cycles. Hardcode-enabled for this reason, at least until I seal the leaks.
+// but it causes cycles. Hardcoded for this reason.
 DEBUG_MEMORY :: false;
 DEBUG_MEMORY_LEAK_REPORT_PERIOD: Apollo_Time : #run seconds_to_apollo(10);
 
@@ -85,30 +108,6 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
     };
 */
 
-#if #exists(__VERSION_MAJOR) {
-    VERSION_MAJOR :: __VERSION_MAJOR;
-} else {
-    VERSION_MAJOR :: 0;
-}
-
-#if #exists(__VERSION_MINOR) {
-    VERSION_MINOR :: __VERSION_MINOR;
-} else {
-    VERSION_MINOR :: 0;
-}
-
-#if #exists(__VERSION_PATCH) {
-    VERSION_PATCH :: __VERSION_PATCH;
-} else {
-    VERSION_PATCH :: 0;
-}
-
-#if #exists(__BUILD_TIMESTAMP) {
-    BUILD_TIMESTAMP :: __BUILD_TIMESTAMP;
-} else {
-    BUILD_TIMESTAMP :: "unknown date";
-}
-
 // SANITY enables additional costly asserts for operations.
 #if #exists(__SANITY) {
     SANITY :: __SANITY;
@@ -151,7 +150,7 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
     #import "Objective_C";
     #import "Objective_C/AppKit";
 } else {
-    // TODO(jt): Linux, I guess.
+    // TODO(jt): Linux.
     #assert(false, "Unsupported OS");
 }
 
@@ -177,10 +176,9 @@ floor   :: Math.floor;
 Vector4 :: Editor.Vector4;
 IRect   :: Editor.IRect;
 
-// TODO(jt): Simp/OpenGL works everywhere, but Simp is a little big and OpenGL drivers a little buggy.
+// TODO(jt): Simp/OpenGL works everywhere, but Simp is a little too big and OpenGL drivers a little too buggy.
 // Also it would be good if we could control the latency a little. Do our own backends?
-// High end: Windows->D3D11 (probably not 12?!), macOS->Metal and Linux->Vulkan
-// Mid end:  Windows->Vulkan, macOS->Metal
+// Vulkan on Windows and Linue, and Metal on macOS? We could even try Aaltonen's NoGraphicsAPI.
 #load "renderer_simp.jai";
 #load "logger.jai";
 
@@ -376,7 +374,6 @@ main :: () {
                     // Instead, we need to run cmd.exe with a /c flag.
                     //
                     // We detect this simple case on the user's behalf, so they don't have to type that.
-
                     args = tprint("cmd.exe /c %", _args);
                 }
             }
