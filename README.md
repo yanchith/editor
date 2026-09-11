@@ -8,22 +8,26 @@ This is a small text editor I wrote for myself. The design goals are roughly:
 
 If you want to make this editor yours, there's two options:
 
-1) Use a binary build and customize `editor.config`. There's a few templates you can start with, like
-   `editor.config.sublime` or `editor.config.vscode`.
-   Currently, this lets you set a theme and keybinds. It will eventually let you do more.
+1) Use a binary build and customize `editor.config`. There's a few templates you can start with.
 
 2) Modify the code and compile your own build. See building from source section below.
-   The catch is that the editor is written in Jai, which is not publicly available yet,
-   but should be out before too long.
+   The editor is written in Jai, which is not publicly available yet, but should be out soon.
 
 ## Building from source
 
-Run `jai [-x64] build.jai` for a debug build.
+Make a debug build with:
 
-The binary releases are compiled with `jai -optimized_debug build.jai - -no-windows-console`
+```
+jai [-x64] build.jai
+```
 
-Run `jai build.jai - -help` to get the list of options.
-In particular, `-no-windows-console` and `-no-sanity` are useful.
+The binary releases are compiled with:
+
+```
+jai -optimized_debug build.jai - -no-windows-console`
+```
+
+The build file contains information about more options.
 
 Tested on Jai version `0.2.030`.
 
@@ -31,7 +35,7 @@ The editor currently runs on Windows and macOS. Linux support coming soon.
 
 ## Temporary limitations
 
-The editor is currently in alpha. Bugs and infrequent crashes may happen. Save often.
+The editor is currently in alpha. Bugs may happen. Save often.
 
 ### Programming language support
 
