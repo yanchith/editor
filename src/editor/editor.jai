@@ -1,9 +1,9 @@
 /*
 
-TODO(jt): Known bugs:
+TODO(jt): Known serious bugs:
 
+- macOS:   Directory listers are not sorted
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
-- Clicking on an item in a listing scrolls/selects the resulting document immediately after clicking.
 
 TODO(jt): Roadmap:
 
@@ -80,7 +80,6 @@ TODO(jt): Roadmap:
 - [ ] Mouse interaction in the modal interaction (text selection)
 - [ ] Mouse interaction in the mode line (click change view, lang, crlf, indentation level)
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
-- [ ] OPEN_FILE_IN_PROJECT and SEARCH_IN_PROJECT should be (globally) configurable to ignore paths (e.g. contents of .git)
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
 - [ ] F11 fullscreen on Windows
@@ -99,8 +98,6 @@ TODO(jt): Roadmap:
 - [ ] Language: Lua
 - [ ] Language: Java
 - [ ] Language: Python
-- [ ] Theme: Solarized Light
-- [ ] Theme: Solarized Dark
 - [ ] Theme: Visual Studio Dark
 - [ ] Theme: Delphi
 - [ ] Emacs-like kill ring
@@ -116,7 +113,7 @@ TODO(jt): Roadmap:
 
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode view
-- [ ] Proper projects (project config, compilations, search ignore list, find/replace)
+- [~] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
 - [ ] if (0) and #if 0 produce desaturated syntax highlighting
 - [ ] Get rid of FreeType without compromising quality (kb_text_shape + Slug)
 - [ ] Version control view (Git only?, via plugin interface?)
@@ -447,7 +444,7 @@ Document :: struct {
     cursors_cold: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
     buffer: Text_Buffer;
 
-    arena: *Arena; // For scopes, tokens, compilation_args, compilation_errors, backing_file_directory, backing_file_path...
+    arena: *Arena; // For compilation_args, compilation_errors, backing_file_directory, backing_file_path and syntax_highlight_tokens.
 
     backing_directory_path: string; // In canonical format (see canonicalize_path).
 
@@ -488,11 +485,9 @@ Document :: struct {
     Flags :: enum_flags u32 {
         NONE :: 0;
 
-        MODIFIED                  :: 0x01; // Also see backing_file_exists
-
-        // TODO(jt): @Cleanup These should live on Document_View?
-        MODIFIED_THIS_FRAME       :: 0x02;
-        MODIFY_ATTEMPT_THIS_FRAME :: 0x04;
+        MODIFIED_THIS_FRAME       :: 0x01;
+        MODIFY_ATTEMPT_THIS_FRAME :: 0x02;
+        MODIFIED                  :: 0x04; // Also see backing_file_exists
 
         // INCONSISTENT_INDENTATION  0x04;
         // INCONSISTENT_NEWLINES     0x08;
@@ -669,8 +664,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         font_arena     := make_arena(editor, platform, .MEDIUM, "Font");
         font_allocator := arena_allocator(font_arena);
 
-        font_path :: (name: string, type: string) -> string #expand {
-            return tprint("%1/fonts/%2/%2-%3.ttf", input.data_path, name, type);
+        font_path :: (name: string, type: string) -> string {
+            return tprint("./data/fonts/%1/%1-%2.ttf", name, type);
         }
 
         success, ttf_regular := platform.read_file(font_path(FONT, "Regular"),, font_allocator);
@@ -813,7 +808,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     editor.is_first_frame = true;
 
-    load_config(editor, platform, input, fall_back_to_emergency_config = true);
+    load_config(editor, platform, fall_back_to_emergency_config = true);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_this_frame: bool, wants_next_frame: bool {
@@ -2052,8 +2047,8 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     if action == {
         case .MOVE_UP;                 mp.item_index = clamp(mp.item_index - 1, min_item_index, mp.items.count - 1);
         case .MOVE_DOWN;               mp.item_index = clamp(mp.item_index + 1, min_item_index, mp.items.count - 1);
-        case .MOVE_BACKWARD;           text_buffer_move_x(mp.buffer, *mp.cursors, -1, mp.selecting);
-        case .MOVE_FORWARD;            text_buffer_move_x(mp.buffer, *mp.cursors,  1, mp.selecting);
+        case .MOVE_BACKWARD;               text_buffer_move_x(mp.buffer, *mp.cursors, -1, mp.selecting);
+        case .MOVE_FORWARD;              text_buffer_move_x(mp.buffer, *mp.cursors,  1, mp.selecting);
 
         case .MOVE_TO_START_OF_LINE;   text_buffer_move_to_start_of_line(mp.buffer, *mp.cursors, mp.selecting);
         case .MOVE_TO_END_OF_LINE;     text_buffer_move_to_end_of_line(mp.buffer, *mp.cursors, mp.selecting);
@@ -2643,6 +2638,18 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
 #scope_module
 
+//
+// We could try out File Pilot's event buffer architecture, where the front half
+// of the update code fills a buffer of actions to execute and the bottom half executes them.
+//
+// I see a few problems with this, however. Currently, the place where we route events changes based
+// on the previous action we execute, for instance opening the mini panel means the subsequent input event gets
+// interpreted as though it was meant for the mini panel. Similarly, clicking can select a different kind of panel,
+// where the action now means something different. Let's think about this more carefully once we are featureful.
+//
+//    -jt, 16 August 2026.
+//
+
 execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, action: Panel_Action) -> executed: bool {
     theme_changed := false;
 
@@ -2776,7 +2783,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .THEME_ZENBURN;                    change_theme(editor, "zenburn");
         case .THEME_VISUAL_STUDIO_LIGHT;        change_theme(editor, "visual_studio_light");
 
-        case .RELOAD_CONFIG;                    load_config(editor, platform, input, fall_back_to_emergency_config = false);
+        case .RELOAD_CONFIG;                    load_config(editor, platform, fall_back_to_emergency_config = false);
 
         case .DEBUG_VIEW_ATLAS_TEXTURE;         toggle_debug_view(editor, .ATLAS_TEXTURE);
         case .DEBUG_VIEW_MEMORY_ABSOLUTE;       toggle_debug_view(editor, .MEMORY_ABSOLUTE);
@@ -4830,21 +4837,26 @@ is_part_of_surround_pair :: (document: Document, char: u32) -> opens: bool, clos
     return opens, closes, paired_char;
 }
 
-load_config :: (editor: *Editor, platform: Platform, input: Input, fall_back_to_emergency_config: bool) {
-    config_path := tprint("%/editor.config", input.config_path);
+load_config :: (editor: *Editor, platform: Platform, fall_back_to_emergency_config: bool) {
+    // TODO(jt): @Cleanup On macOS, we won't have the config next to the executable!
+    CONFIG_PATH :: "./editor.config";
 
-    success, config := platform.read_file(config_path,, temp);
+    success, config := platform.read_file(CONFIG_PATH,, temp);
     if success {
         success = parse_and_apply_config(editor, cast(string, config));
         if success {
             editor_log(editor, "Applied config");
         } else if fall_back_to_emergency_config {
             apply_emergency_config(editor);
-            editor_log(editor, "Config at % corrupted. Applied emergency config", config_path);
+            editor_log(editor, "Applied emergency config");
         }
     } else {
-        apply_emergency_config(editor);
-        editor_log(editor, "Failed to read config file at %. Applied emergency config", config_path);
+        success=, config_path := platform.get_absolute_path(CONFIG_PATH,, temp);
+        if success {
+            editor_log(editor, "Failed to read config file at %", config_path);
+        } else {
+            editor_log(editor, "Failed to read config file");
+        }
     }
 }
 
@@ -5035,18 +5047,24 @@ refresh_directory_listing :: (platform: Platform, listing: *Listing) {
     arena_pop_to_mark(listing.arena, listing.arena_base_data_mark);
 
     file_list := platform.list_directory(listing.backing_directory_path, recursive = false, files = true, directories = true,, temp);
+
     {
         self_dir := array_add(*listing.items);
         self_dir.text = ".";
+    }
 
+    {
         parent_dir := array_add(*listing.items);
         parent_dir.text = "..";
     }
 
     for file_list {
+        listed_file_path := it.absolute_path;
+        listed_filename := String.path_filename(it.absolute_path);
+
         s := "";
-        if it.name.count {
-            s = arena_push_string(listing.arena, it.name);
+        if listed_filename.count {
+            s = arena_push_string(listing.arena, listed_filename);
 
             item := array_add(*listing.items);
             item.text = s;
@@ -5090,7 +5108,9 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         ext, ext_found := String.path_extension(backing_file_path);
         if ext_found {
             if ext == {
-                // We currently have a single lexer for both C and C-style C++.
+                // TODO(jt): @Incomplete C++ currently goes to the C backend, but eventually it should get its own?
+                // Or maybe we can have a single C+ backend for both and ignore the modern monstrosity? This could be possible,
+                // because we are just lexing.
                 case "inl";   #through;
                 case "hpp";   #through;
                 case "cpp";   #through;
@@ -5123,7 +5143,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     // If we find that we accidentally pass regular documents where compilation
     // documents are needed, we could set this to a fail_allocator or something.
-    document.compilation_errors.allocator = arena_allocator(document_arena);
+    document.compilation_errors.allocator      = arena_allocator(document_arena);
 
     locator, pointer := bucket_array_add(*editor.documents, document);
     pointer.locator = locator;
@@ -5530,23 +5550,22 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: % (exit type: %)\n", to_float64_seconds(time_elapsed), exit_code, exit_type), undo_modifier = .OMIT);
 
     for :text_buffer_lines line_text, line_index: document.buffer {
-        found, link := find_compilation_link(line_text);
+        found, found_index, found_count, path, path_is_absolute, line_number, column_number := find_compilation_error(line_text);
         if found {
             ce := array_add(*document.compilation_errors);
-            ce.x0 = count_utf8_chars(String.slice(line_text, 0, link.index));
-            ce.x1 = ce.x0 + count_utf8_chars(String.slice(line_text, link.index, link.count));
+            ce.x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
+            ce.x1 = ce.x0 + count_utf8_chars(String.slice(line_text, found_index, found_count));
             ce.y  = line_index;
 
-            ce.line_number   = link.line_number;
-            ce.column_number = link.column_number;
+            ce.line_number   = line_number;
+            ce.column_number = column_number;
 
-            if link.path_is_absolute {
-                ce.path = arena_push_string(document.arena, link.path);
+            if path_is_absolute {
+                ce.path = arena_push_string(document.arena, path);
             } else {
-                absolute_path := String.path_join(working_directory, link.path,, temp);
+                absolute_path := String.path_join(working_directory, path,, temp);
                 ce.path = arena_push_string(document.arena, absolute_path);
             }
-            String.path_overwrite_separators(ce.path, "/");
         }
     }
 }
@@ -5699,77 +5718,132 @@ canonicalize_path :: (path: *string) {
     path.* = String.trim_right(path.*, "/");
 }
 
-Compilation_Link :: struct {
-    index: s64;
-    count: s64;
-    path: string;
+// Try to find first occurence of <filename>:<line>:<col> or <filename>:<line>,<col> in a string.
+//
+// JAI link format:    C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
+// rustc link format:  game_platform_winit\src\main.rs:6:1
+// clang link format:  sdl_asteroids.cpp:1:10 or .\asteroids.h:12:16
+//
+// TODO(jt): @Cleanup The routine is really bad. Do a proper parser.
+// TODO(jt): @Incomplete This routine can't find relative paths without a separator. Those regexes would sure come in handy.
+// nocheckin wildcard match!
+find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64, path: string, path_is_absolute: bool, line_number: s64, column_number: s64 {
+    if !_line.count {
+        return false, -1, -1, "", false, -1, -1;
+    }
+
+    original_line := copy_string(_line,, temp);
+
+    line := original_line;
+    String.path_overwrite_separators(line, "/");
+
+    PATH_BEGIN_ABSOLUTE_UNIX    :: "/";
+    PATH_BEGIN_ABSOLUTE_WINDOWS :: ":/";
+    PATH_BEGIN_ABSOLUTE_WINDOWS_LOOKBACK :: 1;
+
+    PATH_BEGIN_RELATIVE :: "./";
+
+    PATH_SEPARATOR :: "/";
+
+    x := 0;
+
+    path_start := -1;
     path_is_absolute: bool;
-    line_number: s64;
-    column_number: s64;
-}
 
-// Heuristically find first occurence of a compilation link in a line.
-//
-// Currently detected:
-//   <filename>:<line>:<col>
-//   <filename>:<line>,<col>
-//
-// Known formats:
-//
-// jai:    C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
-// rustc:  game_platform_winit\src\main.rs:6:1
-// clang:  sdl_asteroids.cpp:1:10 or .\asteroids.h:12:16
-// tsc:    index.ts(2,5) or index.ts:2:5 (based on console feature detection?)
-//
-// TODO(jt): @Incomplete Detect alternative tsc format: "index.ts(2,5)"
-find_compilation_link :: (line: string) -> found: bool, Compilation_Link {
-    result: Compilation_Link;
-    if !line.count {
-        return false, result;
+    while line.count && path_start == -1 {
+        // Detect relative paths starting with dot.
+        if String.starts_with(line, PATH_BEGIN_RELATIVE) {
+            path_start = x;
+            path_is_absolute = false;
+
+            advance(*line, PATH_BEGIN_RELATIVE.count);
+            x += PATH_BEGIN_RELATIVE.count;
+            continue;
+        }
+
+        // Detect relative paths not starting with dot. We find the segment separator first, then scan back.
+        if String.starts_with(line, PATH_SEPARATOR) {
+            s := String.slice(original_line, 0, x);
+            if s.count {
+                if is_alnum(s[s.count - 1]) {
+                    i := s.count - 2;
+                    while i >= 0 && !is_space(s[i]) {
+                        i -= 1;
+                    }
+
+                    if i == -1 {
+                        i = 0;
+                    } else if is_space(s[i]) {
+                        i += 1;
+                    }
+
+                    path_start = i;
+                    path_is_absolute = false;
+
+                    advance(*line, PATH_SEPARATOR.count);
+                    x += PATH_SEPARATOR.count;
+
+                    continue;
+                }
+            }
+        }
+
+        // Detect UNIX absolute paths.
+        if String.starts_with(line, PATH_BEGIN_ABSOLUTE_UNIX) {
+            path_start = x;
+            path_is_absolute = true;
+
+            advance(*line, PATH_BEGIN_ABSOLUTE_UNIX.count);
+            x += PATH_BEGIN_ABSOLUTE_UNIX.count;
+            continue;
+        }
+
+        // Detect Windows absolute paths.
+        if String.starts_with(line, PATH_BEGIN_ABSOLUTE_WINDOWS) && x >= PATH_BEGIN_ABSOLUTE_WINDOWS_LOOKBACK {
+            path_start = x - PATH_BEGIN_ABSOLUTE_WINDOWS_LOOKBACK;
+            path_is_absolute = true;
+
+            advance(*line, PATH_BEGIN_ABSOLUTE_WINDOWS.count);
+            x += PATH_BEGIN_ABSOLUTE_WINDOWS.count;
+            continue;
+        }
+
+        advance(*line, 1);
+        x += 1;
     }
 
-    // We are looking for <path>:<line>:<col> or <path>:<line>,<col>.
-    // We can't rely on the path containing a slash, so detect the line-col pair first.
-    colon_index := String.find_index_from_left(line, #char ":");
+    colon_index := String.find_index_from_left(line, ":");
     if colon_index == -1 {
-        return false, result;
+        return false, -1, -1, "", false, -1, -1;
     }
 
-    s := slice(line, colon_index + 1);
+    advance(*line, colon_index + 1);
+    x += colon_index + 1;
+
+    path_count := x - path_start - 1; // -1 for the :
+
+    found, left, right := String.split_from_left_by_any(line, ":,");
+    if !found {
+        return false, -1, -1, "", false, -1, -1;
+    }
 
     success: bool;
-    result.line_number, success, s = string_to_int(s, T = s64);
+    line_number, success=              := string_to_int(left, T = s64);
     if !success {
-        return false, result;
+        return false, -1, -1, "", false, -1, -1;
     }
 
-    if !s.count || (s[0] != ":" && s[0] != ",") {
-        return false, result;
-    }
-    advance(*s);
-
-    result.column_number, success, s = string_to_int(s, T = s64);
+    column_number, success=, remainder := string_to_int(right, T = s64);
     if !success {
-        return false, result;
+        return false, -1, -1, "", false, -1, -1;
     }
 
-    // TODO(jt): @Incomplete Handle quoted paths.
-    space_index := find_index_from_right(line, #char " ", colon_index);
-    // Skip check for -1, as the path could be the first thing. Works out with the +1 below.
+    path := String.slice(_line, path_start, path_count);
 
-    path_index := space_index + 1;
-    path_count := colon_index - path_index;
-    if path_count == 0 {
-        return false, result;
-    }
+    index := path_start;
+    count := x + left.count + 1 + right.count - remainder.count;
 
-    result.index = path_index;
-    result.count = s.data - line.data - path_index;
-
-    result.path = String.slice(line, path_index, path_count);
-    result.path_is_absolute = String.is_absolute_path(result.path);
-
-    return true, result;
+    return true, index, count, path, path_is_absolute, line_number, column_number;
 }
 
 #scope_file
@@ -5898,7 +5972,7 @@ This is an alpha release, so expect minor bugs and the occasional crash.
 I apologize for the inconvenience.
 
 If you are coming from Emacs, most of the keyboard shortcuts will be familiar to you.
-Otherwise, there are starter templates for the config files from other editors.
+Otherwise, have a look at config file templates next to the executable.
 
 To list available commands and their bound shortcuts, type Alt-x or Ctrl-Shift-p.
 
