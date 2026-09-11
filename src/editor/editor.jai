@@ -2281,7 +2281,6 @@ Panel_Action :: enum {
     DEBUG_VIEW_FRAME_TIMELINE;
 }
 
-// nocheckin reorder switch statements
 Document_Action :: enum {
     NONE;
 
@@ -2768,8 +2767,8 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
 
         case .OPEN_FILE_IN_PROJECT;             open_mini_panel(editor, platform, input, mini_panel_open_file_in_project_procs);
         case .SEARCH_IN_PROJECT;                open_mini_panel(editor, platform, input, mini_panel_search_in_project_procs);
-        case .COMPILE_IN_PROJECT_OR_DIRECTORY;  open_modal_interaction(editor, platform, input, modal_interaction_compile_procs);
-        case .COMPILE_IN_DIRECTORY;             open_modal_interaction(editor, platform, input, modal_interaction_compile_procs); // nocheckin param?
+        case .COMPILE_IN_PROJECT_OR_DIRECTORY;  open_modal_interaction(editor, platform, input, modal_interaction_compile_procs, cast(*void, Modal_Interaction_Compile_Mode.PROJECT_OR_DIRECTORY));
+        case .COMPILE_IN_DIRECTORY;             open_modal_interaction(editor, platform, input, modal_interaction_compile_procs, cast(*void, Modal_Interaction_Compile_Mode.DIRECTORY));
 
         case .FONT_SIZE_INCREASE;               editor.font_size += 1;
         case .FONT_SIZE_DECREASE;               editor.font_size = max(editor.font_size - 1, 1);

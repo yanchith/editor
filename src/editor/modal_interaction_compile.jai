@@ -6,12 +6,12 @@ modal_interaction_compile_procs: Modal_Interaction_Procs = {
     cancel,
 };
 
-#scope_file
-
-Mode :: enum u64 {
+Modal_Interaction_Compile_Mode :: enum u64 {
     PROJECT_OR_DIRECTORY;
     DIRECTORY;
 }
+
+#scope_file
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage or Static */ string {
     mi := *editor.modal_interaction;
@@ -20,7 +20,7 @@ get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Tem
         return "";
     }
 
-    mode := cast(Mode, mi.userdata);
+    mode := cast(Modal_Interaction_Compile_Mode, mi.userdata);
 
     action_text: string;
 
@@ -59,7 +59,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    mode := cast(Mode, mi.userdata);
+    mode := cast(Modal_Interaction_Compile_Mode, mi.userdata);
 
     success, working_directory, working_directory_is_project := get_working_directory_for_active_view(editor, search_for_project = mode == .PROJECT_OR_DIRECTORY);
     if !success {
