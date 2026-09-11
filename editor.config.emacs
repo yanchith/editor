@@ -1,6 +1,6 @@
 1 # Version number, do not remove.
 
-theme = abulafia
+# theme = abulafia   # abulafia, naysayer, handmade, stb, ...
 
 [keybinds.panel]
 

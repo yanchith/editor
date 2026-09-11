@@ -1,0 +1,168 @@
+1 # Version number, do not remove.
+
+# theme = abulafia   # abulafia, naysayer, handmade, stb, ...
+
+[keybinds.panel]
+
+Ctrl-Shift-p                           = show_commands
+Ctrl-f                                 = search
+
+Ctrl-o                                 = open_file
+Ctrl-<tab>                             = switch_view
+Ctrl-w                                 = close_view
+
+Ctrl-k Ctrl-c                          = recenter
+<pageup>                               = move_up_one_screen
+<pagedown>                             = move_down_one_screen
+
+Alt-Shift 2                            = split_panel_horizontally
+Alt-Shift 1                            = close_other_panels
+Ctrl-k Ctrl-<down>                     = close_current_panel
+Ctrl-k Ctrl-<right>                    = go_to_other_panel
+
+Ctrl-p                                 = open_file_in_project
+Ctrl-Shift-f                           = search_in_project
+Ctrl-b                                 = compile_in_project_or_directory
+Ctrl-Shift-b                           = compile_in_project_or_directory
+
+Ctrl-+                                 = font_size_increase
+Ctrl-Shift-+                           = font_size_decrease
+
+<f1>                                   = debug_view_atlas_texture
+<f2>                                   = debug_view_memory_absolute
+<f3>                                   = debug_view_memory_relative
+<f4>                                   = debug_view_frame_profile
+<f5>                                   = debug_view_frame_timeline
+
+[keybinds.document]
+
+<up>                                   = move_up
+<down>                                 = move_down
+<right>                                = move_forward
+<left>                                 = move_backward
+
+<home>                                 = move_to_start_of_line
+<end>                                  = move_to_end_of_line
+
+Ctrl-<right>                           = move_forward_word
+Ctrl-<left>                            = move_backward_word
+
+Ctrl-h                                 = search_and_replace
+
+Ctrl-s                                 = save_document
+
+Ctrl-Shift-<up>                        = swap_line_up
+Ctrl-Shift-<down>                      = swap_line_down
+
+Ctrl-g                                 = go_to_line
+
+<delete>                               = delete_forward
+<backspace>                            = delete_backward
+
+C-<delete>                             = delete_forward_word
+C-<backspace>                          = delete_backward_word
+
+Ctrl-k Ctrl-k                          = delete_line
+Ctrl-Shift-j                           = join_next_line
+
+<enter>                                = insert_line_before
+
+Ctrl-]                                 = indent_or_autocomplete
+<tab>                                  = indent_or_autocomplete
+
+Ctrl-/                                 = toggle_comment
+
+Ctrl-z                                 = undo_edit
+Ctrl-Shift-z                           = redo_edit
+
+Ctrl-c                                 = copy
+Ctrl-x                                 = cut
+Ctrl-v                                 = paste
+
+[keybinds.compilation]
+
+<up>                                   = move_up
+<down>                                 = move_down
+<right>                                = move_forward
+<left>                                 = move_backward
+
+<home>                                 = move_to_start_of_line
+<end>                                  = move_to_end_of_line
+
+Ctrl-<right>                           = move_forward_word
+C-<left>                               = move_backward_word
+
+Ctrl-c                                 = copy
+Ctrl-x                                 = copy
+
+b                                      = refresh
+Ctrl-b                                 = refresh
+
+[keybinds.listing]
+
+<up>                                   = move_up
+<down>                                 = move_down
+
+<enter>                                = open
+
+g                                      = refresh
+Ctrl-r                                 = refresh
+
+[keybinds.mini_panel]
+
+<up>                                   = move_up
+<down>                                 = move_down
+<right>                                = move_forward
+<left>                                 = move_backward
+
+<home>                                 = move_to_start_of_line
+<end>                                  = move_to_end_of_line
+
+Ctrl-<right>                           = move_forward_word
+Ctrl-<left>                            = move_backward_word
+
+<pageup>                               = move_up_one_screen
+<pagedown>                             = move_down_one_screen
+
+<delete>                               = delete_forward
+<backspace>                            = delete_backward
+
+Ctrl-<delete>                          = delete_forward_word
+Ctrl-<backspace>                       = delete_backward_word
+
+Ctrl-]                                 = indent_or_autocomplete
+<tab>                                  = indent_or_autocomplete
+
+Ctrl-c                                 = copy
+Ctrl-x                                 = cut
+Ctrl-v                                 = paste
+
+<enter>                                = confirm
+<escape>                               = cancel_or_stop_selecting
+
+[keybinds.modal_interaction]
+
+<right>                                = move_forward
+<left>                                 = move_backward
+
+<home>                                 = move_to_start_of_line
+<end>                                  = move_to_end_of_line
+
+Ctrl-<right>                           = move_forward_word
+Ctrl-<left>                            = move_backward_word
+
+<delete>                               = delete_forward
+<backspace>                            = delete_backward
+
+Ctrl-<delete>                          = delete_forward_word
+Ctrl-<backspace>                       = delete_backward_word
+
+Ctrl-]                                 = indent_or_autocomplete
+<tab>                                  = indent_or_autocomplete
+
+Ctrl-c                                 = copy
+Ctrl-x                                 = cut
+Ctrl-v                                 = paste
+
+<enter>                                = confirm
+<escape>                               = cancel_or_stop_selecting
