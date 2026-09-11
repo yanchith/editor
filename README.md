@@ -24,7 +24,7 @@ jai [-x64] build.jai
 The binary releases are compiled with:
 
 ```
-jai -optimized_debug build.jai - -no-windows-console`
+jai -optimized_debug build.jai - -no-windows-console
 ```
 
 The build file contains information about more options.
