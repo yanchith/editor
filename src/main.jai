@@ -265,13 +265,12 @@ main :: () {
             t.millisecond,
         );
 
-        // TODO(jt): Log rotation. Only keep last N logs around. Clean them up asynchronously?
         logger_data.log_file = File.file_open(log_filename, for_writing = true);
     }
 
     log("Editor version %.%.%, built on %.",  VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP);
 
-    // Clean up old log files; keep MAX_LOGFILES recent files.
+    // Clean up old log files. Keep MAX_LOGFILES recent files.
     {
         // TODO(jt): @Incomplete We can't do this for macOS .app, where the logs will not be stored next to the executable.
         thread_proc :: (thread: *Thread) -> s64 {
@@ -298,13 +297,13 @@ main :: () {
 
                     files_to_delete := array_view(files, 0, files_to_delete_count);
 
-                    log("Cleaning % old logs", files_to_delete_count);
+                    log("Cleaning % old log(s)", files_to_delete_count);
                     for files_to_delete {
                         log("Deleting log: %", it);
                         File.file_delete(it);
                     }
 
-                    log("Done deleting % old logs", files_to_delete_count);
+                    log("Done deleting % old log(s)", files_to_delete_count);
                 }
             }
 
