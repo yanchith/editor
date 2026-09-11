@@ -14,36 +14,9 @@ If you want to make this editor yours, there's two options:
    `editor.config.sublime` or `editor.config.vscode`.
    Currently, this lets you set a theme and keybinds. It will eventually let you do more.
 
-2) Modify the code and compile your own build. The catch is that the editor is written in Jai,
-   which is not publicly available yet, but should be out before too long.
-
-## Temporary limitations
-
-### Programming language support
-
-Currently, only C (and a subset of C++), Jai, and GLSL are supported.
-I plan to add support for Rust, C#, Typescript, HLSL and Slang pretty soon.
-If you want to add support for a language for yourself, look at the existing `lang_xyz.jai` files.
-
-### Speed
-
-- To help debug issues in tricky parts of the code, binary releases have expensive paranoid assertions enabled.
-  They asserts are extremely slow. You can disable these with `-no-sanity`.
-
-- The parser for indentation and lexers for syntax highlighting need to get faster.
-  The editor turns them off for files above 10 megabytes.
-
-- Search needs to be faster.
-
-Once these are solved, you should be able to view and edit multi-gigabyte files without dropping a frame.
-
-### Misc
-
-- Project and directory search currently shells out to ripgrep. You need to have the `rg` command installed on your system.
-  Near-term, I'd like to support more external search tools (e.g. `git grep`).
-  Long-term, project search will be implemented in the editor itself.
-
-- Spawning a process and collecting its output (for compilation or project search) is synchronous for now.
+2) Modify the code and compile your own build. See building from source section below.
+   The catch is that the editor is written in Jai, which is not publicly available yet,
+   but should be out before too long.
 
 ## Building from source
 
@@ -57,6 +30,37 @@ Some particularly useful ones are `-no-windows-console` and `-no-sanity`.
 Tested on Jai version `beta 0.2.030, 2 July 2026`.
 
 The editor currently runs on Windows and macOS. Linux support coming soon.
+
+## Temporary limitations
+
+### Programming language support
+
+Currently, only C (and a subset of C++), Jai, and GLSL are supported.
+
+I plan to add support for Rust, C#, TypeScript and Slang pretty soon.
+If you want to add support for a language for yourself, look at the existing `lang_xyz.jai` files.
+
+### Speed
+
+- To help debug issues in tricky parts of the code, binary releases have expensive paranoid assertions enabled.
+  They asserts are extremely slow. You can disable these with `-no-sanity`. They will eventually be disabled by default.
+
+- The parser for indentation and lexers for syntax highlighting need to get faster.
+  The editor turns them off for files above 10 megabytes.
+
+- Search needs to be faster.
+
+- Insert needs to be faster.
+
+Once these are solved, you should be able to view and edit multi-gigabyte files without dropping a frame.
+
+### Misc
+
+- Project and directory search currently shells out to ripgrep. You need to have the `rg` command installed on your system.
+  Near-term, I'd like to support more external search tools (e.g. `git grep`).
+  Long-term, project search will be implemented in the editor itself.
+
+- Spawning a process and collecting its output (for compilation or project search) is synchronous for now.
 
 ## Contributing
 
