@@ -35,11 +35,11 @@ The build file contains information about more options.
 
 Tested on Jai version `0.2.030`.
 
-The editor currently runs on Windows and macOS. Linux support coming soon.
+The code compiles and runs on Windows and macOS. Linux support coming soon.
 
 ## Temporary limitations
 
-The editor is currently in alpha. Bugs may happen. Save often.
+This is an early alpha. Bugs may happen. Save often.
 
 **Language support**
 
