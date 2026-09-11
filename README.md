@@ -1,7 +1,5 @@
 # Editor
 
-(Yes, it needs a name.)
-
 This is a small text editor I wrote for myself. The design goals are roughly:
 
 - Small and simple, so I can make modifications with understanding.
