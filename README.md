@@ -35,28 +35,25 @@ The editor is currently in alpha. Bugs and infrequent crashes may happen. Save o
 
 ### Programming language support
 
-Currently, only C (and a subset of C++), Jai, and GLSL are supported.
+Only C (and a subset of C++), Jai, and GLSL are supported right now.
 
-I plan to add support for Rust, C#, TypeScript and Slang pretty soon.
+I plan to add support for Rust, C#, TypeScript and Slang soon.
 If you want to add support for a language for yourself, look at the existing `lang_xyz.jai` files.
 
 ### Speed
 
-- To help debug issues in tricky parts of the code, expensive paranoid assertions enabled by default.
-  They are extremely slow. You can disable these with `-no-sanity`. They will eventually be disabled by default.
+- To help debug tricky parts of the code, expensive paranoid assertions enabled by default.
+  They are extremely slow. You can disable these by building with `-no-sanity`.
+  They will eventually be disabled by default.
 
 - The parser for indentation and lexers for syntax highlighting need to get faster.
   The editor turns them off for files above 10 megabytes.
-
-- Search needs to be faster.
-
-- Insert needs to be faster.
 
 Once these are solved, you should be able to view and edit multi-gigabyte files without dropping a frame.
 
 ### Misc
 
-- Project search currently shells out to ripgrep. You need to have the `rg` command installed on your system.
+- Project search currently shells out to [ripgrep](https://github.com/burntsushi/ripgrep).
   Near-term, more external search tools will be supported (e.g. `git grep`).
   Long-term, project search will be implemented in the editor itself.
 
@@ -75,12 +72,12 @@ Disingenuous behavior not tolerated.
 ## Acknowledgements
 
 - Jonathan Blow, for making the Jai programming language.
-- Emacs, for showing me how good text editing can be.
-- Emacs, for getting slower and buggier over the years, making me do this.
-- Focus editor, with which this editor shares the simplicity philosophy.
+- [Emacs](https://www.gnu.org/software/emacs/), for showing me how good text editing can be.
+- [Emacs](https://www.gnu.org/software/emacs/), for getting slower and buggier over time, making me do this.
+- [Focus Editor](https://focus-editor.dev/), with which this editor shares the simplicity philosophy.
   If I had tried it out sooner, I might not have made my own.
 - My amazing partner, who tolerated me going off on this tangent instead of doing more important stuff.
 
 ## License
 
-The editor is in the public domain under the MIT license. You can do whatever with it. Attribution is appreciated, though.
+The editor is in the public domain under the MIT license. You can do whatever with it. Attribution is appreciated.
