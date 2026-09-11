@@ -6,6 +6,8 @@ This is a small text editor I wrote for myself. The design goals are roughly:
 - Fast, unless it conflicts too much with the previous point.
 - Preserve the nice parts of my Emacs experience.
 
+![](./screenshot.png)
+
 If you want to make this editor yours, there's two options:
 
 1) Use a binary build and customize `editor.config`. There's a few starter templates,
