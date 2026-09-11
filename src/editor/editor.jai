@@ -4937,8 +4937,6 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
             document, document_added := find_or_add_document(editor, platform, .FILE, directory_absolute_path, file_absolute_path);
             if document_added {
                 if file_exists {
-                    editor_log(editor, "Opening file: %", file_absolute_path);
-
                     document.backing_file_exists = true;
                     document.backing_file_time_of_last_sync = input.time;
 
@@ -4961,9 +4959,12 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
                         document_update_tokens(document);
 
                         watch_file(editor, platform, input, document.backing_file_path);
+                        editor_log(editor, "Opened file: %", file_absolute_path);
+                    } else {
+                        editor_log(editor, "Failed to open file: %", file_absolute_path);
                     }
                 } else {
-                    editor_log(editor, "Opening new file with path: %", file_absolute_path);
+                    editor_log(editor, "Opening new file: %", file_absolute_path);
                 }
             }
 
