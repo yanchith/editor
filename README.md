@@ -20,9 +20,9 @@ If you want to make this editor yours, there's two options:
 
 Run `jai [-x64] build.jai` for a debug build.
 
-The binary release was compiled with `jai -optimized_debug build.jai - -no-windows-console`
+The binary releases are compiled with `jai -optimized_debug build.jai - -no-windows-console`
 
-Run `jai build.jai - -help` to get the full list of options.
+Run `jai build.jai - -help` to get the list of options.
 In particular, `-no-windows-console` and `-no-sanity` are useful.
 
 Tested on Jai version `0.2.030`.
@@ -42,8 +42,8 @@ If you want to add support for a language for yourself, look at the existing `la
 
 ### Speed
 
-- To help debug issues in tricky parts of the code, binary releases have expensive paranoid assertions enabled.
-  They asserts are extremely slow. You can disable these with `-no-sanity`. They will eventually be disabled by default.
+- To help debug issues in tricky parts of the code, expensive paranoid assertions enabled by default.
+  They are extremely slow. You can disable these with `-no-sanity`. They will eventually be disabled by default.
 
 - The parser for indentation and lexers for syntax highlighting need to get faster.
   The editor turns them off for files above 10 megabytes.
@@ -56,8 +56,8 @@ Once these are solved, you should be able to view and edit multi-gigabyte files 
 
 ### Misc
 
-- Project and directory search currently shells out to ripgrep. You need to have the `rg` command installed on your system.
-  Near-term, I'd like to support more external search tools (e.g. `git grep`).
+- Project search currently shells out to ripgrep. You need to have the `rg` command installed on your system.
+  Near-term, more external search tools will be supported (e.g. `git grep`).
   Long-term, project search will be implemented in the editor itself.
 
 - Spawning a process and collecting its output (for compilation or project search) is synchronous for now.
@@ -77,8 +77,8 @@ Disingenuous behavior not tolerated.
 - Jonathan Blow, for making the Jai programming language.
 - Emacs, for showing me how good text editing can be.
 - Emacs, for getting slower and buggier over the years, making me do this.
-- Focus editor, from which I borrowed the lexer-per-programming language approach.
-  Also, if I had tried it out sooner, I might not have made my own.
+- Focus editor, with which this editor shares the simplicity philosophy.
+  If I had tried it out sooner, I might not have made my own.
 - My amazing partner, who tolerated me going off on this tangent instead of doing more important stuff.
 
 ## License
