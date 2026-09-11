@@ -4,7 +4,6 @@ TODO(jt): Known serious bugs:
 
 - macOS:   Directory listers are not sorted
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
-- Windows: Can't open most recent log file, because we already have it open...
 
 TODO(jt): Roadmap:
 

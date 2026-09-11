@@ -450,6 +450,9 @@ main :: () {
         return exists, modtime, size;
     }
     platform.read_file = (path: string) -> success: bool, [] u8 {
+        // TODO(jt): @Bug On Windows we can't read our last log, because we already have it open.
+        // It is possible to mess with the permissions such that the second open and read works,
+        // but for now I decided not to do it.
         data, success := File.read_entire_file(path);
         return success, cast([] u8, data);
     }

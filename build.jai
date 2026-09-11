@@ -10,11 +10,6 @@ Optimization_Level :: enum {
     DEBUG;
     OPTIMIZED;
     OPTIMIZED_DEBUG;
-    // We can be elaborate more later on:
-    // OPTIMIZED_FOR_SPEED;
-    // OPTIMIZED_FOR_SPEED_DEBUG:
-    // OPTIMIZED_FOR_SIZE;
-    // OPTIMIZED_FOR_SIZE_DEBUG;
 }
 
 build :: () {
@@ -40,7 +35,7 @@ build :: () {
     // We try to respect it as much as possible, but we also provide the same switches.
     //
     // I tried modifying Default_Metaprogram to do what we need by merging it with this one, but
-    // it isn't so easy. It involves hacking import_path, and makes it impossible to pass program arguments
+    // it isn't so easy. It involves hacking import_path, and makes it impossible(?) to pass program arguments
     // metaprogram plugins. We can try again later, but maybe it's not worth it.  -jt, 14 August 2026
     for get_toplevel_command_line() {
         if it == {
@@ -156,7 +151,7 @@ DONE;
 
 HELP :: #string DONE
 
-Usage: jai [DEFAULT_METAPROGRAM_OPTIONS] FILE... - [OPTIONS]
+Usage: jai [DEFAULT_METAPROGRAM_OPTIONS] build.jai - [OPTIONS]
 
 OPTIONS:
 
