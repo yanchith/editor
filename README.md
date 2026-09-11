@@ -65,21 +65,20 @@ Once these are solved, you should be able to view and edit multi-gigabyte files 
 
 ## Contributing
 
-I am not prepared to maintain an open-source project. Feel free to make the editor
-yours by changing your version.
+I accept small bugfixes, as well as lexers for new programming languages, but if you want to make
+bigger changes, your own version of the editor would be a better place to do that.
 
-However, I might accept the occasional patch, especially if it is a small bugfix.
-It is also probably safe to send lexers for more programming languages.
+LSPs and MCPs are out of scope. Vim mode too.
 
-Disingenuous behavior not tolerated.
+Disingenuous behavior will not be tolerated.
 
 ## Acknowledgements
 
 - Jonathan Blow, for making the Jai programming language.
-- [Emacs](https://www.gnu.org/software/emacs/), for showing me how good text editing can be.
+- [Emacs](https://www.gnu.org/software/emacs/), for teaching me that I can live without IDEs.
 - [Emacs](https://www.gnu.org/software/emacs/), for getting slower and buggier over time, making me do this.
 - [Focus Editor](https://focus-editor.dev/), with which this editor shares the simplicity philosophy.
-  If I had tried it out sooner, I might not have made my own.
+  If I had tried it out sooner, I might have just used that.
 - My amazing partner, who tolerated me going off on this tangent instead of doing more important stuff.
 
 ## License
