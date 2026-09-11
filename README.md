@@ -39,14 +39,14 @@ The editor currently runs on Windows and macOS. Linux support coming soon.
 
 The editor is currently in alpha. Bugs may happen. Save often.
 
-*Programming language support*
+**Language support**
 
 Only C (and a subset of C++), Jai, and GLSL are supported right now.
 
 I plan to add support for Rust, C#, TypeScript and Slang soon.
 If you want to add support for a language for yourself, look at the existing `lang_xyz.jai` files.
 
-*Speed*
+**Speed**
 
 - To help debug tricky parts of the code, expensive paranoid assertions enabled by default.
   They are extremely slow. You can disable these by building with `-no-sanity`.
@@ -57,7 +57,7 @@ If you want to add support for a language for yourself, look at the existing `la
 
 Once these are solved, you should be able to view and edit multi-gigabyte files at interactive speeds.
 
-*Misc*
+**Misc**
 
 - Project search currently shells out to [ripgrep](https://github.com/burntsushi/ripgrep).
   Near-term, more external search tools will be supported (e.g. `git grep`).
