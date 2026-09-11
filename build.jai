@@ -1,3 +1,25 @@
+/*
+
+Making a build:
+
+0) Set version number in this file
+1) jai -optimized_debug build.jai - -no-windows-console
+
+(Windows)
+
+2) Copy build/editor.exe, config files and the data directory to the distribution directory
+3) Zip
+
+(macOS coming soon)
+
+(Linux coming soonish)
+
+*/
+
+VERSION_MAJOR :: 0;
+VERSION_MINOR :: 0;
+VERSION_PATCH :: 1;
+
 #import "Compiler";
 #import "Basic";
 #import "File";
@@ -13,9 +35,6 @@ Optimization_Level :: enum {
 }
 
 build :: () {
-    build_version_major := 0;
-    build_version_minor := 0;
-    build_version_patch := 1;
     build_timestamp := to_calendar(current_time_consensus());
 
     optimization_level := Optimization_Level.DEBUG;
@@ -72,7 +91,8 @@ build :: () {
     }
 
     if do_print_help {
-        // This goes to standard error, because otherwise both Emacs and this editor don't see this output. Regular console sees it. Weird.
+        // This goes to standard error, because otherwise both Emacs and this editor don't see this output.
+        // Regular console sees it. Weird.
         log_error(HELP);
         exit(1);
     }
@@ -107,12 +127,12 @@ build :: () {
 
     compiler_begin_intercept(w);
 
-    build_info_declaration := tprint(BUILD_INFO_DECLARATION_TEMPLATE, build_version_major, build_version_minor, build_version_patch,
-                                     build_timestamp.day_of_month_starting_at_0 + 1,
-                                     month_text(build_timestamp.month_starting_at_0),
-                                     build_timestamp.year);
+    build_info := tprint(BUILD_INFO_TEMPLATE, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH,
+                         build_timestamp.day_of_month_starting_at_0 + 1,
+                         month_text(build_timestamp.month_starting_at_0),
+                         build_timestamp.year);
 
-    add_build_string(build_info_declaration, w);
+    add_build_string(build_info, w);
 
     if do_sanity           add_build_string("__SANITY :: true;\n", w);
     if do_windows_console  add_build_string("__WINDOWS_CONSOLE :: true;\n", w);
@@ -142,7 +162,7 @@ build :: () {
 
 #run build();
 
-BUILD_INFO_DECLARATION_TEMPLATE :: #string DONE
+BUILD_INFO_TEMPLATE :: #string DONE
 __VERSION_MAJOR    :: %;
 __VERSION_MINOR    :: %;
 __VERSION_PATCH    :: %;
