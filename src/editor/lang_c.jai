@@ -618,7 +618,7 @@ KEYWORDS :: string.[
     "_Alignas", "_Alignof", "_Atomic", "_BitInt", "_Bool", "_Complex", "_Decimal128", "_Decimal32",
     "_Decimal64", "_Generic", "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local",
 
-    // These are some additional C++ keywords that may appear in handmade-style, sane C++ codebases.
-    "asm", "class", "const_cast", "decltype", "operator", "private", "protected", "public",
+    // These are some additional C++ keywords that may appear in C-like C++ codebases.
+    "asm", "class", "const_cast", "decltype", "namespace", "noexcept", "operator", "private", "protected", "public",
     "reinterpret_cast", "static_cast", "template", "typename", "using", "virtual",
 ];
