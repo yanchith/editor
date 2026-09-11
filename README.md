@@ -53,7 +53,7 @@ If you want to add support for a language for yourself, look at the existing `la
 - The parser for indentation and lexers for syntax highlighting need to get faster.
   The editor turns them off for files above 10 megabytes.
 
-Once these are solved, you should be able to view and edit multi-gigabyte files without dropping a frame.
+Once these are solved, you should be able to view and edit multi-gigabyte files at interactive speeds.
 
 #### Misc
 
