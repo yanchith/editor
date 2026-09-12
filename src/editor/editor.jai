@@ -98,6 +98,8 @@ TODO(jt): Roadmap:
 - [ ] Language: Lua
 - [ ] Language: Java
 - [ ] Language: Python
+- [ ] Theme: Solarized Light
+- [ ] Theme: Solarized Dark
 - [ ] Theme: Visual Studio Dark
 - [ ] Theme: Delphi
 - [ ] Emacs-like kill ring
