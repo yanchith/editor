@@ -25,6 +25,9 @@ benchgen_text :: (view: *Document_View, approx_size_in_bytes: s64) {
         text_buffer_insert(*view.document.buffer, *view.cursors, ACT1, .FUSE);
     }
 
+    view.document.flags |= .MODIFIED;
+    view.document.flags |= .MODIFIED_THIS_FRAME;
+
     view.flags |= .CLAMP_SCROLL_TO_CURSOR;
 }
 

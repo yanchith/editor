@@ -487,9 +487,11 @@ Document :: struct {
     Flags :: enum_flags u32 {
         NONE :: 0;
 
-        MODIFIED_THIS_FRAME       :: 0x01;
-        MODIFY_ATTEMPT_THIS_FRAME :: 0x02;
-        MODIFIED                  :: 0x04; // Also see backing_file_exists
+        MODIFIED                  :: 0x01; // Also see backing_file_exists
+
+        // TODO(jt): @Cleanup These should live on Document_View?
+        MODIFIED_THIS_FRAME       :: 0x02;
+        MODIFY_ATTEMPT_THIS_FRAME :: 0x04;
 
         // INCONSISTENT_INDENTATION  0x04;
         // INCONSISTENT_NEWLINES     0x08;
