@@ -79,6 +79,7 @@ TODO(jt): Roadmap:
 - [ ] Mouse interaction in the modal interaction (text selection)
 - [ ] Mouse interaction in the mode line (click change view, lang, crlf, indentation level)
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
+- [ ] OPEN_FILE_IN_PROJECT and SEARCH_IN_PROJECT should be (globally) configurable to ignore paths (e.g. contents of .git)
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
 - [ ] F11 fullscreen on Windows
@@ -114,7 +115,7 @@ TODO(jt): Roadmap:
 
 - [ ] 4coder-like poor man's hex mode - substitute binary for escaped hex codes (e.g. 255 -> /ff) during layout and position calculation.
 - [ ] Hex mode view
-- [~] Proper projects (project root, settings, compilations, text search with jumping, find/replace)
+- [ ] Proper projects (project config, compilations, search ignore list, find/replace)
 - [ ] if (0) and #if 0 produce desaturated syntax highlighting
 - [ ] Get rid of FreeType without compromising quality (kb_text_shape + Slug)
 - [ ] Version control view (Git only?, via plugin interface?)
