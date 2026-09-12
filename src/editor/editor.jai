@@ -2047,8 +2047,8 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     if action == {
         case .MOVE_UP;                 mp.item_index = clamp(mp.item_index - 1, min_item_index, mp.items.count - 1);
         case .MOVE_DOWN;               mp.item_index = clamp(mp.item_index + 1, min_item_index, mp.items.count - 1);
-        case .MOVE_BACKWARD;               text_buffer_move_x(mp.buffer, *mp.cursors, -1, mp.selecting);
-        case .MOVE_FORWARD;              text_buffer_move_x(mp.buffer, *mp.cursors,  1, mp.selecting);
+        case .MOVE_BACKWARD;           text_buffer_move_x(mp.buffer, *mp.cursors, -1, mp.selecting);
+        case .MOVE_FORWARD;            text_buffer_move_x(mp.buffer, *mp.cursors,  1, mp.selecting);
 
         case .MOVE_TO_START_OF_LINE;   text_buffer_move_to_start_of_line(mp.buffer, *mp.cursors, mp.selecting);
         case .MOVE_TO_END_OF_LINE;     text_buffer_move_to_end_of_line(mp.buffer, *mp.cursors, mp.selecting);
@@ -2637,18 +2637,6 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 }
 
 #scope_module
-
-//
-// We could try out File Pilot's event buffer architecture, where the front half
-// of the update code fills a buffer of actions to execute and the bottom half executes them.
-//
-// I see a few problems with this, however. Currently, the place where we route events changes based
-// on the previous action we execute, for instance opening the mini panel means the subsequent input event gets
-// interpreted as though it was meant for the mini panel. Similarly, clicking can select a different kind of panel,
-// where the action now means something different. Let's think about this more carefully once we are featureful.
-//
-//    -jt, 16 August 2026.
-//
 
 execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, action: Panel_Action) -> executed: bool {
     theme_changed := false;
@@ -5972,7 +5960,7 @@ This is an alpha release, so expect minor bugs and the occasional crash.
 I apologize for the inconvenience.
 
 If you are coming from Emacs, most of the keyboard shortcuts will be familiar to you.
-I plan to add config files and the ability to start from a editor specific template soon.
+Otherwise, there are starter templates for the config files from other editors.
 
 To list available commands and their bound shortcuts, type Alt-x or Ctrl-Shift-p.
 
