@@ -134,19 +134,16 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
         file_list := platform.list_directory(path_prefix, recursive = false, files = true, directories = true,, temp);
         for file_list {
-            listed_file_path := it.absolute_path;
-            listed_filename := String.path_filename(it.absolute_path);
-
-            found, found_indices := line_search(listed_filename, filename_parts, smartcase,, temp);
+            found, found_indices := line_search(it.name, filename_parts, smartcase,, temp);
             if found {
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
                 s := "";
-                if listed_filename.count {
-                    s = arena_push_string(mp.items_arena, listed_filename);
+                if it.name.count {
+                    s = arena_push_string(mp.items_arena, it.name);
                 }
 
-                x0 := count_utf8_chars(String.slice(listed_filename, 0, found_index));
+                x0 := count_utf8_chars(String.slice(it.name, 0, found_index));
 
                 item := array_add(*mp.items);
                 item.text = s;

@@ -1,4 +1,5 @@
 File_Info :: struct {
+    name: string;
     absolute_path: string;
     size: s64;
 

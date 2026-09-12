@@ -467,10 +467,15 @@ main :: () {
         return File.delete_directory(path);
     }
     platform.list_directory = (path: string, recursive: bool, files: bool, directories: bool) -> [] Editor.File_Info /* context.allocator */ {
+        compare_file_infos :: (a: Editor.File_Info, b: Editor.File_Info) -> s64 {
+            return compare_strings(a.absolute_path, b.absolute_path);
+        }
+
         file_infos: [..] Editor.File_Info;
 
         visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] Editor.File_Info) {
             file_info := array_add(userdata);
+            file_info.name          = copy_string(visit_info.short_name);
             file_info.absolute_path = copy_string(visit_info.full_name);
             file_info.size          = visit_info.size;
 
@@ -485,6 +490,14 @@ main :: () {
                                    visit_directories = directories,
                                    visit_symlinks = true,
                                    follow_directory_symlinks = true);
+
+        // The entries are definitely not sorted on macOS. MSDN says that they are not
+        // necessarily sorted on Windows either (although they are sorted in practice?)
+        // Maybe we could omit the sort on Windows?
+        //
+        // Also, beware stack overflow for large directories. There's a tailcall version
+        // of quicksort, but this ain't it.
+        quick_sort(file_infos, compare_file_infos);
 
         return file_infos;
     }

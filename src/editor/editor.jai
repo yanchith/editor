@@ -2,7 +2,6 @@
 
 TODO(jt): Known serious bugs:
 
-- macOS:   Directory listers are not sorted
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
 
 TODO(jt): Roadmap:
@@ -5039,24 +5038,18 @@ refresh_directory_listing :: (platform: Platform, listing: *Listing) {
     arena_pop_to_mark(listing.arena, listing.arena_base_data_mark);
 
     file_list := platform.list_directory(listing.backing_directory_path, recursive = false, files = true, directories = true,, temp);
-
     {
         self_dir := array_add(*listing.items);
         self_dir.text = ".";
-    }
 
-    {
         parent_dir := array_add(*listing.items);
         parent_dir.text = "..";
     }
 
     for file_list {
-        listed_file_path := it.absolute_path;
-        listed_filename := String.path_filename(it.absolute_path);
-
         s := "";
-        if listed_filename.count {
-            s = arena_push_string(listing.arena, listed_filename);
+        if it.name.count {
+            s = arena_push_string(listing.arena, it.name);
 
             item := array_add(*listing.items);
             item.text = s;
