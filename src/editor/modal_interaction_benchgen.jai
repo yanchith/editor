@@ -15,14 +15,14 @@ modal_interaction_benchgen_procs: Modal_Interaction_Procs = {
 // which now completely dominates every frame where an edit happened. For this reason, we turned
 // them off above 10MB files. I hope to improve this limit.
 benchgen_text :: (view: *Document_View, approx_size_in_bytes: s64) {
-    text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1);
+    text_buffer_insert(*view.document.buffer, *view.cursors, ACT1);
 
     while view.document.buffer.gb.count < approx_size_in_bytes {
         SEPARATOR :: "\n========================================================\n\n";
 
         // TODO(jt): @Speed This is quadratic, because we insert in a loop, and the insert has to compute a gb index.
         text_buffer_insert(*view.document.buffer, *view.cursors, SEPARATOR, .FUSE);
-        text_buffer_insert(*view.document.buffer, *view.cursors, INFINITE_JEST_CHAPTER1, .FUSE);
+        text_buffer_insert(*view.document.buffer, *view.cursors, ACT1, .FUSE);
     }
 
     view.flags |= .CLAMP_SCROLL_TO_CURSOR;
@@ -78,408 +78,1746 @@ cancel :: (editor: *Editor, platform: Platform, input: Input) {
     close_modal_interaction(editor, platform, input);
 }
 
-INFINITE_JEST_CHAPTER1 :: #string DONE
+// Was previously something else, but oh-copyright.
+ACT1 :: #string DONE
 
-YEAR OF GLAD
+ACT I
+SCENE I. Elsinore. A platform before the castle.
 
-I am seated in an office, surrounded by heads and bodies. My posture is consciously congruent to the shape of my hard chair.
-This is a cold room in University Administration, wood-walled, Remington-hung, double-windowed against the November heat,
-insulated from Administrative sounds by the reception area outside, at which Uncle Charles, Mr. deLint and I were lately received.
-I am in here.
-Three faces have resolved into place above summer-weight sportcoats and half-Windsors across a polished pine conference
-table shiny with the spidered light of an Arizona noon. These are three Deans — of Admissions, Academic Affairs, Athletic
-Affairs. I do not know which face belongs to whom.
-I believe I appear neutral, maybe even pleasant, though I've been coached to err on the side of neutrality and not attempt what
-would feel to me like a pleasant expression or smile.
-I have committed to crossing my legs I hope carefully, ankle on knee, hands together in the lap of my slacks. My fingers are
-mated into a mirrored series of what manifests, to me, as the letter X. The interview room's other personnel include: the
-University's Director of Composition, its varsity tennis coach, and Academy prorector Mr. A. deLint. C.T. is beside me; the others
-sit, stand and stand, respectively, at the periphery of my focus. The tennis coach jingles pocket-change. There is something
-vaguely digestive about the room's odor. The high-traction sole of my complimentary Nike sneaker runs parallel to the wobbling
-loafer of my mother's half-brother, here in his capacity as Headmaster, sitting in the chair to what I hope is my immediate right,
-also facing Deans.
-The Dean at left, a lean yellowish man whose fixed smile nevertheless has the impermanent quality of something stamped
-into uncooperative material, is a personality-type I've come lately to appreciate, the type who delays need of any response from
-me by relating my side of the story for me, to me. Passed a packet of computer-sheets by the shaggy lion of a Dean at center, he is
-speaking more or less to these pages, smiling down.
-'You are Harold Incandenza, eighteen, date of secondary-school graduation approximately one month from now, attending the
-Enfield Tennis Academy, Enfield, Massachusetts, a boarding school, where you reside.' His reading glasses are rectangular, court-
-shaped, the sidelines at top and bottom. 'You are, according to Coach White and Dean [unintelligible], a regionally, nationally,
-and continentally ranked junior tennis player, a potential O.N.A.N.C.A.A. athlete of substantial promise, recruited by Coach
-White via correspondence with Dr. Tavis here commencing .. . February of this year.' The top page is removed and brought
-around neatly to the bottom of the sheaf, at intervals. 'You have been in residence at the Enfield Tennis Academy since age
-seven.’
+    FRANCISCO at his post. Enter to him BERNARDO
 
-I am debating whether to risk scratching the right side of my jaw, where there is a wen.
-'Coach White informs our offices that he holds the Enfield Tennis Academy's program and achievements in high regard, that
-the University of Arizona tennis squad has profited from the prior matriculation of several former E.T.A. alumni, one of whom
-was one Mr. Aubrey F. deLint, who appears also to be with you here today. Coach White and his staff have given us —’
-The yellow administrator's usage is on the whole undistinguished, though I have to admit he's made himself understood. The
-Director of Composition seems to have more than the normal number of eyebrows. The Dean at right is looking at my face a bit
-strangely.
-Uncle Charles is saying that though he can anticipate that the Deans might be predisposed to weigh what he avers as coming
-from his possible appearance as a kind of cheerleader for E.T.A., he can assure the assembled Deans that all this is true, and that
-the Academy has presently in residence no fewer than a third of the continent's top thirty juniors, in age brackets all across the
-board, and that I here, who go by 'Hal,' usually, am 'right up there among the very cream.' Right and center Deans smile
-professionally; the heads of deLint and the coach incline as the Dean at left clears his throat:
-'— belief that you could well make, even as a freshman, a real contribution to this University's varsity tennis program. We are
-pleased,' he either says or reads, removing a page, 'that a competition of some major sort here has brought you down and given us
-the chance to sit down and chat together about your application and potential recruitment and matriculation and scholarship.’
-'I've been asked to add that Hal here is seeded third, Boys' 18-and-Under Singles, in the prestigious WhataBurger Southwest
-Junior Invitational out at the Randolph Tennis Center —' says what I infer is Athletic Affairs, his cocked head showing a freckled
-scalp.
+BERNARDO
 
-'Out at Randolph Park, near the outstanding El Con Marriott,' C.T. inserts, 'a venue the whole contingent's been vocal about
-finding absolutely top-hole thus far, which —’
-'Just so, Chuck, and that according to Chuck here Hal has already justified his seed, he's reached the semifinals as of this
-morning's apparently impressive win, and that he'll be playing out at the Center again tomorrow, against the winner of a
-quarterfinal game tonight, and so will be playing tomorrow at I believe scheduled for 0830 —’
-'Try to get under way before the godawful heat out there. Though of course a dry heat.’
-'— and has apparently already qualified for this winter's Continental Indoors, up in Edmonton, Kirk tells me —' cocking
-further to look up and left at the varsity coach, whose smile's teeth are radiant against a violent sunburn — 'Which is something
-indeed.' He smiles, looking at me. 'Did we get all that right Hal.’
-C.T. has crossed his arms casually; their triceps' flesh is webbed with mottle in the air-conditioned sunlight. 'You sure did.
-Bill.' He smiles. The two halves of his mustache never quite match. 'And let me say if I may that Hal's excited, excited to be
-invited for the third year running to the Invitational again, to be back here in a community he has real affection for, to visit with
-your alumni and coaching staff, to have already justified his high seed in this week's not unstiff competition, to as they say still be
-in it without the fat woman in the Viking hat having sung, so to speak, but of course most of all to have a chance to meet you
-gentlemen and have a look at the facilities here. Everything here is absolutely top-slot, from what he's seen.’
-There is a silence. DeLint shifts his back against the room's panelling and recenters his weight. My uncle beams and
-straightens a straight watchband. 62.5 percent of the room's faces are directed my way, pleasantly expectant. My chest bumps like a
-dryer with shoes in it. I compose what I project will be seen as a smile. I turn this way and that, slightly, sort of directing the
-expression to everyone in the room.
-There is a new silence. The yellow Dean's eyebrows go circumflex. The two other Deans look to the Director of Composition.
-The tennis coach has moved to stand at the broad window, feeling at the back of his crewcut. Uncle Charles strokes the forearm
-above his watch. Sharp curved palm-shadows move slightly over the pine table's shine, the one head's shadow a black moon.
-'Is Hal all right, Chuck?' Athletic Affairs asks. 'Hal just seemed to ... well, grimace. Is he in pain? Are you in pain, son?’
-'Hal's right as rain,' smiles my uncle, soothing the air with a casual hand. 'Just a bit of a let's call it maybe a facial tic, slightly,
-at all the adrenaline of being here on your impressive campus, justifying his seed so far without dropping a set, receiving that
-official written offer of not only waivers but a living allowance from Coach White here, on Pac 10 letterhead, being ready in all
-probability to sign a National Letter of Intent right here and now this very day, he's indicated to me.' C.T. looks to me, his look
-horribly mild. I do the safe thing, relaxing every muscle in my face, emptying out all expression. I stare carefully into the
-Kekuléan knot of the middle Dean's necktie.
-My silent response to the expectant silence begins to affect the air of the room, the bits of dust and sportcoat-lint stirred
-around by the AC's vents dancing jaggedly in the slanted plane of windowlight, the air over the table like the sparkling space just
-above a fresh-poured seltzer. The coach, in a slight accent neither British nor Australian, is telling C.T. that the whole application-
-interface process, while usually just a pleasant formality, is probably best accentuated by letting the applicant speak up for
-himself. Right and center Deans have inclined together in soft conference, forming a kind of tepee of skin and hair. I presume it's
-probably facilitate that the tennis coach mistook for accentuate, though accelerate, while clunkier than facilitate, is from a phonetic
-perspective more sensible, as a mistake. The Dean with the flat yellow face has leaned forward, his lips drawn back from his teeth
-in what I see as concern. His hands come together on the conference table's surface. His own fingers look like they mate as my
-own four-X series dissolves and I hold tight to the sides of my chair.
-We need candidly to chat re potential problems with my application, they and I, he is beginning to say. He makes a reference
-to candor and its value.
+    Who's there?
 
-'The issues my office faces with the application materials on file from you, Hal, involve some test scores.' He glances down at
-a colorful sheet of standardized scores in the trench his arms have made. 'The Admissions staff is looking at standardized test
-scores from you that are, as I'm sure you know and can explain, are, shall we say ... subnormal.' I'm to explain.
-It's clear that this really pretty sincere yellow Dean at left is Admissions. And surely the little aviarian figure at right is
-Athletics, then, because the facial creases of the shaggy middle Dean are now pursed in a kind of distanced affront, an I'm-eating-
-something-that-makes-me-really-appreciate-the-presence-of-whatever-I'm-drinking-along-with-it look that spells professionally
-Academic reservations. An uncomplicated loyalty to standards, then, at center. My uncle looks to Athletics as if puzzled. He shifts
-slightly in his chair.
-The incongruity between Admissions's hand- and face-color is almost wild. '—verbal scores that are just quite a bit closer to
-zero than we're comfortable with, as against a secondary-school transcript from the institution where both your mother and her
-brother are administrators —' reading directly out of the sheaf inside his arms' ellipse — 'that this past year, yes, has fallen off a
-bit, but by the word I mean "fallen off" to outstanding from three previous years of frankly incredible.’
-'Off the charts.’
-'Most institutions do not even have grades of A with multiple pluses after it,' says the Director of Composition, his expression
-impossible to interpret.
-'This kind of ... how shall I put it... incongruity,' Admissions says, his expression frank and concerned, 'I've got to tell you
-sends up a red flag of potential concern during the admissions process.’
-'We thus invite you to explain the appearance of incongruity if not outright shenanigans.' Students has a tiny piping voice
-that's absurd coming out of a face this big.
-'Surely by incredible you meant very very very impressive, as opposed to literally quote "incredible," surely,' says C.T.,
-seeming to watch the coach at the window massaging the back of his neck. The huge window gives out on nothing more than
-dazzling sunlight and cracked earth with heat-shimmers over it.
-'Then there is before us the matter of not the required two but nine separate application essays, some of which of nearly
-monograph-length, each without exception being —' different sheet — 'the adjective various evalua-tors used was quote "stellar"
-—’
+FRANCISCO
 
-Dir. of Comp.: 'I made in my assessment deliberate use of lapidary and effete.’
-'— but in areas and with titles, I'm sure you recall quite well, Hal: "Neoclassical Assumptions in Contemporary Prescriptive
-Grammar," "The Implications of Post-Fourier Transformations for a Holographically Mimetic Cinema," "The Emergence of
-Heroic Stasis in Broadcast Entertainment" —’
-' "Montague Grammar and the Semantics of Physical Modality"?’
-' "A Man Who Began to Suspect He Was Made of Glass"?’
-' "Tertiary Symbolism in Justinian Erotica"?’
-Now showing broad expanses of recessed gum. 'Suffice to say that there's some frank and candid concern about the recipient
-of these unfortunate test scores, though perhaps explainable test scores, being these essays' sole individual author.’
-'I'm not sure Hal's sure just what's being implied here,' my uncle says. The Dean at center is fingering his lapels as he
-interprets distasteful computed data.
-'What the University is saying here is that from a strictly academic point of view there are admission problems that Hal needs
-to try to help us iron out. A matriculant's first role at the University is and must be as a student. We couldn't admit a student we
-have reason to suspect can't cut the mustard, no matter how much of an asset he might be on the field.’
-'Dean Sawyer means the court, of course, Chuck,' Athletic Affairs says, head severely cocked so he's including the White
-person behind him in the address somehow. 'Not to mention O.N.A.N.C.A.A. regulations and investigators always snuffling
-around for some sort of whiff of the smell of impropriety.’
-The varsity tennis coach looks at his own watch.
-'Assuming these board scores are accurate reflectors of true capacity in this case,' Academic Affairs says, his high voice
-serious and sotto, still looking at the file before him as if it were a plate of something bad, Til tell you right now my opinion is it
-wouldn't be fair. It wouldn't be fair to the other applicants. Wouldn't be fair to the University community.' He looks at me. 'And
-it'd be especially unfair to Hal himself. Admitting a boy we see as simply an athletic asset would amount to just using that boy.
-We're under myriad scrutiny to make sure we're not using anybody. Your board results, son, indicate that we could be accused of
-using you.’
-Uncle Charles is asking Coach White to ask the Dean of Athletic Affairs whether the weather over scores would be as heavy
-if I were, say, a revenue-raising football prodigy. The familiar panic at feeling misperceived is rising, and my chest bumps and
-thuds. I expend energy on remaining utterly silent in my chair, empty, my eyes two great pale zeros. People have promised to get
-me through this.
-Uncle C.T., though, has the pinched look of the cornered. His voice takes on an odd timbre when he's cornered, as if he were
-shouting as he receded. 'Hal's grades at E.T.A., which is I should stress an Academy, not simply a camp or factory, accredited by
-both the Commonwealth of Massachusetts and the North American Sports Academy Association, it's focused on the total needs of
-the player and student, founded by a towering intellectual figure whom I hardly need name, here, and based by him on the
-rigorous Oxbridge Quadrivium-Trivium curricular model, a school fully staffed and equipped, by a fully certified staff, should
-show that my nephew here can cut just about any Pac 10 mustard that needs cutting, and that —’
-DeLint is moving toward the tennis coach, who is shaking his head.
-'— would be able to see a distinct flavor of minor-sport prejudice about this whole thing,' C.T. says, crossing and recrossing
-his legs as I listen, composed and staring.
-The room's carbonated silence is now hostile. T think it's time to let the actual applicant himself speak out on his own behalf,'
-Academic Affairs says very quietly. 'This seems somehow impossible with you here, sir.’
-Athletics smiles tiredly under a hand that massages the bridge of his nose. 'Maybe you'd excuse us for a moment and wait
-outside, Chuck.’
+    Nay, answer me: stand, and unfold yourself.
 
-'Coach White could accompany Mr. Tavis and his associate out to reception,' the yellow Dean says, smiling into my
-unfocused eyes.
-'— led to believe this had all been ironed out in advance, from the —' C.T. is saying as he and deLint are shown to the door.
-The tennis coach extends a hypertrophied arm. Athletics says 'We're all friends and colleagues here.’
-This is not working out. It strikes me that exit signs would look to a native speaker of Latin like red-lit signs that say HE
-leaves. I would yield to the urge to bolt for the door ahead of them if I could know that bolting for the door is what the men in this
-room would see. DeLint is murmuring something to the tennis coach. Sounds of keyboards, phone consoles as the door is briefly
-opened, then firmly shut. I am alone among administrative heads.
-'— offense intended to anyone,' Athletic Affairs is saying, his sportcoat tan and his necktie insigniated in tiny print — 'beyond
-just physical abilities out there in play, which believe me we respect, want, believe me.’
-'— question about it we wouldn't be so anxious to chat with you directly, see?’
-'— that we've known in processing several prior applications through Coach White's office that the Enfield School is
-operated, however impressively, by close relations of first your brother, who I can still remember the way White's predecessor
-Maury Klamkin wooed that kid, so that grades' objectivity can be all too easily called into question —’
-'By whomsoever's calling — N.A.A.U.P., ill-willed Pac 10 programs, O.N.A.N.C.A.A. —’
-The essays are old ones, yes, but they are mine; de moi. But they are, yes, old, not quite on the application's instructed subject
-of Most Meaningful Educational Experience Ever. If I'd done you one from the last year, it would look to you like some sort of
-infant's random stabs on a keyboard, and to you, who use whomsoever as a subject. And in this new smaller company, the
-Director of Composition seems abruptly to have actuated, emerged as both the Alpha of the pack here and way more effeminate
-than he'd seemed at first, standing hip-shot with a hand on his waist, walking with a roll to his shoulders, jingling change as he
-pulls up his pants as he slides into the chair still warm from C.T.'s bottom, crossing his legs in a way that inclines him well into
-my personal space, so that I can see multiple eyebrow-tics and capillary webs in the oysters below his eyes and smell fabric-
-softener and the remains of a breath-mint turned sour.
-'. . . a bright, solid, but very shy boy, we know about your being very shy, Kirk White's told us what your athletically built if
-rather stand-offish younger instructor told him,' the Director says softly, cupping what I feel to be a hand over my sportcoat's
-biceps (surely not), 'who simply needs to swallow hard and trust and tell his side of the story to these gentlemen who bear no
-maliciousness none at all but are doing our jobs and trying to look out for everyone's interests at the same time.’
-I can picture deLint and White sitting with their elbows on their knees in the defecatory posture of all athletes at rest, deLint
-staring at his huge thumbs, while C.T. in the reception area paces in a tight ellipse, speaking into his portable phone. I have been
-coached for this like a Don before a RICO hearing. A neutral and affectless silence. The sort of all-defensive game Schtitt used to
-have me play: the best defense: let everything bounce off you; do nothing. I'd tell you all you want and more, if the sounds I made
-could be what you hear.
-Athletics with his head out from under his wing: '— to avoid admission procedures that could be seen as primarily athletics-
-oriented. It could be a mess, son.’
-'Bill means the appearance, not necessarily the real true facts of the matter, which you alone can fill in,' says the Director of
-Composition.
-'— the appearance of the high athletic ranking, the subnormal scores, the over-academic essays, the incredible grades
-vortexing out of what could be seen as a nepotistic situation.’
-The yellow Dean has leaned so far forward that his tie is going to have a horizontal dent from the table-edge, his face sallow
-and kindly and no-shit-whatever:
-'Look here, Mr. Incandenza, Hal, please just explain to me why we couldn't be accused of using you, son. Why nobody couldcome and say to us, why, look here, University of Arizona, here you are using a boy for just his body, a boy so shy and withdrawn
-he won't speak up for himself, a jock with doctored marks and a store-bought application.’
-The Brewster's-Angle light of the tabletop appears as a rose flush behind my closed lids. I cannot make myself understood. 'I
-am not just a jock,' I say slowly. Distinctly. 'My transcript for the last year might have been dickied a bit, maybe, but that was to
-get me over a rough spot. The grades prior to that are de moi.' My eyes are closed; the room is silent. 'I cannot make myself
-understood, now.' I am speaking slowly and distinctly. 'Call it something I ate.’
-It's funny what you don't recall. Our first home, in the suburb of Weston, which I barely remember — my eldest brother Orin
-says he can remember being in the home's backyard with our mother in the early spring, helping the Moms till some sort of garden
-out of the cold yard. March or early April. The garden's area was a rough rectangle laid out with Popsicle sticks and twine. Orin
-was removing rocks and hard clods from the Moms's path as she worked the rented Rototiller, a wheelbarrow-shaped, gas-driven
-thing that roared and snorted and bucked and he remembers seemed to propel the Moms rather than vice versa, the Moms very tall
-and having to stoop painfully to hold on, her feet leaving drunken prints in the tilled earth. He remembers that in the middle of the
-tilling I came tear-assing out the door and into the backyard wearing some sort of fuzzy red Pooh-wear, crying, holding out
-something he said was really unpleasant-looking in my upturned palm. He says I was around five and crying and was vividly red
-in the cold spring air. I was saying something over and over; he couldn't make it out until our mother saw me and shut down the
-tiller, ears ringing, and came over to see what I was holding out. This turned out to have been a large patch of mold — Orin posits
-from some dark corner of the Weston home's basement, which was warm from the furnace and flooded every spring. The patch
-itself he describes as horrific: darkly green, glossy, vaguely hirsute, speckled with parasitic fungal points of yellow, orange, red.
-Worse, they could see that the patch looked oddly incomplete, gnawed-on; and some of the nauseous stuff was smeared around
-my open mouth. 'I ate this,' was what I was saying. I held the patch out to the Moms, who had her contacts out for the dirty work,
-and at first, bending way down, saw only her crying child, hand out, proffering; and in that most maternal of reflexes she, who
-feared and loathed more than anything spoilage and filth, reached to take whatever her baby held out — as in how many used
-heavy Kleenex, spit-back candies, wads of chewed-out gum in how many theaters, airports, backseats, tournament lounges? O.
-stood there, he says, hefting a cold clod, playing with the Velcro on his puffy coat, watching as the Moms, bent way down to me,
-hand reaching, her lowering face with its presbyopic squint, suddenly stopped, froze, beginning to I.D. what it was I held out,
-countenancing evidence of oral contact with same. He remembers her face as past describing. Her outstretched hand, still
-Rototrembling, hung in the air before mine.
+BERNARDO
 
-'I ate this,' I said.
-'Pardon me?’
-O. says he can only remember (sic) saying something caustic as he lim-boed a crick out of his back. He says he must have felt
-a terrible impending anxiety. The Moms refused ever even to go into the damp basement. I had stopped crying, he remembers, and
-simply stood there, the size and shape of a hydrant, in red PJ's with attached feet, holding out the mold, seriously, like the report of
-some kind of audit.
-O. says his memory diverges at this point, probably as a result of anxiety. In his first memory, the Moms's path around the
-yard is a broad circle of hysteria:
-'God!' she calls out.
-'Help! My son ate this!' she yells in Orin's second and more fleshed-out recollection, yelling it over and over, holding the
-speckled patch aloft in a pincer of fingers, running around and around the garden's rectangle while O. gaped at his first real sight
-of adult hysteria. Suburban neighbors' heads appeared in windows and over the fences, looking. O. remembers me tripping over
-the garden's laid-out twine, getting up dirty, crying, trying to follow.
-'God! Help! My son ate this! Help!' she kept yelling, running a tight pattern just inside the square of string; and my brother
-Orin remembers noting how even in hysterical trauma her flight-lines were plumb, her footprints Native-American-straight, her
-turns, inside the ideogram of string, crisp and martial, crying 'My son ate this! Help!' and lapping me twice before the memory
-recedes.
-'My application's not bought,' I am telling them, calling into the darkness of the red cave that opens out before closed eyes. 'I
-am not just a boy who plays tennis. I have an intricate history. Experiences and feelings. I'm complex.
-'I read,' I say. 'I study and read. I bet I've read everything you've read. Don't think I haven't. I consume libraries. I wear out
-spines and ROM-drives. I do things like get in a taxi and say, "The library, and step on it." My instincts concerning syntax and
-mechanics are better than your own, I can tell, with due respect.
-'But it transcends the mechanics. I'm not a machine. I feel and believe. I have opinions. Some of them are interesting. I could,
-if you'd let me, talk and talk. Let's talk about anything. I believe the influence of Kierkegaard on Camus is underestimated. I
-believe Dennis Gabor may very well have been the Antichrist. I believe Hobbes is just Rousseau in a dark mirror. I believe, with
-Hegel, that transcendence is absorption. I could interface you guys right under the table,' I say. 'I'm not just a creãtus,
-manufactured, conditioned, bred for a function.’
-I open my eyes. 'Please don't think I don't care.’
-I look out. Directed my way is horror. I rise from the chair. I see jowls sagging, eyebrows high on trembling foreheads,
-cheeks bright-white. The chair recedes below me.
-'Sweet mother of Christ,' the Director says.
-T'm fine,' I tell them, standing. From the yellow Dean's expression, there's a brutal wind blowing from my direction.
-Academics' face has gone instantly old. Eight eyes have become blank discs that stare at whatever they see.
-'Good God,' whispers Athletics.
-'Please don't worry,' I say. 'I can explain.' I soothe the air with a casual hand.
-Both my arms are pinioned from behind by the Director of Comp., who wrestles me roughly down, on me with all his weight.
-I taste floor.
-'What's wrong?’
-I say 'Nothing is wrong.’'It's all right! I'm here!' the Director is calling into my ear.
-'Get help!' cries a Dean.
-My forehead is pressed into parquet I never knew could be so cold. I am arrested. I try to be perceived as limp and pliable.
-My face is mashed flat; Comp.'s weight makes it hard to breathe.
-'Try to listen,' I say very slowly, muffled by the floor.
-'What in God's name are those . . .,' one Dean cries shrilly, '. . . those sounds?’
-There are clicks of a phone console's buttons, shoes' heels moving, pivoting, a sheaf of flimsy pages falling.
-'God!’
-'Help!’
-The door's base opens at the left periphery: a wedge of halogen hall-light, white sneakers and a scuffed Nunn Bush. 'Let him
-up!' That's deLint.
-'There is nothing wrong,' I say slowly to the floor. Tm in here.’
-I'm raised by the crutches of my underarms, shaken toward what he must see as calm by a purple-faced Director: 'Get a grip,
-son!’
-DeLint at the big man's arm: 'Stop it!’
-'I am not what you see and hear.’
-Distant sirens. A crude half nelson. Forms at the door. A young Hispanic woman holds her palm against her mouth, looking.
-'I'm not,' I say.
-You have to love old-fashioned men's rooms: the citrus scent of deodorant disks in the long porcelain trough; the stalls with
-wooden doors in frames of cool marble; these thin sinks in rows, basins supported by rickety alphabets of exposed plumbing;
-mirrors over metal shelves; behind all the voices the slight sound of a ceaseless trickle, inflated by echo against wet porcelain and
-a cold tile floor whose mosaic pattern looks almost Islamic at this close range.
-The disorder I've caused revolves all around. I've been half-dragged, still pinioned, through a loose mob of Administrative
-people by the Comp. Director — who appears to have thought variously that I am having a seizure (prying open my mouth to
-check for a throat clear of tongue), that I am somehow choking (a textbook Heimlich that left me whooping), that I am
-psychotically out of control (various postures and grips designed to transfer that control to him) — while about us roil deLint,
-trying to restrain the Director's restraint of me, the varsity tennis coach restraining deLint, my mother's half-brother speaking in
-rapid combinations of polysyllables to the trio of Deans, who variously gasp, wring hands, loosen neckties, waggle digits in C.T.'s
-face, and make pases with sheafs of now-pretty-clearly-superfluous application forms.
-I am rolled over supine on the geometric tile. I am concentrating docilely on the question why U.S. restrooms always appear
-to us as infirmaries for public distress, the place to regain control. My head is cradled in a knelt Director's lap, which is soft, my
-face being swabbed with dusty-brown institutional paper towels he received from some hand out of the crowd overhead, staring
-with all the blankness I can summon into his jowls' small pocks, worst at the blurred jaw-line, of scarring from long-ago acne.
-Uncle Charles, a truly unparalleled slinger of shit, is laying down an enfilade of same, trying to mollify men who seem way more
-in need of a good brow-mopping than I.
-'He's fine,' he keeps saying. 'Look at him, calm as can be, lying there.’
-'You didn't see what happened in there,' a hunched Dean responds through a face webbed with fingers.
-'Excited, is all he gets, sometimes, an excitable kid, impressed with —’
-'But the sounds he made.’
-'Undescribable.’
-'Like an animal.’
-'Subanimalistic noises and sounds.’
-'Nor let's not forget the gestures.’
-'Have you ever gotten help for this boy Dr. Tavis?’
-'Like some sort of animal with something in its mouth.’
-'This boy is damaged.’
-'Like a stick of butter being hit with a mallet.’
-'A writhing animal with a knife in its eye.’
-'What were you possibly about, trying to enroll this —’
-'And his arms.’
-'You didn't see it, Tavis. His arms were —’
-'Flailing. This sort of awful reaching drumming wriggle. Waggling,' the group looking briefly at someone outside my sight
-trying to demonstrate something.
-'Like a time-lapse, a flutter of some sort of awful ... growth.’
-'Sounded most of all like a drowning goat. A goat, drowning in something viscous.’
-'This strangled series of bleats and —’
-'Yes they waggled.’
-'So suddenly a bit of excited waggling's a crime, now?’
-'You, sir, are in trouble. You are in trouble.’
-'His face. As if he was strangling. Burning. I believe I've seen a vision of hell.’
-'He has some trouble communicating, he's communicatively challenged, no one's denying that.’
-'The boy needs care.’
-'Instead of caring for the boy you send him here to enroll, compete?’
-'Hal?’
-'You have not in your most dreadful fantasies dreamt of the amount of trouble you have bought yourself, Dr. so-called
-Headmaster, educator.’'. . . were given to understand this was all just a formality. You took him aback, is all. Shy —’
-'And you, White. You sought to recruit him!’
-'— and terribly impressed and excited, in there, without us, his support system, whom you asked to leave, which if you'd —’
-'I'd only seen him play. On court he's gorgeous. Possibly a genius. We had no idea. The brother's in the bloody NFL for God's
-sake. Here's a top player, we thought, with Southwest roots. His stats were off the chart. We watched him through the whole
-WhataBurger last fall. Not a waggle or a noise. We were watching ballet out there, a mate remarked, after.’
-'Damn right you were watching ballet out there, White. This boy is a balletic athlete, a player.’
-'Some kind of athletic savant then. Balletic compensation for deep problems which you sir choose to disguise by muzzling the
-boy in there.' An expensive pair of Brazilian espadrilles goes by on the left and enters a stall, and the espadrilles come around and
-face me. The urinal trickles behind the voices' small echoes.
-'— haps we'll just be on our way,' C.T. is saying.
-'The integrity of my sleep has been forever compromised, sir.’
-'— think you could pass off a damaged applicant, fabricate credentials and shunt him through a kangaroo-interview and inject
-him into all the rigors of college life?’
-'Hal here functions, you ass. Given a supportive situation. He's fine when he's by himself. Yes he has some trouble with
-excitability in conversation. Did you once hear him try to deny that?’
-'We witnessed something only marginally mammalian in there, sir.’
-'Like hell. Have a look. How's the excitable little guy doing down there, Aubrey, does it look to you?’
-'You, sir, are quite possibly ill. This affair is not concluded.’
-'What ambulance? Don't you guys listen? I'm telling you there's —’
-'Hal? Hal?’
-'Dope him up, seek to act as his mouthpiece, muzzling, and now he lies there catatonic, staring.’
-The crackle of deLint's knees. 'Hal?’
-'— inflate this publicly in any distorted way. The Academy has distinguished alumni, litigators at counsel. Hal here is
-provably competent. Credentials out the bazoo, Bill. The boy reads like a vacuum. Digests things.’
-I simply lie there, listening, smelling the paper towel, watching an es-padrille pivot.
+    Long live the king!
 
-'There's more to life than sitting there interfacing, it might be a newsflash to you.’
-And who could not love that special and leonine roar of a public toilet?
-Not for nothing did Orin say that people outdoors down here just scuttle in vectors from air conditioning to air conditioning.
-The sun is a hammer. I can feel one side of my face start to cook. The blue sky is glossy and fat with heat, a few thin cirri sheared
-to blown strands like hair at the rims. The traffic is nothing like Boston. The stretcher is the special type, with restraining straps at
-the extremities. The same Aubrey deLint I'd dismissed for years as a 2-D martinet knelt gurneyside to squeeze my restrained hand
-and say 'Just hang in there, Buckaroo,' before moving back into the administrative fray at the ambulance's doors. It is a special
-ambulance, dispatched from I'd rather not dwell on where, with not only paramedics but some kind of psychiatric M.D. on board.
-The medics lift gently and are handy with straps. The M.D., his back up against the ambulance's side, has both hands up in
-dispassionate mediation between the Deans and C.T., who keeps stabbing skyward with his cellular's antenna as if it were a sabre,
-outraged that I'm being needlessly ambulanced off to some Emergency Room against my will and interests. The issue whether the
-damaged even have interested wills is shallowly hashed out as some sort of ultra-mach fighter too high overhead to hear slices the
-sky from south to north. The M.D. has both hands up and is patting the air to signify dispassion. He has a big blue jaw. At the only
-other emergency room I have ever been in, almost exactly one year back, the psychiatric stretcher was wheeled in and then parked
-beside the waiting-room chairs. These chairs were molded orange plastic; three of them down the row were occupied by different
-people all of whom were holding empty prescription bottles and perspiring freely. This would have been bad enough, but in the
-end chair, right up next to the strap-secured head of my stretcher, was a T-shirted woman with barnwood skin and a trucker's cap
-and a bad starboard list who began to tell me, lying there restrained and immobile, about how she had seemingly overnight
-suffered a sudden and anomalous gigantism in her right breast, which she referred to as a titty; she had an almost parodic
-Québecois accent and described the 'titty's' presenting history and possible diagnoses for almost twenty minutes before I was
-rolled away. The jet's movement and trail seem incisionish, as if white meat behind the blue were exposed and widening in the
-wake of the blade. I once saw the word KNIFE finger-written on the steamed mirror of a nonpublic bathroom. I have become an
-infantophile. I am forced to roll my closed eyes either up or to the side to keep the red cave from bursting into flames from the
-sunlight. The street's passing traffic is constant and seems to go 'Hush, hush, hush.' The sun, if your fluttering eye catches it even
-slightly, gives you the blue and red floaters a flashbulb gives you. 'Why not? Why not? Why not not, then, if the best reasoning
-you can contrive is why not?' C.T.'s voice, receding with outrage. Only the gallant stabs of his antenna are now visible, just inside
-my sight's right frame. I will be conveyed to an Emergency Room of some kind, where I will be detained as long as I do not
-respond to questions, and then, when I do respond to questions, I will be sedated; so it will be inversion of standard travel, the
-ambulance and ER: I'll make the journey first, then depart. I think very briefly of the late Cosgrove Watt. I think of the
-hypophalangial Grief-Therapist. I think of the Moms, alphabetizing cans of soup in the cabinet over the microwave. Of Himself's
-umbrella hung by its handle from the edge of the mail table just inside the Headmaster's House's foyer. The bad ankle hasn't ached
-once this whole year. I think of John N. R. Wayne, who would have won this year's WhataBurger, standing watch in a mask as
-Donald Gately and I dig up my father's head. There's very little doubt that Wayne would have won. And Venus Williams owns a
-ranch outside Green Valley; she may well attend the 18's Boys' and Girls' finals. I will be out in plenty of time for tomorrow's
-semi; I trust Uncle Charles. Tonight's winner is almost sure to be Dymphna, sixteen but with a birthday two weeks under the 15
-April deadline; and Dymphna will still be tired tomorrow at 0830, while I, sedated, will have slept like a graven image. I have
-never before faced Dymphna in tournament play, nor played with the sonic balls the blind require, but I watched him barely
-dispatch Petropolis Kahn in the Round of 16, and I know he is mine. It will start in the E.R., at the intake desk if C.T.'s late in
-following the ambulance, or in the green-tiled room after the room with the invasive-digital machines; or, given this special M.D.-
-supplied ambulance, maybe on the ride itself: some blue-jawed M.D. scrubbed to an antiseptic glow with his name sewn incursive on his white coat's breast pocket and a quality desk-set pen, wanting gurneyside Q&A, etiology and diagnosis by Socratic
-method, ordered and point-by-point. There are, by the O.E.D. VI's count, nineteen nonarchaic synonyms for unresponsive, of
-which nine are Latinate and four Saxonic. I will play either Stice or Polep in Sunday's final. Maybe in front of Venus Williams. It
-will be someone blue-collar and unlicensed, though, inevitably — a nurse's aide with quick-bit nails, a hospital security guy, a
-tired Cuban orderly who addresses me as jou — who will, looking down in the middle of some kind of bustled task, catch what he
-sees as my eye and ask So yo then man what's your story?
+FRANCISCO
+
+    Bernardo?
+
+BERNARDO
+
+    He.
+
+FRANCISCO
+
+    You come most carefully upon your hour.
+
+BERNARDO
+
+    'Tis now struck twelve; get thee to bed, Francisco.
+
+FRANCISCO
+
+    For this relief much thanks: 'tis bitter cold,
+    And I am sick at heart.
+
+BERNARDO
+
+    Have you had quiet guard?
+
+FRANCISCO
+
+    Not a mouse stirring.
+
+BERNARDO
+
+    Well, good night.
+    If you do meet Horatio and Marcellus,
+    The rivals of my watch, bid them make haste.
+
+FRANCISCO
+
+    I think I hear them. Stand, ho! Who's there?
+
+    Enter HORATIO and MARCELLUS
+
+HORATIO
+
+    Friends to this ground.
+
+MARCELLUS
+
+    And liegemen to the Dane.
+
+FRANCISCO
+
+    Give you good night.
+
+MARCELLUS
+
+    O, farewell, honest soldier:
+    Who hath relieved you?
+
+FRANCISCO
+
+    Bernardo has my place.
+    Give you good night.
+
+    Exit
+
+MARCELLUS
+
+    Holla! Bernardo!
+
+BERNARDO
+
+    Say,
+    What, is Horatio there?
+
+HORATIO
+
+    A piece of him.
+
+BERNARDO
+
+    Welcome, Horatio: welcome, good Marcellus.
+
+MARCELLUS
+
+    What, has this thing appear'd again to-night?
+
+BERNARDO
+
+    I have seen nothing.
+
+MARCELLUS
+
+    Horatio says 'tis but our fantasy,
+    And will not let belief take hold of him
+    Touching this dreaded sight, twice seen of us:
+    Therefore I have entreated him along
+    With us to watch the minutes of this night;
+    That if again this apparition come,
+    He may approve our eyes and speak to it.
+
+HORATIO
+
+    Tush, tush, 'twill not appear.
+
+BERNARDO
+
+    Sit down awhile;
+    And let us once again assail your ears,
+    That are so fortified against our story
+    What we have two nights seen.
+
+HORATIO
+
+    Well, sit we down,
+    And let us hear Bernardo speak of this.
+
+BERNARDO
+
+    Last night of all,
+    When yond same star that's westward from the pole
+    Had made his course to illume that part of heaven
+    Where now it burns, Marcellus and myself,
+    The bell then beating one,--
+
+    Enter Ghost
+
+MARCELLUS
+
+    Peace, break thee off; look, where it comes again!
+
+BERNARDO
+
+    In the same figure, like the king that's dead.
+
+MARCELLUS
+
+    Thou art a scholar; speak to it, Horatio.
+
+BERNARDO
+
+    Looks it not like the king? mark it, Horatio.
+
+HORATIO
+
+    Most like: it harrows me with fear and wonder.
+
+BERNARDO
+
+    It would be spoke to.
+
+MARCELLUS
+
+    Question it, Horatio.
+
+HORATIO
+
+    What art thou that usurp'st this time of night,
+    Together with that fair and warlike form
+    In which the majesty of buried Denmark
+    Did sometimes march? by heaven I charge thee, speak!
+
+MARCELLUS
+
+    It is offended.
+
+BERNARDO
+
+    See, it stalks away!
+
+HORATIO
+
+    Stay! speak, speak! I charge thee, speak!
+
+    Exit Ghost
+
+MARCELLUS
+
+    'Tis gone, and will not answer.
+
+BERNARDO
+
+    How now, Horatio! you tremble and look pale:
+    Is not this something more than fantasy?
+    What think you on't?
+
+HORATIO
+
+    Before my God, I might not this believe
+    Without the sensible and true avouch
+    Of mine own eyes.
+
+MARCELLUS
+
+    Is it not like the king?
+
+HORATIO
+
+    As thou art to thyself:
+    Such was the very armour he had on
+    When he the ambitious Norway combated;
+    So frown'd he once, when, in an angry parle,
+    He smote the sledded Polacks on the ice.
+    'Tis strange.
+
+MARCELLUS
+
+    Thus twice before, and jump at this dead hour,
+    With martial stalk hath he gone by our watch.
+
+HORATIO
+
+    In what particular thought to work I know not;
+    But in the gross and scope of my opinion,
+    This bodes some strange eruption to our state.
+
+MARCELLUS
+
+    Good now, sit down, and tell me, he that knows,
+    Why this same strict and most observant watch
+    So nightly toils the subject of the land,
+    And why such daily cast of brazen cannon,
+    And foreign mart for implements of war;
+    Why such impress of shipwrights, whose sore task
+    Does not divide the Sunday from the week;
+    What might be toward, that this sweaty haste
+    Doth make the night joint-labourer with the day:
+    Who is't that can inform me?
+
+HORATIO
+
+    That can I;
+    At least, the whisper goes so. Our last king,
+    Whose image even but now appear'd to us,
+    Was, as you know, by Fortinbras of Norway,
+    Thereto prick'd on by a most emulate pride,
+    Dared to the combat; in which our valiant Hamlet--
+    For so this side of our known world esteem'd him--
+    Did slay this Fortinbras; who by a seal'd compact,
+    Well ratified by law and heraldry,
+    Did forfeit, with his life, all those his lands
+    Which he stood seized of, to the conqueror:
+    Against the which, a moiety competent
+    Was gaged by our king; which had return'd
+    To the inheritance of Fortinbras,
+    Had he been vanquisher; as, by the same covenant,
+    And carriage of the article design'd,
+    His fell to Hamlet. Now, sir, young Fortinbras,
+    Of unimproved mettle hot and full,
+    Hath in the skirts of Norway here and there
+    Shark'd up a list of lawless resolutes,
+    For food and diet, to some enterprise
+    That hath a stomach in't; which is no other--
+    As it doth well appear unto our state--
+    But to recover of us, by strong hand
+    And terms compulsatory, those foresaid lands
+    So by his father lost: and this, I take it,
+    Is the main motive of our preparations,
+    The source of this our watch and the chief head
+    Of this post-haste and romage in the land.
+
+BERNARDO
+
+    I think it be no other but e'en so:
+    Well may it sort that this portentous figure
+    Comes armed through our watch; so like the king
+    That was and is the question of these wars.
+
+HORATIO
+
+    A mote it is to trouble the mind's eye.
+    In the most high and palmy state of Rome,
+    A little ere the mightiest Julius fell,
+    The graves stood tenantless and the sheeted dead
+    Did squeak and gibber in the Roman streets:
+    As stars with trains of fire and dews of blood,
+    Disasters in the sun; and the moist star
+    Upon whose influence Neptune's empire stands
+    Was sick almost to doomsday with eclipse:
+    And even the like precurse of fierce events,
+    As harbingers preceding still the fates
+    And prologue to the omen coming on,
+    Have heaven and earth together demonstrated
+    Unto our climatures and countrymen.--
+    But soft, behold! lo, where it comes again!
+
+    Re-enter Ghost
+    I'll cross it, though it blast me. Stay, illusion!
+    If thou hast any sound, or use of voice,
+    Speak to me:
+    If there be any good thing to be done,
+    That may to thee do ease and grace to me,
+    Speak to me:
+
+    Cock crows
+    If thou art privy to thy country's fate,
+    Which, happily, foreknowing may avoid, O, speak!
+    Or if thou hast uphoarded in thy life
+    Extorted treasure in the womb of earth,
+    For which, they say, you spirits oft walk in death,
+    Speak of it: stay, and speak! Stop it, Marcellus.
+
+MARCELLUS
+
+    Shall I strike at it with my partisan?
+
+HORATIO
+
+    Do, if it will not stand.
+
+BERNARDO
+
+    'Tis here!
+
+HORATIO
+
+    'Tis here!
+
+MARCELLUS
+
+    'Tis gone!
+
+    Exit Ghost
+    We do it wrong, being so majestical,
+    To offer it the show of violence;
+    For it is, as the air, invulnerable,
+    And our vain blows malicious mockery.
+
+BERNARDO
+
+    It was about to speak, when the cock crew.
+
+HORATIO
+
+    And then it started like a guilty thing
+    Upon a fearful summons. I have heard,
+    The cock, that is the trumpet to the morn,
+    Doth with his lofty and shrill-sounding throat
+    Awake the god of day; and, at his warning,
+    Whether in sea or fire, in earth or air,
+    The extravagant and erring spirit hies
+    To his confine: and of the truth herein
+    This present object made probation.
+
+MARCELLUS
+
+    It faded on the crowing of the cock.
+    Some say that ever 'gainst that season comes
+    Wherein our Saviour's birth is celebrated,
+    The bird of dawning singeth all night long:
+    And then, they say, no spirit dares stir abroad;
+    The nights are wholesome; then no planets strike,
+    No fairy takes, nor witch hath power to charm,
+    So hallow'd and so gracious is the time.
+
+HORATIO
+
+    So have I heard and do in part believe it.
+    But, look, the morn, in russet mantle clad,
+    Walks o'er the dew of yon high eastward hill:
+    Break we our watch up; and by my advice,
+    Let us impart what we have seen to-night
+    Unto young Hamlet; for, upon my life,
+    This spirit, dumb to us, will speak to him.
+    Do you consent we shall acquaint him with it,
+    As needful in our loves, fitting our duty?
+
+MARCELLUS
+
+    Let's do't, I pray; and I this morning know
+    Where we shall find him most conveniently.
+
+    Exeunt
+
+SCENE II. A room of state in the castle.
+
+    Enter KING CLAUDIUS, QUEEN GERTRUDE, HAMLET, POLONIUS, LAERTES, VOLTIMAND, CORNELIUS, Lords, and Attendants
+
+KING CLAUDIUS
+
+    Though yet of Hamlet our dear brother's death
+    The memory be green, and that it us befitted
+    To bear our hearts in grief and our whole kingdom
+    To be contracted in one brow of woe,
+    Yet so far hath discretion fought with nature
+    That we with wisest sorrow think on him,
+    Together with remembrance of ourselves.
+    Therefore our sometime sister, now our queen,
+    The imperial jointress to this warlike state,
+    Have we, as 'twere with a defeated joy,--
+    With an auspicious and a dropping eye,
+    With mirth in funeral and with dirge in marriage,
+    In equal scale weighing delight and dole,--
+    Taken to wife: nor have we herein barr'd
+    Your better wisdoms, which have freely gone
+    With this affair along. For all, our thanks.
+    Now follows, that you know, young Fortinbras,
+    Holding a weak supposal of our worth,
+    Or thinking by our late dear brother's death
+    Our state to be disjoint and out of frame,
+    Colleagued with the dream of his advantage,
+    He hath not fail'd to pester us with message,
+    Importing the surrender of those lands
+    Lost by his father, with all bonds of law,
+    To our most valiant brother. So much for him.
+    Now for ourself and for this time of meeting:
+    Thus much the business is: we have here writ
+    To Norway, uncle of young Fortinbras,--
+    Who, impotent and bed-rid, scarcely hears
+    Of this his nephew's purpose,--to suppress
+    His further gait herein; in that the levies,
+    The lists and full proportions, are all made
+    Out of his subject: and we here dispatch
+    You, good Cornelius, and you, Voltimand,
+    For bearers of this greeting to old Norway;
+    Giving to you no further personal power
+    To business with the king, more than the scope
+    Of these delated articles allow.
+    Farewell, and let your haste commend your duty.
+
+CORNELIUS VOLTIMAND
+
+    In that and all things will we show our duty.
+
+KING CLAUDIUS
+
+    We doubt it nothing: heartily farewell.
+
+    Exeunt VOLTIMAND and CORNELIUS
+    And now, Laertes, what's the news with you?
+    You told us of some suit; what is't, Laertes?
+    You cannot speak of reason to the Dane,
+    And loose your voice: what wouldst thou beg, Laertes,
+    That shall not be my offer, not thy asking?
+    The head is not more native to the heart,
+    The hand more instrumental to the mouth,
+    Than is the throne of Denmark to thy father.
+    What wouldst thou have, Laertes?
+
+LAERTES
+
+    My dread lord,
+    Your leave and favour to return to France;
+    From whence though willingly I came to Denmark,
+    To show my duty in your coronation,
+    Yet now, I must confess, that duty done,
+    My thoughts and wishes bend again toward France
+    And bow them to your gracious leave and pardon.
+
+KING CLAUDIUS
+
+    Have you your father's leave? What says Polonius?
+
+LORD POLONIUS
+
+    He hath, my lord, wrung from me my slow leave
+    By laboursome petition, and at last
+    Upon his will I seal'd my hard consent:
+    I do beseech you, give him leave to go.
+
+KING CLAUDIUS
+
+    Take thy fair hour, Laertes; time be thine,
+    And thy best graces spend it at thy will!
+    But now, my cousin Hamlet, and my son,--
+
+HAMLET
+
+    [Aside] A little more than kin, and less than kind.
+
+KING CLAUDIUS
+
+    How is it that the clouds still hang on you?
+
+HAMLET
+
+    Not so, my lord; I am too much i' the sun.
+
+QUEEN GERTRUDE
+
+    Good Hamlet, cast thy nighted colour off,
+    And let thine eye look like a friend on Denmark.
+    Do not for ever with thy vailed lids
+    Seek for thy noble father in the dust:
+    Thou know'st 'tis common; all that lives must die,
+    Passing through nature to eternity.
+
+HAMLET
+
+    Ay, madam, it is common.
+
+QUEEN GERTRUDE
+
+    If it be,
+    Why seems it so particular with thee?
+
+HAMLET
+
+    Seems, madam! nay it is; I know not 'seems.'
+    'Tis not alone my inky cloak, good mother,
+    Nor customary suits of solemn black,
+    Nor windy suspiration of forced breath,
+    No, nor the fruitful river in the eye,
+    Nor the dejected 'havior of the visage,
+    Together with all forms, moods, shapes of grief,
+    That can denote me truly: these indeed seem,
+    For they are actions that a man might play:
+    But I have that within which passeth show;
+    These but the trappings and the suits of woe.
+
+KING CLAUDIUS
+
+    'Tis sweet and commendable in your nature, Hamlet,
+    To give these mourning duties to your father:
+    But, you must know, your father lost a father;
+    That father lost, lost his, and the survivor bound
+    In filial obligation for some term
+    To do obsequious sorrow: but to persever
+    In obstinate condolement is a course
+    Of impious stubbornness; 'tis unmanly grief;
+    It shows a will most incorrect to heaven,
+    A heart unfortified, a mind impatient,
+    An understanding simple and unschool'd:
+    For what we know must be and is as common
+    As any the most vulgar thing to sense,
+    Why should we in our peevish opposition
+    Take it to heart? Fie! 'tis a fault to heaven,
+    A fault against the dead, a fault to nature,
+    To reason most absurd: whose common theme
+    Is death of fathers, and who still hath cried,
+    From the first corse till he that died to-day,
+    'This must be so.' We pray you, throw to earth
+    This unprevailing woe, and think of us
+    As of a father: for let the world take note,
+    You are the most immediate to our throne;
+    And with no less nobility of love
+    Than that which dearest father bears his son,
+    Do I impart toward you. For your intent
+    In going back to school in Wittenberg,
+    It is most retrograde to our desire:
+    And we beseech you, bend you to remain
+    Here, in the cheer and comfort of our eye,
+    Our chiefest courtier, cousin, and our son.
+
+QUEEN GERTRUDE
+
+    Let not thy mother lose her prayers, Hamlet:
+    I pray thee, stay with us; go not to Wittenberg.
+
+HAMLET
+
+    I shall in all my best obey you, madam.
+
+KING CLAUDIUS
+
+    Why, 'tis a loving and a fair reply:
+    Be as ourself in Denmark. Madam, come;
+    This gentle and unforced accord of Hamlet
+    Sits smiling to my heart: in grace whereof,
+    No jocund health that Denmark drinks to-day,
+    But the great cannon to the clouds shall tell,
+    And the king's rouse the heavens all bruit again,
+    Re-speaking earthly thunder. Come away.
+
+    Exeunt all but HAMLET
+
+HAMLET
+
+    O, that this too too solid flesh would melt
+    Thaw and resolve itself into a dew!
+    Or that the Everlasting had not fix'd
+    His canon 'gainst self-slaughter! O God! God!
+    How weary, stale, flat and unprofitable,
+    Seem to me all the uses of this world!
+    Fie on't! ah fie! 'tis an unweeded garden,
+    That grows to seed; things rank and gross in nature
+    Possess it merely. That it should come to this!
+    But two months dead: nay, not so much, not two:
+    So excellent a king; that was, to this,
+    Hyperion to a satyr; so loving to my mother
+    That he might not beteem the winds of heaven
+    Visit her face too roughly. Heaven and earth!
+    Must I remember? why, she would hang on him,
+    As if increase of appetite had grown
+    By what it fed on: and yet, within a month--
+    Let me not think on't--Frailty, thy name is woman!--
+    A little month, or ere those shoes were old
+    With which she follow'd my poor father's body,
+    Like Niobe, all tears:--why she, even she--
+    O, God! a beast, that wants discourse of reason,
+    Would have mourn'd longer--married with my uncle,
+    My father's brother, but no more like my father
+    Than I to Hercules: within a month:
+    Ere yet the salt of most unrighteous tears
+    Had left the flushing in her galled eyes,
+    She married. O, most wicked speed, to post
+    With such dexterity to incestuous sheets!
+    It is not nor it cannot come to good:
+    But break, my heart; for I must hold my tongue.
+
+    Enter HORATIO, MARCELLUS, and BERNARDO
+
+HORATIO
+
+    Hail to your lordship!
+
+HAMLET
+
+    I am glad to see you well:
+    Horatio,--or I do forget myself.
+
+HORATIO
+
+    The same, my lord, and your poor servant ever.
+
+HAMLET
+
+    Sir, my good friend; I'll change that name with you:
+    And what make you from Wittenberg, Horatio? Marcellus?
+
+MARCELLUS
+
+    My good lord--
+
+HAMLET
+
+    I am very glad to see you. Good even, sir.
+    But what, in faith, make you from Wittenberg?
+
+HORATIO
+
+    A truant disposition, good my lord.
+
+HAMLET
+
+    I would not hear your enemy say so,
+    Nor shall you do mine ear that violence,
+    To make it truster of your own report
+    Against yourself: I know you are no truant.
+    But what is your affair in Elsinore?
+    We'll teach you to drink deep ere you depart.
+
+HORATIO
+
+    My lord, I came to see your father's funeral.
+
+HAMLET
+
+    I pray thee, do not mock me, fellow-student;
+    I think it was to see my mother's wedding.
+
+HORATIO
+
+    Indeed, my lord, it follow'd hard upon.
+
+HAMLET
+
+    Thrift, thrift, Horatio! the funeral baked meats
+    Did coldly furnish forth the marriage tables.
+    Would I had met my dearest foe in heaven
+    Or ever I had seen that day, Horatio!
+    My father!--methinks I see my father.
+
+HORATIO
+
+    Where, my lord?
+
+HAMLET
+
+    In my mind's eye, Horatio.
+
+HORATIO
+
+    I saw him once; he was a goodly king.
+
+HAMLET
+
+    He was a man, take him for all in all,
+    I shall not look upon his like again.
+
+HORATIO
+
+    My lord, I think I saw him yesternight.
+
+HAMLET
+
+    Saw? who?
+
+HORATIO
+
+    My lord, the king your father.
+
+HAMLET
+
+    The king my father!
+
+HORATIO
+
+    Season your admiration for awhile
+    With an attent ear, till I may deliver,
+    Upon the witness of these gentlemen,
+    This marvel to you.
+
+HAMLET
+
+    For God's love, let me hear.
+
+HORATIO
+
+    Two nights together had these gentlemen,
+    Marcellus and Bernardo, on their watch,
+    In the dead vast and middle of the night,
+    Been thus encounter'd. A figure like your father,
+    Armed at point exactly, cap-a-pe,
+    Appears before them, and with solemn march
+    Goes slow and stately by them: thrice he walk'd
+    By their oppress'd and fear-surprised eyes,
+    Within his truncheon's length; whilst they, distilled
+    Almost to jelly with the act of fear,
+    Stand dumb and speak not to him. This to me
+    In dreadful secrecy impart they did;
+    And I with them the third night kept the watch;
+    Where, as they had deliver'd, both in time,
+    Form of the thing, each word made true and good,
+    The apparition comes: I knew your father;
+    These hands are not more like.
+
+HAMLET
+
+    But where was this?
+
+MARCELLUS
+
+    My lord, upon the platform where we watch'd.
+
+HAMLET
+
+    Did you not speak to it?
+
+HORATIO
+
+    My lord, I did;
+    But answer made it none: yet once methought
+    It lifted up its head and did address
+    Itself to motion, like as it would speak;
+    But even then the morning cock crew loud,
+    And at the sound it shrunk in haste away,
+    And vanish'd from our sight.
+
+HAMLET
+
+    'Tis very strange.
+
+HORATIO
+
+    As I do live, my honour'd lord, 'tis true;
+    And we did think it writ down in our duty
+    To let you know of it.
+
+HAMLET
+
+    Indeed, indeed, sirs, but this troubles me.
+    Hold you the watch to-night?
+
+MARCELLUS BERNARDO
+
+    We do, my lord.
+
+HAMLET
+
+    Arm'd, say you?
+
+MARCELLUS BERNARDO
+
+    Arm'd, my lord.
+
+HAMLET
+
+    From top to toe?
+
+MARCELLUS BERNARDO
+
+    My lord, from head to foot.
+
+HAMLET
+
+    Then saw you not his face?
+
+HORATIO
+
+    O, yes, my lord; he wore his beaver up.
+
+HAMLET
+
+    What, look'd he frowningly?
+
+HORATIO
+
+    A countenance more in sorrow than in anger.
+
+HAMLET
+
+    Pale or red?
+
+HORATIO
+
+    Nay, very pale.
+
+HAMLET
+
+    And fix'd his eyes upon you?
+
+HORATIO
+
+    Most constantly.
+
+HAMLET
+
+    I would I had been there.
+
+HORATIO
+
+    It would have much amazed you.
+
+HAMLET
+
+    Very like, very like. Stay'd it long?
+
+HORATIO
+
+    While one with moderate haste might tell a hundred.
+
+MARCELLUS BERNARDO
+
+    Longer, longer.
+
+HORATIO
+
+    Not when I saw't.
+
+HAMLET
+
+    His beard was grizzled--no?
+
+HORATIO
+
+    It was, as I have seen it in his life,
+    A sable silver'd.
+
+HAMLET
+
+    I will watch to-night;
+    Perchance 'twill walk again.
+
+HORATIO
+
+    I warrant it will.
+
+HAMLET
+
+    If it assume my noble father's person,
+    I'll speak to it, though hell itself should gape
+    And bid me hold my peace. I pray you all,
+    If you have hitherto conceal'd this sight,
+    Let it be tenable in your silence still;
+    And whatsoever else shall hap to-night,
+    Give it an understanding, but no tongue:
+    I will requite your loves. So, fare you well:
+    Upon the platform, 'twixt eleven and twelve,
+    I'll visit you.
+
+All
+
+    Our duty to your honour.
+
+HAMLET
+
+    Your loves, as mine to you: farewell.
+
+    Exeunt all but HAMLET
+    My father's spirit in arms! all is not well;
+    I doubt some foul play: would the night were come!
+    Till then sit still, my soul: foul deeds will rise,
+    Though all the earth o'erwhelm them, to men's eyes.
+
+    Exit
+
+SCENE III. A room in Polonius' house.
+
+    Enter LAERTES and OPHELIA
+
+LAERTES
+
+    My necessaries are embark'd: farewell:
+    And, sister, as the winds give benefit
+    And convoy is assistant, do not sleep,
+    But let me hear from you.
+
+OPHELIA
+
+    Do you doubt that?
+
+LAERTES
+
+    For Hamlet and the trifling of his favour,
+    Hold it a fashion and a toy in blood,
+    A violet in the youth of primy nature,
+    Forward, not permanent, sweet, not lasting,
+    The perfume and suppliance of a minute; No more.
+
+OPHELIA
+
+    No more but so?
+
+LAERTES
+
+    Think it no more;
+    For nature, crescent, does not grow alone
+    In thews and bulk, but, as this temple waxes,
+    The inward service of the mind and soul
+    Grows wide withal. Perhaps he loves you now,
+    And now no soil nor cautel doth besmirch
+    The virtue of his will: but you must fear,
+    His greatness weigh'd, his will is not his own;
+    For he himself is subject to his birth:
+    He may not, as unvalued persons do,
+    Carve for himself; for on his choice depends
+    The safety and health of this whole state;
+    And therefore must his choice be circumscribed
+    Unto the voice and yielding of that body
+    Whereof he is the head. Then if he says he loves you,
+    It fits your wisdom so far to believe it
+    As he in his particular act and place
+    May give his saying deed; which is no further
+    Than the main voice of Denmark goes withal.
+    Then weigh what loss your honour may sustain,
+    If with too credent ear you list his songs,
+    Or lose your heart, or your chaste treasure open
+    To his unmaster'd importunity.
+    Fear it, Ophelia, fear it, my dear sister,
+    And keep you in the rear of your affection,
+    Out of the shot and danger of desire.
+    The chariest maid is prodigal enough,
+    If she unmask her beauty to the moon:
+    Virtue itself 'scapes not calumnious strokes:
+    The canker galls the infants of the spring,
+    Too oft before their buttons be disclosed,
+    And in the morn and liquid dew of youth
+    Contagious blastments are most imminent.
+    Be wary then; best safety lies in fear:
+    Youth to itself rebels, though none else near.
+
+OPHELIA
+
+    I shall the effect of this good lesson keep,
+    As watchman to my heart. But, good my brother,
+    Do not, as some ungracious pastors do,
+    Show me the steep and thorny way to heaven;
+    Whiles, like a puff'd and reckless libertine,
+    Himself the primrose path of dalliance treads,
+    And recks not his own rede.
+
+LAERTES
+
+    O, fear me not.
+    I stay too long: but here my father comes.
+
+    Enter POLONIUS
+    A double blessing is a double grace,
+    Occasion smiles upon a second leave.
+
+LORD POLONIUS
+
+    Yet here, Laertes! aboard, aboard, for shame!
+    The wind sits in the shoulder of your sail,
+    And you are stay'd for. There; my blessing with thee!
+    And these few precepts in thy memory
+    See thou character. Give thy thoughts no tongue,
+    Nor any unproportioned thought his act.
+    Be thou familiar, but by no means vulgar.
+    Those friends thou hast, and their adoption tried,
+    Grapple them to thy soul with hoops of steel;
+    But do not dull thy palm with entertainment
+    Of each new-hatch'd, unfledged comrade. Beware
+    Of entrance to a quarrel, but being in,
+    Bear't that the opposed may beware of thee.
+    Give every man thy ear, but few thy voice;
+    Take each man's censure, but reserve thy judgment.
+    Costly thy habit as thy purse can buy,
+    But not express'd in fancy; rich, not gaudy;
+    For the apparel oft proclaims the man,
+    And they in France of the best rank and station
+    Are of a most select and generous chief in that.
+    Neither a borrower nor a lender be;
+    For loan oft loses both itself and friend,
+    And borrowing dulls the edge of husbandry.
+    This above all: to thine ownself be true,
+    And it must follow, as the night the day,
+    Thou canst not then be false to any man.
+    Farewell: my blessing season this in thee!
+
+LAERTES
+
+    Most humbly do I take my leave, my lord.
+
+LORD POLONIUS
+
+    The time invites you; go; your servants tend.
+
+LAERTES
+
+    Farewell, Ophelia; and remember well
+    What I have said to you.
+
+OPHELIA
+
+    'Tis in my memory lock'd,
+    And you yourself shall keep the key of it.
+
+LAERTES
+
+    Farewell.
+
+    Exit
+
+LORD POLONIUS
+
+    What is't, Ophelia, be hath said to you?
+
+OPHELIA
+
+    So please you, something touching the Lord Hamlet.
+
+LORD POLONIUS
+
+    Marry, well bethought:
+    'Tis told me, he hath very oft of late
+    Given private time to you; and you yourself
+    Have of your audience been most free and bounteous:
+    If it be so, as so 'tis put on me,
+    And that in way of caution, I must tell you,
+    You do not understand yourself so clearly
+    As it behoves my daughter and your honour.
+    What is between you? give me up the truth.
+
+OPHELIA
+
+    He hath, my lord, of late made many tenders
+    Of his affection to me.
+
+LORD POLONIUS
+
+    Affection! pooh! you speak like a green girl,
+    Unsifted in such perilous circumstance.
+    Do you believe his tenders, as you call them?
+
+OPHELIA
+
+    I do not know, my lord, what I should think.
+
+LORD POLONIUS
+
+    Marry, I'll teach you: think yourself a baby;
+    That you have ta'en these tenders for true pay,
+    Which are not sterling. Tender yourself more dearly;
+    Or--not to crack the wind of the poor phrase,
+    Running it thus--you'll tender me a fool.
+
+OPHELIA
+
+    My lord, he hath importuned me with love
+    In honourable fashion.
+
+LORD POLONIUS
+
+    Ay, fashion you may call it; go to, go to.
+
+OPHELIA
+
+    And hath given countenance to his speech, my lord,
+    With almost all the holy vows of heaven.
+
+LORD POLONIUS
+
+    Ay, springes to catch woodcocks. I do know,
+    When the blood burns, how prodigal the soul
+    Lends the tongue vows: these blazes, daughter,
+    Giving more light than heat, extinct in both,
+    Even in their promise, as it is a-making,
+    You must not take for fire. From this time
+    Be somewhat scanter of your maiden presence;
+    Set your entreatments at a higher rate
+    Than a command to parley. For Lord Hamlet,
+    Believe so much in him, that he is young
+    And with a larger tether may he walk
+    Than may be given you: in few, Ophelia,
+    Do not believe his vows; for they are brokers,
+    Not of that dye which their investments show,
+    But mere implorators of unholy suits,
+    Breathing like sanctified and pious bawds,
+    The better to beguile. This is for all:
+    I would not, in plain terms, from this time forth,
+    Have you so slander any moment leisure,
+    As to give words or talk with the Lord Hamlet.
+    Look to't, I charge you: come your ways.
+
+OPHELIA
+
+    I shall obey, my lord.
+
+    Exeunt
+
+SCENE IV. The platform.
+
+    Enter HAMLET, HORATIO, and MARCELLUS
+
+HAMLET
+
+    The air bites shrewdly; it is very cold.
+
+HORATIO
+
+    It is a nipping and an eager air.
+
+HAMLET
+
+    What hour now?
+
+HORATIO
+
+    I think it lacks of twelve.
+
+HAMLET
+
+    No, it is struck.
+
+HORATIO
+
+    Indeed? I heard it not: then it draws near the season
+    Wherein the spirit held his wont to walk.
+
+    A flourish of trumpets, and ordnance shot off, within
+    What does this mean, my lord?
+
+HAMLET
+
+    The king doth wake to-night and takes his rouse,
+    Keeps wassail, and the swaggering up-spring reels;
+    And, as he drains his draughts of Rhenish down,
+    The kettle-drum and trumpet thus bray out
+    The triumph of his pledge.
+
+HORATIO
+
+    Is it a custom?
+
+HAMLET
+
+    Ay, marry, is't:
+    But to my mind, though I am native here
+    And to the manner born, it is a custom
+    More honour'd in the breach than the observance.
+    This heavy-headed revel east and west
+    Makes us traduced and tax'd of other nations:
+    They clepe us drunkards, and with swinish phrase
+    Soil our addition; and indeed it takes
+    From our achievements, though perform'd at height,
+    The pith and marrow of our attribute.
+    So, oft it chances in particular men,
+    That for some vicious mole of nature in them,
+    As, in their birth--wherein they are not guilty,
+    Since nature cannot choose his origin--
+    By the o'ergrowth of some complexion,
+    Oft breaking down the pales and forts of reason,
+    Or by some habit that too much o'er-leavens
+    The form of plausive manners, that these men,
+    Carrying, I say, the stamp of one defect,
+    Being nature's livery, or fortune's star,--
+    Their virtues else--be they as pure as grace,
+    As infinite as man may undergo--
+    Shall in the general censure take corruption
+    From that particular fault: the dram of eale
+    Doth all the noble substance of a doubt
+    To his own scandal.
+
+HORATIO
+
+    Look, my lord, it comes!
+
+    Enter Ghost
+
+HAMLET
+
+    Angels and ministers of grace defend us!
+    Be thou a spirit of health or goblin damn'd,
+    Bring with thee airs from heaven or blasts from hell,
+    Be thy intents wicked or charitable,
+    Thou comest in such a questionable shape
+    That I will speak to thee: I'll call thee Hamlet,
+    King, father, royal Dane: O, answer me!
+    Let me not burst in ignorance; but tell
+    Why thy canonized bones, hearsed in death,
+    Have burst their cerements; why the sepulchre,
+    Wherein we saw thee quietly inurn'd,
+    Hath oped his ponderous and marble jaws,
+    To cast thee up again. What may this mean,
+    That thou, dead corse, again in complete steel
+    Revisit'st thus the glimpses of the moon,
+    Making night hideous; and we fools of nature
+    So horridly to shake our disposition
+    With thoughts beyond the reaches of our souls?
+    Say, why is this? wherefore? what should we do?
+
+    Ghost beckons HAMLET
+
+HORATIO
+
+    It beckons you to go away with it,
+    As if it some impartment did desire
+    To you alone.
+
+MARCELLUS
+
+    Look, with what courteous action
+    It waves you to a more removed ground:
+    But do not go with it.
+
+HORATIO
+
+    No, by no means.
+
+HAMLET
+
+    It will not speak; then I will follow it.
+
+HORATIO
+
+    Do not, my lord.
+
+HAMLET
+
+    Why, what should be the fear?
+    I do not set my life in a pin's fee;
+    And for my soul, what can it do to that,
+    Being a thing immortal as itself?
+    It waves me forth again: I'll follow it.
+
+HORATIO
+
+    What if it tempt you toward the flood, my lord,
+    Or to the dreadful summit of the cliff
+    That beetles o'er his base into the sea,
+    And there assume some other horrible form,
+    Which might deprive your sovereignty of reason
+    And draw you into madness? think of it:
+    The very place puts toys of desperation,
+    Without more motive, into every brain
+    That looks so many fathoms to the sea
+    And hears it roar beneath.
+
+HAMLET
+
+    It waves me still.
+    Go on; I'll follow thee.
+
+MARCELLUS
+
+    You shall not go, my lord.
+
+HAMLET
+
+    Hold off your hands.
+
+HORATIO
+
+    Be ruled; you shall not go.
+
+HAMLET
+
+    My fate cries out,
+    And makes each petty artery in this body
+    As hardy as the Nemean lion's nerve.
+    Still am I call'd. Unhand me, gentlemen.
+    By heaven, I'll make a ghost of him that lets me!
+    I say, away! Go on; I'll follow thee.
+
+    Exeunt Ghost and HAMLET
+
+HORATIO
+
+    He waxes desperate with imagination.
+
+MARCELLUS
+
+    Let's follow; 'tis not fit thus to obey him.
+
+HORATIO
+
+    Have after. To what issue will this come?
+
+MARCELLUS
+
+    Something is rotten in the state of Denmark.
+
+HORATIO
+
+    Heaven will direct it.
+
+MARCELLUS
+
+    Nay, let's follow him.
+
+    Exeunt
+
+SCENE V. Another part of the platform.
+
+    Enter GHOST and HAMLET
+
+HAMLET
+
+    Where wilt thou lead me? speak; I'll go no further.
+
+Ghost
+
+    Mark me.
+
+HAMLET
+
+    I will.
+
+Ghost
+
+    My hour is almost come,
+    When I to sulphurous and tormenting flames
+    Must render up myself.
+
+HAMLET
+
+    Alas, poor ghost!
+
+Ghost
+
+    Pity me not, but lend thy serious hearing
+    To what I shall unfold.
+
+HAMLET
+
+    Speak; I am bound to hear.
+
+Ghost
+
+    So art thou to revenge, when thou shalt hear.
+
+HAMLET
+
+    What?
+
+Ghost
+
+    I am thy father's spirit,
+    Doom'd for a certain term to walk the night,
+    And for the day confined to fast in fires,
+    Till the foul crimes done in my days of nature
+    Are burnt and purged away. But that I am forbid
+    To tell the secrets of my prison-house,
+    I could a tale unfold whose lightest word
+    Would harrow up thy soul, freeze thy young blood,
+    Make thy two eyes, like stars, start from their spheres,
+    Thy knotted and combined locks to part
+    And each particular hair to stand on end,
+    Like quills upon the fretful porpentine:
+    But this eternal blazon must not be
+    To ears of flesh and blood. List, list, O, list!
+    If thou didst ever thy dear father love--
+
+HAMLET
+
+    O God!
+
+Ghost
+
+    Revenge his foul and most unnatural murder.
+
+HAMLET
+
+    Murder!
+
+Ghost
+
+    Murder most foul, as in the best it is;
+    But this most foul, strange and unnatural.
+
+HAMLET
+
+    Haste me to know't, that I, with wings as swift
+    As meditation or the thoughts of love,
+    May sweep to my revenge.
+
+Ghost
+
+    I find thee apt;
+    And duller shouldst thou be than the fat weed
+    That roots itself in ease on Lethe wharf,
+    Wouldst thou not stir in this. Now, Hamlet, hear:
+    'Tis given out that, sleeping in my orchard,
+    A serpent stung me; so the whole ear of Denmark
+    Is by a forged process of my death
+    Rankly abused: but know, thou noble youth,
+    The serpent that did sting thy father's life
+    Now wears his crown.
+
+HAMLET
+
+    O my prophetic soul! My uncle!
+
+Ghost
+
+    Ay, that incestuous, that adulterate beast,
+    With witchcraft of his wit, with traitorous gifts,--
+    O wicked wit and gifts, that have the power
+    So to seduce!--won to his shameful lust
+    The will of my most seeming-virtuous queen:
+    O Hamlet, what a falling-off was there!
+    From me, whose love was of that dignity
+    That it went hand in hand even with the vow
+    I made to her in marriage, and to decline
+    Upon a wretch whose natural gifts were poor
+    To those of mine!
+    But virtue, as it never will be moved,
+    Though lewdness court it in a shape of heaven,
+    So lust, though to a radiant angel link'd,
+    Will sate itself in a celestial bed,
+    And prey on garbage.
+    But, soft! methinks I scent the morning air;
+    Brief let me be. Sleeping within my orchard,
+    My custom always of the afternoon,
+    Upon my secure hour thy uncle stole,
+    With juice of cursed hebenon in a vial,
+    And in the porches of my ears did pour
+    The leperous distilment; whose effect
+    Holds such an enmity with blood of man
+    That swift as quicksilver it courses through
+    The natural gates and alleys of the body,
+    And with a sudden vigour doth posset
+    And curd, like eager droppings into milk,
+    The thin and wholesome blood: so did it mine;
+    And a most instant tetter bark'd about,
+    Most lazar-like, with vile and loathsome crust,
+    All my smooth body.
+    Thus was I, sleeping, by a brother's hand
+    Of life, of crown, of queen, at once dispatch'd:
+    Cut off even in the blossoms of my sin,
+    Unhousel'd, disappointed, unanel'd,
+    No reckoning made, but sent to my account
+    With all my imperfections on my head:
+    O, horrible! O, horrible! most horrible!
+    If thou hast nature in thee, bear it not;
+    Let not the royal bed of Denmark be
+    A couch for luxury and damned incest.
+    But, howsoever thou pursuest this act,
+    Taint not thy mind, nor let thy soul contrive
+    Against thy mother aught: leave her to heaven
+    And to those thorns that in her bosom lodge,
+    To prick and sting her. Fare thee well at once!
+    The glow-worm shows the matin to be near,
+    And 'gins to pale his uneffectual fire:
+    Adieu, adieu! Hamlet, remember me.
+
+    Exit
+
+HAMLET
+
+    O all you host of heaven! O earth! what else?
+    And shall I couple hell? O, fie! Hold, hold, my heart;
+    And you, my sinews, grow not instant old,
+    But bear me stiffly up. Remember thee!
+    Ay, thou poor ghost, while memory holds a seat
+    In this distracted globe. Remember thee!
+    Yea, from the table of my memory
+    I'll wipe away all trivial fond records,
+    All saws of books, all forms, all pressures past,
+    That youth and observation copied there;
+    And thy commandment all alone shall live
+    Within the book and volume of my brain,
+    Unmix'd with baser matter: yes, by heaven!
+    O most pernicious woman!
+    O villain, villain, smiling, damned villain!
+    My tables,--meet it is I set it down,
+    That one may smile, and smile, and be a villain;
+    At least I'm sure it may be so in Denmark:
+
+    Writing
+    So, uncle, there you are. Now to my word;
+    It is 'Adieu, adieu! remember me.'
+    I have sworn 't.
+
+MARCELLUS HORATIO
+
+    [Within] My lord, my lord,--
+
+MARCELLUS
+
+    [Within] Lord Hamlet,--
+
+HORATIO
+
+    [Within] Heaven secure him!
+
+HAMLET
+
+    So be it!
+
+HORATIO
+
+    [Within] Hillo, ho, ho, my lord!
+
+HAMLET
+
+    Hillo, ho, ho, boy! come, bird, come.
+
+    Enter HORATIO and MARCELLUS
+
+MARCELLUS
+
+    How is't, my noble lord?
+
+HORATIO
+
+    What news, my lord?
+
+HAMLET
+
+    O, wonderful!
+
+HORATIO
+
+    Good my lord, tell it.
+
+HAMLET
+
+    No; you'll reveal it.
+
+HORATIO
+
+    Not I, my lord, by heaven.
+
+MARCELLUS
+
+    Nor I, my lord.
+
+HAMLET
+
+    How say you, then; would heart of man once think it?
+    But you'll be secret?
+
+HORATIO MARCELLUS
+
+    Ay, by heaven, my lord.
+
+HAMLET
+
+    There's ne'er a villain dwelling in all Denmark
+    But he's an arrant knave.
+
+HORATIO
+
+    There needs no ghost, my lord, come from the grave
+    To tell us this.
+
+HAMLET
+
+    Why, right; you are i' the right;
+    And so, without more circumstance at all,
+    I hold it fit that we shake hands and part:
+    You, as your business and desire shall point you;
+    For every man has business and desire,
+    Such as it is; and for mine own poor part,
+    Look you, I'll go pray.
+
+HORATIO
+
+    These are but wild and whirling words, my lord.
+
+HAMLET
+
+    I'm sorry they offend you, heartily;
+    Yes, 'faith heartily.
+
+HORATIO
+
+    There's no offence, my lord.
+
+HAMLET
+
+    Yes, by Saint Patrick, but there is, Horatio,
+    And much offence too. Touching this vision here,
+    It is an honest ghost, that let me tell you:
+    For your desire to know what is between us,
+    O'ermaster 't as you may. And now, good friends,
+    As you are friends, scholars and soldiers,
+    Give me one poor request.
+
+HORATIO
+
+    What is't, my lord? we will.
+
+HAMLET
+
+    Never make known what you have seen to-night.
+
+HORATIO MARCELLUS
+
+    My lord, we will not.
+
+HAMLET
+
+    Nay, but swear't.
+
+HORATIO
+
+    In faith,
+    My lord, not I.
+
+MARCELLUS
+
+    Nor I, my lord, in faith.
+
+HAMLET
+
+    Upon my sword.
+
+MARCELLUS
+
+    We have sworn, my lord, already.
+
+HAMLET
+
+    Indeed, upon my sword, indeed.
+
+Ghost
+
+    [Beneath] Swear.
+
+HAMLET
+
+    Ah, ha, boy! say'st thou so? art thou there,
+    truepenny?
+    Come on--you hear this fellow in the cellarage--
+    Consent to swear.
+
+HORATIO
+
+    Propose the oath, my lord.
+
+HAMLET
+
+    Never to speak of this that you have seen,
+    Swear by my sword.
+
+Ghost
+
+    [Beneath] Swear.
+
+HAMLET
+
+    Hic et ubique? then we'll shift our ground.
+    Come hither, gentlemen,
+    And lay your hands again upon my sword:
+    Never to speak of this that you have heard,
+    Swear by my sword.
+
+Ghost
+
+    [Beneath] Swear.
+
+HAMLET
+
+    Well said, old mole! canst work i' the earth so fast?
+    A worthy pioner! Once more remove, good friends.
+
+HORATIO
+
+    O day and night, but this is wondrous strange!
+
+HAMLET
+
+    And therefore as a stranger give it welcome.
+    There are more things in heaven and earth, Horatio,
+    Than are dreamt of in your philosophy. But come;
+    Here, as before, never, so help you mercy,
+    How strange or odd soe'er I bear myself,
+    As I perchance hereafter shall think meet
+    To put an antic disposition on,
+    That you, at such times seeing me, never shall,
+    With arms encumber'd thus, or this headshake,
+    Or by pronouncing of some doubtful phrase,
+    As 'Well, well, we know,' or 'We could, an if we would,'
+    Or 'If we list to speak,' or 'There be, an if they might,'
+    Or such ambiguous giving out, to note
+    That you know aught of me: this not to do,
+    So grace and mercy at your most need help you, Swear.
+
+Ghost
+
+    [Beneath] Swear.
+
+HAMLET
+
+    Rest, rest, perturbed spirit!
+
+    They swear
+    So, gentlemen,
+    With all my love I do commend me to you:
+    And what so poor a man as Hamlet is
+    May do, to express his love and friending to you,
+    God willing, shall not lack. Let us go in together;
+    And still your fingers on your lips, I pray.
+    The time is out of joint: O cursed spite,
+    That ever I was born to set it right!
+    Nay, come, let's go together.
+
+    Exeunt
 
 DONE;
