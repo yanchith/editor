@@ -5712,7 +5712,6 @@ canonicalize_path :: (path: *string) {
 //
 // TODO(jt): @Cleanup The routine is really bad. Do a proper parser.
 // TODO(jt): @Incomplete This routine can't find relative paths without a separator. Those regexes would sure come in handy.
-// nocheckin wildcard match!
 find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64, path: string, path_is_absolute: bool, line_number: s64, column_number: s64 {
     if !_line.count {
         return false, -1, -1, "", false, -1, -1;
