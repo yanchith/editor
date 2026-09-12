@@ -29,7 +29,26 @@ Show_Commands_Item_Userdata :: struct {
 }
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
-    return tprint("% Show commands: ", temp_right_pad(tprint("%", editor.mini_panel.items.count), 4));
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
+        return tprint("% Commands: ", temp_right_pad(tprint("%", editor.mini_panel.items.count), 4));
+    }
+
+    template: string;
+    if #complete panel.view.kind == {
+        case .DOCUMENT; {
+            if panel.view._document.document.kind == .COMPILATION {
+                template = "% Commands for *compilation*: ";
+            } else {
+                template = "% Commands for document: ";
+            }
+        }
+
+        case .LISTING;  template = "% Commands for directory: ";
+    }
+
+    return tprint(template, temp_right_pad(tprint("%", editor.mini_panel.items.count), 4));
 }
 
 can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> bool {
@@ -293,7 +312,6 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 cancel :: (editor: *Editor, platform: Platform, input: Input) {
     close_mini_panel(editor, platform, input);
 }
-
 
 build_action_text :: (action: s64, action_name: string, key_map: Key_Map) -> /* Temporary_Storage */ string {
     sb: String_Builder;
