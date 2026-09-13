@@ -214,7 +214,8 @@ OPTIONS:
   -no-sanity              Turns off slow paranoid asserts
   -windows-console        Shows console on Windows when launched from gui
   -no-windows-console     Hides console on Windows when launched from gui and disables all console logging
-  nocheckin bundles
+  -bundle                 Create a bundle after compilation succeeds
+  -no-bundle              Don't create a bundle after compilation succeeds
 
 For DEFAULT_METAPROGRAM_OPTIONS, type 'jai -help'.
 
