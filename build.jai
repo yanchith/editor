@@ -26,7 +26,10 @@ VERSION_PATCH :: 1;
 
 Check_Plugin    :: #import "Check";
 Profiler_Plugin :: #import "Profiler"()(IMPORT_MODE = .METAPROGRAM);
-Icon_Plugin     :: #import "Icon";
+
+#if OS == .WINDOWS {
+    Icon_Plugin :: #import "Icon";
+}
 
 Optimization_Level :: enum {
     DEBUG;
@@ -42,8 +45,10 @@ build :: () {
     profiler_plugin: Profiler_Plugin.Profiler_Plugin;
     profiler_plugin.verbose = false;
 
-    icon_plugin: Icon_Plugin.My_Plugin;
-    icon_plugin.icon_filename = "./data/icon.ico";
+    #if OS == .WINDOWS {
+        icon_plugin: Icon_Plugin.My_Plugin;
+        icon_plugin.icon_filename = "./data/icon.ico";
+    }
 
     do_print_help      := false;
     do_profile         := true;
@@ -139,22 +144,30 @@ build :: () {
 
     add_build_file("src/main.jai", w);
 
+    compilation_failed := false;
     while true {
-        message := compiler_wait_for_message();
+        m := compiler_wait_for_message();
 
-        Check_Plugin.do_error_checking(null, message);
+        Check_Plugin.do_error_checking(null, m);
 
-        if do_profile {
-            Profiler_Plugin.message(*profiler_plugin, message);
-        }
-        Icon_Plugin.message(*icon_plugin, message);
+        if do_profile       Profiler_Plugin.message(*profiler_plugin, m);
+        #if OS == .WINDOWS  Icon_Plugin.message(*icon_plugin, m);
 
-        if message.kind == .COMPLETE {
+        if m.kind == .COMPLETE {
+            mc := cast(*Message_Complete, m);
+            if mc.error_code == .COMPILATION_FAILED {
+                compilation_failed = true;
+            }
+
             break;
         }
     }
 
     compiler_end_intercept(w);
+
+    if !compilation_failed {
+        // TODO(jt): Make bundles!
+    }
 
     // Do not output anything for this workspace.
     set_build_options_dc({ do_output = false });
