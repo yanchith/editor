@@ -5714,11 +5714,20 @@ Compilation_Link :: struct {
     column_number: s64;
 }
 
-// Heuristically find first occurence of <filename>:<line>:<col> or <filename>:<line>,<col> in a line.
+// Heuristically find first occurence of a compilation link in a line.
 //
-// jai link format:    C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
-// rustc link format:  game_platform_winit\src\main.rs:6:1
-// clang link format:  sdl_asteroids.cpp:1:10 or .\asteroids.h:12:16
+// Currently detected:
+//   <filename>:<line>:<col>
+//   <filename>:<line>,<col>
+//
+// Known formats:
+//
+// jai:    C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
+// rustc:  game_platform_winit\src\main.rs:6:1
+// clang:  sdl_asteroids.cpp:1:10 or .\asteroids.h:12:16
+// tsc:    index.ts(2,5) or index.ts:2:5 (based on console feature detection?)
+//
+// TODO(jt): @Incomplete Detect alternative tsc format: "index.ts(2,5)"
 find_compilation_link :: (line: string) -> found: bool, Compilation_Link {
     result: Compilation_Link;
     if !line.count {
