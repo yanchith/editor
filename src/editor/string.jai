@@ -41,6 +41,17 @@ find_index_from_right :: (s: string, byte: u8, start_index := S64_MAX) -> s64  #
     return -1;
 }
 
+// TODO(jt): @Cleanup This is a simpler overload of slice from modules/String. We should mail this in.
+slice :: inline (s: string, index: s64) -> string {
+    assert(index >= 0, "index = %", index);
+    if index >= s.count  return "";
+
+    c: string = ---;
+    c.data    = s.data + index;
+    c.count   = s.count - index;
+    return c;
+}
+
 count_leading_whitespace_chars :: (bytes: [] u8) -> s64 {
     return inline count_leading_whitespace_chars(cast(string, bytes));
 }

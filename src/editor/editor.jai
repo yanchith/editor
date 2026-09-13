@@ -5536,22 +5536,23 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: % (exit type: %)\n", to_float64_seconds(time_elapsed), exit_code, exit_type), undo_modifier = .OMIT);
 
     for :text_buffer_lines line_text, line_index: document.buffer {
-        found, found_index, found_count, path, path_is_absolute, line_number, column_number := find_compilation_error(line_text);
+        found, link := find_compilation_link(line_text);
         if found {
             ce := array_add(*document.compilation_errors);
-            ce.x0 = count_utf8_chars(String.slice(line_text, 0, found_index));
-            ce.x1 = ce.x0 + count_utf8_chars(String.slice(line_text, found_index, found_count));
+            ce.x0 = count_utf8_chars(String.slice(line_text, 0, link.index));
+            ce.x1 = ce.x0 + count_utf8_chars(String.slice(line_text, link.index, link.count));
             ce.y  = line_index;
 
-            ce.line_number   = line_number;
-            ce.column_number = column_number;
+            ce.line_number   = link.line_number;
+            ce.column_number = link.column_number;
 
-            if path_is_absolute {
-                ce.path = arena_push_string(document.arena, path);
+            if link.path_is_absolute {
+                ce.path = arena_push_string(document.arena, link.path);
             } else {
-                absolute_path := String.path_join(working_directory, path,, temp);
+                absolute_path := String.path_join(working_directory, link.path,, temp);
                 ce.path = arena_push_string(document.arena, absolute_path);
             }
+            String.path_overwrite_separators(ce.path, "/");
         }
     }
 }
@@ -5704,135 +5705,68 @@ canonicalize_path :: (path: *string) {
     path.* = String.trim_right(path.*, "/");
 }
 
-// Try to find first occurence of <filename>:<line>:<col> or <filename>:<line>,<col> in a string.
+Compilation_Link :: struct {
+    index: s64;
+    count: s64;
+    path: string;
+    path_is_absolute: bool;
+    line_number: s64;
+    column_number: s64;
+}
+
+// Heuristically find first occurence of <filename>:<line>:<col> or <filename>:<line>,<col> in a line.
 //
-// JAI link format:    C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
+// jai link format:    C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
 // rustc link format:  game_platform_winit\src\main.rs:6:1
 // clang link format:  sdl_asteroids.cpp:1:10 or .\asteroids.h:12:16
-//
-// TODO(jt): @Cleanup The routine is really bad. Do a proper parser.
-// TODO(jt): @Incomplete This routine can't find relative paths without a separator. Those regexes would sure come in handy.
-//
-//
-// nocheckin just detect the : between filename and line as a first approximation, and go from there.
-//
-find_compilation_error :: (_line: string) -> found: bool, index: s64, count: s64, path: string, path_is_absolute: bool, line_number: s64, column_number: s64 {
-    if !_line.count {
-        return false, -1, -1, "", false, -1, -1;
+find_compilation_link :: (line: string) -> found: bool, Compilation_Link {
+    result: Compilation_Link;
+    if !line.count {
+        return false, result;
     }
 
-    original_line := copy_string(_line,, temp);
-
-    line := original_line;
-    String.path_overwrite_separators(line, "/");
-
-    PATH_BEGIN_ABSOLUTE_UNIX    :: "/";
-    PATH_BEGIN_ABSOLUTE_WINDOWS :: ":/";
-    PATH_BEGIN_ABSOLUTE_WINDOWS_LOOKBACK :: 1;
-
-    PATH_BEGIN_RELATIVE :: "./";
-
-    PATH_SEPARATOR :: "/";
-
-    x := 0;
-
-    path_start := -1;
-    path_is_absolute: bool;
-
-    while line.count && path_start == -1 {
-        // Detect relative paths starting with dot.
-        if String.starts_with(line, PATH_BEGIN_RELATIVE) {
-            path_start = x;
-            path_is_absolute = false;
-
-            advance(*line, PATH_BEGIN_RELATIVE.count);
-            x += PATH_BEGIN_RELATIVE.count;
-            continue;
-        }
-
-        // Detect relative paths not starting with dot. We find the segment separator first, then scan back.
-        if String.starts_with(line, PATH_SEPARATOR) {
-            s := String.slice(original_line, 0, x);
-            if s.count {
-                if is_alnum(s[s.count - 1]) {
-                    i := s.count - 2;
-                    while i >= 0 && !is_space(s[i]) {
-                        i -= 1;
-                    }
-
-                    if i == -1 {
-                        i = 0;
-                    } else if is_space(s[i]) {
-                        i += 1;
-                    }
-
-                    path_start = i;
-                    path_is_absolute = false;
-
-                    advance(*line, PATH_SEPARATOR.count);
-                    x += PATH_SEPARATOR.count;
-
-                    continue;
-                }
-            }
-        }
-
-        // Detect UNIX absolute paths.
-        if String.starts_with(line, PATH_BEGIN_ABSOLUTE_UNIX) {
-            path_start = x;
-            path_is_absolute = true;
-
-            advance(*line, PATH_BEGIN_ABSOLUTE_UNIX.count);
-            x += PATH_BEGIN_ABSOLUTE_UNIX.count;
-            continue;
-        }
-
-        // Detect Windows absolute paths.
-        if String.starts_with(line, PATH_BEGIN_ABSOLUTE_WINDOWS) && x >= PATH_BEGIN_ABSOLUTE_WINDOWS_LOOKBACK {
-            path_start = x - PATH_BEGIN_ABSOLUTE_WINDOWS_LOOKBACK;
-            path_is_absolute = true;
-
-            advance(*line, PATH_BEGIN_ABSOLUTE_WINDOWS.count);
-            x += PATH_BEGIN_ABSOLUTE_WINDOWS.count;
-            continue;
-        }
-
-        advance(*line, 1);
-        x += 1;
-    }
-
-    colon_index := String.find_index_from_left(line, ":");
+    // We are looking for <path>:<line>:<col> or <path>:<line>,<col>.
+    // We can't rely on the path containing a slash, so detect the line-col pair first.
+    colon_index := String.find_index_from_left(line, #char ":");
     if colon_index == -1 {
-        return false, -1, -1, "", false, -1, -1;
+        return false, result;
     }
 
-    advance(*line, colon_index + 1);
-    x += colon_index + 1;
-
-    path_count := x - path_start - 1; // -1 for the :
-
-    found, left, right := String.split_from_left_by_any(line, ":,");
-    if !found {
-        return false, -1, -1, "", false, -1, -1;
-    }
+    s := slice(line, colon_index + 1);
 
     success: bool;
-    line_number, success=              := string_to_int(left, T = s64);
+    result.line_number, success, s = string_to_int(s, T = s64);
     if !success {
-        return false, -1, -1, "", false, -1, -1;
+        return false, result;
     }
 
-    column_number, success=, remainder := string_to_int(right, T = s64);
+    if !s.count || (s[0] != ":" && s[0] != ",") {
+        return false, result;
+    }
+    advance(*s);
+
+    result.column_number, success, s = string_to_int(s, T = s64);
     if !success {
-        return false, -1, -1, "", false, -1, -1;
+        return false, result;
     }
 
-    path := String.slice(_line, path_start, path_count);
+    // TODO(jt): @Incomplete Handle quoted paths.
+    space_index := find_index_from_right(line, #char " ", colon_index);
+    // Skip check for -1, as the path could be the first thing. Works out with the +1 below.
 
-    index := path_start;
-    count := x + left.count + 1 + right.count - remainder.count;
+    path_index := space_index + 1;
+    path_count := colon_index - path_index;
+    if path_count == 0 {
+        return false, result;
+    }
 
-    return true, index, count, path, path_is_absolute, line_number, column_number;
+    result.index = path_index;
+    result.count = s.data - line.data - path_index;
+
+    result.path = String.slice(line, path_index, path_count);
+    result.path_is_absolute = String.is_absolute_path(result.path);
+
+    return true, result;
 }
 
 #scope_file
