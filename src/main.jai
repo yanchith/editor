@@ -297,7 +297,7 @@ main :: () {
         ] {
             dest := tprint("%/%", config_path, it);
             if !File_Utilities.file_exists(dest) {
-                source := tprint("%/config/%", data_path, it);
+                source := tprint("%/config_templates/%", data_path, it);
                 File_Utilities.copy_file(source, dest);
             }
         }

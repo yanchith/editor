@@ -241,9 +241,6 @@ DONE;
         for Copy.[
             { .file, exe_path,                tprint("%/%", bundle_path, exe_name) },
             { .dir,  "data",                  tprint("%/data", bundle_path) },
-            { .file, "editor.config",         tprint("%/editor.config", bundle_path) },
-            { .file, "editor.config.sublime", tprint("%/editor.config.sublime", bundle_path) },
-            { .file, "editor.config.vscode",  tprint("%/editor.config.vscode", bundle_path) },
         ] {
             log("Copying % % -> %", it.kind, it.source, it.dest);
 

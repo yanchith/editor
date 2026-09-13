@@ -4,11 +4,6 @@
 # Log directory
 /logs
 
-# Configs that get copied into root on first run
-editor.config
-editor.config.sublime
-editor.config.vscode
-
 # macOS things
 .DS_Store
 
