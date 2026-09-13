@@ -5886,19 +5886,31 @@ operator== :: (a: Bucket_Locator, b: Bucket_Locator) -> bool {
     return a.bucket_index == b.bucket_index && a.slot_index == b.slot_index;
 }
 
+// TODO(jt): Eventually replace this welcome message with something better:
+// - OPEN_CONFIG_LOCATION command would certainly be helpful
+// - remove disclaimers
+
 WELCOME :: #run -> string {
-    return sprint(WELCOME_TEMPLATE, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP);
+    #if OS == .WINDOWS {
+        CONFIG_TEMPLATE_LOCATION :: "next to the executable";
+    } else #if OS == .MACOS {
+        CONFIG_TEMPLATE_LOCATION :: "in ~/Library/Application Support/Editor";
+    } else {
+        CONFIG_TEMPLATE_LOCATION :: "";
+    }
+
+    return sprint(WELCOME_TEMPLATE, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP, CONFIG_TEMPLATE_LOCATION);
 }
 
 WELCOME_TEMPLATE :: #string DONE
 
 Welcome to the untitled text editor! (Version %.%.%, built on %)
 
-This is an alpha release, so expect minor bugs and the occasional crash.
-I apologize for the inconvenience.
+This is an alpha release, so expect minor bugs. I apologize for the inconvenience.
 
 If you are coming from Emacs, most of the keyboard shortcuts will be familiar to you.
 Otherwise, there are starter templates for the config files from other editors.
+You can find the config %.
 
 To list available commands and their bound shortcuts, type Alt-x or Ctrl-Shift-p.
 

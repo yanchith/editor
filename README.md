@@ -1,6 +1,6 @@
-# Editor
+# My editor
 
-This is a small text editor I wrote. The design goals are roughly:
+This is a small text editor I wrote for my personal use. The design goals are roughly:
 
 - Small and simple, so I can make modifications with understanding.
 - Fast, unless it conflicts too much with the previous point.
@@ -12,7 +12,7 @@ If you want to make this editor yours, there's two options:
 
 1) Use a binary build and customize `editor.config`. There's a few starter templates,
    depending on where you are coming from, but note that these don't map precisely
-   to their source behavior, as this editor has some Emacs weirdness built in.
+   to their source behavior, as the editor has some Emacs weirdness built in.
 
 2) Modify the code and compile your own build. See building from source section below.
    The editor is written in Jai, which is not publicly available yet, but should be out soon.
@@ -28,14 +28,15 @@ jai [-x64] build.jai
 The binary releases are compiled with:
 
 ```
-jai -optimized_debug build.jai - -no-windows-console
+jai -optimized_debug build.jai - [-no-windows-console] [-bundle]
 ```
 
 The build file contains information about more options.
 
 Tested on Jai version `0.2.030`.
 
-The code compiles and runs on Windows and macOS. Linux support coming soon.
+The code compiles and runs on Windows and macOS (although macOS bundle doesn't work yet).
+Linux support coming soon.
 
 ## Temporary limitations
 
