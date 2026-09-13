@@ -3,12 +3,11 @@
 Making a build:
 
 0) Set version number in this file
-1) jai -optimized_debug build.jai - -no-windows-console
 
 (Windows)
 
-2) Copy build/editor.exe, config files and the data directory to the distribution directory
-3) Zip
+1) jai -optimized_debug build.jai - -no-windows-console -windows-bundle
+2) Zip build/<bundle>
 
 (macOS coming soon)
 
@@ -23,6 +22,7 @@ VERSION_PATCH :: 1;
 #import "Compiler";
 #import "Basic";
 #import "File";
+#import "File_Utilities";
 
 Check_Plugin    :: #import "Check";
 Profiler_Plugin :: #import "Profiler"()(IMPORT_MODE = .METAPROGRAM);
@@ -54,6 +54,8 @@ build :: () {
     do_profile         := true;
     do_sanity          := true;
     do_windows_console := true;
+    do_windows_bundle  := false;
+    do_macos_bundle    := false;
 
     // Match on commandline received by the default metaprogram so that we can tweak its decisions.
     // We try to respect it as much as possible, but we also provide the same switches.
@@ -88,6 +90,10 @@ build :: () {
             case "-no-sanity";           do_sanity = false;
             case "-windows-console";     do_windows_console = true;
             case "-no-windows-console";  do_windows_console = false;
+            case "-windows-bundle";      do_windows_bundle = true;
+            case "-no-windows-bundle";   do_windows_bundle = false;
+            case "-macos-bundle";        do_macos_bundle = true;
+            case "-no-macos-bundle";     do_macos_bundle = false;
             case; {
                 log_error("Unknown argument '%'. Pass -help to print allowed options.\nExiting.", it);
                 exit(1);
@@ -166,7 +172,8 @@ build :: () {
     compiler_end_intercept(w);
 
     if !compilation_failed {
-        // TODO(jt): Make bundles!
+        if do_windows_bundle  make_windows_bundle(options);
+        if do_macos_bundle    make_macos_bundle(options);
     }
 
     // Do not output anything for this workspace.
@@ -205,10 +212,61 @@ OPTIONS:
   -no-sanity              Turns off slow paranoid asserts
   -windows-console        Shows console on Windows when launched from gui
   -no-windows-console     Hides console on Windows when launched from gui and disables all console logging
+  nocheckin bundles
 
 For DEFAULT_METAPROGRAM_OPTIONS, type 'jai -help'.
 
 DONE;
+
+// nocheckin test on windows
+make_windows_bundle :: (options: Build_Options) {
+    Copy :: struct {
+        kind: enum { file; dir; };
+        source: string;
+        dest: string;
+    }
+
+    log("\nMaking windows bundle");
+
+    bundle_path := tprint("%/editor-windows-%.%.%", options.output_path, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+
+    exe_name := tprint("%.exe", options.output_executable_name);
+    exe_path := tprint("%/%.exe", options.output_path, options.output_executable_name);
+
+    make_directory_if_it_does_not_exist(bundle_path);
+
+    ok := true;
+    for Copy.[
+        { .file, exe_path,                tprint("%/%", bundle_path, exe_name) },
+        { .dir,  "data",                  tprint("%/data", bundle_path) },
+        { .file, "editor.config",         tprint("%/editor.config", bundle_path) },
+        { .file, "editor.config.sublime", tprint("%/editor.config.sublime", bundle_path) },
+        { .file, "editor.config.vscode",  tprint("%/editor.config.vscode", bundle_path) },
+    ] {
+        log("Copying % % -> %", it.kind, it.source, it.dest);
+
+        success: bool;
+        if it.kind == {
+            case .file;  success = copy_file(it.source, it.dest);
+            case .dir;   success = copy_directory(it.source, it.dest);
+        }
+
+        if !success {
+            ok = false;
+            log_error("Failed to copy % %", it.kind, it.source);
+        }
+    }
+
+    if ok {
+        log("\nBundle done");
+    } else {
+        log("\nBundle error");
+    }
+}
+
+make_macos_bundle :: (options: Build_Options) {
+
+}
 
 month_text :: (month_starting_at_0: s8) -> string {
     if month_starting_at_0 == {
