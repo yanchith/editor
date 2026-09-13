@@ -210,10 +210,11 @@ main :: () {
     context.logger_data      = *logger_data;
     context.assertion_failed = assertion_failed;
 
-    data_path := "./data";
-    // nocheckin config path
-
-    nocheckin: string;
+    // The default is to have these things next to the executable, but that doesn't always fly,
+    // so they are sometimes overriden.
+    data_path   := "./data";
+    log_path    := "./logs";
+    config_path := ".";
 
     #if OS == .WINDOWS {
         // :OperatingSystemSpecificHacks
@@ -249,11 +250,12 @@ main :: () {
             app_dir  := String.path_strip_filename(String.slice(exe_dir, 0, exe_dir.count - 1));
 
             resources_dir := String.path_join(app_dir, "Resources"); // :Malloc
-            nocheckin = resources_dir;
 
             if File_Utilities.is_directory(resources_dir) {
                 // Running from an app bundle. Adjust data path.
-                data_path = resources_dir;
+                data_path   = resources_dir;
+                log_path    = "~/Library/Logs/Editor";
+                config_path = "~/Library/Application Support/Editor";
             } else {
                 // Running from a raw executable.
                 // Hopefully we will find our resources in our new working directory.
@@ -263,13 +265,13 @@ main :: () {
     }
 
     // Create a log file for the current session.
-    // nocheckin find a place to put logs on macOS
     {
-        File.make_directory_if_it_does_not_exist("./logs");
+        File.make_directory_if_it_does_not_exist(log_path);
         t := calendar_time_of_program_start;
 
         log_filename := tprint(
-            "logs/editor_%%%_%%%%.log",
+            "%/editor_%%%_%%%%.log",
+            log_path,
             formatInt(t.year, minimum_digits = 4),
             formatInt(t.month_starting_at_0 + 1, minimum_digits = 2),
             formatInt(t.day_of_month_starting_at_0 + 1, minimum_digits = 2),
@@ -282,8 +284,24 @@ main :: () {
         logger_data.log_file = File.file_open(log_filename, for_writing = true);
     }
 
-    log("Editor version %.%.%, built on %.",  VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP);
-    log("resources dir: %", nocheckin);
+    log("Editor version %.%.%, built on %.", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP);
+
+    // Seed config files from data path.
+    {
+        File.make_directory_if_it_does_not_exist(config_path);
+
+        for string.[
+            "editor.config",
+            "editor.config.sublime",
+            "editor.config.vscode",
+        ] {
+            dest := tprint("%/%", config_path, it);
+            if !File_Utilities.file_exists(dest) {
+                source := tprint("%/config/%", data_path, it);
+                File_Utilities.copy_file(source, dest);
+            }
+        }
+    }
 
     // Clean up old log files. Keep MAX_LOGFILES recent files.
     {
@@ -653,7 +671,9 @@ main :: () {
     _, _, window_width, window_height := Window.get_dimensions(window, right_handed = false);
 
     input: Editor.Input;
-    input.data_path = data_path;
+    input.data_path   = data_path;
+    input.log_path    = log_path;
+    input.config_path = config_path;
     // input.time and input.dtime are zeroed.
     input.time_of_program_start = time_of_program_start;
     // input.frame_requested_by_editor is zeroed.

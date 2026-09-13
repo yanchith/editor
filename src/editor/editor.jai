@@ -813,7 +813,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     editor.is_first_frame = true;
 
-    load_config(editor, platform, fall_back_to_emergency_config = true);
+    load_config(editor, platform, input, fall_back_to_emergency_config = true);
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_this_frame: bool, wants_next_frame: bool {
@@ -2776,7 +2776,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .THEME_ZENBURN;                    change_theme(editor, "zenburn");
         case .THEME_VISUAL_STUDIO_LIGHT;        change_theme(editor, "visual_studio_light");
 
-        case .RELOAD_CONFIG;                    load_config(editor, platform, fall_back_to_emergency_config = false);
+        case .RELOAD_CONFIG;                    load_config(editor, platform, input, fall_back_to_emergency_config = false);
 
         case .DEBUG_VIEW_ATLAS_TEXTURE;         toggle_debug_view(editor, .ATLAS_TEXTURE);
         case .DEBUG_VIEW_MEMORY_ABSOLUTE;       toggle_debug_view(editor, .MEMORY_ABSOLUTE);
@@ -4830,26 +4830,21 @@ is_part_of_surround_pair :: (document: Document, char: u32) -> opens: bool, clos
     return opens, closes, paired_char;
 }
 
-load_config :: (editor: *Editor, platform: Platform, fall_back_to_emergency_config: bool) {
-    // TODO(jt): @Cleanup On macOS, we won't have the config next to the executable!
-    CONFIG_PATH :: "./editor.config";
+load_config :: (editor: *Editor, platform: Platform, input: Input, fall_back_to_emergency_config: bool) {
+    config_path := tprint("%/editor.config", input.config_path);
 
-    success, config := platform.read_file(CONFIG_PATH,, temp);
+    success, config := platform.read_file(config_path,, temp);
     if success {
         success = parse_and_apply_config(editor, cast(string, config));
         if success {
             editor_log(editor, "Applied config");
         } else if fall_back_to_emergency_config {
             apply_emergency_config(editor);
-            editor_log(editor, "Applied emergency config");
+            editor_log(editor, "Config at % corrupted. Applied emergency config", config_path);
         }
     } else {
-        success=, config_path := platform.get_absolute_path(CONFIG_PATH,, temp);
-        if success {
-            editor_log(editor, "Failed to read config file at %", config_path);
-        } else {
-            editor_log(editor, "Failed to read config file");
-        }
+        apply_emergency_config(editor);
+        editor_log(editor, "Failed to read config file at %. Applied emergency config", config_path);
     }
 }
 
