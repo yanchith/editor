@@ -669,8 +669,8 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         font_arena     := make_arena(editor, platform, .MEDIUM, "Font");
         font_allocator := arena_allocator(font_arena);
 
-        font_path :: (name: string, type: string) -> string {
-            return tprint("./data/fonts/%1/%1-%2.ttf", name, type);
+        font_path :: (name: string, type: string) -> string #expand {
+            return tprint("%1/fonts/%2/%2-%3.ttf", input.data_path, name, type);
         }
 
         success, ttf_regular := platform.read_file(font_path(FONT, "Regular"),, font_allocator);

@@ -1,4 +1,6 @@
 Input :: struct {
+    data_path: string;
+
     time:  Apollo_Time; // Starts at 0.
     dtime: Apollo_Time;
 

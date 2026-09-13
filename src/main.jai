@@ -210,6 +210,11 @@ main :: () {
     context.logger_data      = *logger_data;
     context.assertion_failed = assertion_failed;
 
+    data_path := "./data";
+    // nocheckin config path
+
+    nocheckin: string;
+
     #if OS == .WINDOWS {
         // :OperatingSystemSpecificHacks
         //
@@ -233,27 +238,38 @@ main :: () {
         //
         // Working directory on macOS is weird. If you start from console, it respects the
         // current console working directory. If you click on the executable, it starts in the
-        // user's HOME. We make it behave more like Windows, where the working directory
-        // defaults to the current executable path, unless overridden from console.
+        // user's HOME. We support running from console, running from .app, or running as a bare executable
+        // (with the same directory structure as when running from console).
         //
-        // We detect this by looking for asset files that should be distributed with
-        // the executable. If we can't find them, we are most likely not running from console.
-        see_data := File_Utilities.is_directory("./data/fonts");
-        if !see_data {
+        if File_Utilities.is_directory("./data/fonts") {
+            // Running from console, nothing to do.
+        } else {
             exe_file := System.get_path_of_running_executable();
             exe_dir  := String.path_strip_filename(exe_file);
+            app_dir  := String.path_strip_filename(String.slice(exe_dir, 0, exe_dir.count - 1));
 
-            set_working_directory(exe_dir);
+            resources_dir := String.path_join(app_dir, "Resources"); // :Malloc
+            nocheckin = resources_dir;
+
+            if File_Utilities.is_directory(resources_dir) {
+                // Running from an app bundle. Adjust data path.
+                data_path = resources_dir;
+            } else {
+                // Running from a raw executable.
+                // Hopefully we will find our resources in our new working directory.
+                set_working_directory(exe_dir);
+            }
         }
     }
 
     // Create a log file for the current session.
+    // nocheckin find a place to put logs on macOS
     {
         File.make_directory_if_it_does_not_exist("./logs");
         t := calendar_time_of_program_start;
 
         log_filename := tprint(
-            "./logs/editor_%%%_%%%%.log",
+            "logs/editor_%%%_%%%%.log",
             formatInt(t.year, minimum_digits = 4),
             formatInt(t.month_starting_at_0 + 1, minimum_digits = 2),
             formatInt(t.day_of_month_starting_at_0 + 1, minimum_digits = 2),
@@ -267,6 +283,7 @@ main :: () {
     }
 
     log("Editor version %.%.%, built on %.",  VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP);
+    log("resources dir: %", nocheckin);
 
     // Clean up old log files. Keep MAX_LOGFILES recent files.
     {
@@ -636,6 +653,7 @@ main :: () {
     _, _, window_width, window_height := Window.get_dimensions(window, right_handed = false);
 
     input: Editor.Input;
+    input.data_path = data_path;
     // input.time and input.dtime are zeroed.
     input.time_of_program_start = time_of_program_start;
     // input.frame_requested_by_editor is zeroed.

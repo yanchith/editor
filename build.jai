@@ -54,8 +54,7 @@ build :: () {
     do_profile         := true;
     do_sanity          := true;
     do_windows_console := true;
-    do_windows_bundle  := false;
-    do_macos_bundle    := false;
+    do_bundle          := false;
 
     // Match on commandline received by the default metaprogram so that we can tweak its decisions.
     // We try to respect it as much as possible, but we also provide the same switches.
@@ -90,10 +89,8 @@ build :: () {
             case "-no-sanity";           do_sanity = false;
             case "-windows-console";     do_windows_console = true;
             case "-no-windows-console";  do_windows_console = false;
-            case "-windows-bundle";      do_windows_bundle = true;
-            case "-no-windows-bundle";   do_windows_bundle = false;
-            case "-macos-bundle";        do_macos_bundle = true;
-            case "-no-macos-bundle";     do_macos_bundle = false;
+            case "-bundle";              do_bundle = true;
+            case "-no-bundle";           do_bundle = false;
             case; {
                 log_error("Unknown argument '%'. Pass -help to print allowed options.\nExiting.", it);
                 exit(1);
@@ -171,9 +168,14 @@ build :: () {
 
     compiler_end_intercept(w);
 
-    if !compilation_failed {
-        if do_windows_bundle  make_windows_bundle(options);
-        if do_macos_bundle    make_macos_bundle(options);
+    if !compilation_failed && do_bundle {
+        #if OS == .WINDOWS {
+            make_windows_bundle(options);
+        } else #if OS == .MACOS {
+            make_macos_bundle(options);
+        } else {
+            log_error("Bundles for % are not supported", OS);
+        }
     }
 
     // Do not output anything for this workspace.
@@ -218,54 +220,64 @@ For DEFAULT_METAPROGRAM_OPTIONS, type 'jai -help'.
 
 DONE;
 
-// nocheckin test on windows
-make_windows_bundle :: (options: Build_Options) {
-    Copy :: struct {
-        kind: enum { file; dir; };
-        source: string;
-        dest: string;
-    }
-
-    log("\nMaking windows bundle");
-
-    bundle_path := tprint("%/editor-windows-%.%.%", options.output_path, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
-
-    exe_name := tprint("%.exe", options.output_executable_name);
-    exe_path := tprint("%/%.exe", options.output_path, options.output_executable_name);
-
-    make_directory_if_it_does_not_exist(bundle_path);
-
-    ok := true;
-    for Copy.[
-        { .file, exe_path,                tprint("%/%", bundle_path, exe_name) },
-        { .dir,  "data",                  tprint("%/data", bundle_path) },
-        { .file, "editor.config",         tprint("%/editor.config", bundle_path) },
-        { .file, "editor.config.sublime", tprint("%/editor.config.sublime", bundle_path) },
-        { .file, "editor.config.vscode",  tprint("%/editor.config.vscode", bundle_path) },
-    ] {
-        log("Copying % % -> %", it.kind, it.source, it.dest);
-
-        success: bool;
-        if it.kind == {
-            case .file;  success = copy_file(it.source, it.dest);
-            case .dir;   success = copy_directory(it.source, it.dest);
+#if OS == .WINDOWS {
+    make_windows_bundle :: (options: Build_Options) {
+        Copy :: struct {
+            kind: enum { file; dir; };
+            source: string;
+            dest: string;
         }
 
-        if !success {
-            ok = false;
-            log_error("Failed to copy % %", it.kind, it.source);
-        }
-    }
+        log("\nMaking windows bundle");
 
-    if ok {
-        log("\nBundle done");
-    } else {
-        log("\nBundle error");
+        bundle_path := tprint("%/editor", options.output_path);
+
+        exe_name := tprint("%.exe", options.output_executable_name);
+        exe_path := tprint("%/%.exe", options.output_path, options.output_executable_name);
+
+        make_directory_if_it_does_not_exist(bundle_path);
+
+        ok := true;
+        for Copy.[
+            { .file, exe_path,                tprint("%/%", bundle_path, exe_name) },
+            { .dir,  "data",                  tprint("%/data", bundle_path) },
+            { .file, "editor.config",         tprint("%/editor.config", bundle_path) },
+            { .file, "editor.config.sublime", tprint("%/editor.config.sublime", bundle_path) },
+            { .file, "editor.config.vscode",  tprint("%/editor.config.vscode", bundle_path) },
+        ] {
+            log("Copying % % -> %", it.kind, it.source, it.dest);
+
+            success: bool;
+            if it.kind == {
+                case .file;  success = copy_file(it.source, it.dest);
+                case .dir;   success = copy_directory(it.source, it.dest);
+            }
+
+            if !success {
+                ok = false;
+                log_error("Failed to copy % %", it.kind, it.source);
+            }
+        }
+
+        if ok {
+            log("\nBundle done");
+        } else {
+            log("\nBundle error");
+        }
     }
 }
 
-make_macos_bundle :: (options: Build_Options) {
+#if OS == .MACOS {
+    #import "MacOS_Bundler";
 
+    make_macos_bundle :: (options: Build_Options) {
+        log("\nMaking macOS bundle");
+
+        exe_path := tprint("%/%", options.output_path, options.output_executable_name, );
+
+        create_app_bundle("Editor", exe_path, "data/icon.ico", "data", only_copy_subdirectories_and_files = true, write_plist = true);
+        log("\nBundle done");
+    }
 }
 
 month_text :: (month_starting_at_0: s8) -> string {
