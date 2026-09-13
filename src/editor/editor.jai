@@ -1,8 +1,9 @@
 /*
 
-TODO(jt): Known serious bugs:
+TODO(jt): Known bugs:
 
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
+- Clicking on an item in a listing scrolls/selects the resulting document immediately after clicking.
 
 TODO(jt): Roadmap:
 
@@ -446,7 +447,7 @@ Document :: struct {
     cursors_cold: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
     buffer: Text_Buffer;
 
-    arena: *Arena; // For compilation_args, compilation_errors, backing_file_directory, backing_file_path and syntax_highlight_tokens.
+    arena: *Arena; // For scopes, tokens, compilation_args, compilation_errors, backing_file_directory, backing_file_path...
 
     backing_directory_path: string; // In canonical format (see canonicalize_path).
 
@@ -5094,9 +5095,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
         ext, ext_found := String.path_extension(backing_file_path);
         if ext_found {
             if ext == {
-                // TODO(jt): @Incomplete C++ currently goes to the C backend, but eventually it should get its own?
-                // Or maybe we can have a single C+ backend for both and ignore the modern monstrosity? This could be possible,
-                // because we are just lexing.
+                // We currently have a single lexer for both C and C-style C++.
                 case "inl";   #through;
                 case "hpp";   #through;
                 case "cpp";   #through;
@@ -5129,7 +5128,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
 
     // If we find that we accidentally pass regular documents where compilation
     // documents are needed, we could set this to a fail_allocator or something.
-    document.compilation_errors.allocator      = arena_allocator(document_arena);
+    document.compilation_errors.allocator = arena_allocator(document_arena);
 
     locator, pointer := bucket_array_add(*editor.documents, document);
     pointer.locator = locator;
