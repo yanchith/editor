@@ -1,15 +1,22 @@
 /*
 
-Making a build:
+Making a local build:
+
+jai [-x64] build.jai
+jai -optimized_debug build.jai
+
+Making a release:
 
 0) Set version number in this file
 
 (Windows)
 
-1) jai -optimized_debug build.jai - -no-windows-console -windows-bundle
-2) Zip build/<bundle>
+1) jai -optimized_debug build.jai - -no-windows-console -bundle
+2) Zip build/editor
 
-(macOS coming soon)
+(macOS)
+
+1) jai -optimized_debug build.jai - -bundle
 
 (Linux coming soonish)
 
