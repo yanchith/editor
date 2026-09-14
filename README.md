@@ -58,7 +58,7 @@ If you want to add support for a language for yourself, look at the existing `la
 - The parser for indentation and lexers for syntax highlighting need to get faster.
   The editor turns them off for files above 10 megabytes.
 
-- Opening files above 4GB will likely cause a crash.
+- Opening files above 4GB will likely crash. It definitely shouldn't. I am investigating.
 
 **Misc**
 
