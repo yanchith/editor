@@ -4,6 +4,11 @@
 # Log directory
 /logs
 
+# Configs copied from data to the root directory
+/editor.config
+/editor.config.sublime
+/editor.config.vscode
+
 # macOS things
 .DS_Store
 
