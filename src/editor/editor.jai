@@ -5738,6 +5738,17 @@ find_compilation_link :: (line: string) -> found: bool, Compilation_Link {
         return false, result;
     }
 
+    // Skip over : in Windows absolute paths.
+    if colon_index >= 1 && colon_index < line.count - 1 {
+        next_c := line[colon_index + 1];
+        if next_c == "/" || next_c == "\\" {
+            colon_index = String.find_index_from_left(line, #char ":", colon_index + 2);
+            if colon_index == -1 {
+                return false, result;
+            }
+        }
+    }
+
     s := slice(line, colon_index + 1);
 
     success: bool;
@@ -5756,11 +5767,25 @@ find_compilation_link :: (line: string) -> found: bool, Compilation_Link {
         return false, result;
     }
 
-    // TODO(jt): @Incomplete Handle quoted paths.
+    // Do messy heuristic path detection. This can be a relative path without any slashes, or it can be an absolute path.
+    // It can also contain spaces. We currently miss some relative paths with spaces, if the parts with spaces precede
+    // the first slash.
     space_index := find_index_from_right(line, #char " ", colon_index);
-    // Skip check for -1, as the path could be the first thing. Works out with the +1 below.
-
+    slash_index := String.find_index_of_any_from_left(line, "/\\");
+    // Skip -1 check for space index, as the path could be the first thing. Works out with the +1 below.
     path_index := space_index + 1;
+
+    if slash_index != -1 {
+        if slash_index >= 2 && line[slash_index - 1] == ":" && is_alpha(line[slash_index - 2]) {
+            // This is a Windows absolute path.
+            slash_index -= 2;
+        }
+
+        if slash_index < space_index {
+            path_index = slash_index;
+        }
+    }
+
     path_count := colon_index - path_index;
     if path_count == 0 {
         return false, result;
