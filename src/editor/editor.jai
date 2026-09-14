@@ -4,6 +4,7 @@ TODO(jt): Known bugs:
 
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
 - Clicking on an item in a listing scrolls/selects the resulting document immediately after clicking.
+- Project detection uses substring. This is incorrect. Should use sub-parts.
 
 TODO(jt): Roadmap:
 
@@ -4916,6 +4917,8 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
             document, document_added := find_or_add_document(editor, platform, .FILE, directory_absolute_path, file_absolute_path);
             if document_added {
                 if file_exists {
+                    editor_log(editor, "Opening file: %", file_absolute_path);
+
                     document.backing_file_exists = true;
                     document.backing_file_time_of_last_sync = input.time;
 
