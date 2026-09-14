@@ -12,10 +12,9 @@ If you want to make this editor yours, there's two options:
 
 1) Use a binary build and customize `editor.config`. There's a few starter templates,
    depending on where you are coming from, but note that these don't map precisely
-   to their source behavior, as the editor has some Emacs weirdness built in.
+   to their source behavior.
 
-2) Modify the code and compile your own build. See building from source section below.
-   The editor is written in Jai, which is not publicly available yet, but should be out soon.
+2) Modify the code and compile your own build.
 
 ## Building from source
 
@@ -38,18 +37,20 @@ Tested on Jai version `0.2.030`.
 The code compiles and runs on Windows and macOS (although macOS bundle doesn't work yet).
 Linux support coming soon.
 
+The editor is written in Jai, which is not publicly available yet. Hopefully it will be soon.
+
 ## Temporary limitations
 
-This is an early alpha. Bugs may happen. Save often.
+This is an early alpha. Bugs and occational crashes may happen. Save often.
 
 **Language support**
 
-Only C (and a subset of C++), Jai, and GLSL are supported right now.
+Only C/C++, Jai, and GLSL are supported right now.
 
 I plan to add support for Rust, C#, TypeScript and Slang soon.
 If you want to add support for a language for yourself, look at the existing `lang_xyz.jai` files.
 
-**Speed**
+**Performance**
 
 - To help debug tricky parts of the code, expensive paranoid assertions are enabled by default.
   You can disable these by building with `-no-sanity`. They will eventually be disabled by default.
@@ -57,7 +58,7 @@ If you want to add support for a language for yourself, look at the existing `la
 - The parser for indentation and lexers for syntax highlighting need to get faster.
   The editor turns them off for files above 10 megabytes.
 
-Once these are solved, you should be able to view and edit multi-gigabyte files at interactive speeds.
+- Opening files above 4GB will likely cause a crash.
 
 **Misc**
 
@@ -69,12 +70,10 @@ Once these are solved, you should be able to view and edit multi-gigabyte files 
 
 ## Contributing
 
-I accept small bugfixes, as well as lexers for new programming languages, but if you want to make
+Small bugfixes are accepted, as well as lexers for new programming languages, but if you want to make
 bigger changes, your own version of the editor would be a better place to do that.
 
 LSPs and MCPs are out of scope. Vim mode too.
-
-Disingenuous behavior will not be tolerated.
 
 ## Acknowledgements
 
