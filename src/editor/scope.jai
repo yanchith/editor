@@ -94,20 +94,13 @@ update_scopes :: (document: *Document) {
     block_comment_depth := 0;
 
     for :text_buffer_lines line_text, line_index: document.buffer {
-        // TODO(jt): @Cleanup @Speed This loop became a little gnarly. Also probably slow. Clean it up, so we can SIMD later.
-        skip_due_to_block_comment_open_or_close := 0; // TODO(jt): @Cleanup This would normally just be a string advance, but our loop is structured unfortunately.
-
-        for byte, byte_index: line_text {
-            if skip_due_to_block_comment_open_or_close > 0 {
-                skip_due_to_block_comment_open_or_close -= 1;
-                continue;
-            }
+        for byte_index: 0..line_text.count - 1 {
+            byte := line_text[byte_index];
 
             //
             // Comment detection
             //
 
-            // Note that we are comparing bytes with bytes in the comment detection code, but it shouldn't matter!
             if line_comment.count {
                 is_line_comment := block_comment_depth == 0 && String.starts_with(String.slice(line_text, byte_index, line_text.count - byte_index), line_comment);
                 if is_line_comment {
@@ -120,7 +113,7 @@ update_scopes :: (document: *Document) {
                 if is_block_comment_start {
                     block_comment_depth += 1;
 
-                    skip_due_to_block_comment_open_or_close = block_comment_start.count - 1;
+                    byte_index += block_comment_start.count - 1; // Advance over the block comment start.
                     continue;
                 }
             }
@@ -136,7 +129,7 @@ update_scopes :: (document: *Document) {
                         block_comment_depth = 0;
                     }
 
-                    skip_due_to_block_comment_open_or_close = block_comment_end.count - 1;
+                    byte_index += block_comment_end.count - 1; // Advance over the block comment end.
                     continue;
                 }
             }
@@ -207,7 +200,7 @@ update_scopes :: (document: *Document) {
                     parent_index = index;
                     sibling_index = -1;
 
-                    continue byte;
+                    continue byte_index;
                 } else if byte == paren_pair.close {
                     scope_index := parent_index;
                     scope := *document.scopes[scope_index];
@@ -225,14 +218,14 @@ update_scopes :: (document: *Document) {
                     // Ignoring mismatching closing parens is an alright behavior, but maybe there
                     // is something better we can do?
 
-                    continue byte;
+                    continue byte_index;
                 }
             }
         }
     }
 }
 
-find_scope_for_location :: (document: Document, loc: Text_Location, start_x_inclusive := true, end_x_inclusive := true, start_y_inclusive := true, end_y_inclusive := true) -> *Scope {
+find_scope_for_location :: (document: Document, loc: Text_Location, x0_inclusive := true, x1_inclusive := true, y0_inclusive := true, y1_inclusive := true) -> *Scope {
     ProfileZone("find_scope_for_location");
 
     scopes := document.scopes;
@@ -247,7 +240,7 @@ find_scope_for_location :: (document: Document, loc: Text_Location, start_x_incl
 
         while sibling_index != -1 {
             sibling := *scopes[sibling_index];
-            if contains(sibling, loc, start_x_inclusive, end_x_inclusive, start_y_inclusive, end_y_inclusive) {
+            if contains(sibling, loc, x0_inclusive, x1_inclusive, y0_inclusive, y1_inclusive) {
                 // We found a sibling that contains our location. Set it as the current scope, so that we nest to it.
                 scope = sibling;
                 break;
@@ -267,9 +260,9 @@ find_scope_for_location :: (document: Document, loc: Text_Location, start_x_incl
 
 find_indentation_level_for_location :: (document: Document, loc: Text_Location) -> s64 {
     // The Y range check is start-exclusive and end-inclusive by design: we indent the line of
-    // the closing paren depending on whether the scope has REGULAR or HANGING indentation,
+    // the closing paren depending on whether the scope has regular or HANGING indentation,
     // while the opening paren always belongs to its parent scope, so we exclude it.
-    scope := find_scope_for_location(document, loc, start_y_inclusive = false);
+    scope := find_scope_for_location(document, loc, y0_inclusive = false);
     if !scope {
         return 0;
     }
@@ -293,19 +286,18 @@ find_indentation_level_for_location :: (document: Document, loc: Text_Location) 
 
 #scope_file
 
-// TODO(jt): @Cleanup This could be unified with Font_Text_Range in font.jai.
-contains :: (scope: Scope, loc: Text_Location, start_x_inclusive: bool, end_x_inclusive: bool, start_y_inclusive: bool, end_y_inclusive: bool) -> bool {
-    test_top    := start_y_inclusive && loc.y >= scope.loc0.y || loc.y > scope.loc0.y;
-    test_bottom := end_y_inclusive   && loc.y <= scope.loc1.y || loc.y < scope.loc1.y;
-    test_left   := start_x_inclusive && loc.x >= scope.loc0.x || loc.x > scope.loc0.x;
-    test_right  := end_x_inclusive   && loc.x <= scope.loc1.x || loc.x < scope.loc1.x;
+contains :: (scope: Scope, loc: Text_Location, x0_inclusive: bool, x1_inclusive: bool, y0_inclusive: bool, y1_inclusive: bool) -> bool {
+    test_top    := ifx y0_inclusive then loc.y >= scope.loc0.y else loc.y > scope.loc0.y;
+    test_bottom := ifx y1_inclusive then loc.y <= scope.loc1.y else loc.y < scope.loc1.y;
+    test_left   := ifx x0_inclusive then loc.x >= scope.loc0.x else loc.x > scope.loc0.x;
+    test_right  := ifx x1_inclusive then loc.x <= scope.loc1.x else loc.x < scope.loc1.x;
 
     if test_top && test_bottom {
-        if scope.loc0.y == scope.loc1.y { // Can only happen if it is y-inclusive.
+        if scope.loc0.y == scope.loc1.y {
             return test_left && test_right;
-        } else if scope.loc0.y == loc.y { // Can only happen if it is y-inclusive.
+        } else if scope.loc0.y == loc.y {
             return test_left;
-        } else if scope.loc1.y == loc.y { // Can only happen if it is y-inclusive.
+        } else if scope.loc1.y == loc.y {
             return test_right;
         } else {
             return true;
