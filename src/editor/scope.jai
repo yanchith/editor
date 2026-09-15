@@ -55,9 +55,9 @@ update_scopes :: (document: *Document) {
     block_comment_end: string;
     block_comments_can_nest: bool;
 
-    // TODO(jt): @Incomplete Some languages have multiple string styles, and even different
-    // characters at start/end. We'll need to extend this.
-    string_start_and_end: string;
+    // TODO(jt): @Incomplete Some languages have multiple string styles, and even different characters at start/end.
+    single_line_string: string;
+    multi_line_string: string;
 
     if #complete document.lang == {
         case .TEXT; {
@@ -69,7 +69,8 @@ update_scopes :: (document: *Document) {
             block_comment_start     = LANG_C_BLOCK_COMMENT_START;
             block_comment_end       = LANG_C_BLOCK_COMMENT_END;
             block_comments_can_nest = LANG_C_BLOCK_COMMENTS_CAN_NEST;
-            string_start_and_end    = LANG_C_STRING_START_AND_END;
+            single_line_string      = LANG_C_SINGLE_LINE_STRING;
+            multi_line_string       = LANG_C_MULTI_LINE_STRING;
         }
         case .JAI; {
             indentation_pairs       = LANG_JAI_INDENTATION_PAREN_PAIRS;
@@ -77,7 +78,8 @@ update_scopes :: (document: *Document) {
             block_comment_start     = LANG_JAI_BLOCK_COMMENT_START;
             block_comment_end       = LANG_JAI_BLOCK_COMMENT_END;
             block_comments_can_nest = LANG_JAI_BLOCK_COMMENTS_CAN_NEST;
-            string_start_and_end    = LANG_JAI_STRING_START_AND_END;
+            single_line_string      = LANG_JAI_SINGLE_LINE_STRING;
+            multi_line_string       = LANG_JAI_MULTI_LINE_STRING;
         }
         case .GLSL; {
             indentation_pairs       = LANG_GLSL_INDENTATION_PAREN_PAIRS;
@@ -85,7 +87,8 @@ update_scopes :: (document: *Document) {
             block_comment_start     = LANG_GLSL_BLOCK_COMMENT_START;
             block_comment_end       = LANG_GLSL_BLOCK_COMMENT_END;
             block_comments_can_nest = LANG_GLSL_BLOCK_COMMENTS_CAN_NEST;
-            string_start_and_end    = LANG_GLSL_STRING_START_AND_END;
+            single_line_string      = LANG_GLSL_SINGLE_LINE_STRING;
+            multi_line_string       = LANG_GLSL_MULTI_LINE_STRING;
         }
     }
 
@@ -98,7 +101,8 @@ update_scopes :: (document: *Document) {
         scope.indentation_level = 0;
     }
 
-    block_comment_depth := 0;
+    block_comment_depth     := 0;
+    inside_multiline_string := false;
 
     for :text_buffer_lines line_text, line_index: document.buffer {
         for byte_index: 0..line_text.count - 1 {
@@ -109,14 +113,17 @@ update_scopes :: (document: *Document) {
             //
 
             if line_comment.count {
-                is_line_comment := block_comment_depth == 0 && String.starts_with(String.slice(line_text, byte_index, line_text.count - byte_index), line_comment);
+                is_line_comment := block_comment_depth == 0 && String.starts_with(slice(line_text, byte_index), line_comment);
                 if is_line_comment {
                     continue line_index;
                 }
             }
 
+            // nocheckin instead of the current approach, enter block-comment or multi-line-string mode and crunch through as fast as possible.
+            // But to do that, we need to not go line by line... hmmm.
+            
             if block_comment_start.count {
-                is_block_comment_start := (block_comment_depth == 0 || block_comments_can_nest) && String.starts_with(String.slice(line_text, byte_index, line_text.count - byte_index), block_comment_start);
+                is_block_comment_start := (block_comment_depth == 0 || block_comments_can_nest) && String.starts_with(slice(line_text, byte_index), block_comment_start);
                 if is_block_comment_start {
                     block_comment_depth += 1;
 
@@ -126,7 +133,7 @@ update_scopes :: (document: *Document) {
             }
 
             if block_comment_end.count {
-                is_block_comment_end := block_comment_depth > 0 && String.starts_with(String.slice(line_text, byte_index, line_text.count - byte_index), block_comment_end);
+                is_block_comment_end := block_comment_depth > 0 && String.starts_with(slice(line_text, byte_index), block_comment_end);
                 if is_block_comment_end {
                     if block_comments_can_nest {
                         block_comment_depth -= 1;
@@ -143,6 +150,11 @@ update_scopes :: (document: *Document) {
 
             if block_comment_depth > 0 {
                 continue;
+            }
+            
+            if single_line_string.count {
+                // nocheckin here
+                // is_single_line_string := ;
             }
 
             //
