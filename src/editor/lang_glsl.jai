@@ -44,14 +44,16 @@ lang_glsl_update_tokens :: (document: *Document) {
     while 1 {
         token := get_next_token(*lexer);
 
-        if lexer.reported_error         break;
-        if token.type == .END_OF_INPUT  break;
+        if lexer.reported_error          break;
+        if token.type == .END_OF_INPUT   break;
 
         if token.type == .UNINITIALIZED  continue;
         if token.type == .INVALID        continue;
         // We currently don't have special handling for these, so don't send them down the pipe.
         if token.type == .IDENTIFIER     continue;
         if token.type == .PUNCTUATION    continue;
+        
+        if token.loc0 == token.loc1      continue; // Empty token.
 
         array_add(*document.tokens, token);
     }
@@ -127,8 +129,8 @@ get_next_token :: (lexer: *Lexer) -> Token {
 
 parse_simple :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 }
 
 parse_number_or_period :: (lexer: *Lexer, token: *Token) {
@@ -136,8 +138,8 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
     parsed_decimal_point := start_c == ".";
 
     token.type = .NUMBER_LITERAL;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
@@ -149,20 +151,22 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
                 // Hexadecimal
                 lexer_advance_horizontally(lexer);
                 while lexer.input.count && lexer_input_byte_matches(lexer, is_hex) {
-                    lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
                 }
+                
+                lexer_set_token_end(lexer, token);
             } else {
                 // Octal
                 while lexer.input.count && lexer_input_byte_is_any(lexer, "01234567") {
-                    lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
                 }
+                
+                lexer_set_token_end(lexer, token);
             }
 
             if lexer_input_byte_is_any(lexer, "uU") {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         } else {
             // Parse decimal
@@ -178,9 +182,10 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
                     parsed_decimal_point = true;
                 }
 
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
             }
+            
+            lexer_set_token_end(lexer, token);
 
             // Parse exponent
             if lexer_input_byte_is_any(lexer, "eE") {
@@ -191,29 +196,30 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
                 }
 
                 while lexer.input.count && lexer_input_byte_matches(lexer, is_digit) {
-                    lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
                 }
+                
+                lexer_set_token_end(lexer, token);
             }
 
             // Parse suffixes
             if parsed_decimal_point {
                 if lexer_input_byte_is_any(lexer, "fF") {
-                    lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
+                    lexer_set_token_end(lexer, token);
                 } else if lexer_input_byte_equals(lexer, "L") && lexer_input_byte_at_index_equals(lexer, "F", 1) {
                     lexer_advance_horizontally(lexer);
-                    lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
+                    lexer_set_token_end(lexer, token);
                 } else if lexer_input_byte_equals(lexer, "l") && lexer_input_byte_at_index_equals(lexer, "f", 1) {
                     lexer_advance_horizontally(lexer);
-                    lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
+                    lexer_set_token_end(lexer, token);
                 }
             } else {
                 if lexer_input_byte_is_any(lexer, "uU") {
-                    lexer_set_token_end(lexer, token);
                     lexer_advance_horizontally(lexer);
+                    lexer_set_token_end(lexer, token);
                 }
             }
         }
@@ -225,7 +231,6 @@ parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
 
     token.type = .IDENTIFIER;
     lexer_set_token_end(lexer, token);
-    token.loc1.x -= 1; // Subtract 1, because eat_identifier already ate past.
 
     if is_keyword(ident) {
         token.type = .KEYWORD;
@@ -234,15 +239,15 @@ parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
 
 parse_equal :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }
@@ -250,16 +255,16 @@ parse_equal :: (lexer: *Lexer, token: *Token) {
 
 parse_minus :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; #through;
             case "-"; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }
@@ -267,16 +272,16 @@ parse_minus :: (lexer: *Lexer, token: *Token) {
 
 parse_plus :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; #through;
             case "+"; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }
@@ -284,15 +289,15 @@ parse_plus :: (lexer: *Lexer, token: *Token) {
 
 parse_asterisk :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }
@@ -300,16 +305,16 @@ parse_asterisk :: (lexer: *Lexer, token: *Token) {
 
 parse_less_than :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; #through;
             case "<"; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }
@@ -317,16 +322,16 @@ parse_less_than :: (lexer: *Lexer, token: *Token) {
 
 parse_greater_than :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; #through;
             case ">"; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }
@@ -334,15 +339,15 @@ parse_greater_than :: (lexer: *Lexer, token: *Token) {
 
 parse_bang :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }
@@ -352,23 +357,25 @@ parse_directive :: (lexer: *Lexer, token: *Token) {
     lexer_advance_horizontally(lexer);
 
     lexer_eat_whitespace(lexer);
-
-    // TODO(jt): @Cleanup @Hack extract read_identifier, so we don't need to overwrite.
-    ident := parse_identifier_or_keyword(lexer, token);
-    token.type = .DIRECTIVE;
+    
+    ident := lexer_eat_identifier(lexer);
+    if ident.count  {
+        token.type = .DIRECTIVE;
+        lexer_set_token_end(lexer, token);
+    }
 }
 
 parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
             case "/"; {
                 token.type = .LINE_COMMENT;
@@ -386,8 +393,8 @@ parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
                             c1 := lexer.input[1];
                             if c1 == "/" {
                                 lexer_advance_horizontally(lexer);
-                                lexer_set_token_end(lexer, token);
                                 lexer_advance_horizontally(lexer);
+                                lexer_set_token_end(lexer, token);
                                 break;
                             }
                         }
@@ -402,16 +409,16 @@ parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
 
 parse_ampersand :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; #through;
             case "&"; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }
@@ -419,16 +426,16 @@ parse_ampersand :: (lexer: *Lexer, token: *Token) {
 
 parse_pipe :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; #through;
             case "|"; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }
@@ -436,15 +443,15 @@ parse_pipe :: (lexer: *Lexer, token: *Token) {
 
 parse_percent :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }
@@ -452,16 +459,16 @@ parse_percent :: (lexer: *Lexer, token: *Token) {
 
 parse_caret :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "^"; #through;
             case "="; {
-                lexer_set_token_end(lexer, token);
                 lexer_advance_horizontally(lexer);
+                lexer_set_token_end(lexer, token);
             }
         }
     }

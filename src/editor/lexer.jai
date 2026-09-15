@@ -1,6 +1,6 @@
 Token :: struct {
     loc0: Text_Location;
-    loc1: Text_Location; // Inclusive!  nocheckin revisit this, it simplifies lexer implementation for it to be exclusive
+    loc1: Text_Location; // Exclusive!
     type: Token_Type;
     userdata: u32; // Lexer implementations can hide info here for their benefit.
 }

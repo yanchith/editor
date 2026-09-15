@@ -4574,13 +4574,14 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 //
                 {
                     for document.tokens {
-                        if it.loc1.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
                         if it.loc0.y > viewport_line1  break;
+                        if it.loc1.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
+                        if it.loc0 == it.loc1          continue; // Empty token.
 
                         r: Font_Style_Range;
                         r.x0 = it.loc0.x;
                         r.y0 = it.loc0.y - viewport_line0;
-                        r.x1 = it.loc1.x;
+                        r.x1 = it.loc1.x - 1; // Convert from exclusive to inclusive.
                         r.y1 = it.loc1.y - viewport_line0;
 
                         if #complete it.type == {
