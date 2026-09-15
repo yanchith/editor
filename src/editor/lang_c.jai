@@ -82,6 +82,7 @@ lang_c_update_tokens :: (document: *Document) {
 USERDATA__IS_INCLUDE_DIRECTIVE: u32 : 0x01;
 
 get_next_token :: (lexer: *Lexer) -> Token {
+    ProfileZone("lang_c_get_next_token");
     lexer_eat_whitespace(lexer);
 
     token: Token;

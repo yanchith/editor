@@ -66,6 +66,7 @@ lang_glsl_update_tokens :: (document: *Document) {
 //
 
 get_next_token :: (lexer: *Lexer) -> Token {
+    ProfileZone("lang_glsl_get_next_token");
     lexer_eat_whitespace(lexer);
 
     token: Token;
