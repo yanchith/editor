@@ -12,6 +12,8 @@ LANG_C_BLOCK_COMMENT_START :: "/*";
 LANG_C_BLOCK_COMMENT_END   :: "*/";
 LANG_C_BLOCK_COMMENTS_CAN_NEST :: false;
 
+LANG_C_STRING_START_AND_END :: "\"";
+
 LANG_C_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },

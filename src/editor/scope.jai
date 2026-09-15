@@ -55,6 +55,10 @@ update_scopes :: (document: *Document) {
     block_comment_end: string;
     block_comments_can_nest: bool;
 
+    // TODO(jt): @Incomplete Some languages have multiple string styles, and even different
+    // characters at start/end. We'll need to extend this.
+    string_start_and_end: string;
+
     if #complete document.lang == {
         case .TEXT; {
             indentation_pairs       = TEXT_INDENTATION_PAREN_PAIRS;
@@ -65,6 +69,7 @@ update_scopes :: (document: *Document) {
             block_comment_start     = LANG_C_BLOCK_COMMENT_START;
             block_comment_end       = LANG_C_BLOCK_COMMENT_END;
             block_comments_can_nest = LANG_C_BLOCK_COMMENTS_CAN_NEST;
+            string_start_and_end    = LANG_C_STRING_START_AND_END;
         }
         case .JAI; {
             indentation_pairs       = LANG_JAI_INDENTATION_PAREN_PAIRS;
@@ -72,6 +77,7 @@ update_scopes :: (document: *Document) {
             block_comment_start     = LANG_JAI_BLOCK_COMMENT_START;
             block_comment_end       = LANG_JAI_BLOCK_COMMENT_END;
             block_comments_can_nest = LANG_JAI_BLOCK_COMMENTS_CAN_NEST;
+            string_start_and_end    = LANG_JAI_STRING_START_AND_END;
         }
         case .GLSL; {
             indentation_pairs       = LANG_GLSL_INDENTATION_PAREN_PAIRS;
@@ -79,6 +85,7 @@ update_scopes :: (document: *Document) {
             block_comment_start     = LANG_GLSL_BLOCK_COMMENT_START;
             block_comment_end       = LANG_GLSL_BLOCK_COMMENT_END;
             block_comments_can_nest = LANG_GLSL_BLOCK_COMMENTS_CAN_NEST;
+            string_start_and_end    = LANG_GLSL_STRING_START_AND_END;
         }
     }
 

@@ -7,6 +7,8 @@ LANG_GLSL_BLOCK_COMMENT_START :: "/*";
 LANG_GLSL_BLOCK_COMMENT_END   :: "*/";
 LANG_GLSL_BLOCK_COMMENTS_CAN_NEST :: false;
 
+LANG_GLSL_STRING_START_AND_END :: "";
+
 LANG_GLSL_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
     { #char "(", #char ")" },
