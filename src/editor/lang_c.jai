@@ -71,7 +71,7 @@ lang_c_update_tokens :: (document: *Document) {
 // Structural similarities are not accidental. Thank you, Focus developers. (https://github.com/focus-editor/focus)
 //
 // However, we preserve less information on our tokens than Focus does, so we did away with some things.
-// For example, almost every token here is PUNCTUATION,  we don't distinguish operators, etc.
+// For example, almost every token here is PUNCTUATION, we don't distinguish operators, etc.
 //
 // Additionally, I did find some bugs in the the focus implementation, which I fixed here (like the missing case for double_greater_than).
 // There might be more bugs.
@@ -247,30 +247,16 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
     }
 }
 
-parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) -> ident: string {
-    ident: string;
-    ident.data = lexer.input.data;
-    ident.count = 1;
+parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
+    ident := lexer_eat_identifier(lexer);
 
     token.type = .IDENTIFIER;
     lexer_set_token_end(lexer, token);
-    lexer_advance_horizontally(lexer);
-
-    // The is_nonascii_utf8_char_boundary may be a little too lenient, and perhaps
-    // C identifiers are more strict, but for syntax highlighting this is good enough.
-    // We may want to switch this to a more robust unicode character detection -
-    // either based on the unicode database, or a character heuristic like Focus does.
-    while lexer.input.count && (lexer_input_byte_matches(lexer, is_alnum) || lexer_input_byte_matches(lexer, is_nonascii_utf8_char_boundary)) {
-        lexer_set_token_end(lexer, token);
-        bytes_advanced := lexer_advance_horizontally(lexer);
-        ident.count += bytes_advanced;
-    }
+    token.loc1.x -= 1; // Subtract 1, because eat_identifier already ate past.
 
     if is_keyword(ident) {
         token.type = .KEYWORD;
     }
-
-    return ident;
 }
 
 parse_equal :: (lexer: *Lexer, token: *Token) {
@@ -411,12 +397,17 @@ parse_directive :: (lexer: *Lexer, token: *Token) {
     lexer_advance_horizontally(lexer);
 
     lexer_eat_whitespace(lexer);
-
-    // TODO(jt): @Cleanup @Hack extract read_identifier, so we don't need to overwrite.
-    ident := parse_identifier_or_keyword(lexer, token);
-    token.type = .DIRECTIVE;
-    if ident == "include" {
-        token.userdata |= USERDATA__IS_INCLUDE_DIRECTIVE;
+    
+    ident := lexer_eat_identifier(lexer);
+    if ident.count  {
+        token.type = .DIRECTIVE;
+        
+        lexer_set_token_end(lexer, token);
+        token.loc1.x -= 1; // Subtract 1, because eat_identifier already ate past.
+        
+        if ident == "include" {
+            token.userdata |= USERDATA__IS_INCLUDE_DIRECTIVE;
+        }
     }
 }
 

@@ -64,7 +64,7 @@ lang_glsl_update_tokens :: (document: *Document) {
 //
 
 get_next_token :: (lexer: *Lexer) -> Token {
-        lexer_eat_whitespace(lexer);
+    lexer_eat_whitespace(lexer);
 
     token: Token;
     lexer_set_token_start(lexer, *token);
@@ -220,30 +220,16 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
     }
 }
 
-parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) -> ident: string {
-    ident: string;
-    ident.data = lexer.input.data;
-    ident.count = 1;
+parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
+    ident := lexer_eat_identifier(lexer);
 
     token.type = .IDENTIFIER;
     lexer_set_token_end(lexer, token);
-    lexer_advance_horizontally(lexer);
-
-    // The is_nonascii_utf8_char_boundary may be a little too lenient, and perhaps
-    // C identifiers are more strict, but for syntax highlighting this is good enough.
-    // We may want to switch this to a more robust unicode character detection -
-    // either based on the unicode database, or a character heuristic like Focus does.
-    while lexer.input.count && (lexer_input_byte_matches(lexer, is_alnum) || lexer_input_byte_matches(lexer, is_nonascii_utf8_char_boundary)) {
-        lexer_set_token_end(lexer, token);
-        bytes_advanced := lexer_advance_horizontally(lexer);
-        ident.count += bytes_advanced;
-    }
+    token.loc1.x -= 1; // Subtract 1, because eat_identifier already ate past.
 
     if is_keyword(ident) {
         token.type = .KEYWORD;
     }
-
-    return ident;
 }
 
 parse_equal :: (lexer: *Lexer, token: *Token) {

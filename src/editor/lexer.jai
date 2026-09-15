@@ -1,6 +1,6 @@
 Token :: struct {
     loc0: Text_Location;
-    loc1: Text_Location; // Inclusive!
+    loc1: Text_Location; // Inclusive!  nocheckin revisit this, it simplifies lexer implementation for it to be exclusive
     type: Token_Type;
     userdata: u32; // Lexer implementations can hide info here for their benefit.
 }
@@ -126,7 +126,7 @@ lexer_input_byte_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> b
     return false;
 }
 
-lexer_advance :: (lexer: *Lexer) -> bytes_advanced: s64 {
+lexer_advance :: (lexer: *Lexer) {
     sanity_assert(lexer.input.count > 0);
 
     c := lexer.input[0];
@@ -134,14 +134,12 @@ lexer_advance :: (lexer: *Lexer) -> bytes_advanced: s64 {
         lexer.line_index += 1;
         lexer.column_index = 0;
         advance(*lexer.input);
-
-        return 1;
     } else {
-        return lexer_advance_horizontally(lexer);
+        lexer_advance_horizontally(lexer);
     }
 }
 
-lexer_advance_horizontally :: (lexer: *Lexer) -> bytes_advanced: s64 {
+lexer_advance_horizontally :: (lexer: *Lexer) {
     sanity_assert(lexer.input.count > 0);
     sanity_assert(lexer.input[0] != "\n");
 
@@ -159,8 +157,6 @@ lexer_advance_horizontally :: (lexer: *Lexer) -> bytes_advanced: s64 {
 
     lexer.column_index += 1;
     advance(*lexer.input, char_length);
-
-    return char_length;
 }
 
 lexer_eat_whitespace :: (lexer: *Lexer) {
@@ -190,4 +186,17 @@ lexer_eat_until_newline :: (lexer: *Lexer) {
 
         lexer_advance_horizontally(lexer);
     }
+}
+
+lexer_eat_identifier :: (lexer: *Lexer) -> string {
+    ident: string;
+    ident.data = lexer.input.data;
+    
+    while lexer.input.count && (lexer_input_byte_matches(lexer, is_alnum) || lexer_input_byte_matches(lexer, is_nonascii_utf8_char_boundary)) {
+        lexer_advance_horizontally(lexer);
+    }
+    
+    ident.count = lexer.input.data - ident.data;
+    
+    return ident;
 }
