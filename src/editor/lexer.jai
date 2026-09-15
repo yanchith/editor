@@ -83,6 +83,7 @@ lexer_set_token_start :: inline (lexer: Lexer, token: *Token) {
     token.loc0.y = lexer.line_index;
 }
 
+// Lexer tokens are end-exclusive. Call this once you are done with the token.
 lexer_set_token_end :: inline (lexer: Lexer, token: *Token) {
     token.loc1.x = lexer.column_index;
     token.loc1.y = lexer.line_index;
