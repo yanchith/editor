@@ -1,6 +1,6 @@
 Token :: struct {
     loc0: Text_Location;
-    loc1: Text_Location; // Exclusive!
+    loc1: Text_Location; // Exclusive! (They were inclusive before, because font ranges are, but it was slightly more work and harder to think about)
     type: Token_Type;
     userdata: u32; // Lexer implementations can hide info here for their benefit.
 }
