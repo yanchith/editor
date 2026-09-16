@@ -244,10 +244,22 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
          
             // nocheckin HERE: So X64 bsf crashes on our input. Not great. But even if disabled, this is not yet correct.
             // And even once done, this might not be a performance benefit. Let's see.
+            //
+            // UGH. This won't work. There are set bits in places 
             
             // In SIMD, we'd movemask_epi first.
             newlines_seen                  := popcount(mn) >> 3;
-            spaces_after_last_newline_seen := bit_scan_forward(~mn) >> 3;
+            spaces_after_last_newline_seen := __bit_scan_forward(~mn) >> 3;
+            
+            {
+                s: string;
+                s.data = lexer.input.data;
+                s.count = 8;
+                log("nocheckin mn: %, newlines_seen: %, spaces_after_last_newline_seen: %, input: % , %", 
+                    formatInt(mn, base=2, minimum_digits=64),
+                    newlines_seen, spaces_after_last_newline_seen,
+                    formatInt(current, base=2, minimum_digits=64), s);
+            }
             
             lexer.line_index += newlines_seen;
             if newlines_seen {
@@ -342,4 +354,36 @@ lexer_is_keyword :: (identifier: string, $keywords: [] string) -> bool {
     
     #insert #run make_keyword_matcher(keywords);
     return match_keyword(identifier);
+}
+
+               
+#scope_file
+               
+// nocheckin               
+__bit_scan_forward :: (input: $T) -> s32 #expand {  // One plus the index of the first bit, when searching from LSB to MSB. A result of 0 means the input was 0.
+    BITS :: size_of(T)*8;
+
+    // #if CPU == .X64 {
+    //     #if BITS == 8 {  // There's no bsf for 8 bits. Sad.
+    //         result: s16 = -1;
+    //         #asm {
+    //             movzxbw   temp:, input;
+    //             bsf.16    result, temp;
+    //         }
+    //     } else {
+    //         result: T = xx,no_check -1;
+    //         #asm {
+    //             bsf?T     result, input;
+    //         }
+    //     }
+// 
+    //     return cast,trunc(s32)(result + 1);
+    // } else {
+        // @Speed: Slow fallback for other CPUs.
+        for i: 0..BITS-1 {
+            if input & cast,no_check(T) (1 << i) return cast(s32) (i + 1);
+        }
+        
+        return 0;
+    // }
 }
