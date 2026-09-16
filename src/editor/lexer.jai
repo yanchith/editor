@@ -140,11 +140,10 @@ lexer_input_byte_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> b
     return false;
 }
 
-lexer_advance :: (lexer: *Lexer) {
+lexer_advance :: inline (lexer: *Lexer) {
     sanity_assert(lexer.input.count > 0);
 
-    c := lexer.input[0];
-    if c == "\n" {
+    if lexer.input[0] == "\n" {
         lexer.line_index += 1;
         lexer.column_index = 0;
         advance(*lexer.input);
@@ -153,17 +152,15 @@ lexer_advance :: (lexer: *Lexer) {
     }
 }
 
-lexer_advance_horizontally :: (lexer: *Lexer) {
+lexer_advance_horizontally :: inline (lexer: *Lexer) {
     sanity_assert(lexer.input.count > 0);
     sanity_assert(lexer.input[0] != "\n");
-
-    c := lexer.input[0];
 
     // We (almost) completely trust the table for utf8 lengths, however
     // we clamp the length to 4 (because our table is from an older RFC?), and
     // we also clamp and emit error if the character would cause us to go
     // out of bounds.
-    char_length: s64 = min(UTF8_LENGTH_FOR_STARTING_BYTE[c], 4);
+    char_length: s64 = min(UTF8_LENGTH_FOR_STARTING_BYTE[lexer.input[0]], 4);
     if char_length > lexer.input.count {
         lexer.reported_error = true;
         char_length = lexer.input.count;
@@ -175,7 +172,7 @@ lexer_advance_horizontally :: (lexer: *Lexer) {
 
 // nocheckin @Speed This gets called A LOT. SIMD.
 lexer_eat_whitespace :: (lexer: *Lexer) {
-    ProfileZone("nocheckin_lexer_eat_whitespace");
+    // ProfileZone("nocheckin_lexer_eat_whitespace");
     while lexer.input.count {
         c := lexer.input[0];
         if !is_space(c) {
@@ -206,7 +203,7 @@ lexer_eat_until_newline :: (lexer: *Lexer) {
 
 // nocheckin @Speed This Gets called a few times and we spend some time in here. SIMD?
 lexer_eat_identifier :: (lexer: *Lexer) -> string {
-    ProfileZone("nochekin_lexer_eat_identifier");
+    // ProfileZone("nochekin_lexer_eat_identifier");
     ident: string;
     ident.data = lexer.input.data;
     
@@ -217,4 +214,45 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
     ident.count = lexer.input.data - ident.data;
     
     return ident;
+}
+
+lexer_is_keyword :: (identifier: string, $keywords: [] string) -> bool {
+    // TODO(jt): @Speed It is unclear whether the generated switch statement beats array_find.
+    // We need a benchmark.
+    //
+    // return inline array_find(keywords, identifier);
+    
+    make_keyword_matcher :: (keywords: [] string) -> string {
+        keywords_by_length: [..][..] string;
+        for keyword: keywords {
+            if keyword.count > keywords_by_length.count - 1 {
+                array_resize(*keywords_by_length, keyword.count + 1);
+            }
+            
+            keywords := *keywords_by_length[keyword.count];
+            array_add(keywords, keyword);
+        }
+        
+        sb: String_Builder;
+        append(*sb, "match_keyword :: inline (identifier: string) -> bool {\n");
+        append(*sb, "  if identifier.count == {\n");
+        for keywords, keyword_length: keywords_by_length {
+            if keyword_length == 0  continue;
+            if keywords.count == 0  continue;
+            
+            print(*sb, "  case %;\n", keyword_length);
+            for keywords {
+                print(*sb, "    if identifier == \"%\"  return true;\n", it);
+            }
+            append(*sb, "    return false;\n");
+        }
+        append(*sb, "  }\n");
+        append(*sb, "  return false;\n");
+        append(*sb, "}\n");
+                                               
+        return builder_to_string(*sb);
+    }
+    
+    #insert #run make_keyword_matcher(keywords);
+    return match_keyword(identifier);
 }

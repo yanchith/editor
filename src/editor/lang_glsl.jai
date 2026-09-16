@@ -66,7 +66,6 @@ lang_glsl_update_tokens :: (document: *Document) {
 //
 
 get_next_token :: (lexer: *Lexer) -> Token {
-    ProfileZone("lang_glsl_get_next_token"); // nocheckin remove
     lexer_eat_whitespace(lexer);
 
     token: Token;
@@ -232,7 +231,7 @@ parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
     token.type = .IDENTIFIER;
     lexer_set_token_end(lexer, token);
 
-    if is_keyword(ident) {
+    if lexer_is_keyword(ident, KEYWORDS) {
         token.type = .KEYWORD;
     }
 }
@@ -472,13 +471,6 @@ parse_caret :: (lexer: *Lexer, token: *Token) {
             }
         }
     }
-}
-
-// TODO(jt): @Speed Accelerate! Could be a lookup table, or perhaps just a
-// length-based narrowing before doing a strcomp, like Jai_Lexer does.
-is_keyword :: (ident: string) -> bool {
-    found := array_find(KEYWORDS, ident);
-    return found;
 }
 
 KEYWORDS :: string.[
