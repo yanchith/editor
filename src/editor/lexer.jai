@@ -245,8 +245,9 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             // nocheckin HERE: So X64 bsf crashes on our input. Not great. But even if disabled, this is not yet correct.
             // And even once done, this might not be a performance benefit. Let's see.
             
-            newlines_seen                 := popcount(mn) >> 3;
-            space_after_last_newline_seen := bit_scan_forward(~mn) >> 3;
+            // In SIMD, we'd movemask_epi first.
+            newlines_seen                  := popcount(mn) >> 3;
+            spaces_after_last_newline_seen := bit_scan_forward(~mn) >> 3;
             
             lexer.line_index += newlines_seen;
             if newlines_seen {
