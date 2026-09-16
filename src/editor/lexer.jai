@@ -227,6 +227,11 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 r: vec;
                 n: vec;
                 
+                // Apparently, the best way to broadcast on SSE2 is to load from memory.
+                //
+                // There is movddup in SSE3, vbroadcastss in AVX and finally vpbroadcastb/w/d/q
+                // (with double and quad being pure loads, otherwise microcoded shuffles are added)
+                // https://stackoverflow.com/questions/60920572/set-an-xmm-register-to-a-repeating-byte-pattern-broadcast-a-constant-byte
                 movdqu s, [s_pointer];
                 movdqu t, [t_pointer];
                 movdqu r, [r_pointer];
