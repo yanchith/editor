@@ -118,7 +118,6 @@ get_next_token :: (lexer: *Lexer) -> Token {
 
         case; {
             token.type = .INVALID;
-            lexer_set_token_end(lexer, *token);
             lexer_advance_horizontally(lexer);
         }
     }
