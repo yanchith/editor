@@ -177,31 +177,69 @@ nocheckin_scount: s64;
 
 // nocheckin @Speed This gets called A LOT. SIMD.
 lexer_eat_whitespace :: (lexer: *Lexer) {
-    // Unaligned prefix
-    while lexer.input.count && !is_aligned(lexer.input.data, 8) {
-        nocheckin_pcount += 1;
+    USE_SSE :: CPU == .X64;
+    
+    #if 1 /*USE_SSE*/ {
+        WIDTH :: 16;
         
-        if !is_space(lexer.input[0]) {
-            return;
+        // Unaligned prefix
+        while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
+            nocheckin_pcount += 1;
+            
+            if !is_space(lexer.input[0]) {
+                return;
+            }
+            
+            if lexer.input[0] == "\n" {
+                lexer.line_index += 1;
+                lexer.column_index = 0;
+            } else {
+                lexer.column_index += 1;
+            }
+            
+            advance(*lexer.input);
         }
         
-        if lexer.input[0] == "\n" {
-            lexer.line_index += 1;
-            lexer.column_index = 0;
-        } else {
-            lexer.column_index += 1;
+        while lexer.input.count >= WIDTH {
+            S :: #char " ";
+            T :: #char "\t";
+            R :: #char "\r";
+            N :: #char "\n";
+            
+            u8x16 :: struct {
+                array: [16] u8 #align 16;
+            }
+            
+            // nocheckin initialize in global
+            su8x16 := u8x16.{ .[S, S, S, S, S, S, S, S, S, S, S, S, S, S, S, S] };
+            tu8x16 := u8x16.{ .[T, T, T, T, T, T, T, T, T, T, T, T, T, T, T, T] };
+            ru8x16 := u8x16.{ .[R, R, R, R, R, R, R, R, R, R, R, R, R, R, R, R] };
+            nu8x16 := u8x16.{ .[N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N] };
+            
+            s_pointer := *su8x16.array;
+            t_pointer := *tu8x16.array;
+            r_pointer := *ru8x16.array;
+            n_pointer := *nu8x16.array;
+            
+            #asm {
+                s: vec;
+                t: vec;
+                r: vec;
+                n: vec;
+                
+                movdqu s, [s_pointer];
+                movdqu t, [t_pointer];
+                movdqu r, [r_pointer];
+                movdqu n, [n_pointer];
+            }
+            
+            
+            advance(*lexer.input, WIDTH);
         }
-        
-        advance(*lexer.input);
     }
     
-    // SIMD core part
+    /* nocheckin unfortunately, I couldn't get "SIMD" to work. Maybe we can salvage something?
     if lexer.input.count {
-        sanity_assert(is_aligned(lexer.input.data, 8));
-        
-        // TODO(jt): X64 SSE version.
-        
-        // Fallback to 64-bit "SIMD" for generic targets.
         _S :: #char " ";
         _T :: #char "\t";
         _R :: #char "\r";
@@ -248,8 +286,8 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             // UGH. This won't work. There are set bits in places 
             
             // In SIMD, we'd movemask_epi first.
-            newlines_seen                  := popcount(mn) >> 3;
-            spaces_after_last_newline_seen := __bit_scan_forward(~mn) >> 3;
+            newlines_seen                  := popcount(mn) >> 3;  // Incorrect, because there can be spurious ones in the zero region.
+            spaces_after_last_newline_seen := __bit_scan_forward(mn) >> 3; // Incorrect. Same reason.
             
             {
                 s: string;
@@ -270,6 +308,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             advance(*lexer.input, 8);
         }
     }
+    */
     
     // Small suffix
     while lexer.input.count {
