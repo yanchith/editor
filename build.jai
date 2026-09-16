@@ -176,6 +176,8 @@ build :: () {
     compiler_end_intercept(w);
 
     if !compilation_failed && do_bundle {
+        // TODO(jt): Make all bundles copy to a dist directory. macOS currently goes to root,
+        // and Windows to build (which interferes with regular dev process).
         #if OS == .WINDOWS {
             make_windows_bundle(options);
         } else #if OS == .MACOS {
