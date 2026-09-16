@@ -69,8 +69,6 @@ Lexer :: struct {
     MAX_RECENT_TOKEN_COUNT :: 8; // Must be power of two for the bit-op modulo.
 }
 
-// nocheckin @Speed This gets called a lot, but it is basically a memcpy and a few arithmetic things...
-// - make token smaller?
 lexer_write_recent_token :: (lexer: *Lexer, token: Token) {
     #assert is_power_of_two(lexer.MAX_RECENT_TOKEN_COUNT);
 
@@ -196,7 +194,6 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
 }
 
 lexer_eat_until_newline :: (lexer: *Lexer) {
-    ProfileZone("nocheckin_lexer_eat_until_newline");
     while lexer.input.count {
         c := lexer.input[0];
         if c == "\n" {
