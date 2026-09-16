@@ -79,10 +79,10 @@ lang_c_update_tokens :: (document: *Document) {
 // There might be more bugs.
 //
 
-USERDATA__IS_INCLUDE_DIRECTIVE: u32 : 0x01;
+USERDATA__IS_INCLUDE_DIRECTIVE: u16 : 0x01;
 
 get_next_token :: (lexer: *Lexer) -> Token {
-    ProfileZone("lang_c_get_next_token");
+    ProfileZone("lang_c_get_next_token"); // nocheckin remove
     lexer_eat_whitespace(lexer);
 
     token: Token;
@@ -399,7 +399,6 @@ parse_bang :: (lexer: *Lexer, token: *Token) {
 
 parse_directive :: (lexer: *Lexer, token: *Token) {
     lexer_advance_horizontally(lexer);
-
     lexer_eat_whitespace(lexer);
     
     ident := lexer_eat_identifier(lexer);
@@ -593,10 +592,11 @@ parse_caret :: (lexer: *Lexer, token: *Token) {
     }
 }
 
+// nocheckin @Speed It is not the slowest thing, but it does show up on profiles
 // TODO(jt): @Speed Accelerate! Could be a lookup table, or perhaps just a
 // length-based narrowing before doing a strcomp, like Jai_Lexer does.
 is_keyword :: (ident: string) -> bool {
-    ProfileZone("lang_c_is_keyword");
+    ProfileZone("lang_c_is_keyword"); // nocheckin remove
     found := array_find(KEYWORDS, ident);
     return found;
 }

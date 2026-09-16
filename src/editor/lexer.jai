@@ -1,11 +1,24 @@
 Token :: struct {
-    loc0: Text_Location;
-    loc1: Text_Location; // Exclusive! (They were inclusive before, because font ranges are, but it was slightly more work and harder to think about)
+    loc0: Token_Location;
+    loc1: Token_Location; // Exclusive!
+    // Token ranges were end-inclusive before, because font ranges are, but it was
+    // more work and harder to think for each lexer.
+    
     type: Token_Type;
-    userdata: u32; // Lexer implementations can hide info here for their benefit.
+    userdata: u16; // Lexer implementations can hide info here for their benefit.
 }
 
-Token_Type :: enum u32 {
+// Text_Location is 64-bit, but the lexer isn't nearly fast enough to lex things that big, so we might as well save space.
+Token_Location :: struct {
+    x: s32;
+    y: s32;
+}
+
+operator== :: (a: Token_Location, b: Token_Location) -> bool {
+    return a.x == b.x && a.y == b.y;
+}
+
+Token_Type :: enum u16 {
     UNINITIALIZED :: 0;
 
     INVALID;
@@ -42,9 +55,9 @@ Lexer :: struct {
     input: string;
 
     reported_error: bool;
-
-    line_index: s64;    // Starts at 0
-    column_index: s64;  // Starts at 0
+    
+    line_index: s32;    // Starts at 0
+    column_index: s32;  // Starts at 0
 
     // Storage of recently seen tokens, so we can look back without the caller
     // having to provide us with data.
@@ -56,6 +69,8 @@ Lexer :: struct {
     MAX_RECENT_TOKEN_COUNT :: 8; // Must be power of two for the bit-op modulo.
 }
 
+// nocheckin @Speed This gets called a lot, but it is basically a memcpy and a few arithmetic things...
+// - make token smaller?
 lexer_write_recent_token :: (lexer: *Lexer, token: Token) {
     #assert is_power_of_two(lexer.MAX_RECENT_TOKEN_COUNT);
 
@@ -160,7 +175,9 @@ lexer_advance_horizontally :: (lexer: *Lexer) {
     advance(*lexer.input, char_length);
 }
 
+// nocheckin @Speed This gets called A LOT. SIMD.
 lexer_eat_whitespace :: (lexer: *Lexer) {
+    ProfileZone("nocheckin_lexer_eat_whitespace");
     while lexer.input.count {
         c := lexer.input[0];
         if !is_space(c) {
@@ -179,6 +196,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
 }
 
 lexer_eat_until_newline :: (lexer: *Lexer) {
+    ProfileZone("nocheckin_lexer_eat_until_newline");
     while lexer.input.count {
         c := lexer.input[0];
         if c == "\n" {
@@ -189,7 +207,9 @@ lexer_eat_until_newline :: (lexer: *Lexer) {
     }
 }
 
+// nocheckin @Speed This Gets called a few times and we spend some time in here. SIMD?
 lexer_eat_identifier :: (lexer: *Lexer) -> string {
+    ProfileZone("nochekin_lexer_eat_identifier");
     ident: string;
     ident.data = lexer.input.data;
     
