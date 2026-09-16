@@ -7,6 +7,8 @@
 // until we'd enable syntax highlighting for these (which we currently don't support)
 //   -jt 30 August 2026
 
+// TODO(jt): @Bug 0ull is not highlighted.
+
 LANG_C_LINE_COMMENT        :: "//";
 LANG_C_BLOCK_COMMENT_START :: "/*";
 LANG_C_BLOCK_COMMENT_END   :: "*/";
@@ -64,6 +66,8 @@ lang_c_update_tokens :: (document: *Document) {
 
         array_add(*document.tokens, token);
     }
+    
+    log("nocheckin (% %/% %)", nocheckin_pcount, nocheckin_fcount, nocheckin_ffcount, nocheckin_scount);
 }
 
 #scope_file

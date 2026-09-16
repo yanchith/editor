@@ -70,7 +70,7 @@ Lexer :: struct {
 }
 
 lexer_write_recent_token :: (lexer: *Lexer, token: Token) {
-    #assert is_power_of_two(lexer.MAX_RECENT_TOKEN_COUNT);
+    #assert is_nonzero_power_of_two(lexer.MAX_RECENT_TOKEN_COUNT);
 
     lexer.recent_tokens[lexer.recent_token_index_for_writes] = token;
 
@@ -81,7 +81,7 @@ lexer_write_recent_token :: (lexer: *Lexer, token: Token) {
 // Pass -1 for previous token, -2 for the one before that, etc.
 // 0th index is the current (yet unwritten!) token.
 lexer_read_recent_token :: (lexer: Lexer, index: s64 = -1) -> *Token {
-    #assert is_power_of_two(lexer.MAX_RECENT_TOKEN_COUNT);
+    #assert is_nonzero_power_of_two(lexer.MAX_RECENT_TOKEN_COUNT);
 
     i := lexer.recent_token_index_for_writes + index;
     i &= lexer.MAX_RECENT_TOKEN_COUNT - 1;
@@ -170,23 +170,109 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
     advance(*lexer.input, char_length);
 }
 
+nocheckin_pcount: s64;
+nocheckin_fcount: s64;
+nocheckin_ffcount: s64;
+nocheckin_scount: s64;
+
 // nocheckin @Speed This gets called A LOT. SIMD.
 lexer_eat_whitespace :: (lexer: *Lexer) {
-    // ProfileZone("nocheckin_lexer_eat_whitespace");
-    while lexer.input.count {
-        c := lexer.input[0];
-        if !is_space(c) {
-            break;
+    // Unaligned prefix
+    while lexer.input.count && !is_aligned(lexer.input.data, 8) {
+        nocheckin_pcount += 1;
+        
+        if !is_space(lexer.input[0]) {
+            return;
         }
-
-        advance(*lexer.input);
-
-        if c == "\n" {
+        
+        if lexer.input[0] == "\n" {
             lexer.line_index += 1;
             lexer.column_index = 0;
         } else {
             lexer.column_index += 1;
         }
+        
+        advance(*lexer.input);
+    }
+    
+    // SIMD core part
+    if lexer.input.count {
+        sanity_assert(is_aligned(lexer.input.data, 8));
+        
+        // TODO(jt): X64 SSE version.
+        
+        // Fallback to 64-bit "SIMD" for generic targets.
+        _S :: #char " ";
+        _T :: #char "\t";
+        _R :: #char "\r";
+        _N :: #char "\n";
+        
+        splat8 :: (byte: u8) -> u64 {
+            result: u64;
+            result |= cast(u64, byte) << 0;
+            result |= cast(u64, byte) << 8;
+            result |= cast(u64, byte) << 16;
+            result |= cast(u64, byte) << 24;
+            result |= cast(u64, byte) << 32;
+            result |= cast(u64, byte) << 40;
+            result |= cast(u64, byte) << 48;
+            result |= cast(u64, byte) << 56;
+            return result;
+        }
+        
+        S: u64 : #run splat8(_S);
+        T: u64 : #run splat8(_T);
+        R: u64 : #run splat8(_R);
+        N: u64 : #run splat8(_N);
+        
+        while lexer.input.count >= 8 {
+            nocheckin_fcount += 1;
+            current: u64 = cast(*u64, lexer.input.data).*;
+            
+            // nocheckin get rid of negations here
+            ms := ~(current ^ S);
+            mt := ~(current ^ T);
+            mr := ~(current ^ R);
+            mn := ~(current ^ N);
+            
+            m := ms | mt | mr | mn;
+            
+            if m != U64_MAX {
+                nocheckin_ffcount += 1;
+                break; // Go to suffix loop.
+            }
+         
+            // nocheckin HERE: So X64 bsf crashes on our input. Not great. But even if disabled, this is not yet correct.
+            // And even once done, this might not be a performance benefit. Let's see.
+            
+            newlines_seen                 := popcount(mn) >> 3;
+            space_after_last_newline_seen := bit_scan_forward(~mn) >> 3;
+            
+            lexer.line_index += newlines_seen;
+            if newlines_seen {
+                lexer.column_index = 0;
+            }
+            lexer.column_index += spaces_after_last_newline_seen;
+            
+            advance(*lexer.input, 8);
+        }
+    }
+    
+    // Small suffix
+    while lexer.input.count {
+        nocheckin_scount += 1;
+        if !is_space(lexer.input[0]) {
+            break;
+        }
+        
+        if lexer.input[0] == "\n" {
+            lexer.line_index += 1;
+            lexer.column_index = 0;
+        } else {
+            lexer.column_index += 1;
+        }
+        
+        advance(*lexer.input);
     }
 }
 

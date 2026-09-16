@@ -20,7 +20,17 @@ round_up_to_power_of_two :: inline (x: s64) -> s64 {
     return x;
 }
 
-// Also returns true for 0, but that may not be what you want, so check it yourself.
-is_power_of_two :: inline (value: s64) -> bool {
-    return value & (value - 1) == 0;
+// Maybe we also want a version that doesn't check for zero for situations where it matters...
+is_nonzero_power_of_two :: inline (x: s64) -> bool {
+    return x && (x & (x - 1) == 0);
+}
+
+is_aligned :: inline (x: *void, alignment: s64) -> bool {
+    return is_aligned(cast(s64, x), alignment);
+}
+
+// Alignment must be a nonzero power of two.
+is_aligned :: inline (x: s64, alignment: s64) -> bool {
+    sanity_assert(is_nonzero_power_of_two(alignment));
+    return x == x & ~(alignment - 1);
 }

@@ -131,6 +131,7 @@ f32 :: float32;
 f64 :: float64;
 
 #import "Basic";
+#import "Bit_Operations";
 #import "Arena"(ENABLE_DEBUG = true, ENABLE_SANITY_ASSERTS = SANITY, DEFAULT_OVERWRITE_MEMORY = SANITY);
 // TODO(jt): @Speed We could do a better job at the bucket array without complicating it too much by bitpacking
 // the occupancy mask and having a freelist for insertion.
@@ -143,6 +144,7 @@ Math    :: #import "Math";
 Unicode :: #import "Unicode";
 
 S64_MAX        :: Math.S64_MAX;
+U64_MAX        :: Math.U64_MAX;
 Vector2        :: Math.Vector2;
 Vector3        :: Math.Vector3;
 Vector4        :: Math.Vector4;
@@ -5923,7 +5925,7 @@ make_arena_debug_procs :: (editor: *Editor) -> Arena_Debug_Procs {
 }
 
 mark_frame_profile :: (editor: *Editor, input: Input) {
-    #assert is_power_of_two(editor.DEBUG_FRAME_PROFILE_COUNT); // So that we can use bit ops modulo.
+    #assert is_nonzero_power_of_two(editor.DEBUG_FRAME_PROFILE_COUNT); // So that we can use bit ops modulo.
 
     if editor.debug_view == .FRAME_PROFILE {
         state := *editor.debug_view_state._frame_profile;
@@ -5952,7 +5954,7 @@ mark_frame_timeline_point :: (editor: *Editor, platform: Platform, input: Input,
         case .END; {
             editor.debug_frame_timeline.entries[editor.debug_frame_timeline_index].time_end = platform.get_current_time_monotonic() - input.time_of_program_start;
 
-            #assert is_power_of_two(editor.DEBUG_FRAME_TIMELINE_COUNT); // So that we can use bit ops modulo.
+            #assert is_nonzero_power_of_two(editor.DEBUG_FRAME_TIMELINE_COUNT); // So that we can use bit ops modulo.
             editor.debug_frame_timeline_index += 1;
             editor.debug_frame_timeline_index &= editor.DEBUG_FRAME_TIMELINE_COUNT - 1;
         }

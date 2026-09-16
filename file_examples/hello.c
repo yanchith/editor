@@ -2,6 +2,26 @@
 
 #        include       "dingolingo.h"
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                  // before here we should crunch wide
+
+
 int main() {
     float z = 1.5f;
     float y = .5;
