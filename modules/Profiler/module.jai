@@ -17,3 +17,6 @@
 } else {
     #load "runtime.jai";
 }
+
+// TODO(jt): Add ProfileFunction macro or a @ProfileFunction note.
+// TODO(jt): Think about adding optional call attribution.
