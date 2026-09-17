@@ -52,10 +52,6 @@ slice :: inline (s: string, index: s64) -> string {
     return c;
 }
 
-count_leading_whitespace_chars :: (bytes: [] u8) -> s64 {
-    return inline count_leading_whitespace_chars(cast(string, bytes));
-}
-
 count_utf8_chars :: (bytes: [] u8) -> s64 {
     return inline count_utf8_chars(cast(string, bytes));
 }
