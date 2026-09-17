@@ -1,5 +1,10 @@
 /*
 
+TODO(jt): Known serious bugs:
+
+- Jai lexer crashes when we try to write out apollotime literals like this min_duration: u64 = {0xffff_ffff_ffff_ffff, 0xffff_ffff_ffff_ffff};
+- We are not printing the stack trace on arithmetic overflow...
+
 TODO(jt): Known bugs:
 
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
