@@ -3275,7 +3275,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        // TODO(jt): @Bug This doesn't align the comment well across multiple lines.
+        // TODO(jt): @Bug Do detection across all selected lines! Otherwise behaves badly.
         case .TOGGLE_COMMENT; {
             line_comment, block_comment_start, block_comment_end := document_get_comment_style(document);
             line_comment_length := count_utf8_chars(line_comment);
