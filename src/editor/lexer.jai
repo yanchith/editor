@@ -172,14 +172,16 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
 
 nocheckin_pcount: s64;
 nocheckin_fcount: s64;
-nocheckin_ffcount: s64;
 nocheckin_scount: s64;
 
 // nocheckin @Speed This gets called A LOT. SIMD.
 lexer_eat_whitespace :: (lexer: *Lexer) {
+    // ProfileZone("nochekin_lexer_eat_whitespace");
+    
     USE_SSE :: CPU == .X64;
     
     #if 0 /*USE_SSE*/ {
+        // nocheckin remove simd unless we find a way to salvage work from the simd loop?
         WIDTH :: 16;
         
         // Unaligned prefix
@@ -241,7 +243,8 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             
             advance(*lexer.input, WIDTH);
         }
-    } else {
+    } else #if 1 {
+        // nocheckin remove, unless we find a way to salvage work from the "SIMD" loop. Right now, this is not helping that much.
         WIDTH :: 8;
         
         // Unaligned prefix
@@ -322,25 +325,53 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 
                 m := ms | mt | mr | mn;
                 
-                if m != U64_MAX {
-                    nocheckin_ffcount += 1;
-                    // nocheckin can't we salvage our work instead?
-                    break; // Go to suffix loop.
-                }
+                // nocheckin
+                // {
+                //     log("m: %, mn: %", formatInt(m, base=2, minimum_digits=64), formatInt(mn, base=2, minimum_digits=64));
+                // }
                 
-                // nocheckin: So X64 bsf crashes on our input (at least before we did the lane-wise eq).
+                if m != U64_MAX {
+                    whitespace_bits  := bit_scan_forward(~m);
+                    whitespace_count := whitespace_bits >> 3;
+                    
+                    
+                    ONE: u64 : 1;
+                    m  = (ONE << whitespace_bits) - ONE;
+                    mn &= m;
+                    
+                    /*
+                    
+                    ws count: 3
+                    m:  00000000 11111111 11111111 11111111
+                    mn: 00000000 00000000 11111111 00000000
+                    
+                    ws count: 3
+                    m:  00000000 11111111 11111111 11111111
+                    mn: 00000000 11111111 11111111 00000000
+
+                    
+                    */
+                    
+                    // nocheckin audit!
+                    
+                    newlines                  := popcount(mn) >> 3;
+                    spaces_after_last_newline := (64 - bit_scan_reverse(mn)) >> 3;
+                    spaces_after_last_newline -= WIDTH - whitespace_count;
+                    
+                    lexer.line_index += newlines;
+                    if newlines {
+                        lexer.column_index = 0;
+                        lexer.column_index += spaces_after_last_newline;
+                    } else {
+                        lexer.column_index += whitespace_count;
+                    }
+                    
+                    advance(*lexer.input, whitespace_count);
+                    return;
+                }
 
                 newlines                  := popcount(mn) >> 3;
-                spaces_after_last_newline := ifx newlines then bit_scan_forward(mn) >> 3 else WIDTH;
-                
-                // nocheckin
-                {
-                    log("mn: %, newlines: %, spaces_after_last: %, input: %", 
-                        formatInt(mn, base=2, minimum_digits=64),
-                        newlines,
-                        spaces_after_last_newline,
-                        formatInt(current, base=16, minimum_digits=16) );
-                }
+                spaces_after_last_newline := (64 - bit_scan_reverse(mn)) >> 3;
                 
                 lexer.line_index += newlines;
                 if newlines {
@@ -359,7 +390,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
     while lexer.input.count {
         nocheckin_scount += 1;
         if !is_space(lexer.input[0]) {
-            break;
+            return;
         }
         
         if lexer.input[0] == "\n" {
