@@ -1441,7 +1441,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             case .FRAME_PROFILE; {
-                message := "Debug view: Frame profile";
+                message := "Debug view: Frame profile (left=pause and go left; right=pause and right; up=unpause)";
                 scissor := Rect.{ 0, 0, window_w, window_h };
                 _font_layout_and_draw_text(*editor.font, message,
                                            *render_commands, *atlas_update_regions,
@@ -1481,7 +1481,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     PADDING_X :: 20.0;
                     REGULAR_BAR_HEIGHT   :: 150.0;
-                    EXCEEDING_BAR_HEIGHT :: 350.0;
+                    EXCEEDING_BAR_HEIGHT :: 320.0;
                     R_COUNT :: 1.0 / editor.DEBUG_FRAME_PROFILE_COUNT;
 
                     graph_width := max(window_w - 2 * PADDING_X, 0);
@@ -1517,6 +1517,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         profile    := *editor.debug_frame_profiles.entries[displayed_frame_index];
                         time_scale := profile.time_scale;
                         cursor_y := 0;
+                        
+                        _font_layout_and_draw_text(*editor.font, "zone  label                                                              hits        T(inclusive)        T(exclusive)",
+                                                   *render_commands, *atlas_update_regions,
+                                                   { 0, bar_y + EXCEEDING_BAR_HEIGHT }, scissor,
+                                                   { 1, 1, 1, 1 }, .REGULAR,
+                                                   .[], .[],
+                                                   binary = false);
+                        
                         for zone, zone_index: profile.zones {
                             s := tprint("% %      %     %     %",
                                         temp_right_pad(tprint("[%]", zone_index), 5),
@@ -1525,13 +1533,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                         formatFloat(1000 * time_scale * zone.elapsed_inclusive, width = 15, trailing_width = 3),
                                         formatFloat(1000 * time_scale * zone.elapsed_exclusive, width = 15, trailing_width = 3));
 
-                            y := bar_y + EXCEEDING_BAR_HEIGHT + zone_index * cell_h;
+                            y := bar_y + EXCEEDING_BAR_HEIGHT + (1 + zone_index) * cell_h;
                             _font_layout_and_draw_text(*editor.font, s,
                                                        *render_commands, *atlas_update_regions,
                                                        { 0, y }, scissor,
                                                        { 1, 1, 1, 1 }, .REGULAR,
                                                        .[], .[],
                                                        binary = false);
+                            
+                            draw_rect(*render_commands, 0, y, window_w, y + 1, { 0.2, 0.2, 0.2, 1 });
                         }
                     }
                 } else {

@@ -66,8 +66,6 @@ lang_c_update_tokens :: (document: *Document) {
 
         array_add(*document.tokens, token);
     }
-    
-    log("nocheckin (% % %)", nocheckin_pcount, nocheckin_fcount, nocheckin_scount);
 }
 
 #scope_file

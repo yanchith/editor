@@ -170,24 +170,18 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
     advance(*lexer.input, char_length);
 }
 
-nocheckin_pcount: s64;
-nocheckin_fcount: s64;
-nocheckin_scount: s64;
-
 // nocheckin @Speed This gets called A LOT. SIMD.
 lexer_eat_whitespace :: (lexer: *Lexer) {
-    // ProfileZone("nochekin_lexer_eat_whitespace");
+    ProfileZone("nochekin_lexer_eat_whitespace");
     
     USE_SSE :: CPU == .X64;
     
     #if 0 /*USE_SSE*/ {
-        // nocheckin remove simd unless we find a way to salvage work from the simd loop?
+        // nocheckin finish simd
         WIDTH :: 16;
         
         // Unaligned prefix
         while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
-            nocheckin_pcount += 1;
-            
             if !is_space(lexer.input[0]) {
                 return;
             }
@@ -244,12 +238,10 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             advance(*lexer.input, WIDTH);
         }
     } else #if 1 {
-        // nocheckin remove, unless we find a way to salvage work from the "SIMD" loop. Right now, this is not helping that much.
         WIDTH :: 8;
         
         // Unaligned prefix
         while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
-            nocheckin_pcount += 1;
             
             if !is_space(lexer.input[0]) {
                 return;
@@ -284,23 +276,32 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 return result;
             }
             
+            // A very bad "SIMD" cmpeq.
+            //
             // ~(a ^ b) would gives us full ones of equal lanes, but not full zeroes for non-equal lanes.
             //
             // To achieve full zeroes, we OR all of the lane's bits into one after doing the initial XOR.
-            // We do this by ORing with shifted self, masking off bits from the neighboring lane each time. 
+            // We do this by ORing with the shifted lane.
             //
             // Afterwards, we negate the bit we care about and multiply by 0xff,
             // which broadcasts it back to the full lane.
             cmpeq_u8x8 :: inline (a: u64, b: u64) -> u64 {
-                xor := a ^ b;
+                x := a ^ b;
+
+                /*
+                Original version
                 
-                x := xor;
-                
-                // The masks are not necessary. Bits from neighboring lanes won't reach the
-                // single bit we care about in our lane.
-                x = (x | (x >> 4)) /* & 0x0f0f0f0f0f0f0f0f */;
-                x = (x | (x >> 2)) /* & 0x0303030303030303 */;
-                x = (x | (x >> 1)) /* & 0x0101010101010101 */;
+                x = (x | (x >> 4)) & 0x0f0f0f0f0f0f0f0f;
+                x = (x | (x >> 2)) & 0x0303030303030303;
+                x = (x | (x >> 1)) & 0x0101010101010101;
+
+                The masks are not necessary. Bits from neighboring lanes won't reach the
+                single bit we care about in our lane.
+                */
+
+                x |= x >> 4;
+                x |= x >> 2;
+                x |= x >> 1;
                 
                 x = ~x & 0x0101010101010101;
                 
@@ -315,7 +316,6 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             Nx8: u64 : #run splat(N);
             
             while lexer.input.count >= WIDTH {
-                nocheckin_fcount += 1;
                 current: u64 = cast(*u64, lexer.input.data).*;
                 
                 ms := cmpeq_u8x8(current, Sx8);
@@ -325,11 +325,6 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 
                 m := ms | mt | mr | mn;
                 
-                // nocheckin
-                // {
-                //     log("m: %, mn: %", formatInt(m, base=2, minimum_digits=64), formatInt(mn, base=2, minimum_digits=64));
-                // }
-                
                 if m != U64_MAX {
                     whitespace_bits  := bit_scan_forward(~m);
                     whitespace_count := whitespace_bits >> 3;
@@ -338,19 +333,6 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                     ONE: u64 : 1;
                     m  = (ONE << whitespace_bits) - ONE;
                     mn &= m;
-                    
-                    /*
-                    
-                    ws count: 3
-                    m:  00000000 11111111 11111111 11111111
-                    mn: 00000000 00000000 11111111 00000000
-                    
-                    ws count: 3
-                    m:  00000000 11111111 11111111 11111111
-                    mn: 00000000 11111111 11111111 00000000
-
-                    
-                    */
                     
                     // nocheckin audit!
                     
@@ -388,7 +370,6 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
     
     // Small suffix
     while lexer.input.count {
-        nocheckin_scount += 1;
         if !is_space(lexer.input[0]) {
             return;
         }
