@@ -170,10 +170,7 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
     advance(*lexer.input, char_length);
 }
 
-// nocheckin @Speed This gets called A LOT. SIMD.
 lexer_eat_whitespace :: (lexer: *Lexer) {
-    ProfileZone("nochekin_lexer_eat_whitespace");
-    
     USE_SSE :: CPU == .X64;
     
     #if 0 /*USE_SSE*/ {
@@ -181,11 +178,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
         WIDTH :: 16;
         
         // Unaligned prefix
-        while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
-            if !is_space(lexer.input[0]) {
-                return;
-            }
-            
+        while lexer.input.count && is_space(lexer.input[0]) && !is_aligned(lexer.input.data, WIDTH) {
             if lexer.input[0] == "\n" {
                 lexer.line_index += 1;
                 lexer.column_index = 0;
@@ -234,19 +227,15 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 movdqu n, [n_pointer];
             }
             
-            
             advance(*lexer.input, WIDTH);
         }
-    } else #if 1 {
+    } else #if 0 {
+        // This version is not really faster than the scalar loop on Zen3, so disabled for now.
+
         WIDTH :: 8;
         
         // Unaligned prefix
-        while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
-            
-            if !is_space(lexer.input[0]) {
-                return;
-            }
-            
+        while lexer.input.count && is_space(lexer.input[0]) && !is_aligned(lexer.input.data, WIDTH) {
             if lexer.input[0] == "\n" {
                 lexer.line_index += 1;
                 lexer.column_index = 0;
@@ -281,7 +270,6 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             // ~(a ^ b) would gives us full ones of equal lanes, but not full zeroes for non-equal lanes.
             //
             // To achieve full zeroes, we OR all of the lane's bits into one after doing the initial XOR.
-            // We do this by ORing with the shifted lane.
             //
             // Afterwards, we negate the bit we care about and multiply by 0xff,
             // which broadcasts it back to the full lane.
@@ -315,7 +303,8 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             Rx8: u64 : #run splat(R);
             Nx8: u64 : #run splat(N);
             
-            while lexer.input.count >= WIDTH {
+            stop := false;
+            while !stop && lexer.input.count >= WIDTH {
                 current: u64 = cast(*u64, lexer.input.data).*;
                 
                 ms := cmpeq_u8x8(current, Sx8);
@@ -324,56 +313,35 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 mn := cmpeq_u8x8(current, Nx8);
                 
                 m := ms | mt | mr | mn;
-                
                 if m != U64_MAX {
-                    whitespace_bits  := bit_scan_forward(~m);
-                    whitespace_count := whitespace_bits >> 3;
-                    
-                    
-                    ONE: u64 : 1;
-                    m  = (ONE << whitespace_bits) - ONE;
-                    mn &= m;
-                    
-                    // nocheckin audit!
-                    
-                    newlines                  := popcount(mn) >> 3;
-                    spaces_after_last_newline := (64 - bit_scan_reverse(mn)) >> 3;
-                    spaces_after_last_newline -= WIDTH - whitespace_count;
-                    
-                    lexer.line_index += newlines;
-                    if newlines {
-                        lexer.column_index = 0;
-                        lexer.column_index += spaces_after_last_newline;
-                    } else {
-                        lexer.column_index += whitespace_count;
-                    }
-                    
-                    advance(*lexer.input, whitespace_count);
-                    return;
+                    stop = true;
                 }
+
+                whitespace_bits  := ifx m == U64_MAX then WIDTH * 8 else bit_scan_forward(~m);
+                whitespace_count := whitespace_bits >> 3;
+                
+                ONE: u64 : 1;
+                end_mask := (ONE << whitespace_bits) - ONE;
+                
+                mn &= end_mask;
 
                 newlines                  := popcount(mn) >> 3;
                 spaces_after_last_newline := (64 - bit_scan_reverse(mn)) >> 3;
+                spaces_after_last_newline -= cast,trunc(s32, WIDTH - whitespace_count);
                 
                 lexer.line_index += newlines;
                 if newlines {
                     lexer.column_index = 0;
-                    lexer.column_index += spaces_after_last_newline;
-                } else {
-                    lexer.column_index += WIDTH;
                 }
+                lexer.column_index += spaces_after_last_newline;
                 
-                advance(*lexer.input, WIDTH);
+                advance(*lexer.input, whitespace_count);
             }
         }
     }
     
-    // Small suffix
-    while lexer.input.count {
-        if !is_space(lexer.input[0]) {
-            return;
-        }
-        
+    // Small suffix or scalar fallback.
+    while lexer.input.count && is_space(lexer.input[0]) {
         if lexer.input[0] == "\n" {
             lexer.line_index += 1;
             lexer.column_index = 0;
