@@ -173,7 +173,7 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
 lexer_eat_whitespace :: (lexer: *Lexer) {
     USE_SSE :: CPU == .X64;
 
-    #if 0 /*USE_SSE*/ {
+    #if USE_SSE {
         // nocheckin finish simd
         WIDTH :: 16;
 
@@ -190,28 +190,57 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
         }
 
         // SIMD loop
+        s_pointer := *sx16.array;
+        t_pointer := *tx16.array;
+        r_pointer := *rx16.array;
+        n_pointer := *nx16.array;
+        
         while lexer.input.count >= WIDTH {
-            s_pointer := *sx16.array;
-            t_pointer := *tx16.array;
-            r_pointer := *rx16.array;
-            n_pointer := *nx16.array;
-
+            current_pointer := lexer.input.data;
+            
+            m: u32 = 69;
             #asm {
+                // These start out with loaded patterns to compare with, but contain the comparison results after.
                 s: vec;
                 t: vec;
                 r: vec;
                 n: vec;
+                
+                mask: vec;
+                
+                current: vec;
 
                 // Apparently, the best way to broadcast on SSE2 is to load from memory.
                 //
-                // There is movddup in SSE3, vbroadcastss in AVX and finally vpbroadcastb/w/d/q
+                // There is movddup in SSE3, vbroadcastss in AVX and finally vpbroadcastb/w/d/q in AVX512VL
                 // (with double and quad being pure loads, otherwise microcoded shuffles are added)
                 // https://stackoverflow.com/questions/60920572/set-an-xmm-register-to-a-repeating-byte-pattern-broadcast-a-constant-byte
                 movdqu s, [s_pointer];
                 movdqu t, [t_pointer];
                 movdqu r, [r_pointer];
                 movdqu n, [n_pointer];
+                
+                movdqu current, [current_pointer];
+                
+                pcmpeqb s, current;
+                pcmpeqb t, current;
+                pcmpeqb r, current;
+                pcmpeqb n, current;
+                
+                movdqu mask, s;
+                por mask, t;
+                por mask, r;
+                por mask, n;
+                
+                pmovmskb m, mask;
             }
+            
+            {
+                m_print := m;
+                log("nocheckin m: %", m_print);
+            }
+            
+            // nocheckin got our mask, shall we get to work?
 
             advance(*lexer.input, WIDTH);
         }
