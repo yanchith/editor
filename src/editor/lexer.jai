@@ -179,7 +179,7 @@ nocheckin_scount: s64;
 lexer_eat_whitespace :: (lexer: *Lexer) {
     USE_SSE :: CPU == .X64;
     
-    #if 1 /*USE_SSE*/ {
+    #if 0 /*USE_SSE*/ {
         WIDTH :: 16;
         
         // Unaligned prefix
@@ -211,15 +211,15 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             }
             
             // nocheckin initialize in global
-            su8x16 := u8x16.{ .[S, S, S, S, S, S, S, S, S, S, S, S, S, S, S, S] };
-            tu8x16 := u8x16.{ .[T, T, T, T, T, T, T, T, T, T, T, T, T, T, T, T] };
-            ru8x16 := u8x16.{ .[R, R, R, R, R, R, R, R, R, R, R, R, R, R, R, R] };
-            nu8x16 := u8x16.{ .[N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N] };
+            sx16 := u8x16.{ .[S, S, S, S, S, S, S, S, S, S, S, S, S, S, S, S] };
+            tx16 := u8x16.{ .[T, T, T, T, T, T, T, T, T, T, T, T, T, T, T, T] };
+            rx16 := u8x16.{ .[R, R, R, R, R, R, R, R, R, R, R, R, R, R, R, R] };
+            nx16 := u8x16.{ .[N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N] };
             
-            s_pointer := *su8x16.array;
-            t_pointer := *tu8x16.array;
-            r_pointer := *ru8x16.array;
-            n_pointer := *nu8x16.array;
+            s_pointer := *sx16.array;
+            t_pointer := *tx16.array;
+            r_pointer := *rx16.array;
+            n_pointer := *nx16.array;
             
             #asm {
                 s: vec;
@@ -241,79 +241,119 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             
             advance(*lexer.input, WIDTH);
         }
-    }
-    
-    /* nocheckin unfortunately, I couldn't get "SIMD" to work. Maybe we can salvage something?
-    if lexer.input.count {
-        _S :: #char " ";
-        _T :: #char "\t";
-        _R :: #char "\r";
-        _N :: #char "\n";
+    } else {
+        WIDTH :: 8;
         
-        splat8 :: (byte: u8) -> u64 {
-            result: u64;
-            result |= cast(u64, byte) << 0;
-            result |= cast(u64, byte) << 8;
-            result |= cast(u64, byte) << 16;
-            result |= cast(u64, byte) << 24;
-            result |= cast(u64, byte) << 32;
-            result |= cast(u64, byte) << 40;
-            result |= cast(u64, byte) << 48;
-            result |= cast(u64, byte) << 56;
-            return result;
-        }
-        
-        S: u64 : #run splat8(_S);
-        T: u64 : #run splat8(_T);
-        R: u64 : #run splat8(_R);
-        N: u64 : #run splat8(_N);
-        
-        while lexer.input.count >= 8 {
-            nocheckin_fcount += 1;
-            current: u64 = cast(*u64, lexer.input.data).*;
+        // Unaligned prefix
+        while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
+            nocheckin_pcount += 1;
             
-            // nocheckin get rid of negations here
-            ms := ~(current ^ S);
-            mt := ~(current ^ T);
-            mr := ~(current ^ R);
-            mn := ~(current ^ N);
-            
-            m := ms | mt | mr | mn;
-            
-            if m != U64_MAX {
-                nocheckin_ffcount += 1;
-                break; // Go to suffix loop.
-            }
-         
-            // nocheckin HERE: So X64 bsf crashes on our input. Not great. But even if disabled, this is not yet correct.
-            // And even once done, this might not be a performance benefit. Let's see.
-            //
-            // UGH. This won't work. There are set bits in places 
-            
-            // In SIMD, we'd movemask_epi first.
-            newlines_seen                  := popcount(mn) >> 3;  // Incorrect, because there can be spurious ones in the zero region.
-            spaces_after_last_newline_seen := __bit_scan_forward(mn) >> 3; // Incorrect. Same reason.
-            
-            {
-                s: string;
-                s.data = lexer.input.data;
-                s.count = 8;
-                log("nocheckin mn: %, newlines_seen: %, spaces_after_last_newline_seen: %, input: % , %", 
-                    formatInt(mn, base=2, minimum_digits=64),
-                    newlines_seen, spaces_after_last_newline_seen,
-                    formatInt(current, base=2, minimum_digits=64), s);
+            if !is_space(lexer.input[0]) {
+                return;
             }
             
-            lexer.line_index += newlines_seen;
-            if newlines_seen {
+            if lexer.input[0] == "\n" {
+                lexer.line_index += 1;
                 lexer.column_index = 0;
+            } else {
+                lexer.column_index += 1;
             }
-            lexer.column_index += spaces_after_last_newline_seen;
             
-            advance(*lexer.input, 8);
+            advance(*lexer.input);
+        }
+        
+        if lexer.input.count {
+            S :: #char " ";
+            T :: #char "\t";
+            R :: #char "\r";
+            N :: #char "\n";
+            
+            splat :: (byte: u8) -> u64 {
+                result: u64;
+                result |= cast(u64, byte) << 0;
+                result |= cast(u64, byte) << 8;
+                result |= cast(u64, byte) << 16;
+                result |= cast(u64, byte) << 24;
+                result |= cast(u64, byte) << 32;
+                result |= cast(u64, byte) << 40;
+                result |= cast(u64, byte) << 48;
+                result |= cast(u64, byte) << 56;
+                return result;
+            }
+            
+            // ~(a ^ b) would gives us full ones of equal lanes, but not full zeroes for non-equal lanes.
+            //
+            // To achieve full zeroes, we OR all of the lane's bits into one after doing the initial XOR.
+            // We do this by ORing with shifted self, masking off bits from the neighboring lane each time. 
+            //
+            // Afterwards, we negate the bit we care about and multiply by 0xff,
+            // which broadcasts it back to the full lane.
+            cmpeq_u8x8 :: inline (a: u64, b: u64) -> u64 {
+                xor := a ^ b;
+                
+                x := xor;
+                
+                // The masks are not necessary. Bits from neighboring lanes won't reach the
+                // single bit we care about in our lane.
+                x = (x | (x >> 4)) /* & 0x0f0f0f0f0f0f0f0f */;
+                x = (x | (x >> 2)) /* & 0x0303030303030303 */;
+                x = (x | (x >> 1)) /* & 0x0101010101010101 */;
+                
+                x = ~x & 0x0101010101010101;
+                
+                result := x * 0xff;
+                
+                return result;
+            }
+            
+            Sx8: u64 : #run splat(S);
+            Tx8: u64 : #run splat(T);
+            Rx8: u64 : #run splat(R);
+            Nx8: u64 : #run splat(N);
+            
+            while lexer.input.count >= WIDTH {
+                nocheckin_fcount += 1;
+                current: u64 = cast(*u64, lexer.input.data).*;
+                
+                ms := cmpeq_u8x8(current, Sx8);
+                mt := cmpeq_u8x8(current, Tx8);
+                mr := cmpeq_u8x8(current, Rx8);
+                mn := cmpeq_u8x8(current, Nx8);
+                
+                m := ms | mt | mr | mn;
+                
+                if m != U64_MAX {
+                    nocheckin_ffcount += 1;
+                    // nocheckin can't we salvage our work instead?
+                    break; // Go to suffix loop.
+                }
+                
+                // nocheckin: So X64 bsf crashes on our input (at least before we did the lane-wise eq).
+
+                newlines                  := popcount(mn) >> 3;
+                spaces_after_last_newline := ifx newlines then bit_scan_forward(mn) >> 3 else WIDTH;
+                
+                // nocheckin
+                {
+                    log("mn: %, newlines: %, spaces_after_last: %, input: %", 
+                        formatInt(mn, base=2, minimum_digits=64),
+                        newlines,
+                        spaces_after_last_newline,
+                        formatInt(current, base=16, minimum_digits=16) );
+                }
+                
+                lexer.line_index += newlines;
+                if newlines {
+                    lexer.column_index = 0;
+                    lexer.column_index += spaces_after_last_newline;
+                } else {
+                    lexer.column_index += WIDTH;
+                }
+                
+                advance(*lexer.input, WIDTH);
+            }
         }
     }
-    */
     
     // Small suffix
     while lexer.input.count {
@@ -398,36 +438,4 @@ lexer_is_keyword :: (identifier: string, $keywords: [] string) -> bool {
     
     #insert #run make_keyword_matcher(keywords);
     return match_keyword(identifier);
-}
-
-               
-#scope_file
-               
-// nocheckin               
-__bit_scan_forward :: (input: $T) -> s32 #expand {  // One plus the index of the first bit, when searching from LSB to MSB. A result of 0 means the input was 0.
-    BITS :: size_of(T)*8;
-
-    // #if CPU == .X64 {
-    //     #if BITS == 8 {  // There's no bsf for 8 bits. Sad.
-    //         result: s16 = -1;
-    //         #asm {
-    //             movzxbw   temp:, input;
-    //             bsf.16    result, temp;
-    //         }
-    //     } else {
-    //         result: T = xx,no_check -1;
-    //         #asm {
-    //             bsf?T     result, input;
-    //         }
-    //     }
-// 
-    //     return cast,trunc(s32)(result + 1);
-    // } else {
-        // @Speed: Slow fallback for other CPUs.
-        for i: 0..BITS-1 {
-            if input & cast,no_check(T) (1 << i) return cast(s32) (i + 1);
-        }
-        
-        return 0;
-    // }
 }
