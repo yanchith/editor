@@ -4001,6 +4001,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
 
                 if editor.input_state.keys[Key.MB_LEFT] & .PRESSED && editor.input_state.mb_left_multiclicks >= 2 {
                     if editor.input_state.mb_left_multiclicks == 2 {
+                        // TODO(jt): @Bug Keep This selection on the same line.
                         text_buffer_expand_selection(document.buffer, *view.cursors);
                     } else if editor.input_state.mb_left_multiclicks >= 3 {
                         start := text_buffer_get_start_of_line(document.buffer, view.cursors.c0.y);
