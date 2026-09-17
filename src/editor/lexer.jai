@@ -217,6 +217,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
         }
     } else #if 0 {
         // This version is not really faster than the scalar loop on Zen3, so disabled for now.
+        // Maybe I can figure out a way to make it faster?
 
         WIDTH :: 8;
 
@@ -310,10 +311,8 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
 }
 
 lexer_is_keyword :: (identifier: string, $keywords: [] string) -> bool {
-    // TODO(jt): @Speed It is unclear whether the generated switch statement beats array_find.
-    // We need a benchmark.
-    //
-    // return inline array_find(keywords, identifier);
+    // For lang_c, building a matcher is about 8% less time than naive array_find.
+    // Not particularly great, we should try other approaches.
     #insert #run make_keyword_matcher(keywords);
     return match_keyword(identifier);
 }
@@ -354,7 +353,7 @@ splat :: (byte: u8) -> u64 {
 
 // A very bad "SIMD" cmpeq.
 //
-// ~(a ^ b) would gives us full ones of equal lanes, but not full zeroes for non-equal lanes.
+// ~(a ^ b) gives us full ones of equal lanes, but not full zeroes for non-equal lanes.
 //
 // To achieve full zeroes, we OR all of the lane's bits into one after doing the initial XOR.
 //
