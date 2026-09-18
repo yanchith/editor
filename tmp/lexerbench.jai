@@ -23,7 +23,8 @@ main :: () {
 
         array_reset_keeping_memory(*tokens);
         lexer: Lexer;
-        lexer.input = contents;
+        lexer.input.bytes_before_gap = cast([]u8, contents);
+        lexer.input.count = contents.count;
 
         while 1 {
             token := get_next_token(*lexer);

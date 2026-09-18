@@ -41,14 +41,10 @@ lang_c_update_tokens :: (document: *Document) {
 
     array_reset_keeping_memory(*document.tokens);
 
-    // TODO(jt): @Speed @Memory This always copies the entire text buffer. This is bad! Instead
-    // split the lexing loop into two and lex on the contents of the gap buffer.
-    start := Text_Location.{ 0, 0 };
-    end   := text_buffer_get_end_of_line(document.buffer, document.buffer.line_count - 1);
-    contents := text_buffer_make_view_for_interval(document.buffer, start, end,, temp);
-
     lexer: Lexer;
-    lexer.input = contents;
+    lexer.input.bytes_before_gap = gap_buffer_get_bytes_before_gap(document.buffer.gb);
+    lexer.input.bytes_after_gap  = gap_buffer_get_bytes_after_gap(document.buffer.gb);
+    lexer.input.count            = document.buffer.gb.count;
 
     while 1 {
         token := get_next_token(*lexer);
