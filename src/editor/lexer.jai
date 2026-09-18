@@ -118,6 +118,7 @@ lexer_input_byte_equals :: inline (lexer: Lexer, c: u8) -> bool {
     return false;
 }
 
+// nocheckin @Speed try $bytes and making a LUT (if profiles show a large hit count)
 lexer_input_byte_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
     if lexer.input.count {
         for bytes {
