@@ -361,8 +361,10 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
     }
 
     //
-    // nocheckin the following IS_SPACE LUT is noticably faster than is_space (inline does not matter, LLVM inlines always)
+    // nocheckin On Zen3, the following IS_SPACE LUT is noticably faster than is_space (inline does not matter, LLVM inlines always)
+    // On M4, they are about the same.
     // What else can we table-drive?
+    // Should we bitpack the LUT?
     //
     // A lookup table for is_space. Faster than the comparisons.
     //
