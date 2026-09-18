@@ -158,9 +158,9 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
 
     // We (almost) completely trust the table for utf8 lengths, however
     // we clamp the length to 4 (because our table is from an older RFC?), and
-    // we also clamp and emit error if the character would cause us to go
-    // out of bounds.
-    char_length: s64 = min(UTF8_LENGTH_FOR_STARTING_BYTE[lexer.input[0]], 4);
+    // we also clamp to input size and emit error if the character would cause
+    // us to go out of bounds.
+    char_length: s64 = UTF8_LENGTH_FOR_STARTING_BYTE_CLAMPED[lexer.input[0]];
     if char_length > lexer.input.count {
         lexer.reported_error = true;
         char_length = lexer.input.count;
@@ -321,13 +321,29 @@ lexer_eat_until_newline :: (lexer: *Lexer) {
     }
 }
 
-// nocheckin @Speed This Gets called a few times and we spend some time in here. Table drive?
 lexer_eat_identifier :: (lexer: *Lexer) -> string {
     ident: string;
     ident.data = lexer.input.data;
+    
+    IS_ALNUM_OR_MULTIBYTE_UTF8_CHAR_BOUNDARY :: u8.[
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1, 1,1,0,0,0,0,0,0, // 0-9
+        0,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,0,0,0,0,1, // A-Z, underscore
+        0,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,0,0,0,0,0, // a-z
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // Multibyte first bytes
+        1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // Multibyte first bytes
+    ];
 
-    while lexer.input.count && (lexer_input_byte_matches(lexer, is_alnum) || lexer_input_byte_matches(lexer, is_nonascii_utf8_char_boundary)) {
+    // nocheckin audit table
+    while lexer.input.count && IS_ALNUM_OR_MULTIBYTE_UTF8_CHAR_BOUNDARY[lexer.input[0]] {
+    // while lexer.input.count && (lexer_input_byte_matches(lexer, is_alnum) || lexer_input_byte_matches(lexer, is_nonascii_utf8_char_boundary)) {
         lexer_advance_horizontally(lexer);
+    
+        // nocheckin the the minimum thing thing is 0.5 ms faster on kb_text_shape. Can we somehow assume ascii?
+        // lexer.column_index += 1;
+        // advance(*lexer.input);
     }
 
     ident.count = lexer.input.data - ident.data;
