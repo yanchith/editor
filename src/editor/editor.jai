@@ -1,11 +1,11 @@
 /*
 
-TODO(jt): Known serious bugs:
+TODO(jt): Known critical bugs:
 
-- Jai lexer crashes when we try to write out apollotime literals like this min_duration: u64 = {0xffff_ffff_ffff_ffff, 0xffff_ffff_ffff_ffff};
+- Jai lexer crashes when we try to write one more f after 0xffff_ffff_ffff_ffff. Line 1110 'digit_accumulator *= base;' has arithmetic overflow.
 - We are not printing the stack trace on arithmetic overflow...
 
-TODO(jt): Known bugs:
+TODO(jt): Known serious bugs:
 
 - Windows: file watching sometimes loops infinitely? we modify a file and keep getting events about it.
 - Clicking on an item in a listing scrolls/selects the resulting document immediately after clicking.
@@ -67,7 +67,7 @@ TODO(jt): Roadmap:
 - [X] Language: C
 - [~] Language: C++ ; Currently serviced by the C lexer
 - [X] Language: GLSL
-- [X] Reading and rendering CRLF
+- [X] Reading and (not) rendering CRLF
 - [X] Disambiguate path prefixes in SWITCH_VIEW, CLOSE_VIEW, and modeline
 - [X] Minimal config files (keybinds, theme, language file association)
 - [X] Prettier modeline layout
@@ -116,7 +116,7 @@ TODO(jt): Roadmap:
 - [ ] Pretty things: blinking cursor, cursor trail, ...
 - [ ] Flash pasted text
 - [ ] Flash text inserted by undo/redo
-- [ ] Writing CRLF
+- [ ] Writing CRLF and CRLF navigation (cursor movement should skip over)
 
 ... after beta ...
 
@@ -1446,7 +1446,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             case .FRAME_PROFILE; {
-                message := "Debug view: Frame profile (left=pause and go left; right=pause and right; up=unpause)";
+                message := "Debug view: Frame profile (left=pause,go left; right=pause,go right; up=unpause)";
                 scissor := Rect.{ 0, 0, window_w, window_h };
                 _font_layout_and_draw_text(*editor.font, message,
                                            *render_commands, *atlas_update_regions,
@@ -3290,7 +3290,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        // TODO(jt): @Bug Do detection across all selected lines! Otherwise behaves badly.
+        // TODO(jt): @Bug Do detection across all selected lines! If any line is not commented out, we should be commenting.
         case .TOGGLE_COMMENT; {
             line_comment, block_comment_start, block_comment_end := document_get_comment_style(document);
             line_comment_length := count_utf8_chars(line_comment);
@@ -5588,8 +5588,6 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     text_buffer_insert(*document.buffer, *view.cursors, "Compiling with args: ", .OMIT);
     text_buffer_insert(*document.buffer, *view.cursors, args, .OMIT);
     text_buffer_insert(*document.buffer, *view.cursors, "\n\n", .OMIT );
-
-    // TODO(jt): @Bug On Windows, compilation returns CRLF output?
 
     time_before := platform.get_current_time_monotonic();
     exit_code, exit_type, output, error := platform.run_in_process(args, working_directory,, temp);

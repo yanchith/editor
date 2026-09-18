@@ -1107,7 +1107,6 @@ make_number :: (lexer: *Lexer) -> *Token {
                         numeric_flags |= .OVERFLOWED;
                     }
 
-                    // nocheckin this overflows!
                     digit_accumulator *= base;
 
                     pre_add := digit_accumulator;
