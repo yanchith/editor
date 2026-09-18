@@ -202,7 +202,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
     //    and had 64 bit masks instead of 16-bit, because there was no movemask_epi8. The only thing it had going for it was triggering
     //    more often, because it required less space and alignment.
     //
-    #if 1 && CPU == .X64 {
+    #if 0 && CPU == .X64 {
         WIDTH :: 16;
 
         // Unaligned prefix
@@ -336,8 +336,7 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
 }
 
 lexer_is_keyword :: (identifier: string, $keywords: [] string) -> bool {
-    // For lang_c, building a matcher is about 8% less time than naive array_find.
-    // Not particularly great, we should try other approaches.
+    // For lang_c, building a matcher is about 1ms less compared to plain array_find on Zen3 on kb_text_shape.h.
     #insert #run make_keyword_matcher(keywords);
     return match_keyword(identifier);
 }
@@ -349,11 +348,6 @@ T :: #char "\t";
 R :: #char "\r";
 N :: #char "\n";
 
-Sx8: u64 : #run splat(S);
-Tx8: u64 : #run splat(T);
-Rx8: u64 : #run splat(R);
-Nx8: u64 : #run splat(N);
-
 u8x16 :: struct {
     array: [16] u8 #align 16;
 }
@@ -362,52 +356,6 @@ sx16 := u8x16.{ .[S, S, S, S, S, S, S, S, S, S, S, S, S, S, S, S] };
 tx16 := u8x16.{ .[T, T, T, T, T, T, T, T, T, T, T, T, T, T, T, T] };
 rx16 := u8x16.{ .[R, R, R, R, R, R, R, R, R, R, R, R, R, R, R, R] };
 nx16 := u8x16.{ .[N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N] };
-
-splat :: (byte: u8) -> u64 {
-    result: u64;
-    result |= cast(u64, byte) << 0;
-    result |= cast(u64, byte) << 8;
-    result |= cast(u64, byte) << 16;
-    result |= cast(u64, byte) << 24;
-    result |= cast(u64, byte) << 32;
-    result |= cast(u64, byte) << 40;
-    result |= cast(u64, byte) << 48;
-    result |= cast(u64, byte) << 56;
-    return result;
-}
-
-// A very bad "SIMD" cmpeq.
-//
-// ~(a ^ b) gives us full ones of equal lanes, but not full zeroes for non-equal lanes.
-//
-// To achieve full zeroes, we OR all of the lane's bits into one after doing the initial XOR.
-//
-// Afterwards, we negate the bit we care about and multiply by 0xff,
-// which broadcasts it back to the full lane.
-cmpeq_u8x8 :: inline (a: u64, b: u64) -> u64 {
-    x := a ^ b;
-
-    /*
-    Original version
-
-    x = (x | (x >> 4)) & 0x0f0f0f0f0f0f0f0f;
-    x = (x | (x >> 2)) & 0x0303030303030303;
-    x = (x | (x >> 1)) & 0x0101010101010101;
-
-    The masks are not necessary. Bits from neighboring lanes won't reach the
-    single bit we care about in our lane.
-    */
-
-    x |= x >> 4;
-    x |= x >> 2;
-    x |= x >> 1;
-
-    x = ~x & 0x0101010101010101;
-
-    result := x * 0xff;
-
-    return result;
-}
 
 make_keyword_matcher :: (keywords: [] string) -> string {
     keywords_by_length: [..][..] string;
