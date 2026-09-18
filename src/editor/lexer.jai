@@ -173,12 +173,15 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
 lexer_eat_whitespace :: (lexer: *Lexer) {
     USE_SSE :: CPU == .X64;
 
-    #if USE_SSE {
-        // nocheckin finish simd
+    #if 0 && USE_SSE {
         WIDTH :: 16;
 
         // Unaligned prefix
-        while lexer.input.count && is_space(lexer.input[0]) && !is_aligned(lexer.input.data, WIDTH) {
+        while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
+            if !is_space(lexer.input[0]) {
+                return;
+            }
+            
             if lexer.input[0] == "\n" {
                 lexer.line_index += 1;
                 lexer.column_index = 0;
@@ -198,7 +201,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
         while lexer.input.count >= WIDTH {
             current_pointer := lexer.input.data;
             
-            m: u32 = 69;
+            m: u16 = ---;
             #asm {
                 // These start out with loaded patterns to compare with, but contain the comparison results after.
                 s: vec;
@@ -240,6 +243,10 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 log("nocheckin m: %", m_print);
             }
             
+            if m != U16_MAX {
+                stop = true;
+            }
+            
             // nocheckin got our mask, shall we get to work?
 
             advance(*lexer.input, WIDTH);
@@ -251,7 +258,11 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
         WIDTH :: 8;
 
         // Unaligned prefix
-        while lexer.input.count && is_space(lexer.input[0]) && !is_aligned(lexer.input.data, WIDTH) {
+        while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
+            if !is_space(lexer.input[0]) {
+                return;
+            }
+            
             if lexer.input[0] == "\n" {
                 lexer.line_index += 1;
                 lexer.column_index = 0;
@@ -264,8 +275,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
 
         // Fake SIMD loop
         if lexer.input.count {
-            stop := false;
-            while !stop && lexer.input.count >= WIDTH {
+            while lexer.input.count >= WIDTH {
                 current: u64 = cast(*u64, lexer.input.data).*;
 
                 ms := cmpeq_u8x8(current, Sx8);
@@ -274,16 +284,18 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 mn := cmpeq_u8x8(current, Nx8);
 
                 m := ms | mt | mr | mn;
-                if m != U64_MAX {
-                    stop = true;
-                }
-
-                whitespace_bits  := ifx m == U64_MAX then WIDTH * 8 else bit_scan_forward(~m);
+                
+                whitespace_only  := m == U64_MAX;
+                whitespace_bits  := ifx whitespace_only then WIDTH * 8 else bit_scan_forward(~m);
                 whitespace_count := whitespace_bits >> 3;
 
                 ONE: u64 : 1;
-                end_mask := (ONE << whitespace_bits) - ONE;
-
+                end_mask: u64 = ---;
+                #no_aoc {
+                    // If whitespace_bits == 64, this would underflow.
+                    end_mask = (ONE << whitespace_bits) - ONE;
+                }
+                
                 mn &= end_mask;
 
                 newlines                  := popcount(mn) >> 3;
@@ -297,6 +309,10 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 lexer.column_index += spaces_after_last_newline;
 
                 advance(*lexer.input, whitespace_count);
+
+                if !whitespace_only {
+                    return;
+                }
             }
         }
     }
