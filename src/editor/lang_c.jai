@@ -105,6 +105,7 @@ get_next_token :: (lexer: *Lexer) -> Token {
     } else if is_alpha(c) || c == "_" {
         parse_identifier_or_keyword(lexer, *token);
     } else if c == {
+        // nocheckin @Speed should we try table-driving this?
         case ":";   parse_simple(lexer, *token);
         case "?";   parse_simple(lexer, *token);
 
