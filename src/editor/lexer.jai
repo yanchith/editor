@@ -360,8 +360,35 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
         }
     }
 
+    //
+    // nocheckin the following IS_SPACE LUT is noticably faster than is_space (inline does not matter, LLVM inlines always)
+    // What else can we table-drive?
+    //
+    // A lookup table for is_space. Faster than the comparisons.
+    //
+    // lexerbench results: 
+    // 
+    // while lexer.input.count && IS_SPACE[lexer.input[0]]
+    // min 0.010786
+    // max 0.013866
+    //
+    // while lexer.input.count && is_space(lexer.input[0])
+    // min 0.011494
+    // max 0.014494
+    IS_SPACE :: u8.[
+        0,0,0,0,0,0,0,0, 0,1,1,0,0,1,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        1,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+    ];
+
     // Small suffix or scalar fallback
-    while lexer.input.count && is_space(lexer.input[0]) {
+    while lexer.input.count && IS_SPACE[lexer.input[0]] {
+    // while lexer.input.count && is_space(lexer.input[0]) {
         if lexer.input[0] == "\n" {
             lexer.line_index += 1;
             lexer.column_index = 0;
@@ -384,7 +411,7 @@ lexer_eat_until_newline :: (lexer: *Lexer) {
     }
 }
 
-// nocheckin @Speed This Gets called a few times and we spend some time in here. SIMD?
+// nocheckin @Speed This Gets called a few times and we spend some time in here. Table drive?
 lexer_eat_identifier :: (lexer: *Lexer) -> string {
     ident: string;
     ident.data = lexer.input.data;
