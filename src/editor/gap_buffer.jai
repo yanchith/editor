@@ -237,10 +237,8 @@ for_expansion :: (gb: *Gap_Buffer, body: Code, flags: For_Flags) #expand {
 }
 
 operator *[] :: (gb: Gap_Buffer, index: s64) -> *u8 {
-    #if SANITY {
-        assert_valid(gb);
-        assert(index >= 0 && index < gb.count);
-    }
+    assert_valid(gb);
+    assert(index >= 0 && index < gb.count);
 
     result: *u8;
     if index < gb.gap_index {
