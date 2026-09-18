@@ -51,26 +51,8 @@ Token_Type :: enum u16 {
     BLOCK_COMMENT;
 }
 
-Lexer_Input :: struct {
-    bytes_before_gap: [] u8;
-    bytes_after_gap: [] u8;
-    
-    count: s64;
-}
-
-operator [] :: (input: Lexer_Input, index: s64) -> u8 {
-    result: u8;
-    if index < input.bytes_before_gap.count {
-        result = input.bytes_before_gap[index];
-    } else {
-        result = input.bytes_after_gap[index - input.bytes_before_gap.count];
-    }
-    
-    return result;
-}
-
 Lexer :: struct {
-    input: Lexer_Input;
+    input: string;
 
     reported_error: bool;
 
@@ -120,32 +102,6 @@ lexer_set_token_end :: inline (lexer: Lexer, token: *Token) {
     token.loc1.y = lexer.line_index;
 }
 
-lexer_input_advance :: (lexer: *Lexer, amount: s64 = 1) {
-    assert(amount >= 0);
-    assert(lexer.input.count >= amount);
-    
-    sanity_assert(lexer.input.count == lexer.input.bytes_before_gap.count + lexer.input.bytes_after_gap.count);
-    
-    lexer.input.count -= amount;
-    if lexer.input.bytes_before_gap.count {
-        if lexer.input.bytes_before_gap.count >= amount {
-            lexer.input.bytes_before_gap.data  += amount;
-            lexer.input.bytes_before_gap.count -= amount;
-        } else {
-            amount_after := amount - lexer.input.bytes_before_gap.count;
-            
-            lexer.input.bytes_before_gap.count = 0;
-            // No need to change data. We won't be reading it again.
-            
-            lexer.input.bytes_after_gap.data  += amount_after;
-            lexer.input.bytes_after_gap.count -= amount_after;
-        }
-    } else {
-        lexer.input.bytes_after_gap.data  += amount;
-        lexer.input.bytes_after_gap.count -= amount;
-    }
-}
-
 lexer_input_byte_at_index_equals :: inline (lexer: Lexer, c: u8, index: s64) -> bool {
     if lexer.input.count > index {
         return lexer.input[index] == c;
@@ -190,7 +146,7 @@ lexer_advance :: inline (lexer: *Lexer) {
     if lexer.input[0] == "\n" {
         lexer.line_index += 1;
         lexer.column_index = 0;
-        lexer_input_advance(lexer);
+        advance(*lexer.input);
     } else {
         lexer_advance_horizontally(lexer);
     }
@@ -211,7 +167,7 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
     }
 
     lexer.column_index += 1;
-    lexer_input_advance(lexer, char_length);
+    advance(*lexer.input, char_length);
 }
 
 lexer_eat_whitespace :: (lexer: *Lexer) {
@@ -413,7 +369,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             lexer.column_index += 1;
         }
 
-        lexer_input_advance(lexer);
+        advance(*lexer.input);
     }
 }
 
@@ -428,39 +384,17 @@ lexer_eat_until_newline :: (lexer: *Lexer) {
     }
 }
 
-lexer_eat_identifier :: (lexer: *Lexer) -> /* Temporary_Storage or pointing to the underlying thing */ string {
+// nocheckin @Speed This Gets called a few times and we spend some time in here. SIMD?
+lexer_eat_identifier :: (lexer: *Lexer) -> string {
     ident: string;
-    
-    ident_started_before_gap := true;
-    ident.data = lexer.input.bytes_before_gap.data;
-    if !lexer.input.bytes_before_gap.count {
-        ident_started_before_gap = false;
-        ident.data = lexer.input.bytes_after_gap.data;
-    }
-    
-    ident.data = ifx lexer.input.bytes_before_gap.count then lexer.input.bytes_before_gap.data else lexer.input.bytes_after_gap.data;
-    
+    ident.data = lexer.input.data;
+
     while lexer.input.count && (lexer_input_byte_matches(lexer, is_alnum) || lexer_input_byte_matches(lexer, is_nonascii_utf8_char_boundary)) {
         lexer_advance_horizontally(lexer);
     }
 
-    if lexer.input.bytes_before_gap.count {
-        ident.count = lexer.input.bytes_before_gap.data - ident.data;
-    } else {
-        ident.count = lexer.input.bytes_after_gap.data - ident.data;
+    ident.count = lexer.input.data - ident.data;
 
-        // nocheckin
-        // if lexer_started_before_gap {
-        //     count := ident.count - lexer.input.gap_count;
-        //     data  := alloc(count,, temp);
-//             
-        //     Memory.copy(data, ident.data, );
-        //     Memory.copy(data + , )
-//             
-//             
-        // }
-    }
-    
     return ident;
 }
 
