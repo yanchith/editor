@@ -171,34 +171,43 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
 }
 
 lexer_eat_whitespace :: (lexer: *Lexer) {
-    USE_SSE :: CPU == .X64;
-
-    // nocheckin both SSE and fake SIMD versions are slower on kb_text_shape.h according to our benchmark (min/max of 1000 runs).
-    // Remove and document.
     //
-    // Problems:
-    // - Both have to run pre-alignment loops.
-    // - Both do a lot of heavyweight serial work (bsf/bsr, popcnt)
-    // - Both are quite branchy internally
-    // - Even if they weren't actually slower, the "fast" loops trigger very infrequently.
+    // A lookup table for is_space from modules/Basic. Faster than calling it (because LLVM doesn't generate this?).
     //
-    // Scalar
-    // min 0.011433
-    // max 0.014628
+    // On Zen3, the IS_SPACE LUT is noticably faster than is_space. Bitpacking the table doesn't make the code faster further.
+    // On M4, the original is_space, the LUT and the bitpacked LUT are the same speed.
     //
-    // Fake SIMD
-    // min 0.012122
-    // max 0.015516
+    IS_SPACE :: u8.[
+        0,0,0,0,0,0,0,0, 0,1,1,0,0,1,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        1,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+    ];
+    
     //
-    // SSE
-    // min 0.012689
-    // max 0.016018
-    #if 0 && USE_SSE {
+    // I tried SSE2 and "fake SIMD" with u64. They were both a little slower than the original loop at the bottom of this procedure.
+    // They also both had a couple of problems:
+    //
+    // 1) In regular source files, there is not enough opportunity for 8/16 bytes at a time to trigger all that often.
+    //    Having to run a pre-alignment loop does not help.
+    //
+    // 2) When the SIMD loops triggered, any speed gains from processing multiple bytes at a time were overshadowed by the
+    //    followup expensive serial part to determine how much to advance line/column indices: 1x bsf, 1x bsr, 1x popcnt + some branches.
+    //    Maybe there is a way to be smarter about that. I am leaving the SSE2 version here as a comment.
+    //    The "fake SIMD" was similar, but instead of pcmpeqb it had to use an 11-long dependency chain for lane-wise cmpeq on u64,
+    //    and had 64 bit masks instead of 16-bit, because there was no movemask_epi8. The only thing it had going for it was triggering
+    //    more often, because it required less space and alignment.
+    //
+    #if 1 && CPU == .X64 {
         WIDTH :: 16;
 
         // Unaligned prefix
         while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
-            if !is_space(lexer.input[0]) {
+            if !IS_SPACE[lexer.input[0]] {
                 return;
             }
 
@@ -234,11 +243,6 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
 
                 current: vec;
 
-                // Apparently, the best way to broadcast on SSE2 is to load from memory.
-                //
-                // There is movddup in SSE3, vbroadcastss in AVX and finally vpbroadcastb/w/d/q in AVX512VL
-                // (with double and quad being pure loads, otherwise microcoded shuffles are added)
-                // https://stackoverflow.com/questions/60920572/set-an-xmm-register-to-a-repeating-byte-pattern-broadcast-a-constant-byte
                 movdqu s, [s_pointer];
                 movdqu t, [t_pointer];
                 movdqu r, [r_pointer];
@@ -291,126 +295,10 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 return;
             }
         }
-    } else #if 0 {
-        // This version is slower than the scalar loop on Zen3, so disabled for now.
-        // Maybe I can figure out a way to make it faster?
-
-        WIDTH :: 8;
-
-        // Unaligned prefix
-        while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
-            if !is_space(lexer.input[0]) {
-                return;
-            }
-
-            if lexer.input[0] == "\n" {
-                lexer.line_index += 1;
-                lexer.column_index = 0;
-            } else {
-                lexer.column_index += 1;
-            }
-
-            advance(*lexer.input);
-        }
-
-        // Fake SIMD loop
-        if lexer.input.count {
-            while lexer.input.count >= WIDTH {
-                current: u64 = cast(*u64, lexer.input.data).*;
-
-                ms := cmpeq_u8x8(current, Sx8);
-                mt := cmpeq_u8x8(current, Tx8);
-                mr := cmpeq_u8x8(current, Rx8);
-                mn := cmpeq_u8x8(current, Nx8);
-
-                m := ms | mt | mr | mn;
-
-                whitespace_only := m == U64_MAX;
-
-                leading_whitespace_bits := ifx whitespace_only then WIDTH << 3 else bit_scan_forward(~m) - 1;
-                if !leading_whitespace_bits {
-                    return;
-                }
-
-                leading_whitespace_count := leading_whitespace_bits >> 3;
-                leading_whitespace_mask: u64 = ---;
-                #no_aoc {
-                    // If leading_whitespace_bits == 64, this would underflow. (We checked for leading_whitespace_bits == 0 above.)
-                    ONE: u64 : 1;
-                    leading_whitespace_mask = (ONE << leading_whitespace_bits) - ONE;
-                }
-
-                mn &= leading_whitespace_mask;
-
-                newlines                  := popcount(mn) >> 3;
-                spaces_after_last_newline := ifx mn == 0 then WIDTH else (64 - bit_scan_reverse(mn)) >> 3;
-                spaces_after_last_newline -= cast,trunc(s32, WIDTH - leading_whitespace_count);
-
-                lexer.line_index += newlines;
-                if newlines {
-                    lexer.column_index = 0;
-                }
-                lexer.column_index += spaces_after_last_newline;
-
-                advance(*lexer.input, leading_whitespace_count);
-                if !whitespace_only {
-                    return;
-                }
-            }
-        }
     }
-
-    //
-    // nocheckin On Zen3, the IS_SPACE LUT is noticably faster than is_space. is_space2 is about the same as IS_SPACE
-    // On M4, IS_SPACE is about the same as is_space. nocheckin is_space2 on M4?
-    // What else can we table-drive?
-    //
-    // A lookup table for is_space. Faster than the comparisons.
-    //
-    // lexerbench results on Zen3: 
-    // 
-    // while lexer.input.count && IS_SPACE[lexer.input[0]] (is_space2 is about the same on Zen3)
-    // min 0.010786
-    // max 0.013866
-    //
-    // while lexer.input.count && is_space(lexer.input[0])
-    // min 0.011494
-    // max 0.014494
-    //
-    IS_SPACE :: u8.[
-        0,0,0,0,0,0,0,0, 0,1,1,0,0,1,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-        1,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-    ];
     
-    IS_SPACE2 :: u8.[
-        0,            0b_0010_0110, 0, 0,
-        0b_0000_0001, 0,            0, 0,
-        0,            0,            0, 0,
-        0,            0,            0, 0,
-        0,            0,            0, 0,
-        0,            0,            0, 0,
-        0,            0,            0, 0,
-        0,            0,            0, 0,
-    ];
-    
-    is_space2 :: inline (b: u8) -> bool {
-        block_index := b >> 3;
-        bit_index   := b & 7;
-        block := IS_SPACE2[block_index];
-        bit   := 1 << bit_index;
-        return cast(bool, block & bit);
-    }
-
-    // Small suffix or scalar fallback
-    // while lexer.input.count && is_space2(lexer.input[0]) {
+    // Small suffix and/or scalar fallback
     while lexer.input.count && IS_SPACE[lexer.input[0]] {
-    // while lexer.input.count && is_space(lexer.input[0]) {
         if lexer.input[0] == "\n" {
             lexer.line_index += 1;
             lexer.column_index = 0;
