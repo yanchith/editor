@@ -361,23 +361,22 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
     }
 
     //
-    // nocheckin On Zen3, the following IS_SPACE LUT is noticably faster than is_space (inline does not matter, LLVM inlines always)
-    // On M4, they are about the same.
-    // Inspect assembly with #dump.
+    // nocheckin On Zen3, the IS_SPACE LUT is noticably faster than is_space. is_space2 is about the same as IS_SPACE
+    // On M4, IS_SPACE is about the same as is_space. nocheckin is_space2 on M4?
     // What else can we table-drive?
-    // Should we bitpack the LUT?
     //
     // A lookup table for is_space. Faster than the comparisons.
     //
-    // lexerbench results: 
+    // lexerbench results on Zen3: 
     // 
-    // while lexer.input.count && IS_SPACE[lexer.input[0]]
+    // while lexer.input.count && IS_SPACE[lexer.input[0]] (is_space2 is about the same on Zen3)
     // min 0.010786
     // max 0.013866
     //
     // while lexer.input.count && is_space(lexer.input[0])
     // min 0.011494
     // max 0.014494
+    //
     IS_SPACE :: u8.[
         0,0,0,0,0,0,0,0, 0,1,1,0,0,1,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
         1,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
@@ -388,8 +387,28 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
     ];
+    
+    IS_SPACE2 :: u8.[
+        0,            0b_0010_0110, 0, 0,
+        0b_0000_0001, 0,            0, 0,
+        0,            0,            0, 0,
+        0,            0,            0, 0,
+        0,            0,            0, 0,
+        0,            0,            0, 0,
+        0,            0,            0, 0,
+        0,            0,            0, 0,
+    ];
+    
+    is_space2 :: inline (b: u8) -> bool {
+        block_index := b >> 3;
+        bit_index   := b & 7;
+        block := IS_SPACE2[block_index];
+        bit   := 1 << bit_index;
+        return cast(bool, block & bit);
+    }
 
     // Small suffix or scalar fallback
+    // while lexer.input.count && is_space2(lexer.input[0]) {
     while lexer.input.count && IS_SPACE[lexer.input[0]] {
     // while lexer.input.count && is_space(lexer.input[0]) {
         if lexer.input[0] == "\n" {
