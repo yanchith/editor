@@ -150,6 +150,7 @@ Unicode :: #import "Unicode";
 
 S64_MAX        :: Math.S64_MAX;
 U64_MAX        :: Math.U64_MAX;
+U16_MAX        :: Math.U16_MAX;
 Vector2        :: Math.Vector2;
 Vector3        :: Math.Vector3;
 Vector4        :: Math.Vector4;

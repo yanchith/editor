@@ -173,6 +173,24 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
 lexer_eat_whitespace :: (lexer: *Lexer) {
     USE_SSE :: CPU == .X64;
 
+    // nocheckin both SSE and fake SIMD versions are slower on kb_text_shape.h according to our benchmark (min/max of 1000 runs)
+    //
+    // Problems:
+    // - Both have to run pre-alignment loops.
+    // - Both do a lot of heavyweight serial work (bsf/bsr, popcnt)
+    // - Both are quite branchy internally
+    //
+    // Scalar
+    // min 0.011433
+    // max 0.014628
+    //
+    // Fake SIMD
+    // min 0.012122
+    // max 0.015516
+    //
+    // SSE
+    // min 0.012689
+    // max 0.016018
     #if 0 && USE_SSE {
         WIDTH :: 16;
 
@@ -181,7 +199,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             if !is_space(lexer.input[0]) {
                 return;
             }
-            
+
             if lexer.input[0] == "\n" {
                 lexer.line_index += 1;
                 lexer.column_index = 0;
@@ -197,20 +215,21 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
         t_pointer := *tx16.array;
         r_pointer := *rx16.array;
         n_pointer := *nx16.array;
-        
+
         while lexer.input.count >= WIDTH {
             current_pointer := lexer.input.data;
-            
-            m: u16 = ---;
+
+            m:  u16 = ---;
+            mn: u16 = ---;
             #asm {
                 // These start out with loaded patterns to compare with, but contain the comparison results after.
                 s: vec;
                 t: vec;
                 r: vec;
                 n: vec;
-                
+
                 mask: vec;
-                
+
                 current: vec;
 
                 // Apparently, the best way to broadcast on SSE2 is to load from memory.
@@ -222,37 +241,56 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 movdqu t, [t_pointer];
                 movdqu r, [r_pointer];
                 movdqu n, [n_pointer];
-                
+
                 movdqu current, [current_pointer];
-                
+
                 pcmpeqb s, current;
                 pcmpeqb t, current;
                 pcmpeqb r, current;
                 pcmpeqb n, current;
-                
+
                 movdqu mask, s;
                 por mask, t;
                 por mask, r;
                 por mask, n;
-                
-                pmovmskb m, mask;
-            }
-            
-            {
-                m_print := m;
-                log("nocheckin m: %", m_print);
-            }
-            
-            if m != U16_MAX {
-                stop = true;
-            }
-            
-            // nocheckin got our mask, shall we get to work?
 
-            advance(*lexer.input, WIDTH);
+                pmovmskb m, mask;
+                pmovmskb mn, n;
+            }
+
+            whitespace_only := m == U16_MAX;
+
+            leading_whitespace_count := ifx whitespace_only then WIDTH else bit_scan_forward(~m) - 1;
+            if !leading_whitespace_count {
+                return;
+            }
+
+            leading_whitespace_mask: u16 = ---;
+            #no_aoc {
+                // If leading_whitespace_count == 16, this would underflow. (We checked for leading_whitespace_count == 0 above.)
+                ONE: u16 : 1;
+                leading_whitespace_mask = (ONE << leading_whitespace_count) - ONE;
+            }
+
+            mn &= leading_whitespace_mask;
+
+            newlines := popcount(mn);
+            spaces_after_last_newline: s32 = ifx mn == 0 then WIDTH else WIDTH - bit_scan_reverse(mn);
+            spaces_after_last_newline -= cast,trunc(s32, WIDTH - leading_whitespace_count);
+
+            lexer.line_index += newlines;
+            if newlines {
+                lexer.column_index = 0;
+            }
+            lexer.column_index += spaces_after_last_newline;
+
+            advance(*lexer.input, leading_whitespace_count);
+            if !whitespace_only {
+                return;
+            }
         }
     } else #if 0 {
-        // This version is not really faster than the scalar loop on Zen3, so disabled for now.
+        // This version is slower than the scalar loop on Zen3, so disabled for now.
         // Maybe I can figure out a way to make it faster?
 
         WIDTH :: 8;
@@ -262,7 +300,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
             if !is_space(lexer.input[0]) {
                 return;
             }
-            
+
             if lexer.input[0] == "\n" {
                 lexer.line_index += 1;
                 lexer.column_index = 0;
@@ -284,23 +322,27 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 mn := cmpeq_u8x8(current, Nx8);
 
                 m := ms | mt | mr | mn;
-                
-                whitespace_only  := m == U64_MAX;
-                whitespace_bits  := ifx whitespace_only then WIDTH * 8 else bit_scan_forward(~m);
-                whitespace_count := whitespace_bits >> 3;
 
-                ONE: u64 : 1;
-                end_mask: u64 = ---;
-                #no_aoc {
-                    // If whitespace_bits == 64, this would underflow.
-                    end_mask = (ONE << whitespace_bits) - ONE;
+                whitespace_only := m == U64_MAX;
+
+                leading_whitespace_bits := ifx whitespace_only then WIDTH << 3 else bit_scan_forward(~m) - 1;
+                if !leading_whitespace_bits {
+                    return;
                 }
-                
-                mn &= end_mask;
+
+                leading_whitespace_count := leading_whitespace_bits >> 3;
+                leading_whitespace_mask: u64 = ---;
+                #no_aoc {
+                    // If leading_whitespace_bits == 64, this would underflow. (We checked for leading_whitespace_bits == 0 above.)
+                    ONE: u64 : 1;
+                    leading_whitespace_mask = (ONE << leading_whitespace_bits) - ONE;
+                }
+
+                mn &= leading_whitespace_mask;
 
                 newlines                  := popcount(mn) >> 3;
-                spaces_after_last_newline := (64 - bit_scan_reverse(mn)) >> 3;
-                spaces_after_last_newline -= cast,trunc(s32, WIDTH - whitespace_count);
+                spaces_after_last_newline := ifx mn == 0 then WIDTH else (64 - bit_scan_reverse(mn)) >> 3;
+                spaces_after_last_newline -= cast,trunc(s32, WIDTH - leading_whitespace_count);
 
                 lexer.line_index += newlines;
                 if newlines {
@@ -308,8 +350,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
                 }
                 lexer.column_index += spaces_after_last_newline;
 
-                advance(*lexer.input, whitespace_count);
-
+                advance(*lexer.input, leading_whitespace_count);
                 if !whitespace_only {
                     return;
                 }
