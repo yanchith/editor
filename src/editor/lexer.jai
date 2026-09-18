@@ -173,12 +173,14 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
 lexer_eat_whitespace :: (lexer: *Lexer) {
     USE_SSE :: CPU == .X64;
 
-    // nocheckin both SSE and fake SIMD versions are slower on kb_text_shape.h according to our benchmark (min/max of 1000 runs)
+    // nocheckin both SSE and fake SIMD versions are slower on kb_text_shape.h according to our benchmark (min/max of 1000 runs).
+    // Remove and document.
     //
     // Problems:
     // - Both have to run pre-alignment loops.
     // - Both do a lot of heavyweight serial work (bsf/bsr, popcnt)
     // - Both are quite branchy internally
+    // - Even if they weren't actually slower, the "fast" loops trigger very infrequently.
     //
     // Scalar
     // min 0.011433
