@@ -336,7 +336,7 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
 }
 
 lexer_is_keyword :: (identifier: string, $keywords: [] string) -> bool {
-    // For lang_c, building a matcher is about 1ms less compared to plain array_find on Zen3 on kb_text_shape.h.
+    // For lang_c, building a matcher is about 1ms less compared to array_find on Zen3 and M4 on kb_text_shape.h.
     #insert #run make_keyword_matcher(keywords);
     return match_keyword(identifier);
 }
