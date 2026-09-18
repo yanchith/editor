@@ -34,13 +34,14 @@ lang_jai_update_tokens :: (document: *Document) {
     // the lexer code a bit.
     lexer: JL.Lexer;
 
-    // TODO(jt): @Speed @Memory This always copies the entire text buffer. This is bad! Instead
-    // split the lexing loop into two and lex on the contents of the gap buffer.
-    start := Text_Location.{ 0, 0 };
-    end   := text_buffer_get_end_of_line(document.buffer, document.buffer.line_count - 1);
-    contents := text_buffer_make_view_for_interval(document.buffer, start, end,, temp);
+    // TODO(jt): @Speed @Memory This always copies the entire text buffer. While this is bad,
+    // it is also much faster than the actual lexing for the sizes of buffers we support lexing for.
+    // When I tried lexing on noncontiguous data (a stripped down gap buffer), this brought additional
+    // complications, such as branching on each index operator, and complicated recunstruction of strings
+    // in lexer_eat_identifier, if those strings crossed the gap. (I tried this for C, which has our own lexer.)
+    contents := gap_buffer_make_view(document.buffer.gb, 0, document.buffer.gb.count,, temp);
 
-    JL.set_input_from_string(*lexer, contents);
+    JL.set_input_from_string(*lexer, cast(string, contents));
 
     last_token_is_pound  := false;
     last_token_is_dollar := false;

@@ -41,14 +41,15 @@ lang_c_update_tokens :: (document: *Document) {
 
     array_reset_keeping_memory(*document.tokens);
 
-    // TODO(jt): @Speed @Memory This always copies the entire text buffer. This is bad! Instead
-    // split the lexing loop into two and lex on the contents of the gap buffer.
-    start := Text_Location.{ 0, 0 };
-    end   := text_buffer_get_end_of_line(document.buffer, document.buffer.line_count - 1);
-    contents := text_buffer_make_view_for_interval(document.buffer, start, end,, temp);
+    // TODO(jt): @Speed @Memory This always copies the entire text buffer. While this is bad,
+    // it is also much faster than the actual lexing for the sizes of buffers we support lexing for.
+    // When I tried lexing on noncontiguous data (a stripped down gap buffer), this brought additional
+    // complications, such as branching on each index operator, and complicated recunstruction of strings
+    // in lexer_eat_identifier, if those strings crossed the gap.
+    contents := gap_buffer_make_view(document.buffer.gb, 0, document.buffer.gb.count,, temp);
 
     lexer: Lexer;
-    lexer.input = contents;
+    lexer.input = cast(string, contents);
 
     while 1 {
         token := get_next_token(*lexer);
