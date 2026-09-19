@@ -2037,6 +2037,7 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
 
                         cursor_before_reload := document.cursors_cold.c0;
 
+                        // TODO(jt): @Speed This delete takes an enormous amount of time for large files.
                         text_buffer_delete_all(*document.buffer, *document.cursors_cold);
                         text_buffer_insert(*document.buffer, *document.cursors_cold, contents, .FUSE);
                         text_buffer_move_to(document.buffer, *document.cursors_cold, cursor_before_reload, false);
