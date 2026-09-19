@@ -2385,6 +2385,7 @@ Document_Action :: enum {
 
     DEBUG_PRINT_BYTE_AT_CURSOR;
     DEBUG_INSERT_BENCHMARK_TEXT;
+    DEBUG_BENCHMARK_C_LEXER;
 }
 
 Compilation_Action :: enum {
@@ -3481,6 +3482,34 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             if !(document.flags & .READONLY) {
                 open_modal_interaction(editor, platform, input, modal_interaction_benchgen_procs);
             }
+        }
+        
+        case .DEBUG_BENCHMARK_C_LEXER; {
+            document_change_lang(document, .C);
+            
+            min_elapsed: Apollo_Time = { 0xffff_ffff_ffff_ffff,0x7fff_ffff_ffff_ffff };
+            max_elapsed: Apollo_Time = { 0, 0 };
+            TIME_LIMIT :: #run milliseconds_to_apollo(1000);
+            
+            bench_start := platform.get_current_time_monotonic();
+            bench_runs  := 0;
+            while 1 {
+                start := platform.get_current_time_monotonic();
+                lang_c_update_tokens(document);
+                end   := platform.get_current_time_monotonic();
+                
+                elapsed := end - start;
+                if elapsed < min_elapsed  min_elapsed = elapsed;
+                if elapsed > max_elapsed  max_elapsed = elapsed;
+                
+                bench_runs += 1;
+                if end - bench_start > TIME_LIMIT {
+                    break;
+                }
+            }
+            
+            editor_log(editor, "Ran % Benchmark rounds. Min: % seconds. Max % seconds.",
+                       bench_runs, to_float64_seconds(min_elapsed), to_float64_seconds(max_elapsed));
         }
     }
 
@@ -5380,8 +5409,6 @@ document_get_comment_style :: (document: Document) -> /* Static */ line: string,
     }
 }
 
-// TODO(jt): @Speed At sizes around ~10MB, even the fastest lexer we have (JAI_Lexer) takes 10 milliseconds to produce tokens.
-// We need to make all lexers faster, so that we can increase the highlighting cutoff.
 document_update_tokens :: (document: *Document) {
     if document.buffer.gb.count > HIGHLIGHT_CUTOFF_SIZE {
         array_reset_keeping_memory(*document.tokens);
