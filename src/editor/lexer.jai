@@ -102,6 +102,8 @@ lexer_set_token_end :: inline (lexer: Lexer, token: *Token) {
     token.loc1.y = lexer.line_index;
 }
 
+// nocheckin shorten lexer_input_xyz to lexer_xyz
+
 lexer_input_byte_at_index_equals :: inline (lexer: Lexer, c: u8, index: s64) -> bool {
     if lexer.input.count > index {
         return lexer.input[index] == c;
@@ -147,7 +149,12 @@ lexer_advance :: inline (lexer: *Lexer) {
     if lexer.input[0] == "\n" {
         lexer.line_index += 1;
         lexer.column_index = 0;
-        advance(*lexer.input);
+        // nocheckin Find out how to dump assembly to see codegen benefits of manual advance.
+        // @Speed :ManualAdvance
+        // This used to be regular advance, but manually inlining generates much smaller LLVM IR.
+        // advance(*lexer.input);
+        lexer.input.data  += 1;
+        lexer.input.count -= 1;
     } else {
         lexer_advance_horizontally(lexer);
     }
@@ -168,15 +175,26 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
     }
 
     lexer.column_index += 1;
-    advance(*lexer.input, char_length);
+
+    // :ManualAdvance @Speed
+    // This used to be a regular advance, but this is for some reason super slow?
+    // This is weird, because advance is marked inline (and LLVM should inline even without that).
+    // The asserts never go off, so the branches could be predicted.
+    // LLVM IR (from #dump) is much smaller, if we just inline advance like this (2 bbs instead of 9), 
+    // so maybe even LLVM can make more sense out of it?
+    //
+    // advance(*lexer.input, char_length);
+    lexer.input.count -= char_length;
+    lexer.input.data  += char_length;
 }
 
 lexer_eat_whitespace :: (lexer: *Lexer) {
     //
-    // A lookup table for is_space from modules/Basic. Faster than calling it (because LLVM doesn't generate this?).
+    // A lookup table for is_space from modules/Basic.
     //
-    // On Zen3, the IS_SPACE LUT is noticably faster than is_space. Bitpacking the table doesn't make the code faster further.
-    // On M4, the original is_space, the LUT and the bitpacked LUT are the same speed.
+    // @Speed
+    // On Zen3, the IS_SPACE LUT is noticably faster than is_space.
+    // On M4, the original is_space and the LUT are the same speed.
     //
     IS_SPACE :: u8.[
         0,0,0,0,0,0,0,0, 0,1,1,0,0,1,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
@@ -197,8 +215,10 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
     //    Having to run a pre-alignment loop does not help.
     //
     // 2) When the SIMD loops triggered, any speed gains from processing multiple bytes at a time were overshadowed by the
-    //    followup expensive serial part to determine how much to advance line/column indices: 1x bsf, 1x bsr, 1x popcnt + some branches.
-    //    Maybe there is a way to be smarter about that. I am leaving the SSE2 version here as a comment.
+    //    followup expensive serial part to determine how much to advance line/column indices: 1x bsf, 1x bsr, 1x popcnt
+    //    + some hard to predict branches.
+    //
+    //    Maybe there is a way to be smarter about that. I am leaving the disabled SSE2 version here.
     //    The "fake SIMD" was similar, but instead of pcmpeqb it had to use an 11-long dependency chain for lane-wise cmpeq on u64,
     //    and had 64 bit masks instead of 16-bit, because there was no movemask_epi8. The only thing it had going for it was triggering
     //    more often, because it required less space and alignment.
@@ -312,12 +332,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
 }
 
 lexer_eat_until_newline :: (lexer: *Lexer) {
-    while lexer.input.count {
-        c := lexer.input[0];
-        if c == "\n" {
-            break;
-        }
-
+    while lexer.input.count && lexer.input[0] != "\n" {
         lexer_advance_horizontally(lexer);
     }
 }
@@ -326,6 +341,7 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
     ident: string;
     ident.data = lexer.input.data;
     
+    // nocheckin audit table... also it isn't really faster, so do we revert?
     IS_ALNUM_OR_MULTIBYTE_UTF8_CHAR_BOUNDARY :: u8.[
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1, 1,1,0,0,0,0,0,0, // 0-9
@@ -337,14 +353,9 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
         1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // Multibyte first bytes
     ];
 
-    // nocheckin audit table
     while lexer.input.count && IS_ALNUM_OR_MULTIBYTE_UTF8_CHAR_BOUNDARY[lexer.input[0]] {
     // while lexer.input.count && (lexer_input_byte_matches(lexer, is_alnum) || lexer_input_byte_matches(lexer, is_nonascii_utf8_char_boundary)) {
         lexer_advance_horizontally(lexer);
-    
-        // nocheckin the the minimum thing thing is 0.5 ms faster on kb_text_shape. Can we somehow assume ascii?
-        // lexer.column_index += 1;
-        // advance(*lexer.input);
     }
 
     ident.count = lexer.input.data - ident.data;
@@ -353,7 +364,8 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
 }
 
 lexer_is_keyword :: (identifier: string, $keywords: [] string) -> bool {
-    // For lang_c, building a matcher is about 1ms less compared to array_find on Zen3 and M4 on kb_text_shape.h.
+    // @Speed For lang_c, building a matcher saves about 1ms compared to array_find on
+    // Zen3 and M4 on kb_text_shape.h.
     #insert #run make_keyword_matcher(keywords);
     return match_keyword(identifier);
 }
