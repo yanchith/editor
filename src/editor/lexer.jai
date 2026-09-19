@@ -102,9 +102,7 @@ lexer_set_token_end :: inline (lexer: Lexer, token: *Token) {
     token.loc1.y = lexer.line_index;
 }
 
-// nocheckin shorten lexer_input_xyz to lexer_xyz
-
-lexer_input_byte_at_index_equals :: inline (lexer: Lexer, c: u8, index: s64) -> bool {
+lexer_byte_equals :: inline (lexer: Lexer, c: u8, index := 0) -> bool {
     if lexer.input.count > index {
         return lexer.input[index] == c;
     }
@@ -112,19 +110,11 @@ lexer_input_byte_at_index_equals :: inline (lexer: Lexer, c: u8, index: s64) -> 
     return false;
 }
 
-lexer_input_byte_equals :: inline (lexer: Lexer, c: u8) -> bool {
-    if lexer.input.count {
-        return lexer.input[0] == c;
-    }
-
-    return false;
-}
-
 // nocheckin @Speed try $bytes and making a LUT (if profiles show a large hit count)
-lexer_input_byte_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
-    if lexer.input.count {
+lexer_byte_is_any :: inline (lexer: Lexer, bytes: string, index := 0) -> bool {
+    if lexer.input.count > index {
         for bytes {
-            if lexer.input[0] == it {
+            if lexer.input[index] == it {
                 return true;
             }
         }
@@ -133,9 +123,9 @@ lexer_input_byte_is_any :: inline (lexer: Lexer, bytes: string) -> bool {
     return false;
 }
 
-lexer_input_byte_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool) -> bool {
-    if lexer.input.count {
-        if matcher(lexer.input[0]) {
+lexer_byte_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool, index := 0) -> bool {
+    if lexer.input.count > index {
+        if matcher(lexer.input[index]) {
             return true;
         }
     }
@@ -149,10 +139,8 @@ lexer_advance :: inline (lexer: *Lexer) {
     if lexer.input[0] == "\n" {
         lexer.line_index += 1;
         lexer.column_index = 0;
-        // nocheckin Find out how to dump assembly to see codegen benefits of manual advance.
-        // @Speed :ManualAdvance
-        // This used to be regular advance, but manually inlining generates much smaller LLVM IR.
-        // advance(*lexer.input);
+        
+        // See :ManualAdvance.
         lexer.input.data  += 1;
         lexer.input.count -= 1;
     } else {
@@ -177,11 +165,12 @@ lexer_advance_horizontally :: inline (lexer: *Lexer) {
     lexer.column_index += 1;
 
     // :ManualAdvance @Speed
-    // This used to be a regular advance, but this is for some reason super slow?
-    // This is weird, because advance is marked inline (and LLVM should inline even without that).
-    // The asserts never go off, so the branches could be predicted.
-    // LLVM IR (from #dump) is much smaller, if we just inline advance like this (2 bbs instead of 9), 
-    // so maybe even LLVM can make more sense out of it?
+    //
+    // This used to be a regular advance from Simple_String, but this is for some reason super slow?
+    // This is weird, because advance is marked inline (and LLVM should inline it regardless).
+    // Bytecode, LLVM IR and the disassembly is much smaller, if we manually inline advance without its asserts.
+    // The resulting code is also significantly faster, which is at least a little surprising, because
+    // the asserts never go off, so the branches should be completely predictable.
     //
     // advance(*lexer.input, char_length);
     lexer.input.count -= char_length;

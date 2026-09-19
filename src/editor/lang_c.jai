@@ -170,14 +170,14 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
         } else if start_c == "0" {
             if c == "x" || c == "X" {
                 lexer_advance_horizontally(lexer);
-                while lexer.input.count && lexer_input_byte_matches(lexer, is_hex) {
+                while lexer.input.count && lexer_byte_matches(lexer, is_hex) {
                     lexer_advance_horizontally(lexer);
                 }
                 
                 lexer_set_token_end(lexer, token);
             } else if c == "b" || c == "B" {
                 lexer_advance_horizontally(lexer);
-                while lexer.input.count && lexer_input_byte_is_any(lexer, "01") {
+                while lexer.input.count && lexer_byte_is_any(lexer, "01") {
                     lexer_advance_horizontally(lexer);
                 }
                 
@@ -189,8 +189,8 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
                 return is_digit(b) || b == ".";
             }
 
-            while lexer.input.count && lexer_input_byte_matches(lexer, is_digit_or_point) {
-                if lexer_input_byte_equals(lexer, ".") {
+            while lexer.input.count && lexer_byte_matches(lexer, is_digit_or_point) {
+                if lexer_byte_equals(lexer, ".") {
                     if parsed_decimal_point {
                         break;
                     }
@@ -203,14 +203,14 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
             lexer_set_token_end(lexer, token);
 
             // Parse exponent
-            if lexer_input_byte_is_any(lexer, "eE") {
+            if lexer_byte_is_any(lexer, "eE") {
                 lexer_advance_horizontally(lexer);
 
-                if lexer.input.count && lexer_input_byte_is_any(lexer, "+-") {
+                if lexer.input.count && lexer_byte_is_any(lexer, "+-") {
                     lexer_advance_horizontally(lexer);
                 }
 
-                while lexer.input.count && lexer_input_byte_matches(lexer, is_digit) {
+                while lexer.input.count && lexer_byte_matches(lexer, is_digit) {
                     lexer_advance_horizontally(lexer);
                 }
 
@@ -219,32 +219,32 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
 
             // Parse suffixes
             if parsed_decimal_point {
-                if lexer_input_byte_is_any(lexer, "fFdD") {
+                if lexer_byte_is_any(lexer, "fFdD") {
                     lexer_advance_horizontally(lexer);
                     lexer_set_token_end(lexer, token);
                 }
             } else {
-                if lexer_input_byte_is_any(lexer, "lL") {
+                if lexer_byte_is_any(lexer, "lL") {
                     lexer_advance_horizontally(lexer);
                     lexer_set_token_end(lexer, token); // l
-                    if lexer_input_byte_is_any(lexer, "lL") {
+                    if lexer_byte_is_any(lexer, "lL") {
                         lexer_advance_horizontally(lexer);
                         lexer_set_token_end(lexer, token); // ll
-                        if lexer_input_byte_is_any(lexer, "uU") {
+                        if lexer_byte_is_any(lexer, "uU") {
                             lexer_advance_horizontally(lexer);
                             lexer_set_token_end(lexer, token); // llu
                         }
-                    } else if lexer_input_byte_is_any(lexer, "uU") {
+                    } else if lexer_byte_is_any(lexer, "uU") {
                         lexer_advance_horizontally(lexer);
                         lexer_set_token_end(lexer, token); // lu
                     }
-                } else if lexer_input_byte_is_any(lexer, "uU") {
+                } else if lexer_byte_is_any(lexer, "uU") {
                     lexer_advance_horizontally(lexer);
                     lexer_set_token_end(lexer, token); // u
-                    if lexer_input_byte_is_any(lexer, "lL") {
+                    if lexer_byte_is_any(lexer, "lL") {
                         lexer_advance_horizontally(lexer);
                         lexer_set_token_end(lexer, token); // ul
-                        if lexer_input_byte_is_any(lexer, "lL") {
+                        if lexer_byte_is_any(lexer, "lL") {
                             lexer_advance_horizontally(lexer);
                             lexer_set_token_end(lexer, token); // ull
                         }
@@ -343,10 +343,10 @@ parse_less_than_or_include :: (lexer: *Lexer, token: *Token) {
         if recent.type == .DIRECTIVE && recent.userdata & USERDATA__IS_INCLUDE_DIRECTIVE {
             token.type = .STRING_LITERAL;
 
-            while lexer.input.count && !lexer_input_byte_equals(lexer, "\n") {
+            while lexer.input.count && !lexer_byte_equals(lexer, "\n") {
                 lexer_advance_horizontally(lexer);
 
-                if lexer_input_byte_equals(lexer, ">") {
+                if lexer_byte_equals(lexer, ">") {
                     lexer_advance_horizontally(lexer);
                     break;
                 }
