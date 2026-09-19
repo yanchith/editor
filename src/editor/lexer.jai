@@ -111,16 +111,9 @@ lexer_byte_equals :: inline (lexer: Lexer, c: u8, index := 0) -> bool {
 }
 
 // nocheckin @Speed try $bytes and making a LUT (if profiles show a large hit count)
-lexer_byte_is_any :: inline (lexer: Lexer, bytes: string, index := 0) -> bool {
-    if lexer.input.count > index {
-        for bytes {
-            if lexer.input[index] == it {
-                return true;
-            }
-        }
-    }
-
-    return false;
+lexer_byte_is_any :: inline (lexer: Lexer, $bytes: string, index := 0) -> bool {
+    #insert #run make_lut(cast([] u8, bytes));
+    return lexer.input.count > index && LUT[lexer.input[index]];
 }
 
 lexer_byte_matches :: inline (lexer: Lexer, matcher: (c: u8) -> bool, index := 0) -> bool {
@@ -182,10 +175,10 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
     // A lookup table for is_space from modules/Basic.
     //
     // @Speed
-    // On Zen3, the IS_SPACE LUT is noticably faster than is_space.
+    // On Zen3, IS_SPACE_LUT is noticably faster than is_space.
     // On M4, the original is_space and the LUT are the same speed.
     //
-    IS_SPACE :: u8.[
+    IS_SPACE_LUT :: u8.[
         0,0,0,0,0,0,0,0, 0,1,1,0,0,1,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
         1,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
@@ -217,7 +210,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
 
         // Unaligned prefix
         while lexer.input.count && !is_aligned(lexer.input.data, WIDTH) {
-            if !IS_SPACE[lexer.input[0]] {
+            if !IS_SPACE_LUT[lexer.input[0]] {
                 return;
             }
 
@@ -308,7 +301,7 @@ lexer_eat_whitespace :: (lexer: *Lexer) {
     }
     
     // Small suffix and/or scalar fallback
-    while lexer.input.count && IS_SPACE[lexer.input[0]] {
+    while lexer.input.count && IS_SPACE_LUT[lexer.input[0]] {
         if lexer.input[0] == "\n" {
             lexer.line_index += 1;
             lexer.column_index = 0;
@@ -330,7 +323,7 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
     ident: string;
     ident.data = lexer.input.data;
     
-    IS_ALNUM_OR_MULTIBYTE_UTF8_CHAR_BOUNDARY :: u8.[
+    IS_ALNUM_OR_MULTIBYTE_UTF8_CHAR_BOUNDARY_LUT :: u8.[
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1, 1,1,0,0,0,0,0,0, // 0-9
         0,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,0,0,0,0,1, // A-Z, underscore
@@ -341,7 +334,7 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
         1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // First bytes of multibyte codepoints
     ];
 
-    while lexer.input.count && IS_ALNUM_OR_MULTIBYTE_UTF8_CHAR_BOUNDARY[lexer.input[0]] {
+    while lexer.input.count && IS_ALNUM_OR_MULTIBYTE_UTF8_CHAR_BOUNDARY_LUT[lexer.input[0]] {
         lexer_advance_horizontally(lexer);
     }
 
@@ -372,6 +365,30 @@ sx16 := u8x16.{ .[S, S, S, S, S, S, S, S, S, S, S, S, S, S, S, S] };
 tx16 := u8x16.{ .[T, T, T, T, T, T, T, T, T, T, T, T, T, T, T, T] };
 rx16 := u8x16.{ .[R, R, R, R, R, R, R, R, R, R, R, R, R, R, R, R] };
 nx16 := u8x16.{ .[N, N, N, N, N, N, N, N, N, N, N, N, N, N, N, N] };
+
+make_lut :: (bytes: [] u8) -> string {
+    sb: String_Builder;
+    append(*sb, "LUT :: u8.[\n");
+    for 0..31     append(*sb, ifx array_find(bytes, cast(u8, it)) then "1," else "0,");
+    append(*sb, "\n");
+    for 32..63    append(*sb, ifx array_find(bytes, cast(u8, it)) then "1," else "0,");
+    append(*sb, "\n");
+    for 64..95    append(*sb, ifx array_find(bytes, cast(u8, it)) then "1," else "0,");
+    append(*sb, "\n");
+    for 96..127   append(*sb, ifx array_find(bytes, cast(u8, it)) then "1," else "0,");
+    append(*sb, "\n");
+    for 128..159  append(*sb, ifx array_find(bytes, cast(u8, it)) then "1," else "0,");
+    append(*sb, "\n");
+    for 160..191  append(*sb, ifx array_find(bytes, cast(u8, it)) then "1," else "0,");
+    append(*sb, "\n");
+    for 192..223  append(*sb, ifx array_find(bytes, cast(u8, it)) then "1," else "0,");
+    append(*sb, "\n");
+    for 224..255  append(*sb, ifx array_find(bytes, cast(u8, it)) then "1," else "0,");
+    append(*sb, "\n");
+    append(*sb, "];\n");
+                            
+    return builder_to_string(*sb);
+}
 
 make_keyword_matcher :: (keywords: [] string) -> string {
     keywords_by_length: [..][..] string;

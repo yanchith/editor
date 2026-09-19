@@ -32,6 +32,7 @@ int main() {
 
     int i = x > 1 ? 0 : 42lu;
     int i2 = 1ull;
+    int i3 = 0ull;
 
     printf("Hello, World!");
     return 0;
