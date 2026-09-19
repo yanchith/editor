@@ -330,7 +330,6 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
     ident: string;
     ident.data = lexer.input.data;
     
-    // nocheckin audit table... also it isn't really faster, so do we revert?
     IS_ALNUM_OR_MULTIBYTE_UTF8_CHAR_BOUNDARY :: u8.[
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 1,1,1,1,1,1,1,1, 1,1,0,0,0,0,0,0, // 0-9
@@ -338,12 +337,11 @@ lexer_eat_identifier :: (lexer: *Lexer) -> string {
         0,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,0,0,0,0,0, // a-z
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
         0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-        1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // Multibyte first bytes
-        1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // Multibyte first bytes
+        1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // First bytes of multibyte codepoints
+        1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // First bytes of multibyte codepoints
     ];
 
     while lexer.input.count && IS_ALNUM_OR_MULTIBYTE_UTF8_CHAR_BOUNDARY[lexer.input[0]] {
-    // while lexer.input.count && (lexer_input_byte_matches(lexer, is_alnum) || lexer_input_byte_matches(lexer, is_nonascii_utf8_char_boundary)) {
         lexer_advance_horizontally(lexer);
     }
 
