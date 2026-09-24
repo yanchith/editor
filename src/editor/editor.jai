@@ -605,6 +605,9 @@ Mini_Panel :: struct {
             BINARY  :: 0x01;
             WARNING :: 0x02;
         }
+        
+        // context-specific
+        line_number: s64;
     }
 }
 
@@ -1192,10 +1195,24 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 if item.flags & .WARNING {
                     color = editor.theme.mini_panel_item_warning_text_color;
                 }
+                
+                x0 := mini_panel_x0;
 
+                if item.line_number {
+                    
+                    font_layout_and_draw_text(*editor.font, tprint("%", item.line_number),
+                                              *render_commands, *atlas_update_regions,
+                                              { x0, offset_y }, scissor,
+                                              color, .REGULAR,
+                                              .[], .[],
+                                              binary = cast(bool, item.flags & .BINARY));
+                    
+                    x0 += SEARCH_LINE_NUMBER_PADDING * cell_w;
+                }
+                
                 font_layout_and_draw_text(*editor.font, item.text,
                                           *render_commands, *atlas_update_regions,
-                                          { mini_panel_x0, offset_y }, scissor,
+                                          { x0, offset_y }, scissor,
                                           color, .REGULAR,
                                           .[], invert_ranges,
                                           binary = cast(bool, item.flags & .BINARY));

@@ -9,6 +9,8 @@ mini_panel_search_procs: Mini_Panel_Procs = {
     cancel,
 };
 
+SEARCH_LINE_NUMBER_PADDING :: 6;
+
 #scope_file
 
 Search_Userdata :: struct {
@@ -103,14 +105,16 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                         found, found_indices := line_search(line_text, search_parts, smartcase,, temp);
                         if found {
                             found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
-
-                            line_number_prefix := temp_right_pad(tprint("%  ", line_index + 1), 4);
+                            
+                            // line_number_prefix := temp_right_pad(tprint("%  ", line_index + 1), 4);
 
                             // TODO(jt): @Cleanup We do additional manual copy into our arena here, because MEMORY_DEBUGGER otherwise
                             // flags this as 'an allocation for an address that the memory debugging system thought was still live'.
                             // See :MemoryDebuggerVsArenas.
-                            _s := tprint("%%", line_number_prefix, line_text);
-                            s := arena_push_string(mini_panel.items_arena, _s);
+                            // _s := tprint("%%", line_number_prefix, line_text);
+                            // s := arena_push_string(mini_panel.items_arena, _s);
+                            
+                            s := line_text;
 
                             x0 := found_index;
                             if !document.buffer.binary_mode {
@@ -129,8 +133,9 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             if document.buffer.binary_mode {
                                 item.flags |= .BINARY;
                             }
-                            item.highlight_x0 = line_number_prefix.count + x0;
-                            item.highlight_x1 = line_number_prefix.count + x1;
+                            item.highlight_x0 = SEARCH_LINE_NUMBER_PADDING + x0;
+                            item.highlight_x1 = SEARCH_LINE_NUMBER_PADDING + x1;
+                            item.line_number = line_index + 1;
 
                             userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
                             userdata.x = x0;
