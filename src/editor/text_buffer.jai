@@ -277,10 +277,6 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
         assert(buffer.edits.count == 0, "Omitting edits from history is only allowed before any edits are recorded.");
     }
 
-    if text.count == 0 {
-        return false;
-    }
-
     insert_caused_delete_selection := false;
 
     if cursors.c0 != cursors.c1 {
@@ -290,6 +286,12 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
         insert_caused_delete_selection = true;
 
         // Fallthrough!
+    }
+
+    // Early exit is below delete_selection, so that the selection is always deleted, even if we have nothing to insert.
+    // Example uses are search&replace with empty string (or pasting an empty clipboard?).
+    if text.count == 0 {
+        return false;
     }
 
     line_to_invalidate := cursors.c0.y;

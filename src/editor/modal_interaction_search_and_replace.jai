@@ -38,7 +38,8 @@ Search_And_Replace_Userdata :: struct {
         NONE;
 
         YES;
-        NO;
+        PREVIOUS;
+        NEXT;
         CANCEL;
     }
 }
@@ -53,8 +54,8 @@ get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Tem
     userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH;   return "Text to replace: ";
-        case .INPUT_TO_REPLACE;  return tprint("Replace % with: ", userdata.input_to_search);
-        case .REPLACING;         return tprint("Replacing % with % (%/%): (y to confirm, n to reject, q to stop)",
+        case .INPUT_TO_REPLACE;  return tprint("Replace '%' with: ", userdata.input_to_search);
+        case .REPLACING;         return tprint("Replacing '%' with '%' (%/%): (y: replace and next, p: previous, n: next, q: quit)",
                                                userdata.input_to_search,
                                                userdata.input_to_replace,
                                                userdata.processed_count + 1,
@@ -76,9 +77,10 @@ init :: (editor: *Editor, platform: Platform, input: Input, params: *void) {
     key_map_reserve(*userdata.replacing_key_map, 8);
 
     key_map_add(*userdata.replacing_key_map, "y",   .YES);
-    key_map_add(*userdata.replacing_key_map, "n",   .NO);
+    key_map_add(*userdata.replacing_key_map, "p",   .PREVIOUS);
+    key_map_add(*userdata.replacing_key_map, "n",   .NEXT);
     key_map_add(*userdata.replacing_key_map, "q",   .CANCEL);
-    key_map_add(*userdata.replacing_key_map, "C-g", .CANCEL);
+    key_map_add(*userdata.replacing_key_map, "C-g", .CANCEL); // TODO(jt): This shouldn't be hardcoded, but whatever is bound as cancel_or_stop_selecting for modal interaction. (nocheckin)
 
     modal_interaction.userdata = userdata;
 }
@@ -113,7 +115,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
             buffered, action := key_map_input(*userdata.replacing_key_map, event);
             if action == {
                 case .YES; #through;
-                case .NO; {
+                case .NEXT; {
                     if action == .YES {
                         highlight := panel.highlights[panel.highlight_index];
                         x0 := highlight.x0;
@@ -161,7 +163,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
 
                         userdata.replaced_count += 1;
                         userdata.processed_count += 1;
-                    } else if action == .NO {
+                    } else if action == .NEXT {
                         panel.highlight_index += 1;
                         userdata.processed_count += 1;
                     }
@@ -182,6 +184,22 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
                     }
                 }
+
+                case .PREVIOUS; {
+                    if panel.highlight_index > 0 {
+                        panel.highlight_index -= 1;
+                        userdata.processed_count -= 1;
+
+                        highlight := panel.highlights[panel.highlight_index];
+                        x := highlight.x0;
+                        y := highlight.y;
+
+                        text_buffer_move_to(view.document.buffer, *view.cursors, x, y, false);
+                        view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+                        view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
+                    }
+                }
+
                 case .CANCEL; {
                     array_reset_keeping_memory(*panel.highlights);
                     panel.highlight_index = -1;
@@ -243,9 +261,9 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
             search_text := userdata.input_to_search;
             search_text_char_count := ifx document.buffer.binary_mode then search_text.count else count_utf8_chars(search_text);
 
-            // TODO(jt): @Speed This causes us to miss frames above 4MB buffers. It is serviceable
-            // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
-            // fan-out & collect threading, but we should also do SIMD.
+            // TODO(jt): @Speed This loop causes us to miss frames above 4MB buffers. It is serviceable
+            // up to about 64MB, but this definitely needs to be faster. An easy win would be
+            // fan-out & collect threading, but we should also SIMD find_index_from_left_nocase.
             for :text_buffer_lines line_text, line_index: document.buffer {
                 // This is number of bytes if we are in binary mode, otherwise number of characters.
                 processed_chars: s64 = 0;
@@ -304,7 +322,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
                 array_reset_keeping_memory(*panel.highlights);
                 panel.highlight_index = -1;
 
-                editor_log(editor, "No matches found");
+                editor_log(editor, "No matches found below cursor"); // nocheckin should we move the cursor up to the last match?
                 close_modal_interaction(editor, platform, input);
             }
         }
