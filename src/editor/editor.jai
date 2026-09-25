@@ -8,7 +8,6 @@ TODO(jt): Known serious bugs:
 
 - move_forward_word cycles on last line, if there are at least two words and a space after
 - Text buffer crash insert from Ondy on the weird PDF. (See text_buffer.jai:2297)
-- search_and_replace doesn't replace if second (either?) string is empty.
 - toggle_comment should detect across all lines first, only then decide whether we are going to be adding or removing comments
 
 TODO(jt): Roadmap:

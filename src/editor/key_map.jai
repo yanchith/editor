@@ -57,7 +57,6 @@ shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key, allow_extra_shi
 
 SHORTCUT_COUNT_MAX :: 8;
 Shortcut :: struct {
-    // TODO(jt): Could use an inline array structure here?
     sequence:  [SHORTCUT_COUNT_MAX] Shortcut_Key;
     count:     s64;
 }
@@ -272,29 +271,30 @@ shortcut_sprint :: (shortcut: Shortcut) -> string {
 Key_Map :: struct (T: Type) {
     allocator: Allocator; // Set this before use if you don't want the default. Will propagate to underlying arrays.
 
-    registered_shortcuts: [..] Shortcut;
-    registered_actions:   [..] T;
+    registered: [..] Pair;
 
     buffered_input: Shortcut;
+    
+    Pair :: struct {
+        shortcut: Shortcut;
+        action:   T;
+    }
 }
 
 key_map_reserve :: (key_map: *Key_Map, size: s64) {
     InitAllocators(key_map);
-    array_reserve(*key_map.registered_shortcuts, size);
-    array_reserve(*key_map.registered_actions, size);
+    array_reserve(*key_map.registered, size);
 }
 
 key_map_reset_keeping_memory :: (key_map: *Key_Map) {
-    array_reset_keeping_memory(*key_map.registered_shortcuts);
-    array_reset_keeping_memory(*key_map.registered_actions);
-
+    array_reset_keeping_memory(*key_map.registered);
     key_map_flush(key_map);
 }
 
 key_map_find_shortcut :: (key_map: Key_Map($T), action: T) -> Shortcut {
-    for key_map.registered_actions {
-        if it == action {
-            return key_map.registered_shortcuts[it_index];
+    for key_map.registered {
+        if it.action == action {
+            return it.shortcut;
         }
     }
 
@@ -310,36 +310,30 @@ key_map_add :: (key_map: *Key_Map($T), shortcut_string: string, action: T) {
     }
 }
 
+// TODO(jt): We should validate against:
+//
+// - One keyboard shortcut being a prefix of another
+// - One keyboard shortcut requiring a subset of the modifier keys of another in a branching
+//   place, e.g.: 'C-M-x a' vs 'C-x a' or 'C-M-y' vs 'M-y'.
+//
+// The second one is only because of shift-selecting, and maybe we want to instead bind a
+// different move action when shift is held:
+//
+// - C-S-n, S-<down>: MOVE_DOWN_KEEPING_SELECTION
+// - C-n, <down>:     MOVE_DOWN
+//
 key_map_add :: (key_map: *Key_Map($T), shortcut: Shortcut, action: T) {
     InitAllocators(key_map);
-
-    // TODO(jt): We should validate against:
-    //
-    // - One keyboard shortcut being a prefix of another
-    // - One keyboard shortcut requiring a subset of the modifier keys of another in a branching
-    //   place, e.g.: 'C-M-x a' vs 'C-x a' or 'C-M-y' vs 'M-y'.
-    //
-    // The second one is only because of shift-selecting, and maybe we want to instead bind a
-    // different move action when shift is held:
-    //
-    // - C-S-n, S-<down>: MOVE_DOWN_KEEPING_SELECTION
-    // - C-n, <down>:     MOVE_DOWN
-    //
-
-    array_add(*key_map.registered_shortcuts, shortcut);
-    array_add(*key_map.registered_actions, action);
+    array_add(*key_map.registered, { shortcut, action });
 }
 
 key_map_sprint :: (key_map: Key_Map) -> string {
     b: String_Builder;
     b.allocator = temp;
 
-    for 0..key_map.registered_shortcuts.count - 1 {
-        shortcut := key_map.registered_shortcuts[it];
-        action   := key_map.registered_actions[it];
-
-        shortcut_print_to_builder(shortcut, *b);
-        print(*b, "    %\n", action);
+    for key_map.registered {
+        shortcut_print_to_builder(it.shortcut, *b);
+        print(*b, "    %\n", it.action);
     }
 
     s := builder_to_string(*b);
@@ -353,7 +347,7 @@ key_map_flush :: (key_map: *Key_Map) {
 
 key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, action: T {
     // Do nothing, if we haven't got shortcuts to compare against.
-    if !key_map.registered_shortcuts.count {
+    if !key_map.registered.count {
         return false, default_of(T);
     }
 
@@ -377,16 +371,14 @@ key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, 
         key_map.buffered_input.count += 1;
 
         has_candidates := false;
-        for key_map.registered_shortcuts {
-            if shortcut_begins_with_nocase(it, key_map.buffered_input) {
+        for key_map.registered {
+            if shortcut_begins_with_nocase(it.shortcut, key_map.buffered_input) {
                 has_candidates = true;
             }
 
-            if shortcut_equals_nocase(it, key_map.buffered_input) {
+            if shortcut_equals_nocase(it.shortcut, key_map.buffered_input) {
                 key_map.buffered_input = {};
-                action := key_map.registered_actions[it_index];
-
-                return false, action;
+                return false, it.action;
             }
         }
 
@@ -408,12 +400,8 @@ InitAllocators :: (key_map: *Key_Map) #expand {
         remember_allocators(key_map);
     }
 
-    if !key_map.registered_shortcuts.allocator.proc {
-        key_map.registered_shortcuts.allocator = key_map.allocator;
-    }
-
-    if !key_map.registered_actions.allocator.proc {
-        key_map.registered_actions.allocator = key_map.allocator;
+    if !key_map.registered.allocator.proc {
+        key_map.registered.allocator = key_map.allocator;
     }
 }
 

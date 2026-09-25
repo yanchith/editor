@@ -45,13 +45,13 @@ Search_And_Replace_Userdata :: struct {
 }
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage or Static */ string {
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
         return "";
     }
 
-    userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
+    userdata: *Search_And_Replace_Userdata = mi.userdata;
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH;   return "Text to replace: ";
         case .INPUT_TO_REPLACE;  return tprint("Replace '%' with: ", userdata.input_to_search);
@@ -64,31 +64,35 @@ get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Tem
 }
 
 init :: (editor: *Editor, platform: Platform, input: Input, params: *void) {
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
         return;
     }
 
-    arena := modal_interaction.userdata_arena;
-
-    userdata := arena_push(arena, Search_And_Replace_Userdata);
-    userdata.replacing_key_map.allocator = arena_allocator(arena);
+    userdata := arena_push(mi.userdata_arena, Search_And_Replace_Userdata);
+    userdata.replacing_key_map.allocator = arena_allocator(mi.userdata_arena);
     key_map_reserve(*userdata.replacing_key_map, 8);
 
     key_map_add(*userdata.replacing_key_map, "y",   .YES);
     key_map_add(*userdata.replacing_key_map, "p",   .PREVIOUS);
     key_map_add(*userdata.replacing_key_map, "n",   .NEXT);
     key_map_add(*userdata.replacing_key_map, "q",   .CANCEL);
-    key_map_add(*userdata.replacing_key_map, "C-g", .CANCEL); // TODO(jt): This shouldn't be hardcoded, but whatever is bound as cancel_or_stop_selecting for modal interaction. (nocheckin)
+    
+    // Inherit cancel from modal interaction keymap
+    for mi.key_map.registered {
+        if it.action == .CANCEL_OR_STOP_SELECTING {
+            key_map_add(*userdata.replacing_key_map, it.shortcut, .CANCEL);
+        }
+    }
 
-    modal_interaction.userdata = userdata;
+    mi.userdata = userdata;
 }
 
 handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) -> handled: bool {
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
         return false;
     }
 
@@ -105,7 +109,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
 
     view := *panel.view._document;
 
-    userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
+    userdata: *Search_And_Replace_Userdata = mi.userdata;
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH;   return false;
         case .INPUT_TO_REPLACE;  return false;
@@ -172,7 +176,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         array_reset_keeping_memory(*panel.highlights);
                         panel.highlight_index = -1;
 
-                        editor_log(editor, "Done! Replaced % matches", userdata.replaced_count);
+                        editor_log(editor, "Done! Replaced %/% matches", userdata.replaced_count, userdata.found_count);
                         close_modal_interaction(editor, platform, input);
                     } else {
                         highlight := panel.highlights[panel.highlight_index];
@@ -217,9 +221,9 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
 advance :: (editor: *Editor, platform: Platform, input: Input) {
     ProfileZone("modal_interaction_search_and_replace_advance_proc");
 
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
         return;
     }
 
@@ -236,19 +240,17 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
 
     view := *panel.view._document;
 
-    arena := modal_interaction.userdata_arena;
-
-    userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
+    userdata: *Search_And_Replace_Userdata = mi.userdata;
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH; {
-            userdata.input_to_search = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
-            text_buffer_delete_all(*modal_interaction.buffer, *modal_interaction.cursors);
+            userdata.input_to_search = text_buffer_make_view_for_line(mi.buffer, 0, force_allocate = true,, arena_allocator(mi.userdata_arena));
+            text_buffer_delete_all(*mi.buffer, *mi.cursors);
 
             userdata.state = .INPUT_TO_REPLACE;
         }
         case .INPUT_TO_REPLACE; {
-            userdata.input_to_replace = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
-            text_buffer_delete_all(*modal_interaction.buffer, *modal_interaction.cursors);
+            userdata.input_to_replace = text_buffer_make_view_for_line(mi.buffer, 0, force_allocate = true,, arena_allocator(mi.userdata_arena));
+            text_buffer_delete_all(*mi.buffer, *mi.cursors);
 
             document := view.document;
 
@@ -322,7 +324,8 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
                 array_reset_keeping_memory(*panel.highlights);
                 panel.highlight_index = -1;
 
-                editor_log(editor, "No matches found below cursor"); // nocheckin should we move the cursor up to the last match?
+                // We don't trigger if we have matches prior to the cursor. This can be revisited.
+                editor_log(editor, "No matches found below cursor");
                 close_modal_interaction(editor, platform, input);
             }
         }
