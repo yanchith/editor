@@ -1,6 +1,3 @@
-// TODO(jt): @Bug @Incomplete respect READONLY.
-// TODO(jt): @Bug In the X/Y text Y counts every match, even ones above the cursor when we started the search.
-
 // TODO(jt): Preserve capitalization when replacing - our match text can be all lowercase, which
 // will match all sorts of text, but we want to preserve at least CamelCase, UPPER_CASE, etc.
 
@@ -69,6 +66,23 @@ init :: (editor: *Editor, platform: Platform, input: Input, params: *void) {
     if !mi.open {
         return;
     }
+    
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
+        return;
+    }
+    
+    if panel.view.kind != .DOCUMENT {
+        return;
+    }
+    
+    view := *panel.view._document;
+    if view.document.flags & .READONLY {
+        editor_log(editor, "Document is read-only");
+        close_modal_interaction(editor, platform, input);
+        return;
+    }
 
     userdata := arena_push(mi.userdata_arena, Search_And_Replace_Userdata);
     userdata.replacing_key_map.allocator = arena_allocator(mi.userdata_arena);
@@ -102,12 +116,12 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
         return false;
     }
 
-    // Search and replace only works for DOCUMENT views.
     if panel.view.kind != .DOCUMENT {
         return false;
     }
 
     view := *panel.view._document;
+    document := view.document;
 
     userdata: *Search_And_Replace_Userdata = mi.userdata;
     if #complete userdata.state == {
@@ -121,52 +135,54 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                 case .YES; #through;
                 case .NEXT; {
                     if action == .YES {
-                        highlight := panel.highlights[panel.highlight_index];
-                        x0 := highlight.x0;
-                        x1 := highlight.x1;
-                        y  := highlight.y;
-
-                        document := view.document;
-
-                        // If we ever do anything that changes the buffer while the
-                        // search&replace is open, these cursors will not be valid anymore
-                        // and we need to somehow handle that. At the moment I am writing
-                        // this, nothing like that exists in the editor.
-                        view.cursors.c0 = { x0, y };
-                        view.cursors.c1 = { x1, y };
-                        text_buffer_insert(*document.buffer, *view.cursors, userdata.input_to_replace, .NONE);
-
-                        document.flags |= .MODIFIED_THIS_FRAME;
-                        document.flags |= .MODIFIED;
-
-                        // Instead of advancing the index we contract the array.
-                        array_ordered_remove_by_index(*panel.highlights, panel.highlight_index);
-
-                        //
-                        // If there are additional highlights on the same line, we need to
-                        // adjust them based on the lengths of the text we removed and added:
-                        //
-                        remove_count := count_utf8_chars(userdata.input_to_search);
-                        insert_count := count_utf8_chars(userdata.input_to_replace);
-                        if remove_count != insert_count {
-                            delta := insert_count - remove_count;
-
-                            index := panel.highlight_index;
-                            while index < panel.highlights.count {
-                                highlight := *panel.highlights[index];
-                                if highlight.y > y {
-                                    break;
+                        // The document can become readonly any frame, even if we already entered the modal interaction.
+                        document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+                        if !(document.flags & .READONLY) {
+                            document.flags |= .MODIFIED_THIS_FRAME;
+                            document.flags |= .MODIFIED;
+                            
+                            highlight := panel.highlights[panel.highlight_index];
+                            x0 := highlight.x0;
+                            x1 := highlight.x1;
+                            y  := highlight.y;
+                            
+                            // If we ever do anything that changes the buffer while the
+                            // search&replace is open, these cursors will not be valid anymore
+                            // and we need to somehow handle that. At the moment I am writing
+                            // this, nothing like that exists in the editor.
+                            view.cursors.c0 = { x0, y };
+                            view.cursors.c1 = { x1, y };
+                            text_buffer_insert(*document.buffer, *view.cursors, userdata.input_to_replace, .NONE);
+                            
+                            // Instead of advancing the index we contract the array.
+                            array_ordered_remove_by_index(*panel.highlights, panel.highlight_index);
+                            
+                            //
+                            // If there are additional highlights on the same line, we need to
+                            // adjust them based on the lengths of the text we removed and added:
+                            //
+                            remove_count := count_utf8_chars(userdata.input_to_search);
+                            insert_count := count_utf8_chars(userdata.input_to_replace);
+                            if remove_count != insert_count {
+                                delta := insert_count - remove_count;
+                                
+                                index := panel.highlight_index;
+                                while index < panel.highlights.count {
+                                    highlight := *panel.highlights[index];
+                                    if highlight.y > y {
+                                        break;
+                                    }
+                                    
+                                    highlight.x0 += delta;
+                                    highlight.x1 += delta;
+                                    
+                                    index += 1;
                                 }
-
-                                highlight.x0 += delta;
-                                highlight.x1 += delta;
-
-                                index += 1;
                             }
+                            
+                            userdata.replaced_count += 1;
+                            userdata.processed_count += 1;
                         }
-
-                        userdata.replaced_count += 1;
-                        userdata.processed_count += 1;
                     } else if action == .NEXT {
                         panel.highlight_index += 1;
                         userdata.processed_count += 1;
