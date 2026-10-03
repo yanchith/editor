@@ -458,8 +458,12 @@ Document :: struct {
     time_of_last_activation: Apollo_Time;
     time_of_last_simple_edit: Apollo_Time; // Insert by typing characters or delete forward/backward.
 
-    cursors_cold: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
     buffer: Text_Buffer;
+    cursors_cold: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
+    
+    CURSOR_RING_COUNT :: 16;
+    cursor_ring: [CURSOR_RING_COUNT] Text_Location;
+    cursor_ring_index: s64;
 
     arena: *Arena; // For scopes, tokens, compilation_args, compilation_errors, backing_file_directory, backing_file_path...
 
@@ -2366,6 +2370,9 @@ Document_Action :: enum {
     INDENT_OR_AUTOCOMPLETE;
 
     TOGGLE_COMMENT;
+    
+    PUSH_CURSOR_LOCATION;
+    POP_CURSOR_LOCATION;
 
     UNDO_EDIT;
     REDO_EDIT;
@@ -3391,6 +3398,9 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 // TODO(jt): Add multiline block comments.
             }
         }
+        
+        case .PUSH_CURSOR_LOCATION;  push_cursor_location(view);
+        case .POP_CURSOR_LOCATION;   pop_cursor_location(view);
 
         case .UNDO_EDIT; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
@@ -5798,6 +5808,28 @@ get_line_length_for_line_index :: (document: Document, font: Font, line_index: s
     line_length := font_compute_line_length(font, line_view, binary = document.buffer.binary_mode);
 
     return line_length;
+}
+
+push_cursor_location :: (view: *Document_View) {
+    document := view.document;
+    
+    #assert is_nonzero_power_of_two(document.CURSOR_RING_COUNT);
+    document.cursor_ring[document.cursor_ring_index] = view.cursors.c0;
+    document.cursor_ring_index += 1;
+    document.cursor_ring_index &= document.CURSOR_RING_COUNT - 1;
+}
+
+pop_cursor_location :: (view: *Document_View) {
+    document := view.document;
+    
+    #assert is_nonzero_power_of_two(document.CURSOR_RING_COUNT);
+    document.cursor_ring_index -= 1;
+    document.cursor_ring_index &= document.CURSOR_RING_COUNT - 1;
+    c := document.cursor_ring[document.cursor_ring_index];
+            
+    view.cursors.c0 = c;
+    view.cursors.c1 = c;
+    text_cursors_horizontal_move_was_explicit(*view.cursors);
 }
 
 canonicalize_path :: (path: *string) {
