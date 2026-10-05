@@ -102,7 +102,6 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     // TODO(jt): @Speed This causes us to miss frames above 4MB buffers. It is serviceable
                     // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
                     // fan-out & collect threading, but we should also do SIMD.
-
                     for :text_buffer_lines line_text, line_index: document.buffer {
                         found, found_indices := line_search(line_text, search_parts, smartcase,, temp);
                         if found {
@@ -127,8 +126,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             if document.buffer.binary_mode {
                                 item.flags |= .BINARY;
                             }
-                            item.highlight_x0 = SEARCH_LINE_NUMBER_PADDING + x0;
-                            item.highlight_x1 = SEARCH_LINE_NUMBER_PADDING + x1;
+                            item.highlight_x0 = x0;
+                            item.highlight_x1 = x1;
                             item.line_number_or_zero = line_index + 1;
                             item.line_number_padding = SEARCH_LINE_NUMBER_PADDING;
 

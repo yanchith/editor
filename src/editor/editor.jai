@@ -13,7 +13,7 @@ TODO(jt): Roadmap:
 
 - [X] Display text on screen
 - [X] Nice font rendering
-- [X] Gap Buffer (or other text datastructure)
+- [X] Gap Buffer (or other text datastructure) jdmklsadmiowe3wmaejlk
 - [X] Basic file navigation
 - [X] Basic file editing
 - [X] Load file/Save file with file navigation in mini panel
@@ -1177,8 +1177,8 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
                     // that can resume where it left of last time. In can see multiple places in this
                     // file where that would be useful. It will become more important for long lines.
-                    x0 := font_compute_position_on_line(editor.font, item.text, item.highlight_x0, binary = cast(bool, item.flags & .BINARY));
-                    x1 := font_compute_position_on_line(editor.font, item.text, item.highlight_x1, binary = cast(bool, item.flags & .BINARY));
+                    x0 := item.line_number_padding * cell_w + font_compute_position_on_line(editor.font, item.text, item.highlight_x0, binary = cast(bool, item.flags & .BINARY));
+                    x1 := item.line_number_padding * cell_w + font_compute_position_on_line(editor.font, item.text, item.highlight_x1, binary = cast(bool, item.flags & .BINARY));
 
                     draw_rect(*render_commands, mini_panel_x0 + cast(f32, x0), y0, mini_panel_x0 + cast(f32, x1), y1, editor.theme.highlight_color);
 
@@ -1198,8 +1198,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 x0 := mini_panel_x0;
 
                 if item.line_number_or_zero {
-                    
-                    font_layout_and_draw_text(*editor.font, tprint("%", item.line_number_or_zero),
+                    _font_layout_and_draw_text(*editor.font, tprint("%", item.line_number_or_zero),
                                               *render_commands, *atlas_update_regions,
                                               { x0, offset_y }, scissor,
                                               color, .REGULAR,
