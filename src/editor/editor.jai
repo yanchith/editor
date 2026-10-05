@@ -608,8 +608,8 @@ Mini_Panel :: struct {
             WARNING :: 0x02;
         }
         
-        // context-specific
-        line_number: s64;
+        line_number_or_zero: s64;
+        line_number_padding: s64;
     }
 }
 
@@ -1197,16 +1197,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 
                 x0 := mini_panel_x0;
 
-                if item.line_number {
+                if item.line_number_or_zero {
                     
-                    font_layout_and_draw_text(*editor.font, tprint("%", item.line_number),
+                    font_layout_and_draw_text(*editor.font, tprint("%", item.line_number_or_zero),
                                               *render_commands, *atlas_update_regions,
                                               { x0, offset_y }, scissor,
                                               color, .REGULAR,
                                               .[], .[],
-                                              binary = cast(bool, item.flags & .BINARY));
+                                              binary = false);
                     
-                    x0 += SEARCH_LINE_NUMBER_PADDING * cell_w;
+                    x0 += item.line_number_padding * cell_w;
                 }
                 
                 font_layout_and_draw_text(*editor.font, item.text,

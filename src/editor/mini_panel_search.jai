@@ -9,9 +9,9 @@ mini_panel_search_procs: Mini_Panel_Procs = {
     cancel,
 };
 
-SEARCH_LINE_NUMBER_PADDING :: 6;
-
 #scope_file
+
+SEARCH_LINE_NUMBER_PADDING :: 6;
 
 Search_Userdata :: struct {
     original_x: s64; // Not used for listings.
@@ -108,14 +108,6 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                         if found {
                             found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
                             
-                            // line_number_prefix := temp_right_pad(tprint("%  ", line_index + 1), 4);
-
-                            // TODO(jt): @Cleanup We do additional manual copy into our arena here, because MEMORY_DEBUGGER otherwise
-                            // flags this as 'an allocation for an address that the memory debugging system thought was still live'.
-                            // See :MemoryDebuggerVsArenas.
-                            // _s := tprint("%%", line_number_prefix, line_text);
-                            // s := arena_push_string(mini_panel.items_arena, _s);
-                            
                             s := line_text;
 
                             x0 := found_index;
@@ -137,7 +129,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             }
                             item.highlight_x0 = SEARCH_LINE_NUMBER_PADDING + x0;
                             item.highlight_x1 = SEARCH_LINE_NUMBER_PADDING + x1;
-                            item.line_number = line_index + 1;
+                            item.line_number_or_zero = line_index + 1;
+                            item.line_number_padding = SEARCH_LINE_NUMBER_PADDING;
 
                             item_userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
                             item_userdata.x = x0;
