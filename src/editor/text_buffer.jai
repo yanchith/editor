@@ -277,10 +277,6 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
         assert(buffer.edits.count == 0, "Omitting edits from history is only allowed before any edits are recorded.");
     }
 
-    if text.count == 0 {
-        return false;
-    }
-
     insert_caused_delete_selection := false;
 
     if cursors.c0 != cursors.c1 {
@@ -290,6 +286,12 @@ text_buffer_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, text: strin
         insert_caused_delete_selection = true;
 
         // Fallthrough!
+    }
+
+    // Early exit is below delete_selection, so that the selection is always deleted, even if we have nothing to insert.
+    // Example uses are search&replace with empty string (or pasting an empty clipboard?).
+    if text.count == 0 {
+        return false;
     }
 
     line_to_invalidate := cursors.c0.y;
@@ -659,13 +661,13 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
     return true;
 }
 
-text_buffer_delete_forward_word :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
-    ProfileZone("text_buffer_delete_forward_word");
+text_buffer_delete_forward_within :: (buffer: *Text_Buffer, cursors: *Text_Cursors, is_inside: (u32) -> bool) -> /* Pointing to the internal gap buffer */ string {
+    ProfileZone("text_buffer_delete_forward_within");
 
     assert_valid(buffer, cursors);
 
     search_cursors := cursors.*;
-    moved := text_buffer_move_forward_word(buffer, *search_cursors, false);
+    moved := text_buffer_move_forward_within(buffer, *search_cursors, false, is_inside);
     if !moved {
         return "";
     }
@@ -711,13 +713,13 @@ text_buffer_delete_forward_word :: (buffer: *Text_Buffer, cursors: *Text_Cursors
     return deleted;
 }
 
-text_buffer_delete_backward_word :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> /* Pointing to the internal gap buffer */ string {
-    ProfileZone("text_buffer_delete_backward_word");
+text_buffer_delete_backward_within :: (buffer: *Text_Buffer, cursors: *Text_Cursors, is_inside: (u32) -> bool) -> /* Pointing to the internal gap buffer */ string {
+    ProfileZone("text_buffer_delete_backward_within");
 
     assert_valid(buffer, cursors);
 
     search_cursors := cursors.*;
-    moved := text_buffer_move_backward_word(buffer, *search_cursors, false);
+    moved := text_buffer_move_backward_within(buffer, *search_cursors, false, is_inside);
     if !moved {
         return "";
     }
@@ -839,7 +841,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
     end_gb_index   := text_buffer_get_gap_buffer_index_for_location(buffer, line_end);
     delete_count   := end_gb_index - start_gb_index;
 
-    is_only_newline := false;
+    is_newline := false;
     if delete_count == 0 {
         line_end     = text_buffer_get_end_of_line(buffer, cursors.c0.y, include_newline = true);
         end_gb_index = text_buffer_get_gap_buffer_index_for_location(buffer, line_end);
@@ -852,7 +854,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
 
         sanity_assert(buffer.gb[start_gb_index] == "\n");
 
-        is_only_newline = true;
+        is_newline = true;
     }
 
     line_to_invalidate := cursors.c0.y;
@@ -867,15 +869,7 @@ text_buffer_delete_line :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> str
     // gap_buffer clamps, but we should have calculated the indices correctly in this case.
     sanity_assert(deleted_bytes.count == delete_count);
 
-    is_only_whitespace := true;
-    for deleted {
-        if !is_space(it) {
-            is_only_whitespace = false;
-            break;
-        }
-    }
-
-    if is_only_whitespace && !is_only_newline {
+    if contains_only_whitespace(deleted) && !is_newline {
         // Delete the newline also, if any. We do this by telling the gap buffer to delete
         // additional 1 or 2 bytes (depending CRLF or LF), and then modifying our deleted array. We
         // can do this, because we moved the gap before we started.
@@ -1577,8 +1571,6 @@ text_buffer_move_to_start_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursor
 
     first_nonspace_index := -1;
     for line_view {
-        // We don't parse unicode here, because even if our whitespace is also a valid continuation
-        // byte, it would have to be preceeded by a nonwhitespace byte.
         if !is_space(it) {
             first_nonspace_index = it_index;
             break;
@@ -1634,36 +1626,67 @@ text_buffer_move_to_end_of_line :: (buffer: Text_Buffer, cursors: *Text_Cursors,
     return original_cursor != cursors.c0;
 }
 
-text_buffer_move_forward_word :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool, can_move_vertically := true) -> cursor_moved: bool, cursor_y_moved: bool {
-    ProfileZone("text_buffer_move_forward_word");
+//
+// The procedures text_buffer_move_forward/backward_within used to move by word boundaries, but have been
+// made more flexible so that text_buffer_expand_selection can rely on them for moving the cursors.
+//
+// This generalization made them simpler in some aspects and more complicated in others. The simplification is mostly
+// around removing hacks for dealing with moving vertically. The search functions now return dy in addition to dx.
+// The complication is that we now can not naively pass line views into the search functions, but instead have to pass
+// arbitrary contiguous views, potentially crossing lines, until we either run out of bounds, or the search functions tell us to stop.
+//
+// We can consider containing the complexity inside this file and only exposing concrete usecases.
+//
+// -jt, 30 September 2026
+//
+
+text_buffer_move_forward_within :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool, is_inside: (u32) -> bool, must_start_inside := false) -> cursor_moved: bool, cursor_y_moved: bool {
+    ProfileZone("text_buffer_move_forward_within");
 
     assert_valid(buffer, cursors);
 
     original_cursor := cursors.c0;
 
-    line_end          := text_buffer_get_end_of_line(buffer, cursors.c0.y);
-    view_after_cursor := text_buffer_make_view_for_interval(buffer, cursors.c0, line_end,, temp);
+    VIEW_STEP :: 128; // Must be at least 1.
 
-    found, inside_word, dx := search_line_forward(view_after_cursor, buffer.binary_mode);
-    cursors.c0.x += dx;
+    view_start_gb_index := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
+    view_end_gb_index   := view_start_gb_index + VIEW_STEP;
+    view_end_gb_index   = min(view_end_gb_index, buffer.gb.count);
 
-    if can_move_vertically && !found && !inside_word {
-        while true {
-            moved := text_buffer_move_y(buffer, cursors, 1, selecting);
-            if !moved {
-                break;
-            }
+    if !buffer.binary_mode {
+        while view_end_gb_index < buffer.gb.count && !is_utf8_char_boundary(buffer.gb[view_end_gb_index]) {
+            view_end_gb_index += 1;
+        }
+    }
 
-            cursors.c0.x = 0;
+    view := cast(string, gap_buffer_make_view(buffer.gb, view_start_gb_index, view_end_gb_index - view_start_gb_index,, temp));
 
-            line_view := text_buffer_make_view_for_line(buffer, cursors.c0.y,, temp);
+    found, _, ends_inside, dx_after_last_newline, dy := search_forward(view, is_inside, must_start_inside, buffer.binary_mode);
+    cursors.c0.y += dy;
+    if dy != 0 {
+        cursors.c0.x = 0;
+    }
+    cursors.c0.x += dx_after_last_newline;
 
-            found, inside_word, dx = search_line_forward(line_view, buffer.binary_mode);
-            if found || inside_word {
-                cursors.c0.x += dx;
-                break;
+    while !found && view_start_gb_index < buffer.gb.count {
+        view_start_gb_index = view_end_gb_index;
+        view_end_gb_index   = view_start_gb_index + VIEW_STEP;
+        view_end_gb_index   = min(view_end_gb_index, buffer.gb.count);
+
+        if !buffer.binary_mode {
+            while view_end_gb_index < buffer.gb.count && !is_utf8_char_boundary(buffer.gb[view_end_gb_index]) {
+                view_end_gb_index += 1;
             }
         }
+
+        view := cast(string, gap_buffer_make_view(buffer.gb, view_start_gb_index, view_end_gb_index - view_start_gb_index,, temp));
+
+        found, _, ends_inside, dx_after_last_newline, dy = search_forward(view, is_inside, ends_inside, buffer.binary_mode);
+        cursors.c0.y += dy;
+        if dy != 0 {
+            cursors.c0.x = 0;
+        }
+        cursors.c0.x += dx_after_last_newline;
     }
 
     if !selecting {
@@ -1676,36 +1699,55 @@ text_buffer_move_forward_word :: (buffer: Text_Buffer, cursors: *Text_Cursors, s
     return original_cursor != cursors.c0, original_cursor.y != cursors.c0.y;
 }
 
-text_buffer_move_backward_word :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool, can_move_vertically := true) -> cursor_moved: bool, cursor_y_moved: bool {
-    ProfileZone("text_buffer_move_backward_word");
+text_buffer_move_backward_within :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool, is_inside: (u32) -> bool, must_start_inside := false) -> cursor_moved: bool, cursor_y_moved: bool {
+    ProfileZone("text_buffer_move_backward_within");
 
     assert_valid(buffer, cursors);
 
     original_cursor := cursors.c0;
 
-    line_start         := text_buffer_get_start_of_line(buffer, cursors.c0.y);
-    view_before_cursor := text_buffer_make_view_for_interval(buffer, line_start, cursors.c0,, temp);
+    // Unlike when moving forward, the character alignment loop shortens the view,
+    // so this must be at least the length of longest UTF8 character (if the text is indeed valid UTF8).
+    VIEW_STEP :: 128;
 
-    found, inside_word, dx := search_line_backward(view_before_cursor, buffer.binary_mode);
-    cursors.c0.x -= dx;
+    view_end_gb_index   := text_buffer_get_gap_buffer_index_for_location(buffer, cursors.c0);
+    view_start_gb_index := view_end_gb_index - VIEW_STEP;
+    view_start_gb_index = max(view_start_gb_index, 0);
 
-    if can_move_vertically && !found && !inside_word {
-        while true {
-            moved := text_buffer_move_y(buffer, cursors, -1, selecting);
-            if !moved {
-                break;
-            }
+    if !buffer.binary_mode {
+        while !is_utf8_char_boundary(buffer.gb[view_start_gb_index]) {
+            view_start_gb_index += 1;
+        }
+    }
 
-            cursors.c0 = text_buffer_get_end_of_line(buffer, cursors.c0.y);
+    view := cast(string, gap_buffer_make_view(buffer.gb, view_start_gb_index, view_end_gb_index - view_start_gb_index,, temp));
 
-            line_view := text_buffer_make_view_for_line(buffer, cursors.c0.y,, temp);
+    found, _, ends_inside, dx_after_last_newline, dy := search_backward(view, is_inside, must_start_inside, buffer.binary_mode);
+    cursors.c0.y -= dy;
+    if dy != 0 {
+        cursors.c0.x = buffer.line_chars[cursors.c0.y];
+    }
+    cursors.c0.x -= dx_after_last_newline;
 
-            found, inside_word, dx = search_line_backward(line_view, buffer.binary_mode);
-            if found || inside_word {
-                cursors.c0.x -= dx;
-                break;
+    while !found && view_start_gb_index > 0 {
+        view_end_gb_index   = view_start_gb_index;
+        view_start_gb_index = view_end_gb_index - VIEW_STEP;
+        view_start_gb_index = max(view_start_gb_index, 0);
+
+        if !buffer.binary_mode {
+            while !is_utf8_char_boundary(buffer.gb[view_start_gb_index]) {
+                view_start_gb_index += 1;
             }
         }
+
+        view := cast(string, gap_buffer_make_view(buffer.gb, view_start_gb_index, view_end_gb_index - view_start_gb_index,, temp));
+
+        found, _, ends_inside, dx_after_last_newline, dy = search_backward(view, is_inside, ends_inside, buffer.binary_mode);
+        cursors.c0.y -= dy;
+        if dy != 0 {
+            cursors.c0.x = buffer.line_chars[cursors.c0.y];
+        }
+        cursors.c0.x -= dx_after_last_newline;
     }
 
     if !selecting {
@@ -1806,46 +1848,45 @@ text_buffer_move_to_next_blank_line :: (buffer: Text_Buffer, cursors: *Text_Curs
     return original_cursor != cursors.c0;
 }
 
-// TODO(jt): @Incomplete Make text_buffer_expand_selection expands as follows:
-//
-// x = CommandBuffer::push(blah);
-//         ^
-//     ^           ^
-//     ^                 ^
-//     ^                       ^
-// ^                            ^
-//
-// The best way to do this would be to have a parser for our current text and traverse up the tree to get regions,
-// but maybe there is a heuristic way of doing this? Maybe a precedence for various nonword characters, so that it
-// behaves more like expand-region.el in Emacs. We already do something like this for the lines.
-text_buffer_expand_selection :: (buffer: Text_Buffer, cursors: *Text_Cursors) -> cursor_moved: bool {
-    ProfileZone("text_buffer_expand_selection_word");
+text_buffer_expand_selection :: (buffer: Text_Buffer, cursors: *Text_Cursors, same_line := true) -> cursor_moved: bool {
+    ProfileZone("text_buffer_expand_selection");
 
     assert_valid(buffer, cursors);
 
     text_location_sort(*cursors.c0, *cursors.c1);
 
-    original_c0 := cursors.c0;
-    original_c1 := cursors.c1;
+    // Grow selection somewhat systematically: alphanumeric -> underscore -> punctuation -> indentation -> newlines.
+    // This is not as nice as growing based on the parse tree, but behaves okay for most programming language text.
 
-    backward, backward_crossed_line := text_buffer_move_backward_word(buffer, cursors, true);
+    backward := text_buffer_move_backward_within(buffer, cursors, true, is_alnum32, must_start_inside = true);
     swap(*cursors.c0, *cursors.c1);
-    forward, forward_crossed_line := text_buffer_move_forward_word(buffer, cursors, true);
+    forward := text_buffer_move_forward_within(buffer, cursors, true, is_alnum32, must_start_inside = true);
+    
+    matchers: [] (c: u32) -> bool;
+    if same_line {
+        matchers = .[
+            (c: u32) -> bool { return c == #char "_"; },
+            is_punct32,
+            is_nonnewline_space32,
+        ];
+    } else {
+        matchers = .[
+            (c: u32) -> bool { return c == #char "_"; },
+            is_punct32,
+            is_nonnewline_space32,
+            is_newline32,
+        ];
+    }
+    
+    for matchers {
+        if backward || forward {
+            break;
+        }
 
-    // We want the selection to grow somewhat systematically. The first step towards that is that both
-    // cursors must want to advance to a new line, before any of them can.
-
-    if cursors.c0 == text_buffer_get_end(buffer)    forward_crossed_line = true;
-    if cursors.c1 == text_buffer_get_start(buffer)  backward_crossed_line = true;
-
-    if backward_crossed_line && !forward_crossed_line {
         swap(*cursors.c0, *cursors.c1);
-        cursors.c0 = original_c0;
-        text_buffer_move_backward_word(buffer, cursors, true, can_move_vertically = false);
+        backward = text_buffer_move_backward_within(buffer, cursors, true, it, must_start_inside = true);
         swap(*cursors.c0, *cursors.c1);
-    } else if forward_crossed_line && !backward_crossed_line {
-        cursors.c0 = original_c1; // Not a typo. This acccounts for the swap.
-        text_buffer_move_forward_word(buffer, cursors, true, can_move_vertically = false);
+        forward = text_buffer_move_forward_within(buffer, cursors, true, it, must_start_inside = true);
     }
 
     text_cursors_horizontal_move_was_explicit(cursors);
@@ -1954,7 +1995,7 @@ text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, loc: Text
         // This is a UTF8 line. We have to count.
         for 0..loc.x - 1 {
             first_byte := buffer.gb[index];
-            index += UTF8_LENGTH_FOR_STARTING_BYTE[first_byte];
+            index += UTF8_LENGTH_FOR_STARTING_BYTE_CLAMPED[first_byte];
         }
     }
 
@@ -2261,68 +2302,12 @@ update_index_for_insert :: (buffer: *Text_Buffer, cursors: *Text_Cursors, _text:
                 continue;
             }
 
-            codepoint_advance := UTF8_LENGTH_FOR_STARTING_BYTE[text[0]];
-
-            {
-                // TODO(jt): Do Proper RFC-compliant utf8 validation. We also need to make it fast.
-                //
-                // if !validate_utf8_codepoint(s) {
-                //     text_buffer_switch_to_binary_mode(buffer);
-                //     return;
-                // }
-
-                // Must be first, because the rest doesn't check for OOB.
-                if codepoint_advance > text.count {
-                    text_buffer_switch_to_binary_mode(buffer, cursors);
-                    return;
-                }
-
-                {
-                    zero_found := false;
-                    for 0..codepoint_advance - 1 {
-                        zero_found |= text[it] == 0;
-                    }
-
-                    if zero_found {
-                        text_buffer_switch_to_binary_mode(buffer, cursors);
-                        return;
-                    }
-                }
-
-                if !is_utf8_char_boundary(text[0]) {
-                    text_buffer_switch_to_binary_mode(buffer, cursors);
-                    return;
-                }
-
-                /* TODO(jt): @Bug We got a crash from a pre-0.0.1 version here. Unfortunately we can't have the file.
-                It looks like find_next_utf8_boundary crashes on something our previous checks omitted?
-                (line info is incrrect in string.jai, unfortunately)
-                
-                C:/Users/yanchith/workspace/editor/src/editor/string.jai:88,5: Assertion failed!
-
-                Stack trace:
-                'assertion_failed' at C:/Users/yanchith/workspace/editor/src/logger.jai:74
-                'assert_helper' at C:/Users/yanchith/workspace/jai/modules/Basic/module.jai:86
-                'find_next_utf8_char_boundary' at C:/Users/yanchith/workspace/editor/src/editor/string.jai:88
-                'update_index_for_insert' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:2252
-                'text_buffer_insert' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:330
-                'text_buffer_insert' at C:/Users/yanchith/workspace/editor/src/editor/text_buffer.jai:265
-                'open_file' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4946
-                'confirm' at C:/Users/yanchith/workspace/editor/src/editor/mini_panel_open_file.jai:260
-                'route_event_to_mini_panel' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:2111
-                'update_and_render' at C:/Users/yanchith/workspace/editor/src/editor/editor.jai:917
-                'main' at C:/Users/yanchith/workspace/editor/src/main.jai:807
-                
-                */
-                
-                _, codepoint_advance_check := find_next_utf8_char_boundary(text, 0, sanity = false);
-                if codepoint_advance != codepoint_advance_check {
-                    text_buffer_switch_to_binary_mode(buffer, cursors);
-                    return;
-                }
+            // TODO(jt): @Speed if we are doing this from undo, we could get the advance from the table and skip the validation.
+            valid, codepoint_advance := validate_utf8(text);
+            if !valid {
+                text_buffer_switch_to_binary_mode(buffer, cursors);
+                return;
             }
-
-            assert(!buffer.binary_mode);
 
             advance(*text, codepoint_advance);
 
@@ -2477,96 +2462,124 @@ ensure_chunk_for_line :: (buffer: Text_Buffer, line_index_to_ensure: s64) {
     buffer.chunks.gb_indices_highest_valid = chunk_index_to_ensure;
 }
 
-search_line_backward :: (line: string, binary: bool) -> found: bool, inside_word: bool, dx: s64 {
+// Search a string view backward. If must_start_inside is true, stop at first byte/character not satisfying is_inside.
+// If must_start_inside is false, first find a byte/character for which is_inside returns true, then act as if must_start_inside is true.
+// dy is the number of newlines seen. dx_after_last_newline is the number of bytes/characters after the last newline (including).
+search_backward :: (view: string, is_inside: (u32) -> bool, must_start_inside: bool, binary: bool) -> found: bool, starts_inside: bool, ends_inside: bool, dx_after_last_newline: s64, dy: s64 {
     if binary {
-        found, inside_word, dx :=  _search_line_backward(line, true);
-        return found, inside_word, dx;
+        found, starts_inside, ends_inside, dx_after_last_newline, dy := _search_backward(view, is_inside, must_start_inside, true);
+        return found, starts_inside, ends_inside, dx_after_last_newline, dy;
     } else {
-        found, inside_word, dx :=  _search_line_backward(line, false);
-        return found, inside_word, dx;
+        found, starts_inside, ends_inside, dx_after_last_newline, dy := _search_backward(view, is_inside, must_start_inside, false);
+        return found, starts_inside, ends_inside, dx_after_last_newline, dy;
     }
 }
 
-_search_line_backward :: (line: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
-    // The line is empty, so we couldn't have started inside a word.
-    if line.count == 0 {
-        return false, false, 0;
+_search_backward :: (view: string, is_inside: (u32) -> bool, must_start_inside: bool, $binary: bool) -> found: bool, starts_inside: bool, ends_inside: bool, dx_after_last_newline: s64, dy: s64 {
+    if view.count == 0 {
+        return true, false, false, 0, 0;
     }
 
-    inside_word_initial_set := false;
-    inside_word             := false;
+    inside_initialized := false;
+    inside             := false;
+    inside_on_start    := false;
 
     found := false;
-    dx := 0;
+    dx_after_last_newline := 0;
+    dy := 0;
 
     ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
-    for < :ITERATOR line {
-        is_nonword := char_is_nonword(it);
+    for < :ITERATOR view {
+        it_inside := is_inside(it);
 
-        if !inside_word_initial_set {
-            inside_word             = !is_nonword;
-            inside_word_initial_set = true;
+        if !inside_initialized {
+            inside             = it_inside;
+            inside_on_start    = it_inside;
+            inside_initialized = true;
+
+            if must_start_inside && !inside {
+                found = true;
+                break;
+            }
         }
 
-        if inside_word && is_nonword {
+        if inside && !it_inside {
             found = true;
             break;
         }
 
-        if !is_nonword {
-            inside_word = true;
+        if it_inside {
+            inside = true;
         }
 
-        dx += 1;
+        dx_after_last_newline += 1;
+        if it == #char "\n" {
+            dx_after_last_newline = 1; // +1 for the \n we just crossed.
+            dy += 1;
+        }
     }
 
-    return found, inside_word, dx;
+    return found, inside_on_start, inside, dx_after_last_newline, dy;
 }
 
-search_line_forward :: (line: string, binary: bool) -> found: bool, inside_word: bool, dx: s64 {
+// Search a string view forward. If must_start_inside is true, stop at first byte/character not satisfying is_inside.
+// If must_start_inside is false, first find a byte/character for which is_inside returns true, then act as if must_start_inside is true.
+// dy is the number of newlines seen. dx_after_last_newline is the number of bytes/characters after the last newline (including).
+search_forward :: (view: string, is_inside: (u32) -> bool, must_start_inside: bool, binary: bool) -> found: bool, starts_inside: bool, ends_inside: bool, dx_after_last_newline: s64, dy: s64 {
     if binary {
-        found, inside_word, dx :=  _search_line_forward(line, true);
-        return found, inside_word, dx;
+        found, starts_inside, ends_inside, dx_after_last_newline, dy := _search_forward(view, is_inside, must_start_inside, true);
+        return found, starts_inside, ends_inside, dx_after_last_newline, dy;
     } else {
-        found, inside_word, dx :=  _search_line_forward(line, false);
-        return found, inside_word, dx;
+        found, starts_inside, ends_inside, dx_after_last_newline, dy := _search_forward(view, is_inside, must_start_inside, false);
+        return found, starts_inside, ends_inside, dx_after_last_newline, dy;
     }
 }
 
-_search_line_forward :: (line: string, $binary: bool) -> found: bool, inside_word: bool, dx: s64 {
-    // The line is empty, so we couldn't have started inside a word.
-    if line.count == 0 {
-        return false, false, 0;
+_search_forward :: (view: string, is_inside: (u32) -> bool, must_start_inside: bool, $binary: bool) -> found: bool, starts_inside: bool, ends_inside: bool, dx_after_last_newline: s64, dy: s64 {
+    if view.count == 0 {
+        return true, false, false, 0, 0;
     }
 
-    inside_word_initial_set := false;
-    inside_word             := false;
+    inside_initialized := false;
+    inside             := false;
+    inside_on_start    := false;
 
     found := false;
-    dx := 0;
+    dx_after_last_newline := 0;
+    dy := 0;
 
     ITERATOR :: #ifx binary then string_bytes_iter else Unicode.utf8_iter;
-    for :ITERATOR line {
-        is_nonword := char_is_nonword(it);
+    for :ITERATOR view {
+        it_inside := is_inside(it);
 
-        if !inside_word_initial_set {
-            inside_word             = !is_nonword;
-            inside_word_initial_set = true;
+        if !inside_initialized {
+            inside             = it_inside;
+            inside_on_start    = it_inside;
+            inside_initialized = true;
+
+            if must_start_inside && !inside {
+                found = true;
+                break;
+            }
         }
 
-        if inside_word && is_nonword {
+        if inside && !it_inside {
             found = true;
             break;
         }
 
-        if !is_nonword {
-            inside_word = true;
+        if it_inside {
+            inside = true;
         }
 
-        dx += 1;
+        dx_after_last_newline += 1;
+        if it == #char "\n" {
+            dx_after_last_newline = 0;
+            dy += 1;
+        }
     }
 
-    return found, inside_word, dx;
+    return found, inside_on_start, inside, dx_after_last_newline, dy;
 }
 
 maybe_fuse_last_edits :: (edits: [] Edit, is_autofuse := false) {
@@ -2593,23 +2606,10 @@ maybe_fuse_last_edits :: (edits: [] Edit, is_autofuse := false) {
 
 is_simple_edit :: (text: string) -> bool {
     if text != " " && text != "\n" && text != "\r\n" {
-        if text.count && text.count == UTF8_LENGTH_FOR_STARTING_BYTE[text[0]] {
+        if text.count && text.count == UTF8_LENGTH_FOR_STARTING_BYTE_CLAMPED[text[0]] {
             return true;
         }
     }
 
     return false;
-}
-
-// TODO(jt): @Incomplete Support unicode?
-char_is_nonword :: inline (c: u32) -> bool {
-    c0 := c < 48;
-    // 0-9 live here
-    c1 := c > 57 && c < 65;
-    // A-Z live here
-    c2 := c > 90 && c < 97;
-    // a-z live here
-    c3 := c > 122;
-
-    return c0 || c1 || c2 || c3;
 }

@@ -6,10 +6,8 @@ TODO(jt): Known critical bugs:
 
 TODO(jt): Known serious bugs:
 
-- move_forward_word cycles on last line, if there are at least two words and a space after
-- Text buffer crash insert from Ondy on the weird PDF. (See text_buffer.jai:2297)
-- search_and_replace doesn't replace if second (either?) string is empty.
-- toggle_comment should detect across all lines first, only then decide whether we are going to be adding or removing comments
+- Refreshing large files (such as the output of objdump) from disk takes too long. The delete needs to be optimized.
+- Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 
 TODO(jt): Roadmap:
 
@@ -78,7 +76,7 @@ TODO(jt): Roadmap:
 - [X] Triple click to select line. (expand to line)
 - [X] Speed improvements to scope parsing
 - [X] Speed improvements to lexing for syntax highlighting
-- [ ] C-u C-<space> (cursor undo)
+- [X] C-u C-<space> (cursor undo)
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [ ] q to hide compilation or listing
@@ -89,8 +87,8 @@ TODO(jt): Roadmap:
 - [ ] OPEN_FILE_IN_PROJECT and SEARCH_IN_PROJECT should be (globally) configurable to ignore paths (e.g. contents of .git)
 - [ ] Animate scrolling in mini panel.
 - [ ] Animate opening of the mini panel.
-- [ ] F11 fullscreen on Windows
-- [ ] macOS packaging
+- [X] F11 fullscreen on Windows
+- [X] macOS .app
 - [ ] Linux build
 - [ ] Load System fonts
 - [ ] Multiple Cursors
@@ -215,8 +213,8 @@ FILE_WATCH_BLIND_WINDOW: Apollo_Time : #run milliseconds_to_apollo(250);  // The
 
 UNDO_AUTOFUSE_PERIOD: Apollo_Time : #run milliseconds_to_apollo(500);
 
-MULTICLICK_PERIOD :: #run milliseconds_to_apollo(500); // TODO(jt): Make this configurable. :Config
-MULTICLICK_ABORT_DISTANCE_PIXELS :: 2.0;
+MULTICLICK_PERIOD :: #run milliseconds_to_apollo(400); // TODO(jt): Make this configurable. :Config
+MULTICLICK_ABORT_DISTANCE_PIXELS :: 1.0;
 
 HIGHLIGHT_CUTOFF_SIZE:   s64 : 10 << 20;
 INDENTATION_CUTOFF_SIZE: s64 : 10 << 20;
@@ -284,8 +282,8 @@ Editor :: struct {
 
     project_directories: [..] string;
 
-    // This is a simple hardcoded version of the view tree. We can replace it with fully K-d tree
-    // layout out in an array, once we do arbitrary panel splitting.
+    // This is a simple hardcoded version of the view tree. We can replace it with full K-d tree
+    // layout in an array, once we do arbitrary panel splitting.
     active_view: enum u8 {
         FULL;   // The screen is not split into multiple views.
         LEFT;   // The screen is split horizontally, and the left view is active.
@@ -461,8 +459,12 @@ Document :: struct {
     time_of_last_activation: Apollo_Time;
     time_of_last_simple_edit: Apollo_Time; // Insert by typing characters or delete forward/backward.
 
-    cursors_cold: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
     buffer: Text_Buffer;
+    cursors_cold: Text_Cursors; // Used to restore cursors in panel view, if the document was in the background. Otherwise, the view's cursors take precedence.
+
+    CURSOR_RING_COUNT :: 16;
+    cursor_ring: [CURSOR_RING_COUNT] Text_Location;
+    cursor_ring_index: s64;
 
     arena: *Arena; // For scopes, tokens, compilation_args, compilation_errors, backing_file_directory, backing_file_path...
 
@@ -850,18 +852,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         dt = 1.0 / input.monitor_refresh_rate;
     }
 
+    // :BatterySaver
+    //
     // With wants_this_frame we control whether early out to save battery/fans. Currently, we early
     // out just before submitting stuff to the GPU, but we could take this further and early out
     // during the panel processing loop, etc.
     //
-    // :BatterySaver
-    //
     // Note that this is volatile and sensitive to changes in other parts of the code. For instance,
     // we we add a new type of input, we also have to check here to see if it should cause us to
     // always render the frame.
-    //
-    // TODO(jt): Windows still reports a very high power usage if we just move the mouse around. Can
-    // we do something better?
     wants_this_frame :=
         editor.is_first_frame ||
         input.window_size != editor.input_state.window_size ||
@@ -2106,8 +2105,8 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .MOVE_TO_START;           mp.item_index = 0; // Not -1, even if the particular procs support it.
         case .MOVE_TO_END;             mp.item_index = max(mp.items.count - 1, 0);
 
-        case .MOVE_FORWARD_WORD;       text_buffer_move_forward_word(mp.buffer, *mp.cursors, mp.selecting);
-        case .MOVE_BACKWARD_WORD;      text_buffer_move_backward_word(mp.buffer, *mp.cursors, mp.selecting);
+        case .MOVE_FORWARD_WORD;       text_buffer_move_forward_within(mp.buffer, *mp.cursors, mp.selecting, is_alnum32);
+        case .MOVE_BACKWARD_WORD;      text_buffer_move_backward_within(mp.buffer, *mp.cursors, mp.selecting, is_alnum32);
 
         case .MOVE_UP_ONE_SCREEN;      mp.item_index = clamp(mp.item_index - MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
         case .MOVE_DOWN_ONE_SCREEN;    mp.item_index = clamp(mp.item_index + MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
@@ -2115,14 +2114,14 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         case .DELETE_FORWARD;          text_buffer_delete_forward(*mp.buffer, *mp.cursors, 1); buffer_changed = true;
         case .DELETE_BACKWARD;         buffer_changed |= mp.procs.delete_backward(editor, platform, input);
         case .DELETE_FORWARD_WORD; {
-            deleted := text_buffer_delete_forward_word(*mp.buffer, *mp.cursors);
+            deleted := text_buffer_delete_forward_within(*mp.buffer, *mp.cursors, is_alnum32);
             if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
             }
         }
         case .DELETE_BACKWARD_WORD; {
-            deleted := text_buffer_delete_backward_word(*mp.buffer, *mp.cursors);
+            deleted := text_buffer_delete_backward_within(*mp.buffer, *mp.cursors, is_alnum32);
             if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
@@ -2209,20 +2208,20 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         case .MOVE_TO_START_OF_LINE;   text_buffer_move_to_start_of_line(mi.buffer, *mi.cursors, mi.selecting);
         case .MOVE_TO_END_OF_LINE;     text_buffer_move_to_end_of_line(mi.buffer, *mi.cursors, mi.selecting);
 
-        case .MOVE_FORWARD_WORD;       text_buffer_move_forward_word(mi.buffer, *mi.cursors, mi.selecting);
-        case .MOVE_BACKWARD_WORD;      text_buffer_move_backward_word(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_FORWARD_WORD;       text_buffer_move_forward_within(mi.buffer, *mi.cursors, mi.selecting, is_alnum32);
+        case .MOVE_BACKWARD_WORD;      text_buffer_move_backward_within(mi.buffer, *mi.cursors, mi.selecting, is_alnum32);
 
         case .DELETE_FORWARD;          text_buffer_delete_forward(*mi.buffer, *mi.cursors, 1); buffer_changed = true;
         case .DELETE_BACKWARD;         text_buffer_delete_backward(*mi.buffer, *mi.cursors); buffer_changed = true;
         case .DELETE_FORWARD_WORD; {
-            deleted := text_buffer_delete_forward_word(*mi.buffer, *mi.cursors);
+            deleted := text_buffer_delete_forward_within(*mi.buffer, *mi.cursors, is_alnum32);
             if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
             }
         }
         case .DELETE_BACKWARD_WORD; {
-            deleted := text_buffer_delete_backward_word(*mi.buffer, *mi.cursors);
+            deleted := text_buffer_delete_backward_within(*mi.buffer, *mi.cursors, is_alnum32);
             if deleted.count {
                 buffer_changed = true;
                 platform.set_clipboard_text(deleted);
@@ -2387,6 +2386,9 @@ Document_Action :: enum {
 
     TOGGLE_COMMENT;
 
+    PUSH_CURSOR_LOCATION;
+    POP_CURSOR_LOCATION;
+
     UNDO_EDIT;
     REDO_EDIT;
 
@@ -2549,6 +2551,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
     if did_execute_action {
         key_map_flush(*editor.document_key_map);
+        key_map_flush(*editor.compilation_key_map);
         key_map_flush(*editor.listing_key_map);
 
         return;
@@ -2897,13 +2900,13 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .MOVE_TO_END;            cursor_moved |= text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting);
 
         case .MOVE_FORWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_forward_word(document.buffer, *view.cursors, view.selecting);
+            cursor_moved=, cursor_y_moved := text_buffer_move_forward_within(document.buffer, *view.cursors, view.selecting, is_alnum32);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
             }
         }
         case .MOVE_BACKWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_backward_word(document.buffer, *view.cursors, view.selecting);
+            cursor_moved=, cursor_y_moved := text_buffer_move_backward_within(document.buffer, *view.cursors, view.selecting, is_alnum32);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
             }
@@ -2928,7 +2931,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         }
 
         case .EXPAND_SELECTION; {
-            cursor_moved |= text_buffer_expand_selection(document.buffer, *view.cursors);
+            cursor_moved |= text_buffer_expand_selection(document.buffer, *view.cursors, same_line = false);
             view.selecting = true;
         }
 
@@ -2943,7 +2946,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         }
 
         case .SEARCH_AND_REPLACE; {
-            document.flags &= .MODIFY_ATTEMPT_THIS_FRAME;
+            document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
                 open_modal_interaction(editor, platform, input, modal_interaction_search_and_replace_procs);
             }
@@ -3112,10 +3115,18 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .GO_TO_LINE;       open_modal_interaction(editor, platform, input, modal_interaction_go_to_line_procs);
+        case .GO_TO_LINE;  open_modal_interaction(editor, platform, input, modal_interaction_go_to_line_procs);
 
-        case .START_SELECTING;  view.selecting = true;  text_cursors_join(*view.cursors);
-        case .STOP_SELECTING;   view.selecting = false; text_cursors_join(*view.cursors);
+        case .START_SELECTING; {
+            view.selecting = true;
+            text_cursors_join(*view.cursors);
+            push_cursor_location(view);
+            editor_log(editor, "Mark set");
+        }
+        case .STOP_SELECTING; {
+            view.selecting = false;
+            text_cursors_join(*view.cursors);
+        }
 
         case .DELETE_FORWARD; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
@@ -3164,7 +3175,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .DELETE_FORWARD_WORD; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
-                deleted := text_buffer_delete_forward_word(*document.buffer, *view.cursors);
+                deleted := text_buffer_delete_forward_within(*document.buffer, *view.cursors, is_alnum32);
                 if deleted.count {
                     buffer_changed = true;
                     platform.set_clipboard_text(deleted);
@@ -3174,7 +3185,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .DELETE_BACKWARD_WORD; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
-                deleted := text_buffer_delete_backward_word(*document.buffer, *view.cursors);
+                deleted := text_buffer_delete_backward_within(*document.buffer, *view.cursors, is_alnum32);
                 if deleted.count {
                     buffer_changed = true;
                     platform.set_clipboard_text(deleted);
@@ -3321,8 +3332,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             line_comment_with_space := tprint("% ", line_comment);
             line_comment_with_space_length := line_comment_length + 1; // +1 okay, because space is ASCII.
 
-            // TODO(jt): Preserve cursors and send them into the thing manually.
-            if view.cursors.c0 == view.cursors.c1 || view.cursors.c0.x == 0 && view.cursors.c1.x == 0 {
+            if view.cursors.c0 == view.cursors.c1 || view.cursors.c0.x == view.cursors.c1.x {
                 // 2 cases:
                 // - Single line, and no selection on the line -> line comment
                 // - Multi line, but both cursors have X at 0 -> multiple line comments
@@ -3330,61 +3340,64 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     y0 := min(view.cursors.c0.y, view.cursors.c1.y);
                     y1 := max(view.cursors.c0.y, view.cursors.c1.y);
 
-                    comments_action: enum { UNINITIALIZED; ADD; REMOVE; };
-                    comments_add_at_level: s64;
-                    {
-                        // First line. Detect, whether we are adding or removing comments and do so for the first line.
-                        // All operations pass .NONE undo modifier.
-                        text_buffer_move_to(document.buffer, *view.cursors, 0, y0, false);
+                    //
+                    // Detection pass
+                    //
+                    comments_add := false;
+                    comments_add_at_level: s64 = S64_MAX;
+                    for y0..y1 {
+                        text_buffer_move_to(document.buffer, *view.cursors, 0, it, false);
                         text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .START_OF_TEXT);
 
-                        line_end  := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y);
+                        line_end  := text_buffer_get_end_of_line(document.buffer, it);
                         line_view := text_buffer_make_view_for_interval(document.buffer, view.cursors.c0, line_end,, temp);
 
-                        if String.begins_with(line_view, line_comment_with_space) {
-                            comments_action = .REMOVE;
-                            text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_with_space_length, .NONE);
-                        } else if String.begins_with(line_view, line_comment) {
-                            comments_action = .REMOVE;
-                            text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_length, .NONE);
-                        } else  {
-                            comments_action = .ADD;
-                            comments_add_at_level = view.cursors.c0.x;
-                            text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .NONE);
+                        // We'll be adding comments, if any of the checked lines doesn't have them, but don't let whitespace-only lines
+                        // decrease the comment's indent.
+                        if !String.begins_with(line_view, line_comment) {
+                            comments_add = true;
+
+                            if !contains_only_whitespace(line_view) {
+                                comments_add_at_level = min(comments_add_at_level, view.cursors.c0.x);
+                            }
                         }
                     }
 
-                    for y0 + 1..y1 {
-                        // Subsequent lines. Do what we did ont the first line, but don't remove a comment if there is none.
-                        // All operations pass .FUSE undo modifier.
+                    if comments_add_at_level == S64_MAX {
+                        comments_add_at_level = 0;
+                    }
+
+                    //
+                    // Mutation pass
+                    //
+                    for y0..y1 {
+                        undo_modifier: Undo_Modifier = ifx it == y0 then .NONE else .FUSE;
 
                         text_buffer_move_to(document.buffer, *view.cursors, 0, it, false);
                         text_buffer_move_to_start_of_line(document.buffer, *view.cursors, false, .START_OF_TEXT);
 
-                        if comments_action == .ADD {
-                            if comments_add_at_level < view.cursors.c0.x {
+                        if comments_add {
+                            if comments_add_at_level <= view.cursors.c0.x {
                                 text_buffer_move_to(document.buffer, *view.cursors, comments_add_at_level, it, false);
+                                text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, undo_modifier);
                             } else if comments_add_at_level > view.cursors.c0.x {
                                 // We are before the comment level. If there is text on this line, tough luck.
                                 // However, if the line is just short, we can indent it.
-                                end := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y);
-                                if view.cursors.c0 == end {
-                                    // This should also move us to the right spot!
-                                    text_buffer_indent_line(*document.buffer, *view.cursors, comments_add_at_level, .FUSE);
+                                if view.cursors.c0 == text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y) {
+                                    text_buffer_indent_line(*document.buffer, *view.cursors, comments_add_at_level, undo_modifier);
+                                    text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .FUSE);
+                                } else {
+                                    text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, undo_modifier);
                                 }
                             }
-
-                            text_buffer_insert(*document.buffer, *view.cursors, line_comment_with_space, .FUSE);
-                        } else if comments_action == .REMOVE {
+                        } else {
                             line_end  := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y);
                             line_view := text_buffer_make_view_for_interval(document.buffer, view.cursors.c0, line_end,, temp);
 
                             if String.begins_with(line_view, line_comment_with_space) {
-                                text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_with_space_length, .NONE);
-                                comments_action = .REMOVE;
+                                text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_with_space_length, undo_modifier);
                             } else if String.begins_with(line_view, line_comment) {
-                                text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_length, .NONE);
-                                comments_action = .REMOVE;
+                                text_buffer_delete_forward(*document.buffer, *view.cursors, line_comment_length, undo_modifier);
                             }
                         }
                     }
@@ -3409,6 +3422,9 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 // TODO(jt): Add multiline block comments.
             }
         }
+
+        case .PUSH_CURSOR_LOCATION;  push_cursor_location(view);
+        case .POP_CURSOR_LOCATION;   pop_cursor_location(view);
 
         case .UNDO_EDIT; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
@@ -3459,12 +3475,12 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             if document.flags & .READONLY_BECAUSE_OF_MANUAL_LOCK {
                 document.flags &= ~.READONLY_BECAUSE_OF_MANUAL_LOCK;
                 if document.flags & .READONLY {
-                    editor_log(editor, "% is now unlocked; however, it is still read-only for other reasons.", document.backing_file_path);
+                    editor_log(editor, "% is now unlocked; however, it is still read-only for other reasons.", get_document_name(editor, document));
                 } else {
                     interpolation_start(*view.cursor_color,
                                         editor.theme.cursor_color_hot, editor.theme.cursor_color,
                                         input.time, CURSOR_FLASH_DURATION);
-                    editor_log(editor, "% is now unlocked", document.backing_file_path);
+                    editor_log(editor, "% is now unlocked", get_document_name(editor, document));
                 }
             } else {
                 document.flags |= .READONLY_BECAUSE_OF_MANUAL_LOCK;
@@ -3472,7 +3488,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                                     editor.theme.cursor_color_hot, editor.theme.cursor_color_readonly,
                                     input.time, CURSOR_FLASH_DURATION);
 
-                editor_log(editor, "% is now locked (read-only)", document.backing_file_path);
+                editor_log(editor, "% is now locked (read-only)", get_document_name(editor, document));
             }
         }
 
@@ -3592,13 +3608,13 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
         case .MOVE_TO_END;                  cursor_moved |= text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting);
 
         case .MOVE_FORWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_forward_word(document.buffer, *view.cursors, view.selecting);
+            cursor_moved=, cursor_y_moved := text_buffer_move_forward_within(document.buffer, *view.cursors, view.selecting, is_alnum32);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
             }
         }
         case .MOVE_BACKWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_backward_word(document.buffer, *view.cursors, view.selecting);
+            cursor_moved=, cursor_y_moved := text_buffer_move_backward_within(document.buffer, *view.cursors, view.selecting, is_alnum32);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
             }
@@ -3633,7 +3649,7 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
         }
 
         case .EXPAND_SELECTION; {
-            cursor_moved |= text_buffer_expand_selection(document.buffer, *view.cursors);
+            cursor_moved |= text_buffer_expand_selection(document.buffer, *view.cursors, same_line = false);
             view.selecting = true;
         }
 
@@ -4021,31 +4037,31 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                 // Mouse selection in DOCUMENT views (if we are not multiclicking).
                 //
 
+                row := cast(s64, floor((mouse.y + panel.scroll.value.y) / cell_h));
+                col := 0;
+
+                if row < 0 {
+                    row = 0;
+                    col = 0;
+                } else if row > document.buffer.line_count - 1 {
+                    row = document.buffer.line_count - 1;
+                    col = 1 + document.buffer.line_chars[row];
+                } else if row == document.buffer.line_count - 1 {
+                    line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = false,, temp);
+                    col=, overflow := font_compute_char_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
+
+                    // Include synthetic newline at the end of document.
+                    if overflow {
+                        col += 1;
+                    }
+                } else {
+                    // Include newline, so that the cursor can go there.
+                    line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
+                    col = font_compute_char_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
+                }
+
                 // Note that we don't need a click on this frame. We can click elsewhere, and reposition the cursors afterwards.
                 if editor.input_state.mb_left_multiclicks < 2 {
-                    row := cast(s64, floor((mouse.y + panel.scroll.value.y) / cell_h));
-                    col := 0;
-
-                    if row < 0 {
-                        row = 0;
-                        col = 0;
-                    } else if row > document.buffer.line_count - 1 {
-                        row = document.buffer.line_count - 1;
-                        col = 1 + document.buffer.line_chars[row];
-                    } else if row == document.buffer.line_count - 1 {
-                        line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = false,, temp);
-                        col=, overflow := font_compute_char_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
-
-                        // Include synthetic newline at the end of document.
-                        if overflow {
-                            col += 1;
-                        }
-                    } else {
-                        // Include newline, so that the cursor can go there.
-                        line_view := text_buffer_make_view_for_line(document.buffer, row, include_newline = true,, temp);
-                        col = font_compute_char_index_on_line(editor.font, line_view, mouse.x - panel_content_rect.x0 + panel.scroll.value.x, binary = document.buffer.binary_mode);
-                    }
-
                     text_buffer_move_to(document.buffer, *view.cursors, col, row, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
                 }
 
@@ -4054,6 +4070,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                         // TODO(jt): @Bug Keep This selection on the same line.
                         text_buffer_expand_selection(document.buffer, *view.cursors);
                     } else if editor.input_state.mb_left_multiclicks >= 3 {
+                        text_buffer_move_to(document.buffer, *view.cursors, col, row, false);
                         start := text_buffer_get_start_of_line(document.buffer, view.cursors.c0.y);
                         end   := text_buffer_get_end_of_line(document.buffer, view.cursors.c0.y);
 
@@ -4709,7 +4726,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 draw_rect(render_commands, modeline_rect, ifx panel_is_active then editor.theme.modeline_color_active else editor.theme.modeline_color);
 
                 cursor  := view.cursors.c0;
-                
+
                 percent := 100;
                 if document.buffer.line_count > 1 {
                     percent = cast(s64, 100.0 * cast(f32, cursor.y) / cast(f32, document.buffer.line_count - 1));
@@ -4809,7 +4826,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 draw_rect(render_commands, modeline_rect, ifx panel_is_active then editor.theme.modeline_color_active else editor.theme.modeline_color);
 
                 item_index := view.item_index;
-                
+
                 percent := 100;
                 if listing.items.count > 1 {
                     percent = cast(s64, 100.0 * cast(f32, item_index) / cast(f32, listing.items.count - 1));
@@ -4961,7 +4978,7 @@ load_config :: (editor: *Editor, platform: Platform, input: Input, fall_back_to_
 
     success, config := platform.read_file(config_path,, temp);
     if success {
-        success = parse_and_apply_config(editor, cast(string, config));
+        success = parse_and_apply_config(editor, platform, cast(string, config));
         if success {
             editor_log(editor, "Applied config");
         } else if fall_back_to_emergency_config {
@@ -5704,7 +5721,7 @@ recenter_panel :: (panel: *Panel, editor: Editor, input: Input, force_center := 
     target: DVector2;
     target.x = panel.scroll.target.x;
 
-    epsilon := editor.font.line_height_in_pixels;
+    epsilon := 0.1 * editor.font.line_height_in_pixels;
 
     if force_center {
         target.y = center;
@@ -5816,6 +5833,34 @@ get_line_length_for_line_index :: (document: Document, font: Font, line_index: s
     line_length := font_compute_line_length(font, line_view, binary = document.buffer.binary_mode);
 
     return line_length;
+}
+
+push_cursor_location :: (view: *Document_View) {
+    push_cursor_location(view, view.cursors.c0);
+}
+
+push_cursor_location :: (view: *Document_View, loc: Text_Location) {
+    document := view.document;
+
+    #assert is_nonzero_power_of_two(document.CURSOR_RING_COUNT);
+    document.cursor_ring[document.cursor_ring_index] = loc;
+    document.cursor_ring_index += 1;
+    document.cursor_ring_index &= document.CURSOR_RING_COUNT - 1;
+}
+
+pop_cursor_location :: (view: *Document_View) {
+    document := view.document;
+
+    #assert is_nonzero_power_of_two(document.CURSOR_RING_COUNT);
+    document.cursor_ring_index -= 1;
+    document.cursor_ring_index &= document.CURSOR_RING_COUNT - 1;
+    c := document.cursor_ring[document.cursor_ring_index];
+
+    view.cursors.c0 = c;
+    view.cursors.c1 = c;
+
+    text_buffer_clamp_cursors(view.document.buffer, *view.cursors);
+    text_cursors_horizontal_move_was_explicit(*view.cursors);
 }
 
 canonicalize_path :: (path: *string) {
@@ -6029,7 +6074,7 @@ run_debug_benchmark :: (editor: *Editor, platform: Platform, bench_iteration: Co
     bench_runs  := 0;
     while 1 {
         auto_release_temp();
-        
+
         start := platform.get_current_time_monotonic();
         #insert bench_iteration;
         end   := platform.get_current_time_monotonic();
@@ -6069,14 +6114,17 @@ operator== :: (a: Bucket_Locator, b: Bucket_Locator) -> bool {
 
 WELCOME :: #run -> string {
     #if OS == .WINDOWS {
-        CONFIG_TEMPLATE_LOCATION :: "next to the executable";
+        LOG_LOCATION    :: "next to the executable";
+        CONFIG_LOCATION :: "next to the executable";
     } else #if OS == .MACOS {
-        CONFIG_TEMPLATE_LOCATION :: "in ~/Library/Application Support/Editor";
+        LOG_LOCATION    :: "in ~/Library/Logs/Editor";
+        CONFIG_LOCATION :: "in ~/Library/Application Support/Editor";
     } else {
-        CONFIG_TEMPLATE_LOCATION :: "";
+        LOG_LOCATION    :: "in <unknown>";
+        CONFIG_LOCATION :: "in <unknown>";
     }
 
-    return sprint(WELCOME_TEMPLATE, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP, CONFIG_TEMPLATE_LOCATION);
+    return sprint(WELCOME_TEMPLATE, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP, LOG_LOCATION, CONFIG_LOCATION);
 }
 
 WELCOME_TEMPLATE :: #string DONE
@@ -6084,6 +6132,7 @@ WELCOME_TEMPLATE :: #string DONE
 Welcome to the untitled text editor! (Version %.%.%, built on %)
 
 This is an alpha release, so expect minor bugs. I apologize for the inconvenience.
+If you experience a crash, you can find logs %.
 
 If you are coming from Emacs, most of the keyboard shortcuts will be familiar to you.
 Otherwise, there are starter templates for the config files from other editors.

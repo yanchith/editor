@@ -3,22 +3,40 @@
 
 New features:
 
-- Add expand_selection and expand_selection_to_line commands. Double-click runs expand_selection,
-  triple-click expand_selection_to_line. Behavior of expand_selection still needs to be improved.
+- MacOS .app bundle is now distributed. You still need to dequarantine it manually.
+- Cursor undo: C-u C-<space>. Actions start_selecting and confirming search in minipanel
+  add previous cursor positions to the undo ring. You can then pop_cursor_location.
+- F11 fullscreen is now supported on Windows.
+
+Other:
+
+- expand_selection now has special treatment for underscores, making it easier to expand selection to identifiers.
+- Selecting by double/triple clicking now behaves better and always keeps to the same line.
+
+alpha 0.0.2
+-----------
+
+New features:
+
+- Add expand_selection and expand_selection_to_line commands. Double-click runs expand_selection, triple-click expand_selection_to_line.
 - Directory lister now selects on click, and opens on double-click.
+- search_and_replace still respects cursor position, but now allows to navigate above the original cursor afterwards.
 
 Speed improvements:
 
-- Scope parsing is now faster. kb_text_shape.h parses in 7 ms (previously 17 ms)
-- Lexing for syntax highlighting is now faster. kb_text_shape.h lexes in about 9 ms (previously 15 ms)
+- Scope parsing is now faster. kb_text_shape.h parses in 7 ms (previously 17 ms).
+- Lexing for syntax highlighting is now faster. kb_text_shape.h lexes in about 9 ms (previously 15 ms).
 
-Both of these changes are just the beginning. The end goal is to lex and parse files with 100000 lines of code
+Both of these changes are just the beginning. The end goal is to lex and parse files large source files
 without dropping a frame. We might need to switch to incremental strategies to get there.
 
 - Stop building binary releases with the -sanity flag, making anything text related much faster.
   This makes it possible to open and edit files up to a few gigabytes, although some operations will still be slow.
-  The hard limit is 8GB - the size of the per-file memory reservation, but you'll run into problems much sooner.
-  (Note that currently the editor crashes if the size limit is exceeded... this will improve)
+  The hard limit is 8GB - the size of the per-file memory reservation, but you'll run into problems sooner.
+  (Note that currently the editor crashes if the size limit is exceeded... this will improve.)
+
+- UTF-8 validation (triggered on insert) is now faster. It now takes about 200 milliseconds
+  on 50 megabytes (previously 280 milliseconds). This is nowhere near the theoretical limit and will improve again in the future.
 
 Fixes:
 
@@ -29,6 +47,16 @@ Fixes:
 - Clamp viewport to cursor when click into text buffer causes the cursor to go out of the viewport,
   e.g. because we are horizontally scrolled and the clicked-on line is short.
 - Properly account for path parts when detecting project directories.
+- search_and_replace can now replace something with an empty string.
+- move_forward_word/move_backward_word now correctly mark the horizontal move explicit before calling text_buffer_move_y
+  to prevent occasional bugs where text_buffer_move_y incorrectly reported that the cursor moved, causing the cursor to cycle
+  on the last line of the document.
+- toggle_comment now detects its action and indentation better, and should mostly do what you mean.
+- Fix benevolent floating point epsilon in recenter, causing it to not recenter panels in some cases.
+- Remove overzelous assert in UTF-8 validation. This fixes occasional crashes when opening binary files,
+  where the validator that was supposed to tell us about the file being binary crashed.
+- UTF-8 validation (triggered on insert) is now correct according to table 3-7 of the Unicode specification
+  (https://www.unicode.org/versions/Unicode16.0.0/core-spec/chapter-3/#G27506).
 
 Other:
 

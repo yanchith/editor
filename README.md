@@ -73,8 +73,7 @@ LSPs and MCPs are out of scope. Vim mode too.
 - Jonathan Blow, for making the Jai programming language.
 - [Emacs](https://www.gnu.org/software/emacs/), for teaching me that I can live without IDEs.
 - [Emacs](https://www.gnu.org/software/emacs/), for getting slower and buggier over time, making me do this.
-- [Focus Editor](https://focus-editor.dev/), with which this editor shares the simplicity philosophy.
-  If I had tried it sooner, I might have just used that.
+- [Focus Editor](https://focus-editor.dev/), with which this editor shares the simplicity and DIY philosophy.
 - My amazing partner, who tolerated me going off on this tangent instead of doing more important stuff.
 
 ## License

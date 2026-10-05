@@ -1,6 +1,3 @@
-// TODO(jt): @Bug @Incomplete respect READONLY.
-// TODO(jt): @Bug In the X/Y text Y counts every match, even ones above the cursor when we started the search.
-
 // TODO(jt): Preserve capitalization when replacing - our match text can be all lowercase, which
 // will match all sorts of text, but we want to preserve at least CamelCase, UPPER_CASE, etc.
 
@@ -26,7 +23,6 @@ Search_And_Replace_Userdata :: struct {
 
     found_count:     s64;
     replaced_count:  s64;
-    processed_count: s64;
 
     State :: enum {
         INPUT_TO_SEARCH   :: 0;
@@ -37,56 +33,77 @@ Search_And_Replace_Userdata :: struct {
     Action :: enum {
         NONE;
 
-        YES;
-        NO;
+        REPLACE;
+        PREVIOUS;
+        NEXT;
         CANCEL;
     }
 }
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage or Static */ string {
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
         return "";
     }
 
-    userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
+    userdata: *Search_And_Replace_Userdata = mi.userdata;
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH;   return "Text to replace: ";
-        case .INPUT_TO_REPLACE;  return tprint("Replace % with: ", userdata.input_to_search);
-        case .REPLACING;         return tprint("Replacing % with % (%/%): (y to confirm, n to reject, q to stop)",
+        case .INPUT_TO_REPLACE;  return tprint("Replace '%' with: ", userdata.input_to_search);
+        case .REPLACING;         return tprint("Replacing '%' with '%': (y: replace and next, p: previous, n: next, q: quit)",
                                                userdata.input_to_search,
-                                               userdata.input_to_replace,
-                                               userdata.processed_count + 1,
-                                               userdata.found_count);
+                                               userdata.input_to_replace);
     }
 }
 
 init :: (editor: *Editor, platform: Platform, input: Input, params: *void) {
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
+        return;
+    }
+    
+    panel := get_panel_for_active_view(editor);
+    sanity_assert(panel != null);
+    if !panel {
+        return;
+    }
+    
+    if panel.view.kind != .DOCUMENT {
+        return;
+    }
+    
+    view := *panel.view._document;
+    if view.document.flags & .READONLY {
+        editor_log(editor, "Document is read-only");
+        close_modal_interaction(editor, platform, input);
         return;
     }
 
-    arena := modal_interaction.userdata_arena;
-
-    userdata := arena_push(arena, Search_And_Replace_Userdata);
-    userdata.replacing_key_map.allocator = arena_allocator(arena);
+    userdata := arena_push(mi.userdata_arena, Search_And_Replace_Userdata);
+    userdata.replacing_key_map.allocator = arena_allocator(mi.userdata_arena);
     key_map_reserve(*userdata.replacing_key_map, 8);
 
-    key_map_add(*userdata.replacing_key_map, "y",   .YES);
-    key_map_add(*userdata.replacing_key_map, "n",   .NO);
+    key_map_add(*userdata.replacing_key_map, "y",   .REPLACE);
+    key_map_add(*userdata.replacing_key_map, "p",   .PREVIOUS);
+    key_map_add(*userdata.replacing_key_map, "n",   .NEXT);
     key_map_add(*userdata.replacing_key_map, "q",   .CANCEL);
-    key_map_add(*userdata.replacing_key_map, "C-g", .CANCEL);
+    
+    // Inherit cancel from modal interaction keymap
+    for mi.key_map.registered {
+        if it.action == .CANCEL_OR_STOP_SELECTING {
+            key_map_add(*userdata.replacing_key_map, it.shortcut, .CANCEL);
+        }
+    }
 
-    modal_interaction.userdata = userdata;
+    mi.userdata = userdata;
 }
 
 handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) -> handled: bool {
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
         return false;
     }
 
@@ -96,14 +113,14 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
         return false;
     }
 
-    // Search and replace only works for DOCUMENT views.
     if panel.view.kind != .DOCUMENT {
         return false;
     }
 
     view := *panel.view._document;
+    document := view.document;
 
-    userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
+    userdata: *Search_And_Replace_Userdata = mi.userdata;
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH;   return false;
         case .INPUT_TO_REPLACE;  return false;
@@ -112,65 +129,65 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
 
             buffered, action := key_map_input(*userdata.replacing_key_map, event);
             if action == {
-                case .YES; #through;
-                case .NO; {
-                    if action == .YES {
-                        highlight := panel.highlights[panel.highlight_index];
-                        x0 := highlight.x0;
-                        x1 := highlight.x1;
-                        y  := highlight.y;
-
-                        document := view.document;
-
-                        // If we ever do anything that changes the buffer while the
-                        // search&replace is open, these cursors will not be valid anymore
-                        // and we need to somehow handle that. At the moment I am writing
-                        // this, nothing like that exists in the editor.
-                        view.cursors.c0 = { x0, y };
-                        view.cursors.c1 = { x1, y };
-                        text_buffer_insert(*document.buffer, *view.cursors, userdata.input_to_replace, .NONE);
-
-                        document.flags |= .MODIFIED_THIS_FRAME;
-                        document.flags |= .MODIFIED;
-
-                        // Instead of advancing the index we contract the array.
-                        array_ordered_remove_by_index(*panel.highlights, panel.highlight_index);
-
-                        //
-                        // If there are additional highlights on the same line, we need to
-                        // adjust them based on the lengths of the text we removed and added:
-                        //
-                        remove_count := count_utf8_chars(userdata.input_to_search);
-                        insert_count := count_utf8_chars(userdata.input_to_replace);
-                        if remove_count != insert_count {
-                            delta := insert_count - remove_count;
-
-                            index := panel.highlight_index;
-                            while index < panel.highlights.count {
-                                highlight := *panel.highlights[index];
-                                if highlight.y > y {
-                                    break;
+                case .REPLACE; #through;
+                case .NEXT; {
+                    if action == .REPLACE {
+                        // The document can become readonly any frame, even if we already entered the modal interaction.
+                        document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
+                        if !(document.flags & .READONLY) {
+                            document.flags |= .MODIFIED_THIS_FRAME;
+                            document.flags |= .MODIFIED;
+                            
+                            highlight := panel.highlights[panel.highlight_index];
+                            x0 := highlight.x0;
+                            x1 := highlight.x1;
+                            y  := highlight.y;
+                            
+                            // If we ever do anything that changes the buffer while the
+                            // search&replace is open, these cursors will not be valid anymore
+                            // and we need to somehow handle that. At the moment I am writing
+                            // this, nothing like that exists in the editor.
+                            view.cursors.c0 = { x0, y };
+                            view.cursors.c1 = { x1, y };
+                            text_buffer_insert(*document.buffer, *view.cursors, userdata.input_to_replace, .NONE);
+                            
+                            // Instead of advancing the index we contract the array.
+                            array_ordered_remove_by_index(*panel.highlights, panel.highlight_index);
+                            
+                            //
+                            // If there are additional highlights on the same line, we need to
+                            // adjust them based on the lengths of the text we removed and added:
+                            //
+                            remove_count := count_utf8_chars(userdata.input_to_search);
+                            insert_count := count_utf8_chars(userdata.input_to_replace);
+                            if remove_count != insert_count {
+                                delta := insert_count - remove_count;
+                                
+                                index := panel.highlight_index;
+                                while index < panel.highlights.count {
+                                    highlight := *panel.highlights[index];
+                                    if highlight.y > y {
+                                        break;
+                                    }
+                                    
+                                    highlight.x0 += delta;
+                                    highlight.x1 += delta;
+                                    
+                                    index += 1;
                                 }
-
-                                highlight.x0 += delta;
-                                highlight.x1 += delta;
-
-                                index += 1;
                             }
+                            
+                            userdata.replaced_count += 1;
                         }
-
-                        userdata.replaced_count += 1;
-                        userdata.processed_count += 1;
-                    } else if action == .NO {
+                    } else if action == .NEXT {
                         panel.highlight_index += 1;
-                        userdata.processed_count += 1;
                     }
 
                     if panel.highlight_index >= panel.highlights.count {
                         array_reset_keeping_memory(*panel.highlights);
                         panel.highlight_index = -1;
 
-                        editor_log(editor, "Done! Replaced % matches", userdata.replaced_count);
+                        editor_log(editor, "Done! Replaced %/% matches", userdata.replaced_count, userdata.found_count);
                         close_modal_interaction(editor, platform, input);
                     } else {
                         highlight := panel.highlights[panel.highlight_index];
@@ -182,11 +199,26 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
                         view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
                     }
                 }
+
+                case .PREVIOUS; {
+                    if panel.highlight_index > 0 {
+                        panel.highlight_index -= 1;
+
+                        highlight := panel.highlights[panel.highlight_index];
+                        x := highlight.x0;
+                        y := highlight.y;
+
+                        text_buffer_move_to(view.document.buffer, *view.cursors, x, y, false);
+                        view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+                        view.flags |= .RECEIVED_INDIRECT_KEYBOARD_INTERACTION;
+                    }
+                }
+
                 case .CANCEL; {
                     array_reset_keeping_memory(*panel.highlights);
                     panel.highlight_index = -1;
 
-                    editor_log(editor, "Cancel! Replaced % matches", userdata.replaced_count);
+                    editor_log(editor, "Cancel! Replaced %/% matches", userdata.replaced_count, userdata.found_count);
                     close_modal_interaction(editor, platform, input);
                 }
             }
@@ -199,9 +231,9 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
 advance :: (editor: *Editor, platform: Platform, input: Input) {
     ProfileZone("modal_interaction_search_and_replace_advance_proc");
 
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
         return;
     }
 
@@ -218,19 +250,17 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
 
     view := *panel.view._document;
 
-    arena := modal_interaction.userdata_arena;
-
-    userdata: *Search_And_Replace_Userdata = modal_interaction.userdata;
+    userdata: *Search_And_Replace_Userdata = mi.userdata;
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH; {
-            userdata.input_to_search = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
-            text_buffer_delete_all(*modal_interaction.buffer, *modal_interaction.cursors);
+            userdata.input_to_search = text_buffer_make_view_for_line(mi.buffer, 0, force_allocate = true,, arena_allocator(mi.userdata_arena));
+            text_buffer_delete_all(*mi.buffer, *mi.cursors);
 
             userdata.state = .INPUT_TO_REPLACE;
         }
         case .INPUT_TO_REPLACE; {
-            userdata.input_to_replace = text_buffer_make_view_for_line(modal_interaction.buffer, 0, force_allocate = true,, arena_allocator(arena));
-            text_buffer_delete_all(*modal_interaction.buffer, *modal_interaction.cursors);
+            userdata.input_to_replace = text_buffer_make_view_for_line(mi.buffer, 0, force_allocate = true,, arena_allocator(mi.userdata_arena));
+            text_buffer_delete_all(*mi.buffer, *mi.cursors);
 
             document := view.document;
 
@@ -243,9 +273,9 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
             search_text := userdata.input_to_search;
             search_text_char_count := ifx document.buffer.binary_mode then search_text.count else count_utf8_chars(search_text);
 
-            // TODO(jt): @Speed This causes us to miss frames above 4MB buffers. It is serviceable
-            // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
-            // fan-out & collect threading, but we should also do SIMD.
+            // TODO(jt): @Speed This loop causes us to miss frames above 4MB buffers. It is serviceable
+            // up to about 64MB, but this definitely needs to be faster. An easy win would be
+            // fan-out & collect threading, but we should also SIMD find_index_from_left_nocase.
             for :text_buffer_lines line_text, line_index: document.buffer {
                 // This is number of bytes if we are in binary mode, otherwise number of characters.
                 processed_chars: s64 = 0;
@@ -299,12 +329,12 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
 
                 userdata.found_count = panel.highlights.count;
                 userdata.replaced_count = 0;
-                userdata.processed_count = 0;
             } else {
                 array_reset_keeping_memory(*panel.highlights);
                 panel.highlight_index = -1;
 
-                editor_log(editor, "No matches found");
+                // We don't trigger if we have matches prior to the cursor. This can be revisited.
+                editor_log(editor, "No matches found below cursor");
                 close_modal_interaction(editor, platform, input);
             }
         }

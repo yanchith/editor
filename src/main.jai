@@ -157,7 +157,6 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
 #import "Basic"()(MEMORY_DEBUGGER = DEBUG_MEMORY);
 #import "Sort";
 #import "Hash_Table";
-#import "Thread";
 #import "GL";
 #import "Profiler"()(IMPORT_MODE = .RUNTIME);
 
@@ -178,7 +177,7 @@ IRect   :: Editor.IRect;
 
 // TODO(jt): Simp/OpenGL works everywhere, but Simp is a little too big and OpenGL drivers a little too buggy.
 // Also it would be good if we could control the latency a little. Do our own backends?
-// Vulkan on Windows and Linue, and Metal on macOS? We could even try Aaltonen's NoGraphicsAPI.
+// Vulkan on Windows and Linux, and Metal on macOS? We could even try Aaltonen's NoGraphicsAPI.
 #load "renderer_simp.jai";
 #load "logger.jai";
 
@@ -257,10 +256,17 @@ main :: () {
             resources_dir := String.path_join(app_dir, "Resources"); // :Malloc
 
             if File_Utilities.is_directory(resources_dir) {
-                // Running from an app bundle. Adjust data path.
+                // Running from an app bundle. Adjust paths.
+                HOME :: "HOME";
+                home_dir := to_string(getenv(HOME),, temp);
+
                 data_path   = resources_dir;
-                log_path    = "~/Library/Logs/Editor";
-                config_path = "~/Library/Application Support/Editor";
+                log_path    = sprint("%/Library/Logs/Editor", home_dir);                // :Malloc
+                config_path = sprint("%/Library/Application Support/Editor", home_dir); // :Malloc
+
+                // Since we just set all paths to something absolute, we might as well set our working directory
+                // to home, so file search starts on a friendlier path.
+                set_working_directory(home_dir);
             } else {
                 // Running from a raw executable.
                 // Hopefully we will find our resources in our new working directory.
@@ -291,7 +297,9 @@ main :: () {
 
     log("Editor version %.%.%, built on %.", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP);
 
-    // Seed config files from data path.
+    //
+    // Seed config files
+    //
     {
         File.make_directory_if_it_does_not_exist(config_path);
 
@@ -308,49 +316,42 @@ main :: () {
         }
     }
 
-    // Clean up old log files. Keep MAX_LOGFILES recent files.
-    {
-        // TODO(jt): @Incomplete We can't do this for macOS .app, where the logs will not be stored next to the executable.
-        thread_proc :: (thread: *Thread) -> s64 {
-            if File_Utilities.is_directory("./logs") {
-                files: [..] string;
-                files.allocator = temp;
+    //
+    // Clean up old logs
+    //
+    // (This costs a little bit of startup time. If we have more cleanup tasks in the future, we could put them on a thread)
+    //
+    if File_Utilities.is_directory(log_path) {
+        files: [..] string;
+        files.allocator = temp;
 
-                visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] string) {
-                    if String.begins_with(visit_info.short_name, "editor_") && String.ends_with(visit_info.short_name, ".log") {
-                        array_add(userdata, visit_info.full_name);
-                    }
-                }
+        visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] string) {
+            if String.begins_with(visit_info.short_name, "editor_") && String.ends_with(visit_info.short_name, ".log") {
+                array_add(userdata, visit_info.full_name);
+            }
+        }
 
-                File_Utilities.visit_files("./logs", false, *files, visitor,
-                                           visit_files = true,
-                                           visit_directories = false,
-                                           visit_symlinks = false,
-                                           follow_directory_symlinks = false);
+        File_Utilities.visit_files(log_path, false, *files, visitor,
+                                   visit_files = true,
+                                   visit_directories = false,
+                                   visit_symlinks = false,
+                                   follow_directory_symlinks = false);
 
 
-                if files.count > MAX_LOGFILES {
-                    files_to_delete_count := files.count - MAX_LOGFILES;
-                    quick_sort(files, compare_strings);
+        if files.count > MAX_LOGFILES {
+            files_to_delete_count := files.count - MAX_LOGFILES;
+            quick_sort(files, compare_strings);
 
-                    files_to_delete := array_view(files, 0, files_to_delete_count);
+            files_to_delete := array_view(files, 0, files_to_delete_count);
 
-                    log("Cleaning % old log(s)", files_to_delete_count);
-                    for files_to_delete {
-                        log("Deleting log: %", it);
-                        File.file_delete(it);
-                    }
-
-                    log("Done deleting % old log(s)", files_to_delete_count);
-                }
+            log("Cleaning % old log(s)", files_to_delete_count);
+            for files_to_delete {
+                log("Deleting log: %", it);
+                File.file_delete(it);
             }
 
-            return 0;
-        };
-
-        thread: Thread;
-        thread_init(*thread, thread_proc, name = "Log Cleanup");
-        thread_start(*thread);
+            log("Deleted % old log(s)", files_to_delete_count);
+        }
     }
 
     window := Window.create_window(1920, 1200, "editor");
@@ -402,6 +403,22 @@ main :: () {
 
     platform.get_current_time_monotonic = () -> Apollo_Time {
         return current_time_monotonic();
+    }
+
+    platform.add_search_path = (path_to_add: string) {
+        // TODO(jt): @Incomplete We should probably also do this for windows, but we don't need this on Windows yet.
+        #if OS == .MACOS {
+            search_path := to_string(getenv("PATH"),, temp);
+            new_search_path := tprint("%:%", search_path, path_to_add);
+
+            setenv("PATH", to_c_string(new_search_path,, temp), 1);
+        }
+    }
+    platform.clear_search_path = () {
+        // TODO(jt): @Incomplete We should probably also do this for windows, but we don't need this on Windows yet.
+        #if OS == .MACOS {
+            unsetenv("PATH");
+        }
     }
 
     platform.run_in_process = (_args: string, working_directory: string) -> exit_code: s32, exit_type: Editor.Exit_Type, output: string, error: string {
@@ -813,7 +830,15 @@ main :: () {
                         case .F8;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F8) });
                         case .F9;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F9) });
                         case .F10;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F10) });
-                        case .F11;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F11) });
+                        case .F11; {
+                            #if OS == .WINDOWS {
+                                if it.key_pressed {
+                                    platform_state.fullscreen = !platform_state.fullscreen;
+                                    Window.toggle_fullscreen(window, platform_state.fullscreen, *platform_state.saved_window_info);
+                                }
+                            }
+                            array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F11) });
+                        }
                         case .F12;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F12) });
 
                         case .PRINT_SCREEN;         array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.PRINT_SCREEN) });
@@ -823,12 +848,13 @@ main :: () {
                         case .MOUSE_BUTTON_MIDDLE;  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.MB_MIDDLE) });
 
                         case; {
-                            // TODO(jt): @Cleanup @Hack On Windows, holding down control suppresses the text event,
-                            // so we emit it here. This is a temporary hack. We should eventually rewrite the
-                            // platform layers and do the minimal necessary hacks there.
-
-                            if it.ctrl_pressed && it.text_input_count == 0 {
-                                array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, it.key_code) });
+                            #if OS == .WINDOWS {
+                                // TODO(jt): @Cleanup @Hack On Windows, holding down control suppresses the text event
+                                // (unless it is SPACEBAR!), so we emit it here. This is a temporary hack.
+                                // We should eventually rewrite the platform layers and do the minimal necessary hacks there.
+                                if it.ctrl_pressed && it.text_input_count == 0 && it.key_code != .SPACEBAR {
+                                    array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, it.key_code) });
+                                }
                             }
                         }
                     }
@@ -907,11 +933,10 @@ main :: () {
             // :BatterySaver
             //
             // For various reasons we can't always count on V-sync and render queue depth to pace us.
-            //
             // (For one, we'd like to be low-latency, and will try to enable mailbox presentation, etc.)
+            //
             // However, this means that we could have gotten through the frame really fast, and would
-            // start the next one as soon as there are events in our message queue (which there are if the
-            // mouse is being moved, for instance).
+            // start the next one as soon as there are events in our message queue (like if the mouse is being moved).
             //
             // For this reason, we also manually sleep here, approximately until the next frame should start.
             //
@@ -953,6 +978,11 @@ main :: () {
 //
 
 Platform_State :: struct {
+    #if OS == .WINDOWS {
+        fullscreen: bool;
+        saved_window_info: Window.Saved_Window_Info; // Used to restore window to previous size after returning from fullscreen.
+    }
+    
     watched_directory_changes: [..] Editor.Watched_Directory_Change; // :Malloc
     watched_directories:       [..] Watched_Directory;               // :Malloc
 

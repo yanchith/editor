@@ -139,11 +139,11 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             item.highlight_x1 = SEARCH_LINE_NUMBER_PADDING + x1;
                             item.line_number = line_index + 1;
 
-                            userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
-                            userdata.x = x0;
-                            userdata.y = line_index;
+                            item_userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
+                            item_userdata.x = x0;
+                            item_userdata.y = line_index;
 
-                            item.userdata = userdata;
+                            item.userdata = item_userdata;
 
                             if new_item_index == -1 && line_index >= old_cursor_y {
                                 new_item_index = item_index;
@@ -196,11 +196,11 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             item.highlight_x0 = line_number_prefix.count + x0;
                             item.highlight_x1 = line_number_prefix.count + x1;
 
-                            userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
-                            userdata.x = 0;
-                            userdata.y = it_index;
+                            item_userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
+                            item_userdata.x = 0;
+                            item_userdata.y = it_index;
 
-                            item.userdata = userdata;
+                            item.userdata = item_userdata;
 
                             if new_item_index == -1 && it_index >= old_cursor_y {
                                 new_item_index = item_index;
@@ -233,9 +233,9 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         if mini_panel.item_index >= 0 {
             item := *mini_panel.items[mini_panel.item_index];
 
-            userdata: *Search_Item_Userdata = item.userdata;
-            x := userdata.x;
-            y := userdata.y;
+            item_userdata: *Search_Item_Userdata = item.userdata;
+            x := item_userdata.x;
+            y := item_userdata.y;
 
             if panel.view.kind == {
                 case .DOCUMENT; {
@@ -300,9 +300,9 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         assert(mini_panel.item_index >= 0);
         item := *mini_panel.items[mini_panel.item_index];
 
-        userdata := cast(*Search_Item_Userdata, item.userdata);
-        x := userdata.x;
-        y := userdata.y;
+        item_userdata: *Search_Item_Userdata = item.userdata;
+        x := item_userdata.x;
+        y := item_userdata.y;
 
         if panel.view.kind == {
             case .DOCUMENT; {
@@ -312,6 +312,10 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                 if document {
                     text_buffer_move_to(document.buffer, *view.cursors, x, y, false);
                     view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+
+                    userdata: *Search_Userdata = editor.mini_panel.userdata;
+                    push_cursor_location(view, { userdata.original_x, userdata.original_y });
+                    editor_log(editor, "Mark set where search started");
                 }
             }
 

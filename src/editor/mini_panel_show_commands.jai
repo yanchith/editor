@@ -323,12 +323,12 @@ build_action_text :: (action: s64, action_name: string, key_map: Key_Map) -> /* 
     append(*sb, action_padded);
 
     first := true;
-    for registered_action, registered_index: key_map.registered_actions {
-        if cast(s64, registered_action) == action {
+    for key_map.registered {
+        if cast(s64, it.action) == action {
             if !first {
                 append(*sb, ", ");
             }
-            shortcut_print_to_builder(key_map.registered_shortcuts[registered_index], *sb);
+            shortcut_print_to_builder(it.shortcut, *sb);
             first = false;
         }
     }

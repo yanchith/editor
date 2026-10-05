@@ -2,6 +2,14 @@
 
 # theme = abulafia   # abulafia, naysayer, handmade, stb, ...
 
+[macos]
+
+# To invoke compilers for *compilation* or rg for directory search, we use execvp() on macOS.
+# However, when launched as an .app, We don't inherit the shell's path, so we won't be able to
+# find the external tools you can access from the shell. Tell us the search path here:
+#
+# search_path                            = /bin:/usr/bin:/usr/local/bin
+
 [keybinds.panel]
 
 Ctrl-Shift-p                           = show_commands
