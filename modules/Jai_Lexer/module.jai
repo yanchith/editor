@@ -1598,7 +1598,9 @@ compose_new_token :: (lexer: *Lexer) -> *Token {
                 return token;
             }
 
-            if is_digit(cast(u8) c) {
+            // @LibraryBug If dot is at EOF, cast below is out of bounds and we crash!
+            // if is_digit(cast(u8) c) {
+            if c != -1 && starts_number(cast(u8) c) {
                 unwind_one_character(lexer);  // Get the '.' back.
                 return make_number(lexer);
             }
