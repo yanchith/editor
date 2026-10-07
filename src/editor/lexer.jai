@@ -84,28 +84,29 @@ Lexer :: struct {
     // having to provide us with data.
     //
     // Thank you for this storage idea, Jai_Lexer!
-    recent_tokens: [MAX_RECENT_TOKEN_COUNT] Token;
+    RECENT_TOKEN_COUNT :: 8; // Must be power of two for the bit-op modulo.
+    recent_tokens: [RECENT_TOKEN_COUNT] Token;
     recent_token_index_for_writes: s64;
 
-    MAX_RECENT_TOKEN_COUNT :: 8; // Must be power of two for the bit-op modulo.
+    userdata: *void;
 }
 
 lexer_write_recent_token :: (lexer: *Lexer, token: Token) {
-    #assert is_nonzero_power_of_two(lexer.MAX_RECENT_TOKEN_COUNT);
+    #assert is_nonzero_power_of_two(lexer.RECENT_TOKEN_COUNT);
 
     lexer.recent_tokens[lexer.recent_token_index_for_writes] = token;
 
     lexer.recent_token_index_for_writes += 1;
-    lexer.recent_token_index_for_writes &= lexer.MAX_RECENT_TOKEN_COUNT - 1;
+    lexer.recent_token_index_for_writes &= lexer.RECENT_TOKEN_COUNT - 1;
 }
 
 // Pass -1 for previous token, -2 for the one before that, etc.
 // 0th index is the current (yet unwritten!) token.
 lexer_read_recent_token :: (lexer: Lexer, index: s64 = -1) -> *Token {
-    #assert is_nonzero_power_of_two(lexer.MAX_RECENT_TOKEN_COUNT);
+    #assert is_nonzero_power_of_two(lexer.RECENT_TOKEN_COUNT);
 
     i := lexer.recent_token_index_for_writes + index;
-    i &= lexer.MAX_RECENT_TOKEN_COUNT - 1;
+    i &= lexer.RECENT_TOKEN_COUNT - 1;
 
     token := *lexer.recent_tokens[i];
 

@@ -6,6 +6,7 @@ TODO(jt): Known critical bugs:
 
 TODO(jt): Known serious bugs:
 
+- Bare ^M is not rendered, but we maybe should render it so that poeple know it is there?
 - Refreshing large files (such as the output of objdump) from disk takes too long. The delete needs to be optimized.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 
@@ -96,7 +97,7 @@ TODO(jt): Roadmap:
 - [ ] Language: HLSL
 - [ ] Language: Slang
 - [ ] Language: WGSL
-- [ ] Language: Rust
+- [X] Language: Rust
 - [ ] Language: Javascript
 - [ ] Language: Typescript
 - [ ] Language: C#
@@ -189,6 +190,7 @@ operator==     :: Math.operator==;
 #load "lang_c.jai";
 #load "lang_jai.jai";
 #load "lang_glsl.jai";
+#load "lang_rust.jai";
 #load "mini_panel_search.jai";
 #load "mini_panel_search_in_project.jai";
 #load "mini_panel_open_file.jai";
@@ -504,6 +506,7 @@ Document :: struct {
         C;
         JAI;
         GLSL;
+        RUST;
     }
 
     Flags :: enum_flags u32 {
@@ -1897,6 +1900,7 @@ get_document_lang :: (document: Document) -> string {
         case .C;     return "C";
         case .JAI;   return "Jai";
         case .GLSL;  return "GLSL";
+        case .RUST;  return "Rust";
     }
 }
 
@@ -4971,6 +4975,7 @@ get_surround_pairs :: (document: Document) -> /* Static */ [] Paren_Pair {
         case .C;     return LANG_C_SURROUND_PAREN_PAIRS;
         case .JAI;   return LANG_JAI_SURROUND_PAREN_PAIRS;
         case .GLSL;  return LANG_GLSL_SURROUND_PAREN_PAIRS;
+        case .RUST;  return LANG_RUST_SURROUND_PAREN_PAIRS;
     }
 }
 
@@ -5267,6 +5272,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
                 case "vert";  #through;
                 case "frag";  #through;
                 case "glsl";  document.lang = .GLSL;
+                case "rs";    document.lang = .RUST;
             }
         }
     }
@@ -5461,6 +5467,7 @@ document_get_comment_style :: (document: Document) -> /* Static */ line: string,
         case .C;     return LANG_C_LINE_COMMENT, LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END;
         case .JAI;   return LANG_JAI_LINE_COMMENT, LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END;
         case .GLSL;  return LANG_GLSL_LINE_COMMENT, LANG_GLSL_BLOCK_COMMENT_START, LANG_GLSL_BLOCK_COMMENT_END;
+        case .RUST;  return LANG_RUST_LINE_COMMENT, LANG_RUST_BLOCK_COMMENT_START, LANG_RUST_BLOCK_COMMENT_END;
     }
 }
 
@@ -5475,6 +5482,7 @@ document_update_tokens :: (document: *Document) {
         case .C;     lang_c_update_tokens(document);
         case .JAI;   lang_jai_update_tokens(document);
         case .GLSL;  lang_glsl_update_tokens(document);
+        case .RUST;  lang_rust_update_tokens(document);
     }
 }
 

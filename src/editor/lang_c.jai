@@ -469,7 +469,7 @@ parse_char_literal :: (lexer: *Lexer, token: *Token) {
     }
 
     if c == "'" && !escape {
-        token.type == .INVALID;
+        token.type = .INVALID;
         AdvanceHorizontally(); // Consume invalid ending '
         lexer_set_token_end(lexer, token);
 
@@ -481,7 +481,7 @@ parse_char_literal :: (lexer: *Lexer, token: *Token) {
     if c == "'" {
         AdvanceHorizontally(); // The ending '
     } else {
-        token.type == .INVALID;
+        token.type = .INVALID;
     }
     lexer_set_token_end(lexer, token);
 }
