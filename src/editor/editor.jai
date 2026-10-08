@@ -375,7 +375,7 @@ Panel :: struct {
     // Scroll vectors are f64, because buffers can be large and we actually ran into precision
     // issues with f32 vectors. Doubles suffice for now (verified up to 4GB of prose), but maybe we
     // should do our own numeric type eventually, like 58:6 fixed point?
-    scroll: Interpolation(DVector2, SNAPPY = true, ROUND = true);
+    scroll: Interpolation(DVector2, ROUND = true);
 
     Flags :: enum_flags {
         LAST_CLICK_WAS_INSIDE         :: 0x01;
@@ -416,8 +416,8 @@ Document_View :: struct {
     old_cursor: Text_Location;
     old_cursor_position: DVector2;
 
-    cursor_position: Interpolation(DVector2, SNAPPY = true, ROUND = false);
-    cursor_color:    Interpolation(Vector4, SNAPPY = false, ROUND = false);
+    cursor_position: Interpolation(DVector2, ROUND = false);
+    cursor_color:    Interpolation(Vector4, ROUND = false);
 
     // TODO(jt): @Cleanup Maybe some of these flags are useful to Listing_View as well, we could unify.
     Flags :: enum_flags u32 {
@@ -581,6 +581,7 @@ Listing :: struct {
 
 Mini_Panel :: struct {
     open: bool;
+    open_t: Interpolation(f32, ROUND = false);
     procs: Mini_Panel_Procs;
 
     cursors: Text_Cursors;
@@ -1077,6 +1078,16 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     for * document: editor.documents {
         document.flags &= ~.TRANSIENT;
     }
+    
+    //
+    // Update Mini_Panel
+    //
+    {
+        interpolation_running := interpolation_update(*editor.mini_panel.open_t, input.time, dt);
+        log("nocheckin open_t: %", editor.mini_panel.open_t.value);
+        wants_this_frame |= interpolation_running;
+        wants_next_frame |= interpolation_running;
+    }
 
     // Only draw, if we have to output this frame. According to the Windows (TM) Task Manager, this
     // reduces our power usage from Very High to Moderate. CPU fans seem to agree.
@@ -1099,7 +1110,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if editor.mini_panel.open {
             mini_panel := *editor.mini_panel;
 
-            mini_panel_h := (MINI_PANEL_LINES + 1) * cell_h;
+            mini_panel_h := mini_panel.open_t.value * (MINI_PANEL_LINES + 1) * cell_h;
             mini_panel_x0 := GUTTER_PIXELS;
             mini_panel_x1 := window_w - GUTTER_PIXELS;
             mini_panel_y := max(window_h - mini_panel_h, 0);
@@ -4883,8 +4894,10 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
 
     assert(!mini_panel.open);
 
-    mini_panel.procs = procs;
     mini_panel.open = true;
+    interpolation_start(*mini_panel.open_t, 0.0, 1.0, input.time, 0.5);
+    
+    mini_panel.procs = procs;
 
     procs.init(editor, platform, input);
 
@@ -4892,6 +4905,11 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
     if mini_panel.open {
         procs.update(editor, platform, input, true, true);
     }
+}
+
+// nocheckin We'll have to delay resetting the datastructures until the closing animation finishes...
+reset_mini_panel :: (editor: *Editor) {
+    
 }
 
 #scope_module
@@ -4916,6 +4934,7 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     mini_panel.userdata = null;
 
     mini_panel.open = false;
+    interpolation_start(*mini_panel.open_t, 1.0, 0.0, input.time, 0.5);
 }
 
 #scope_file
