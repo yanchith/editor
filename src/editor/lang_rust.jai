@@ -66,7 +66,8 @@ lang_rust_update_tokens :: (document: *Document) {
 //
 // The lexer in this file is a modified version of the C lexer from lang_c.jai.
 //
-// TODO(jt): @Audit I didn't properly clean this up, there might be some C remnants in here...
+// TODO(jt): @Audit I didn't properly clean this up, there might be some C remnants in here, like ++, --, ~.
+// TODO(jt): Missing features: attribute highlighting, multiline strings.
 
 get_next_token :: (lexer: *Lexer) -> Token {
     lexer_eat_whitespace(lexer);
@@ -133,14 +134,12 @@ get_next_token :: (lexer: *Lexer) -> Token {
 }
 
 parse_simple :: (lexer: *Lexer, token: *Token) {
-    if has_userdata_flag(lexer, .INSIDE_AN_ATTRIBUTE) {
-        // TODO(jt): Not all simple punctuation tokens should be highlighted as part of the attribute,
-        // for instance: #[derive(library::Thingy)] should not highlight the "::";
+    if has_userdata_flag(lexer, .INSIDE_ATTRIBUTE) {
         token.type = .DIRECTIVE;
     } else {
         token.type = .PUNCTUATION;
     }
-    
+
     lexer_advance_horizontally(lexer);
     lexer_set_token_end(lexer, token);
 }
@@ -148,27 +147,27 @@ parse_simple :: (lexer: *Lexer, token: *Token) {
 parse_number :: (lexer: *Lexer, token: *Token) {
     /*
     Integers:
-    
+
     <numbers>(<int_suffix>)
     0x<hex_numbers>(<int_suffix>)
     0b<binary_numbers>(<int_suffix>)
-    
+
     Floats:
-    
+
     <numbers>.<numbers><float_suffix>
     <numbers>e<numbers><float_suffix>
     <numbers><float_suffix>
-    
+
     <numbers>: 0-9 + _
     <binary_numbers>: 0-1 + _
     <hex_numbers>: 0-f + _
     */
     start_c := lexer.input[0];
-    
+
     token.type = .NUMBER_LITERAL;
     lexer_advance_horizontally(lexer);
     lexer_set_token_end(lexer, token);
-    
+
     if lexer.input.count {
         if start_c == "0" && lexer_byte_is_any(lexer, "bB") {
             // Binary integer literal
@@ -176,7 +175,7 @@ parse_number :: (lexer: *Lexer, token: *Token) {
             while lexer.input.count && lexer_byte_is_any(lexer, "01_") {
                 lexer_advance_horizontally(lexer);
             }
-            
+
             if String.begins_with(lexer.input, "u8") {
                 lexer_advance_horizontally(lexer);
                 lexer_advance_horizontally(lexer);
@@ -230,7 +229,7 @@ parse_number :: (lexer: *Lexer, token: *Token) {
                 lexer_advance_horizontally(lexer);
                 lexer_advance_horizontally(lexer);
             }
-            
+
             lexer_set_token_end(lexer, token);
         } else if start_c == "0" && lexer_byte_is_any(lexer, "xX") {
             // Hex integer literal
@@ -292,36 +291,36 @@ parse_number :: (lexer: *Lexer, token: *Token) {
                 lexer_advance_horizontally(lexer);
                 lexer_advance_horizontally(lexer);
             }
-            
+
             lexer_set_token_end(lexer, token);
         } else {
             // Any numeric literal
             while lexer.input.count && lexer_byte_is_any(lexer, "0123456789_") {
                 lexer_advance_horizontally(lexer);
             }
-            
+
             must_be_float := false;
-            
+
             if lexer_byte_equals(lexer, ".") {
                 must_be_float = true;
-                
+
                 lexer_advance_horizontally(lexer);
-                
+
                 while lexer.input.count && lexer_byte_is_any(lexer, "0123456789_") {
                     lexer_advance_horizontally(lexer);
                 }
             }
-            
+
             if lexer_byte_is_any(lexer, "eE") {
                 must_be_float = true;
-                
+
                 lexer_advance_horizontally(lexer);
-                
+
                 while lexer.input.count && lexer_byte_is_any(lexer, "0123456789_") {
                     lexer_advance_horizontally(lexer);
                 }
             }
-            
+
             if must_be_float {
                 if String.begins_with(lexer.input, "f32") {
                     lexer_advance_horizontally(lexer);
@@ -391,7 +390,7 @@ parse_number :: (lexer: *Lexer, token: *Token) {
                     lexer_advance_horizontally(lexer);
                 }
             }
-            
+
             lexer_set_token_end(lexer, token);
         }
     }
@@ -407,161 +406,152 @@ parse_identifier_keyword_or_macro_invocation :: (lexer: *Lexer, token: *Token) {
     } else if lexer.input.count && lexer.input[0] == "!" {
         lexer_advance_horizontally(lexer);
         token.type = .DIRECTIVE;
+    } else if has_userdata_flag(lexer, .INSIDE_ATTRIBUTE) {
+        token.type = .DIRECTIVE;
     }
-    
+
     lexer_set_token_end(lexer, token);
 }
 
 parse_equal :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  lexer_advance_horizontally(lexer);
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_minus :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case ">"; #through;
-            case "-"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case ">";  #through;
+            case "-";  lexer_advance_horizontally(lexer);
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_plus :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case "+"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case "+";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_asterisk :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_less_than :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
-    
+
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case "<"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case "<";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_greater_than :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "=";
-            case ">"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case ">";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_bang :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_attribute :: (lexer: *Lexer, token: *Token) {
     token.type = .INVALID;
     lexer_advance_horizontally(lexer);
+    lexer_set_token_end(lexer, token);
+
     lexer_eat_whitespace(lexer);
 
     if lexer.input.count && lexer.input[0] == "[" || lexer.input.count > 1 && lexer.input[0] == "!" && lexer.input[1] == "[" {
+        token.type = .DIRECTIVE;
+
         // Handle inner attributes
         if lexer.input[0] == "!" {
             lexer_advance_horizontally(lexer);
         }
-        
+
         lexer_advance_horizontally(lexer);
-        
+        lexer_set_token_end(lexer, token);
+
         if lexer.input.count {
             ident := lexer_eat_identifier(lexer);
             if ident.count  {
-                token.type = .DIRECTIVE;
                 lexer_set_token_end(lexer, token);
-                
-                add_userdata_flag(lexer, .INSIDE_AN_ATTRIBUTE);
-            }                    
+                add_userdata_flag(lexer, .INSIDE_ATTRIBUTE);
+            }
         }
     }
 }
 
 parse_closing_square_bracket_or_end_of_attribute :: (lexer: *Lexer, token: *Token) {
-    if has_userdata_flag(lexer, .INSIDE_AN_ATTRIBUTE) {
+    if has_userdata_flag(lexer, .INSIDE_ATTRIBUTE) {
         token.type = .DIRECTIVE;
-        remove_userdata_flag(lexer, .INSIDE_AN_ATTRIBUTE);
+        remove_userdata_flag(lexer, .INSIDE_ATTRIBUTE);
     } else {
         token.type = .PUNCTUATION;
     }
-    
+
     lexer_advance_horizontally(lexer);
     lexer_set_token_end(lexer, token);
 }
@@ -596,7 +586,7 @@ parse_char_literal_or_lifetime :: (lexer: *Lexer, token: *Token) {
     character: 'a'
     liftime:   'a
      */
-    
+
     Advance :: () #expand {
         lexer_advance(lexer);
         if lexer.input.count == 0 {
@@ -647,7 +637,6 @@ parse_char_literal_or_lifetime :: (lexer: *Lexer, token: *Token) {
 
 parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
-    lexer_set_token_end(lexer, token);
     lexer_advance_horizontally(lexer);
 
     if lexer.input.count {
@@ -655,12 +644,10 @@ parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
         if c == {
             case "="; {
                 lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
             }
             case "/"; {
                 token.type = .LINE_COMMENT;
                 lexer_eat_until_newline(lexer);
-                lexer_set_token_end(lexer, token);
             }
             case "*"; {
                 token.type = .BLOCK_COMMENT;
@@ -674,7 +661,6 @@ parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
                             if c1 == "/" {
                                 lexer_advance_horizontally(lexer);
                                 lexer_advance_horizontally(lexer);
-                                lexer_set_token_end(lexer, token);
                                 break;
                             }
                         }
@@ -685,92 +671,86 @@ parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
             }
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_ampersand :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case "&"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case "&";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_pipe :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case "|"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case "|";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_percent :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_caret :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
-        if c == {
-            case "="; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+        if lexer.input[0] == {
+            case "=";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 Userdata_Flags :: enum_flags u64 {
     NONE :: 0;
-    
-    INSIDE_AN_ATTRIBUTE :: 0x01;
+
+    INSIDE_ATTRIBUTE :: 0x01;
 }
 
-add_userdata_flag :: (lexer: *Lexer, flag: Userdata_Flags) {
+add_userdata_flag :: inline (lexer: *Lexer, flag: Userdata_Flags) {
     flags := cast(Userdata_Flags, lexer.userdata);
     flags |= flag;
     lexer.userdata = cast(*void, flags);
 }
 
-has_userdata_flag :: (lexer: *Lexer, flag: Userdata_Flags) -> bool {
+has_userdata_flag :: inline (lexer: *Lexer, flag: Userdata_Flags) -> bool {
     flags := cast(Userdata_Flags, lexer.userdata);
     return cast(bool, flags & flag);
 }
 
-remove_userdata_flag :: (lexer: *Lexer, flag: Userdata_Flags) {
+remove_userdata_flag :: inline (lexer: *Lexer, flag: Userdata_Flags) {
     flags := cast(Userdata_Flags, lexer.userdata);
     flags &= ~flag;
     lexer.userdata = cast(*void, flags);
@@ -780,22 +760,23 @@ RUST_KEYWORDS :: string.[
     //
     // Unconditional keywords
     //
-    "_", "as", "async", "await",
+    "_",
+    "as", "async", "await",
     "break",
     "const", "continue", "crate",
     "dyn",
     "else", "enum", "extern",
     "false", "fn", "for",
     "if", "impl", "in",
-    "let", "loop", "match",
-    "mod", "move", "mut",
+    "let", "loop",
+    "match", "mod", "move", "mut",
     "pub",
     "ref", "return",
     "self", "Self", "static", "struct", "super",
     "trait", "true", "type",
     "unsafe", "use",
     "where", "while",
-    
+
     //
     // Weak keywords
     //
