@@ -9,6 +9,7 @@ TODO(jt): Known serious bugs:
 - Bare ^M is not rendered, but we maybe should render it so that poeple know it is there?
 - Refreshing large files (such as the output of objdump) from disk takes too long. The delete needs to be optimized.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
+- VSync stutter on 100Hz monitor when we start animating after a period of inactivity. Good luck debugging this.
 
 TODO(jt): Roadmap:
 
