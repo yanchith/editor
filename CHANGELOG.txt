@@ -7,6 +7,7 @@ New features:
 - Cursor undo: C-u C-<space>. Actions start_selecting and confirming search in minipanel
   add previous cursor positions to the undo ring. You can then pop_cursor_location.
 - F11 fullscreen is now supported on Windows.
+- Support for the language that must not be named.
 
 Speed improvements:
 
