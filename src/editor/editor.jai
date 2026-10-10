@@ -237,6 +237,9 @@ MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 // strips modified lines or something like that. Until then this is turned off.
 STRIP_WHITESPACE_ON_SAVE :: false; // TODO(jt): Make this configurable. :Config
 
+MINI_PANEL_OPEN_DURATION:               f32 : 1.00; // TODO(jt): Make this configurable. :Config
+MINI_PANEL_CLOSE_DURATION:              f32 : 1.00; // TODO(jt): Make this configurable. :Config
+
 PANEL_SCROLL_DURATION:                  f32 : 0.15; // TODO(jt): Make this configurable. :Config
 CURSOR_FLASH_DURATION:                  f32 : 0.50; // TODO(jt): Make flash time configurable. :Config
 CURSOR_ANIM_DURATION_KEYBOARD_DIRECT:   f32 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
@@ -1084,7 +1087,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     //
     {
         interpolation_running := interpolation_update(*editor.mini_panel.open_t, input.time, dt);
-        log("nocheckin open_t: %", editor.mini_panel.open_t.value);
         wants_this_frame |= interpolation_running;
         wants_next_frame |= interpolation_running;
     }
@@ -1106,11 +1108,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             draw_rect(*render_commands, rect_from_point_and_size(window_w * 0.5 - 1.0, 0.0, 2.0, window_h), editor.theme.separator_color);
         }
 
-        // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
         if editor.mini_panel.open {
             mini_panel := *editor.mini_panel;
 
-            mini_panel_h := mini_panel.open_t.value * (MINI_PANEL_LINES + 1) * cell_h;
+            mini_panel_h := (mini_panel.open_t.value * MINI_PANEL_LINES + 1) * cell_h;
             mini_panel_x0 := GUTTER_PIXELS;
             mini_panel_x1 := window_w - GUTTER_PIXELS;
             mini_panel_y := max(window_h - mini_panel_h, 0);
@@ -4756,7 +4757,8 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             //
             {
                 // TODO(jt): @Cleanup Reformulate the modeline rect as cutting into the current panel instead of using absolute coordinates.
-                modeline_y      := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
+                modeline_y      := window_h - (editor.mini_panel.open_t.value * MINI_PANEL_LINES + 2) * cell_h;
+                // modeline_y      := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
                 modeline_rect   := rect_from_point_and_size(panel_x, modeline_y, panel_w, cell_h);
                 modeline_offset := DVector2.{ panel_x, modeline_y };
 
@@ -4856,7 +4858,8 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             //
             {
                 // TODO(jt): @Cleanup Reformulate the modeline rect as cutting into the current panel instead of using absolute coordinates.
-                modeline_y      := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
+                modeline_y      := window_h - (editor.mini_panel.open_t.value * MINI_PANEL_LINES + 2) * cell_h;
+                // modeline_y      := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
                 modeline_rect   := rect_from_point_and_size(panel_x, modeline_y, panel_w, cell_h);
                 modeline_offset := DVector2.{ panel_x, modeline_y };
 
@@ -4895,7 +4898,7 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
     assert(!mini_panel.open);
 
     mini_panel.open = true;
-    interpolation_start(*mini_panel.open_t, 0.0, 1.0, input.time, 0.5);
+    interpolation_start(*mini_panel.open_t, 0.0, 1.0, input.time, MINI_PANEL_OPEN_DURATION);
     
     mini_panel.procs = procs;
 
@@ -4934,7 +4937,7 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     mini_panel.userdata = null;
 
     mini_panel.open = false;
-    interpolation_start(*mini_panel.open_t, 1.0, 0.0, input.time, 0.5);
+    interpolation_start(*mini_panel.open_t, 1.0, 0.0, input.time, MINI_PANEL_CLOSE_DURATION);
 }
 
 #scope_file
