@@ -237,8 +237,8 @@ MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 // strips modified lines or something like that. Until then this is turned off.
 STRIP_WHITESPACE_ON_SAVE :: false; // TODO(jt): Make this configurable. :Config
 
-MINI_PANEL_OPEN_DURATION:               f32 : 1.00; // TODO(jt): Make this configurable. :Config
-MINI_PANEL_CLOSE_DURATION:              f32 : 1.00; // TODO(jt): Make this configurable. :Config
+MINI_PANEL_OPEN_DURATION:               f32 : 0.15; // TODO(jt): Make this configurable. :Config
+MINI_PANEL_CLOSE_DURATION:              f32 : 0.15; // TODO(jt): Make this configurable. :Config
 
 PANEL_SCROLL_DURATION:                  f32 : 0.15; // TODO(jt): Make this configurable. :Config
 CURSOR_FLASH_DURATION:                  f32 : 0.50; // TODO(jt): Make flash time configurable. :Config
@@ -4910,11 +4910,6 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
     }
 }
 
-// nocheckin We'll have to delay resetting the datastructures until the closing animation finishes...
-reset_mini_panel :: (editor: *Editor) {
-    
-}
-
 #scope_module
 
 close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
@@ -4936,6 +4931,9 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     arena_reset(mini_panel.userdata_arena);
     mini_panel.userdata = null;
 
+    // We reset all the datastructures immediately, but animate the closing. This is visible, but not too bad,
+    // if the closing animation is fast. We could do a deferred reset once the animation finishes, but for now
+    // I'd like to avoid that additional state.
     mini_panel.open = false;
     interpolation_start(*mini_panel.open_t, 1.0, 0.0, input.time, MINI_PANEL_CLOSE_DURATION);
 }
