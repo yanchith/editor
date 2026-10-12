@@ -7,6 +7,7 @@ TODO(jt): Known critical bugs:
 TODO(jt): Known serious bugs:
 
 - Bare ^M is not rendered, but we maybe should render it so that poeple know it is there?
+- *compilation* buffer's scroll is not clamped after compilation finishes.
 - Refreshing large files (such as the output of objdump) from disk takes too long. The delete needs to be optimized.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - VSync stutter on 100Hz monitor when we start animating after a period of inactivity. Good luck debugging this.
@@ -88,7 +89,7 @@ TODO(jt): Roadmap:
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
 - [ ] OPEN_FILE_IN_PROJECT and SEARCH_IN_PROJECT should be (globally) configurable to ignore paths (e.g. contents of .git)
 - [ ] Animate scrolling in mini panel.
-- [ ] Animate opening of the mini panel.
+- [X] Animate opening of the mini panel.
 - [ ] Cursor flash in mini panel and modal interaction.
 - [X] F11 fullscreen on Windows
 - [X] macOS .app
@@ -1888,16 +1889,8 @@ get_panel_rect :: (editor: Editor, panel_index: s64) -> Rect, content_rect: Rect
     panel_w         := ifx editor.active_view == .FULL then window_w else window_w * 0.5;
     panel_content_w := ifx editor.active_view == .FULL then window_w - 2 * GUTTER_PIXELS else window_w * 0.5 - 2 * GUTTER_PIXELS;
 
-    panel_h := window_h - cell_h; // cell_h is the message line
-    panel_content_h := window_h - 2 * cell_h; // 2*cell_h is the mode line and message line.
-    if editor.mini_panel.open {
-        // Currently, this only affects culling.
-        //
-        // TODO(jt): In Emacs, this would also modify the scroll offset, if the cursor would be
-        // occluded by the newly visible mini panel. Should we do that?
-        panel_h = window_h - (1 + MINI_PANEL_LINES) * cell_h;
-        panel_content_h = window_h - (2 + MINI_PANEL_LINES) * cell_h;
-    }
+    panel_h         := window_h - (1 + editor.mini_panel.open_t.value * MINI_PANEL_LINES) * cell_h;
+    panel_content_h := window_h - (2 + editor.mini_panel.open_t.value * MINI_PANEL_LINES) * cell_h;
 
     // TODO(jt): @Speed This is slightly wasteful, that we convert xywh into a point rect, only for
     // the callers to convert it back into xywh. Maybe rethink this once we do this too often?
