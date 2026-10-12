@@ -237,6 +237,9 @@ MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 // strips modified lines or something like that. Until then this is turned off.
 STRIP_WHITESPACE_ON_SAVE :: false; // TODO(jt): Make this configurable. :Config
 
+MINI_PANEL_OPEN_DURATION:               f32 : 0.15; // TODO(jt): Make this configurable. :Config
+MINI_PANEL_CLOSE_DURATION:              f32 : 0.15; // TODO(jt): Make this configurable. :Config
+
 PANEL_SCROLL_DURATION:                  f32 : 0.15; // TODO(jt): Make this configurable. :Config
 CURSOR_FLASH_DURATION:                  f32 : 0.50; // TODO(jt): Make flash time configurable. :Config
 CURSOR_ANIM_DURATION_KEYBOARD_DIRECT:   f32 : 0.00; // TODO(jt): Make keyboard anim time configurable. :Config
@@ -375,7 +378,7 @@ Panel :: struct {
     // Scroll vectors are f64, because buffers can be large and we actually ran into precision
     // issues with f32 vectors. Doubles suffice for now (verified up to 4GB of prose), but maybe we
     // should do our own numeric type eventually, like 58:6 fixed point?
-    scroll: Interpolation(DVector2, SNAPPY = true, ROUND = true);
+    scroll: Interpolation(DVector2, ROUND = true);
 
     Flags :: enum_flags {
         LAST_CLICK_WAS_INSIDE         :: 0x01;
@@ -416,8 +419,8 @@ Document_View :: struct {
     old_cursor: Text_Location;
     old_cursor_position: DVector2;
 
-    cursor_position: Interpolation(DVector2, SNAPPY = true, ROUND = false);
-    cursor_color:    Interpolation(Vector4, SNAPPY = false, ROUND = false);
+    cursor_position: Interpolation(DVector2, ROUND = false);
+    cursor_color:    Interpolation(Vector4, ROUND = false);
 
     // TODO(jt): @Cleanup Maybe some of these flags are useful to Listing_View as well, we could unify.
     Flags :: enum_flags u32 {
@@ -581,6 +584,7 @@ Listing :: struct {
 
 Mini_Panel :: struct {
     open: bool;
+    open_t: Interpolation(f32, ROUND = false);
     procs: Mini_Panel_Procs;
 
     cursors: Text_Cursors;
@@ -1077,6 +1081,15 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     for * document: editor.documents {
         document.flags &= ~.TRANSIENT;
     }
+    
+    //
+    // Update Mini_Panel
+    //
+    {
+        interpolation_running := interpolation_update(*editor.mini_panel.open_t, input.time, dt);
+        wants_this_frame |= interpolation_running;
+        wants_next_frame |= interpolation_running;
+    }
 
     // Only draw, if we have to output this frame. According to the Windows (TM) Task Manager, this
     // reduces our power usage from Very High to Moderate. CPU fans seem to agree.
@@ -1095,11 +1108,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             draw_rect(*render_commands, rect_from_point_and_size(window_w * 0.5 - 1.0, 0.0, 2.0, window_h), editor.theme.separator_color);
         }
 
-        // TODO(jt): Instead of just drawing over what the panels drew, let's also use this information for culling?
         if editor.mini_panel.open {
             mini_panel := *editor.mini_panel;
 
-            mini_panel_h := (MINI_PANEL_LINES + 1) * cell_h;
+            mini_panel_h := (mini_panel.open_t.value * MINI_PANEL_LINES + 1) * cell_h;
             mini_panel_x0 := GUTTER_PIXELS;
             mini_panel_x1 := window_w - GUTTER_PIXELS;
             mini_panel_y := max(window_h - mini_panel_h, 0);
@@ -4745,7 +4757,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             //
             {
                 // TODO(jt): @Cleanup Reformulate the modeline rect as cutting into the current panel instead of using absolute coordinates.
-                modeline_y      := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
+                modeline_y      := window_h - (editor.mini_panel.open_t.value * MINI_PANEL_LINES + 2) * cell_h;
                 modeline_rect   := rect_from_point_and_size(panel_x, modeline_y, panel_w, cell_h);
                 modeline_offset := DVector2.{ panel_x, modeline_y };
 
@@ -4845,7 +4857,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             //
             {
                 // TODO(jt): @Cleanup Reformulate the modeline rect as cutting into the current panel instead of using absolute coordinates.
-                modeline_y      := ifx editor.mini_panel.open then window_h - (MINI_PANEL_LINES + 2) * cell_h else window_h - 2 * cell_h;
+                modeline_y      := window_h - (editor.mini_panel.open_t.value * MINI_PANEL_LINES + 2) * cell_h;
                 modeline_rect   := rect_from_point_and_size(panel_x, modeline_y, panel_w, cell_h);
                 modeline_offset := DVector2.{ panel_x, modeline_y };
 
@@ -4883,8 +4895,10 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
 
     assert(!mini_panel.open);
 
-    mini_panel.procs = procs;
     mini_panel.open = true;
+    interpolation_start(*mini_panel.open_t, 0.0, 1.0, input.time, MINI_PANEL_OPEN_DURATION);
+    
+    mini_panel.procs = procs;
 
     procs.init(editor, platform, input);
 
@@ -4915,7 +4929,11 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     arena_reset(mini_panel.userdata_arena);
     mini_panel.userdata = null;
 
+    // We reset all the datastructures immediately, but animate the closing. This is visible, but not too bad,
+    // if the closing animation is fast. We could do a deferred reset once the animation finishes, but for now
+    // I'd like to avoid that additional state.
     mini_panel.open = false;
+    interpolation_start(*mini_panel.open_t, 1.0, 0.0, input.time, MINI_PANEL_CLOSE_DURATION);
 }
 
 #scope_file
