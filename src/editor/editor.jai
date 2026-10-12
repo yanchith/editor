@@ -10,7 +10,7 @@ TODO(jt): Known serious bugs:
 - *compilation* buffer's scroll is not clamped after compilation finishes.
 - Refreshing large files (such as the output of objdump) from disk takes too long. The delete needs to be optimized.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
-- VSync stutter on 100Hz monitor when we start animating after a period of inactivity. Good luck debugging this.
+- Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
 
 TODO(jt): Roadmap:
 
@@ -1561,7 +1561,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         time_scale := profile.time_scale;
                         cursor_y := 0;
 
-                        _font_layout_and_draw_text(*editor.font, "zone  label                                                              hits        T(inclusive)        T(exclusive)",
+                        _font_layout_and_draw_text(*editor.font, "zone  label                                                              hits        inclusive ms        exclusive ms",
                                                    *render_commands, *atlas_update_regions,
                                                    { 0, bar_y + EXCEEDING_BAR_HEIGHT }, scissor,
                                                    { 1, 1, 1, 1 }, .REGULAR,
