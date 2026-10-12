@@ -238,8 +238,8 @@ MINI_PANEL_LINES :: 10;   // TODO(jt): Make this configurable. :Config
 // strips modified lines or something like that. Until then this is turned off.
 STRIP_WHITESPACE_ON_SAVE :: false; // TODO(jt): Make this configurable. :Config
 
-MINI_PANEL_OPEN_DURATION:               f32 : 0.15; // TODO(jt): Make this configurable. :Config
-MINI_PANEL_CLOSE_DURATION:              f32 : 0.15; // TODO(jt): Make this configurable. :Config
+MINI_PANEL_OPEN_DURATION:               f32 : 0.10; // TODO(jt): Make this configurable. :Config
+MINI_PANEL_CLOSE_DURATION:              f32 : 0.10; // TODO(jt): Make this configurable. :Config
 
 PANEL_SCROLL_DURATION:                  f32 : 0.15; // TODO(jt): Make this configurable. :Config
 CURSOR_FLASH_DURATION:                  f32 : 0.50; // TODO(jt): Make flash time configurable. :Config
