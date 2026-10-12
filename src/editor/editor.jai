@@ -586,6 +586,7 @@ Listing :: struct {
 Mini_Panel :: struct {
     open: bool;
     open_t: Interpolation(f32, ROUND = false);
+
     procs: Mini_Panel_Procs;
 
     cursors: Text_Cursors;
@@ -601,6 +602,8 @@ Mini_Panel :: struct {
 
     userdata_arena: *Arena;
     userdata: *void; // Set this by passing it to open_mini_panel. You can allocate it with userdata_arena.
+    
+    scroll_y: Interpolation(f64, ROUND = true);
 
     Item :: struct {
         text: string;
@@ -1087,7 +1090,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     // Update Mini_Panel
     //
     {
-        interpolation_running := interpolation_update(*editor.mini_panel.open_t, input.time, dt);
+        interpolation_running := false;
+        interpolation_running |= interpolation_update(*editor.mini_panel.open_t, input.time, dt);
+        interpolation_running |= interpolation_update(*editor.mini_panel.scroll_y, input.time, dt);
+        
         wants_this_frame |= interpolation_running;
         wants_next_frame |= interpolation_running;
     }
@@ -1169,72 +1175,82 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             main_line := tprint("%%", action_text, line_view);
+            
+            mini_panel_scissor:       Rect = { mini_panel_x0, mini_panel_y,          mini_panel_x1, window_h }; // Entire mini panel contents
+            mini_panel_items_scissor: Rect = { mini_panel_x0, mini_panel_y + cell_h, mini_panel_x1, window_h }; // Just the items (need their own scissor, because they scroll)
 
-            scissor := Rect.{ mini_panel_x0, mini_panel_y, mini_panel_x1, window_h };
             _font_layout_and_draw_text(*editor.font, main_line,
                                        *render_commands, *atlas_update_regions,
-                                       { mini_panel_x0, mini_panel_y }, scissor,
+                                       { mini_panel_x0, mini_panel_y }, mini_panel_scissor,
                                        editor.theme.text_color, editor.theme.text_variant,
                                        .[], invert_ranges,
                                        binary = false);
 
-            index0 := max(mini_panel.item_index - (MINI_PANEL_LINES / 2), 0);
-            index1 := min(index0 + MINI_PANEL_LINES, mini_panel.items.count - 1);
-
-            it_index := 0;
-            for index0..index1 {
-                item := *mini_panel.items[it];
-
-                invert_ranges: [..] Font_Invert_Range;
-                invert_ranges.allocator = temp;
-
-                if it == mini_panel.item_index {
-                    y0 := mini_panel_y + (it_index + 1) * cell_h;
-                    y1 := mini_panel_y + (it_index + 2) * cell_h;
-                    draw_rect(*render_commands, mini_panel_x0, y0, mini_panel_x1, y1, editor.theme.mini_panel_line_color);
-
-                    // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
-                    // that can resume where it left of last time. In can see multiple places in this
-                    // file where that would be useful. It will become more important for long lines.
-                    x0 := item.line_number_padding * cell_w + font_compute_position_on_line(editor.font, item.text, item.highlight_x0, binary = cast(bool, item.flags & .BINARY));
-                    x1 := item.line_number_padding * cell_w + font_compute_position_on_line(editor.font, item.text, item.highlight_x1, binary = cast(bool, item.flags & .BINARY));
-
-                    draw_rect(*render_commands, mini_panel_x0 + cast(f32, x0), y0, mini_panel_x0 + cast(f32, x1), y1, editor.theme.highlight_color);
-
-                    if editor.theme.invert_color_under_selected_mini_panel_line {
-                        invert_range := array_add(*invert_ranges);
-                        invert_range.x0 = 0;
-                        invert_range.x1 = S64_MAX; // @Hack We want to invert the whole line anyway.
-                    }
-                }
-
-                offset_y: f64 = mini_panel_y + (it_index + 1) * cell_h;
-                color := editor.theme.mini_panel_item_text_color;
-                if item.flags & .WARNING {
-                    color = editor.theme.mini_panel_item_warning_text_color;
-                }
+            mini_viewport_y0 := mini_panel.scroll_y.value;
+            mini_viewport_y1 := mini_panel.scroll_y.value + mini_panel_h;
+            
+            mini_viewport_line0 := clamp(cast(s64, floor(mini_viewport_y0 / cell_h)), 0, mini_panel.items.count - 1);
+            mini_viewport_line1 := clamp(cast(s64, ceil(mini_viewport_y1 / cell_h)), 0, mini_panel.items.count - 1);
+            
+            // Bounds check, because there can be no results.
+            // TODO(jt): Insert a dummy "(no results)" item so we can show people?
+            if mini_panel.items.count {
+                set_scissor(*render_commands, mini_panel_items_scissor);
                 
-                x0 := mini_panel_x0;
-
-                if item.line_number_or_zero {
-                    _font_layout_and_draw_text(*editor.font, tprint("%", item.line_number_or_zero),
-                                              *render_commands, *atlas_update_regions,
-                                              { x0, offset_y }, scissor,
-                                              color, .REGULAR,
-                                              .[], .[],
-                                              binary = false);
+                for mini_viewport_line0..mini_viewport_line1 {
+                    item := *mini_panel.items[it];
                     
-                    x0 += item.line_number_padding * cell_w;
+                    invert_ranges: [..] Font_Invert_Range;
+                    invert_ranges.allocator = temp;
+                    
+                    if it == mini_panel.item_index {
+                        y0 := cast(f32, mini_panel_y + cast(f64, it + 1) * cell_h - mini_viewport_y0);
+                        y1 := cast(f32, mini_panel_y + cast(f64, it + 2) * cell_h - mini_viewport_y0);
+                        draw_rect(*render_commands, mini_panel_x0, y0, mini_panel_x1, y1, editor.theme.mini_panel_line_color);
+                        
+                        // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
+                        // that can resume where it left of last time. In can see multiple places in this
+                        // file where that would be useful. It will become more important for long lines.
+                        x0 := item.line_number_padding * cell_w + font_compute_position_on_line(editor.font, item.text, item.highlight_x0, binary = cast(bool, item.flags & .BINARY));
+                        x1 := item.line_number_padding * cell_w + font_compute_position_on_line(editor.font, item.text, item.highlight_x1, binary = cast(bool, item.flags & .BINARY));
+                        
+                        draw_rect(*render_commands, mini_panel_x0 + cast(f32, x0), y0, mini_panel_x0 + cast(f32, x1), y1, editor.theme.highlight_color);
+                        
+                        if editor.theme.invert_color_under_selected_mini_panel_line {
+                            invert_range := array_add(*invert_ranges);
+                            invert_range.x0 = 0;
+                            invert_range.x1 = S64_MAX; // @Hack We want to invert the whole line anyway.
+                        }
+                    }
+                    
+                    offset_y: f64 = mini_panel_y + cast(f64, it + 1) * cell_h - mini_viewport_y0;
+                    color := editor.theme.mini_panel_item_text_color;
+                    if item.flags & .WARNING {
+                        color = editor.theme.mini_panel_item_warning_text_color;
+                    }
+                    
+                    x0 := mini_panel_x0;
+                    
+                    if item.line_number_or_zero {
+                        _font_layout_and_draw_text(*editor.font, tprint("%", item.line_number_or_zero),
+                                                   *render_commands, *atlas_update_regions,
+                                                   { x0, offset_y }, mini_panel_items_scissor,
+                                                   color, .REGULAR,
+                                                   .[], .[],
+                                                   binary = false);
+                        
+                        x0 += item.line_number_padding * cell_w;
+                    }
+                    
+                    font_layout_and_draw_text(*editor.font, item.text,
+                                              *render_commands, *atlas_update_regions,
+                                              { x0, offset_y }, mini_panel_items_scissor,
+                                              color, .REGULAR,
+                                              .[], invert_ranges,
+                                              binary = cast(bool, item.flags & .BINARY));
                 }
                 
-                font_layout_and_draw_text(*editor.font, item.text,
-                                          *render_commands, *atlas_update_regions,
-                                          { x0, offset_y }, scissor,
-                                          color, .REGULAR,
-                                          .[], invert_ranges,
-                                          binary = cast(bool, item.flags & .BINARY));
-
-                it_index += 1;
+                set_scissor(*render_commands, { 0, 0, window_w, window_h });
             }
         } else if editor.modal_interaction.open {
             modal_interaction := *editor.modal_interaction;
@@ -1331,10 +1347,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         if editor.debug_view == {
             case .ATLAS_TEXTURE; {
                 message := "Debug view: Font Atlas";
-                scissor := Rect.{ 0, 0, window_w, window_h };
                 _font_layout_and_draw_text(*editor.font, message,
                                            *render_commands, *atlas_update_regions,
-                                           { 0, 0 }, scissor,
+                                           { 0, 0 }, { 0, 0, window_w, window_h },
                                            { 1, 1, 1, 1 }, .REGULAR,
                                            .[], .[],
                                            binary = false);
@@ -1387,7 +1402,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     case .MEMORY_RELATIVE;  bubble_sort(editor.arenas, compare_fullness);
                 }
 
-                scissor := Rect.{ 0, 0, window_w, window_h };
                 {
                     message: string;
                     if editor.debug_view == {
@@ -1397,7 +1411,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     _font_layout_and_draw_text(*editor.font, message,
                                                *render_commands, *atlas_update_regions,
-                                               { 0, 0 }, scissor,
+                                               { 0, 0 }, { 0, 0, window_w, window_h },
                                                { 1, 1, 1, 1 }, .REGULAR,
                                                .[], .[],
                                                binary = false);
@@ -1417,10 +1431,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     allocated := ts.total_bytes_occupied; // TODO(jt): This is not true. Figure out how to get current size of Temporary_Storage.
 
                     message := tprint("% % / %", temp_right_pad("Temp", 45), format_size(allocated), format_size(total));
-                    offset  := DVector2.{ 0, y };
                     _font_layout_and_draw_text(*editor.font, message,
                                                *render_commands, *atlas_update_regions,
-                                               offset, scissor,
+                                               { 0, y }, { 0, 0, window_w, window_h },
                                                { 1, 1, 1, 1 }, .REGULAR,
                                                .[], .[],
                                                binary = false);
@@ -1451,10 +1464,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                     allocated := it.allocated;
 
                     message := tprint("% % / % / %", temp_right_pad(it.debug_label, 45), format_size(allocated), format_size(committed), format_size(total));
-                    offset  := DVector2.{ 0, y };
                     _font_layout_and_draw_text(*editor.font, message,
                                                *render_commands, *atlas_update_regions,
-                                               offset, scissor,
+                                               { 0, y }, { 0, 0, window_w, window_h },
                                                { 1, 1, 1, 1 }, .REGULAR,
                                                .[], .[],
                                                binary = false);
@@ -1485,10 +1497,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             case .FRAME_PROFILE; {
                 message := "Debug view: Frame profile (left=pause+left, right=pause+right, up=unpause)";
-                scissor := Rect.{ 0, 0, window_w, window_h };
                 _font_layout_and_draw_text(*editor.font, message,
                                            *render_commands, *atlas_update_regions,
-                                           { 0, 0 }, scissor,
+                                           { 0, 0 }, { 0, 0, window_w, window_h },
                                            { 1, 1, 1, 1 }, .REGULAR,
                                            .[], .[],
                                            binary = false);
@@ -1563,7 +1574,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                         _font_layout_and_draw_text(*editor.font, "zone  label                                                              hits        inclusive ms        exclusive ms",
                                                    *render_commands, *atlas_update_regions,
-                                                   { 0, bar_y + EXCEEDING_BAR_HEIGHT }, scissor,
+                                                   { 0, bar_y + EXCEEDING_BAR_HEIGHT }, { 0, 0, window_w, window_h },
                                                    { 1, 1, 1, 1 }, .REGULAR,
                                                    .[], .[],
                                                    binary = false);
@@ -1579,7 +1590,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                             y := bar_y + EXCEEDING_BAR_HEIGHT + (1 + zone_index) * cell_h;
                             _font_layout_and_draw_text(*editor.font, s,
                                                        *render_commands, *atlas_update_regions,
-                                                       { 0, y }, scissor,
+                                                       { 0, y }, { 0, 0, window_w, window_h },
                                                        { 1, 1, 1, 1 }, .REGULAR,
                                                        .[], .[],
                                                        binary = false);
@@ -1590,7 +1601,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 } else {
                     _font_layout_and_draw_text(*editor.font, "(Profiling info unavailable)",
                                                *render_commands, *atlas_update_regions,
-                                               { 0, 3 * cell_h }, scissor,
+                                               { 0, 3 * cell_h }, { 0, 0, window_w, window_h },
                                                { 1, 1, 1, 1 }, .REGULAR,
                                                .[], .[],
                                                binary = false);
@@ -1599,10 +1610,9 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             case .FRAME_TIMELINE; {
                 message := tprint("Debug view: Frame timeline (blue=update, red=render+VSync, white=refresh(%))", input.monitor_refresh_rate);
-                scissor := Rect.{ 0, 0, window_w, window_h };
                 _font_layout_and_draw_text(*editor.font, message,
                                            *render_commands, *atlas_update_regions,
-                                           { 0, 0 }, scissor,
+                                           { 0, 0 }, { 0, 0, window_w, window_h },
                                            { 1, 1, 1, 1 }, .REGULAR,
                                            .[], .[],
                                            binary = false);
@@ -2097,6 +2107,8 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
 
 route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
     mp := *editor.mini_panel;
+    
+    cell_h := editor.font.line_height_in_pixels;
 
     min_item_index := ifx mp.procs.can_select_text_line(editor, platform, input) then -1 else 0;
 
@@ -2191,6 +2203,12 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     {
         char := cast(u32, event.codepoint);
         buffer_changed |= text_buffer_insert_char(*mp.buffer, *mp.cursors, char);
+    }
+    
+    if mp.item_index != old_item_index {
+        // We could also defer this interpolation setup by setting a flag, like we do for panels, but for now this is fine?
+        target_y := cast(f64, max(mp.item_index - MINI_PANEL_LINES / 2, 0)) * cell_h;
+        interpolation_chain(*mp.scroll_y, target_y, input.time, PANEL_SCROLL_DURATION);
     }
 
     if mp.open {
@@ -4736,10 +4754,10 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                     }
                 }
 
-                scissor_rect := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
+                scissor := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
                 font_layout_and_draw_text(*editor.font, cast(string, viewport_view),
                                           render_commands, atlas_update_regions,
-                                          offset, scissor_rect,
+                                          offset, scissor,
                                           editor.theme.text_color, editor.theme.text_variant,
                                           style_ranges, invert_ranges,
                                           binary = document.buffer.binary_mode);
@@ -4790,61 +4808,67 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             viewport_line0 := clamp(cast(s64, floor(viewport_y0 / cell_h)), 0, listing.items.count - 1);
             viewport_line1 := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, listing.items.count - 1);
 
-            for viewport_line0..viewport_line1 {
-                item := *listing.items[it];
-
-                line_y_world  := cast(f64, it) * cell_h;
-                line_y_screen := panel_content_y + cast(f32, line_y_world - panel.scroll.value.y);
-                line_rect_screen := rect_from_point_and_size(panel_content_x, line_y_screen, panel_content_w, cell_h);
-
-                invert_ranges: [..] Font_Invert_Range;
-                invert_ranges.allocator = temp;
-
-                if it == view.item_index {
-                    if panel_is_active {
-                        draw_rect(render_commands, line_rect_screen, editor.theme.listing_line_color);
-
-                        if editor.theme.invert_color_under_selected_listing_line {
-                            invert_range := array_add(*invert_ranges);
-                            invert_range.x0 = 0;
-                            invert_range.x1 = S64_MAX; // @Hack We want to invert the whole line anyway.
+            // Because we always insert parent links, there's always at least two items, but we bounds check
+            // for good measure, in case there's other kinds of listings in the future.
+            //
+            // TODO(jt): Insert a dummy "(no results)" item so we can show people?
+            if listing.items.count {
+                for viewport_line0..viewport_line1 {
+                    item := *listing.items[it];
+                    
+                    line_y_world  := cast(f64, it) * cell_h;
+                    line_y_screen := panel_content_y + cast(f32, line_y_world - panel.scroll.value.y);
+                    line_rect_screen := rect_from_point_and_size(panel_content_x, line_y_screen, panel_content_w, cell_h);
+                    
+                    invert_ranges: [..] Font_Invert_Range;
+                    invert_ranges.allocator = temp;
+                    
+                    if it == view.item_index {
+                        if panel_is_active {
+                            draw_rect(render_commands, line_rect_screen, editor.theme.listing_line_color);
+                            
+                            if editor.theme.invert_color_under_selected_listing_line {
+                                invert_range := array_add(*invert_ranges);
+                                invert_range.x0 = 0;
+                                invert_range.x1 = S64_MAX; // @Hack We want to invert the whole line anyway.
+                            }
+                        } else {
+                            r := line_rect_screen;
+                            left:   Rect = { r.x0,     r.y0,     r.x0 + 1, r.y1 };
+                            right:  Rect = { r.x1 - 1, r.y0,     r.x1,     r.y1 };
+                            top:    Rect = { r.x0,     r.y0,     r.x1,     r.y0 + 1 };
+                            bottom: Rect = { r.x0,     r.y1 - 1, r.x1,     r.y1 };
+                            draw_rect(render_commands, left, editor.theme.listing_line_color);
+                            draw_rect(render_commands, right, editor.theme.listing_line_color);
+                            draw_rect(render_commands, top, editor.theme.listing_line_color);
+                            draw_rect(render_commands, bottom, editor.theme.listing_line_color);
                         }
-                    } else {
-                        r := line_rect_screen;
-                        left:   Rect = { r.x0,     r.y0,     r.x0 + 1, r.y1 };
-                        right:  Rect = { r.x1 - 1, r.y0,     r.x1,     r.y1 };
-                        top:    Rect = { r.x0,     r.y0,     r.x1,     r.y0 + 1 };
-                        bottom: Rect = { r.x0,     r.y1 - 1, r.x1,     r.y1 };
-                        draw_rect(render_commands, left, editor.theme.listing_line_color);
-                        draw_rect(render_commands, right, editor.theme.listing_line_color);
-                        draw_rect(render_commands, top, editor.theme.listing_line_color);
-                        draw_rect(render_commands, bottom, editor.theme.listing_line_color);
                     }
+                    
+                    // Because we start the layout just before the current viewport, the rendering scroll Y offset
+                    // is just the fractional part of the cell.
+                    offset: DVector2;
+                    offset.x = panel_content_x + -panel.scroll.value.x;
+                    offset.y = -viewport_y0 + cell_h * cast(f64, it);
+                    
+                    scissor := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
+                    
+                    color   := editor.theme.listing_item_text_color;
+                    variant := editor.theme.listing_item_text_variant;
+                    if table_find(*listing.marked_items, it) {
+                        color   = editor.theme.listing_item_text_color_marked;
+                        variant = editor.theme.listing_item_text_variant_marked;
+                    }
+                    
+                    _font_layout_and_draw_text(*editor.font, item.text,
+                                               render_commands, atlas_update_regions,
+                                               offset, scissor,
+                                               color, variant,
+                                               .[], invert_ranges,
+                                               binary = false);
                 }
-
-                // Because we start the layout just before the current viewport, the rendering scroll Y offset
-                // is just the fractional part of the cell.
-                offset: DVector2;
-                offset.x = panel_content_x + -panel.scroll.value.x;
-                offset.y = -viewport_y0 + cell_h * cast(f64, it);
-
-                scissor_rect := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
-
-                color   := editor.theme.listing_item_text_color;
-                variant := editor.theme.listing_item_text_variant;
-                if table_find(*listing.marked_items, it) {
-                    color   = editor.theme.listing_item_text_color_marked;
-                    variant = editor.theme.listing_item_text_variant_marked;
-                }
-
-                _font_layout_and_draw_text(*editor.font, item.text,
-                                           render_commands, atlas_update_regions,
-                                           offset, scissor_rect,
-                                           color, variant,
-                                           .[], invert_ranges,
-                                           binary = false);
             }
-
+            
             //
             // Draw modeline
             //
@@ -4921,12 +4945,19 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 
     arena_reset(mini_panel.userdata_arena);
     mini_panel.userdata = null;
+    
+    // nocheckin
+    // Measure time again instead of using the frame's start timestamp,
+    // because the operation could have taken a significant amount, and we'd skip many frames in the animation.
+    //
+    // time := platform.get_current_time_monotonic();
+    time := input.time;
 
     // We reset all the datastructures immediately, but animate the closing. This is visible, but not too bad,
     // if the closing animation is fast. We could do a deferred reset once the animation finishes, but for now
     // I'd like to avoid that additional state.
     mini_panel.open = false;
-    interpolation_start(*mini_panel.open_t, 1.0, 0.0, input.time, MINI_PANEL_CLOSE_DURATION);
+    interpolation_start(*mini_panel.open_t, 1.0, 0.0, time, MINI_PANEL_CLOSE_DURATION);
 }
 
 #scope_file
