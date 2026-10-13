@@ -240,6 +240,7 @@ STRIP_WHITESPACE_ON_SAVE :: false; // TODO(jt): Make this configurable. :Config
 
 MINI_PANEL_OPEN_DURATION:               f32 : 0.10; // TODO(jt): Make this configurable. :Config
 MINI_PANEL_CLOSE_DURATION:              f32 : 0.10; // TODO(jt): Make this configurable. :Config
+MINI_PANEL_SCROLL_DURATION:             f32 : 0.15; // TODO(jt): Make this configurable. :Config
 
 PANEL_SCROLL_DURATION:                  f32 : 0.15; // TODO(jt): Make this configurable. :Config
 CURSOR_FLASH_DURATION:                  f32 : 0.50; // TODO(jt): Make flash time configurable. :Config
@@ -2208,7 +2209,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     if mp.item_index != old_item_index {
         // We could also defer this interpolation setup by setting a flag, like we do for panels, but for now this is fine?
         target_y := cast(f64, max(mp.item_index - MINI_PANEL_LINES / 2, 0)) * cell_h;
-        interpolation_chain(*mp.scroll_y, target_y, input.time, PANEL_SCROLL_DURATION);
+        interpolation_chain(*mp.scroll_y, target_y, input.time, MINI_PANEL_SCROLL_DURATION);
     }
 
     if mp.open {

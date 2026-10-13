@@ -39,8 +39,13 @@ Font :: struct {
     //
     // Scaled metrics for currently set pixel_height in pixels.
     //
-
-    line_height_in_pixels: f32; // WARNING: line_height_multiplier applied. You need to round if you multiply with this.
+    // :VerticalRounding
+    //
+    // The line_height_in_pixels has line_height_multiplier applied, but is also rounded to whole pixels,
+    // so you can safely use this as vertical advance in user code without introducing subtle rendering bugs,
+    // e.g. blur due to filtering, uneven line spacing due to rounding to prevent filtering...
+    //
+    line_height_in_pixels: f32; 
     max_glyph_width_in_pixels: f32;
     max_glyph_height_in_pixels: f32;
     max_glyph_width_in_integer_pixels: s32;
@@ -205,7 +210,7 @@ font_reset_for_options :: (font: *Font, pixel_height: s32, line_height_multiplie
     font.descender   = font.ft_face_for_regular.size.metrics.descender;
     font.line_height = font.ft_face_for_regular.size.metrics.height;
 
-    font.line_height_in_pixels = cast(f32, font.ft_face_for_regular.size.metrics.height) * R64 * line_height_multiplier;
+    font.line_height_in_pixels = round(cast(f32, font.ft_face_for_regular.size.metrics.height) * R64 * line_height_multiplier);
     font.max_glyph_width_in_pixels  = cast(f32, font.ft_face_for_regular.size.metrics.max_advance) * R64;
     font.max_glyph_height_in_pixels = cast(f32, font.ft_face_for_regular.size.metrics.height) * R64;
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
@@ -543,15 +548,16 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             sanity_assert(font.glyph_entries_tail == entry_index);
         }
 
-        // A couple of things to notice here:
+        // A couple of things of note:
         //
-        // Order of operations here is careful to convert to f64 for global coordinates and only converts to f32 for local coordinates.
+        // Order of operations is careful to convert to f64 for global coordinates and only convert to f32 for local coordinates.
         //
-        // line_height_multiplier causes line_height_in_pixels to have fractional digits.
-        // If outside code multiplies with it to compute the offset passed in here, that offset will also likely have fractional
-        // digits, and possible different for every invocation. This will cause us to emit fractional pixel coordinates, blurring
-        // and otherwise deforming the font. We round offset.y on the caller's behalf here to make sure the whole-pixel snapping
-        // is preserved.
+        // :VerticalRounding
+        //
+        // If outside code passes fractional offset in here, we will emit fractional pixel coordinates, blurring the text,
+        // or even causing fine features to disappear completely. We round offset.y to preserve the whole-pixel snapping, but this
+        // introduces uneven line spacing, which is also bad. In theory, we should also preemptively round horizontally,
+        // but that bug hasn't happened yet (or is so subtle I didn't notice).
         rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
         ry := round(cast(f64, cursor_y) * R64 * font.line_height_multiplier) + round(offset.y) + glyph_offset_y;
 
