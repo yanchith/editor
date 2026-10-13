@@ -34,7 +34,7 @@ Font :: struct {
 
     ascender: s64;
     descender: s64;
-    line_height: s64; // line_height_multiplier not applied.
+    line_height: s64; // line_height_multiplier not applied. nocheckin apply!
 
     //
     // Scaled metrics for currently set pixel_height in pixels.
@@ -559,6 +559,9 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
         // introduces uneven line spacing, which is also bad. In theory, we should also preemptively round horizontally,
         // but that bug hasn't happened yet (or is so subtle I didn't notice).
         rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
+        
+        
+        // nocheckin HERE.... our vertical advance is not using the newly rounded line height
         ry := round(cast(f64, cursor_y) * R64 * font.line_height_multiplier) + round(offset.y) + glyph_offset_y;
 
         r := rect_from_point_and_size(

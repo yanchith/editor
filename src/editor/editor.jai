@@ -2,7 +2,7 @@
 
 TODO(jt): Known critical bugs:
 
-- Infinite loop when clicking into a(?) buffer. Happened once with *scratch* Related to expand_selection or maybe counting font positions?
+- Infinite loop when clicking into a(?) buffer. Happened once with *scratch*. Possibly related to expand_selection or counting font positions?
 
 TODO(jt): Known serious bugs:
 
@@ -989,7 +989,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             editor_log(editor, "Font size: %, physical pixel height: %", editor.font_size, pixel_height);
 
             cell_h_before_zoom := editor.font.line_height_in_pixels;
-            font_reset_for_options(*editor.font, pixel_height, FONT_LINE_HEIGHT_MULTIPLIER, editor.font.subpixel);
+            font_reset_for_options(*editor.font, pixel_height, editor.font.line_height_multiplier, editor.font.subpixel);
             cell_h_after_zoom  := editor.font.line_height_in_pixels;
 
             for * editor.panels {
@@ -4688,8 +4688,8 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 // big (although I'd wager we have serious performance problems before that starts to
                 // matter), so we go f64 to be future proof.
                 offset: DVector2;
-                offset.x = panel_content_x + -panel.scroll.value.x;
-                offset.y = -viewport_y0 + cell_h * cast(f64, viewport_line0);
+                offset.x = panel_content_x - panel.scroll.value.x;
+                offset.y = -viewport_y0 + cast(f64, viewport_line0) * cell_h;
 
                 style_ranges: [..] Font_Style_Range;
                 style_ranges.allocator = temp;
@@ -6200,7 +6200,7 @@ WELCOME :: #run -> string {
 
 WELCOME_TEMPLATE :: #string DONE
 
-Welcome to the untitled text editor! (Version %.%.%, built on %)
+Welcome to your text editor! (Version %.%.%, built on %)
 
 This is an alpha release, so expect minor bugs. I apologize for the inconvenience.
 If you experience a crash, you can find logs %.
