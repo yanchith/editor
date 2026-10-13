@@ -4946,12 +4946,9 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     arena_reset(mini_panel.userdata_arena);
     mini_panel.userdata = null;
     
-    // nocheckin
-    // Measure time again instead of using the frame's start timestamp,
-    // because the operation could have taken a significant amount, and we'd skip many frames in the animation.
-    //
-    // time := platform.get_current_time_monotonic();
-    time := input.time;
+    // Measure time again instead of using the frame's timestamp, because the operation could have taken long,
+    // and we'd skip frames in the animation.
+    time := platform.get_current_time_monotonic() - input.time_of_program_start;
 
     // We reset all the datastructures immediately, but animate the closing. This is visible, but not too bad,
     // if the closing animation is fast. We could do a deferred reset once the animation finishes, but for now
