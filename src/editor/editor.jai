@@ -11,6 +11,7 @@ TODO(jt): Known serious bugs:
 - Refreshing large files (such as the output of objdump) from disk takes too long. The delete needs to be optimized.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
+- macOS: need to fix C-u C-<space>
 
 TODO(jt): Roadmap:
 
@@ -88,7 +89,7 @@ TODO(jt): Roadmap:
 - [ ] Mouse interaction in the mode line (click change view, lang, crlf, indentation level)
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
 - [ ] OPEN_FILE_IN_PROJECT and SEARCH_IN_PROJECT should be (globally) configurable to ignore paths (e.g. contents of .git)
-- [ ] Animate scrolling in mini panel.
+- [X] Animate scrolling in mini panel.
 - [X] Animate opening of the mini panel.
 - [ ] Cursor flash in mini panel and modal interaction.
 - [X] F11 fullscreen on Windows

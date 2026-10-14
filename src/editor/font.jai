@@ -29,12 +29,13 @@ Font :: struct {
     ft_face_for_bold_italic: FT_Face;
 
     //
-    // Scaled metrics for currently set pixel_height in the FreeType 26:6 fixed point format. (64-bit, because FT_Pos is 64-bit on Unix)
+    // Metrics scanled for currently set pixel_height in the FreeType's 26:6 fixed point. (64-bit, because FT_Pos is 64-bit on Unix.)
+    // line_height_multiplier is not applied.
     //
 
     ascender: s64;
     descender: s64;
-    line_height: s64; // line_height_multiplier not applied. nocheckin apply!
+    line_height: s64;
 
     //
     // Scaled metrics for currently set pixel_height in pixels.
@@ -45,7 +46,7 @@ Font :: struct {
     // so you can safely use this as vertical advance in user code without introducing subtle rendering bugs,
     // e.g. blur due to filtering, uneven line spacing due to rounding to prevent filtering...
     //
-    line_height_in_pixels: f32; 
+    line_height_in_pixels: f32; // line_height_multiplier applied!
     max_glyph_width_in_pixels: f32;
     max_glyph_height_in_pixels: f32;
     max_glyph_width_in_integer_pixels: s32;
@@ -349,7 +350,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
 
     // Cursors are in 26:6 pixels (64-bit, because on Unix, FT_Pos is 64-bit even if they only use 32 bits).
     cursor_x: s64 = 0;
-    cursor_y: s64 = font.ascender;
+    cursor_y: s64 = multiply_and_round(font.ascender, font.line_height_multiplier);
 
     current_line_index: s64 = 0;
     current_char_index: s64 = 0;
@@ -358,7 +359,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
     for :ITERATOR text {
         if it == #char "\n" {
             cursor_x = 0;
-            cursor_y += font.line_height;
+            cursor_y += multiply_and_round(font.line_height, font.line_height_multiplier);
             current_char_index = 0;
             current_line_index += 1;
 
@@ -559,11 +560,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
         // introduces uneven line spacing, which is also bad. In theory, we should also preemptively round horizontally,
         // but that bug hasn't happened yet (or is so subtle I didn't notice).
         rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
-        
-        
-        // nocheckin HERE.... our vertical advance is not using the newly rounded line height
-        ry := round(cast(f64, cursor_y) * R64 * font.line_height_multiplier) + round(offset.y) + glyph_offset_y;
-
+        ry := cast(f64, cursor_y) * R64 + round(offset.y) + glyph_offset_y;
         r := rect_from_point_and_size(
             cast(f32, rx),
             cast(f32, ry),
@@ -919,6 +916,16 @@ maybe_advance_range_index_and_get_containing_range :: (range_index: *s64, ranges
         }
     }
 
+    return result;
+}
+
+// If the 26:6 input is an integer, this keeps it an integer. 
+multiply_and_round :: inline (fixed_point: s64, multiplier: f32) -> s64 {
+    floating_point := cast(f32, fixed_point) * R64; // 26:6 -> float
+    floating_point *= multiplier;
+    floating_point = round(floating_point);
+
+    result := cast(s64, floating_point) * 64; // float -> 26:6
     return result;
 }
 
