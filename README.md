@@ -34,7 +34,7 @@ The build file contains information about more options.
 
 Tested on Jai version `0.2.030`.
 
-The code compiles and runs on Windows and macOS (although macOS bundle doesn't work yet).
+The code compiles and runs on Windows and macOS (although macOS build isn't signed).
 Linux support coming soon.
 
 The editor is written in Jai, which is not publicly available yet. Hopefully it will be soon.
@@ -45,7 +45,7 @@ This is an early alpha. Bugs and occasional crashes may happen. Save often.
 
 **Language support**
 
-Only C/C++, Jai, and GLSL are supported right now. I plan to add support for more languages soon.
+Only C/C++, Jai, GLSL and Rust, are supported right now. I plan to add support for more languages soon.
 If you want to add support for a language for yourself, look at the existing `lang_xyz.jai` files.
 
 **Performance**
@@ -55,15 +55,13 @@ The editor turns them off for files above 10 megabytes.
 
 **Misc**
 
-- Project search currently shells out to [ripgrep](https://github.com/burntsushi/ripgrep).
-  Near-term, more external search tools will be supported (e.g. `git grep`).
-  Long-term, project search will be implemented in the editor itself.
-
-- Spawning a process and collecting its output (for compilation or project search) is synchronous for now.
+Spawning a process and collecting its output (for compilation or project search) is synchronous for now.
+Long-term, project search will not shell out to external tools at all. Mid-term, the process interaction
+will improve, and project search will get additional external backends (currently, there's only ripgrep).
 
 ## Contributing
 
-Small bugfixes are accepted, as well as lexers for new programming languages, but if you want to make
+Small bugfixes and performance improvements are accepted, as well as lexers for new programming languages, but if you want to make
 bigger changes, your own version of the editor would be a better place to do that.
 
 LSPs and MCPs are out of scope. Vim mode too.
