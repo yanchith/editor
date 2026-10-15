@@ -241,7 +241,7 @@ STRIP_WHITESPACE_ON_SAVE :: false; // TODO(jt): Make this configurable. :Config
 
 MINI_PANEL_OPEN_DURATION:               f32 : 0.10; // TODO(jt): Make this configurable. :Config
 MINI_PANEL_CLOSE_DURATION:              f32 : 0.10; // TODO(jt): Make this configurable. :Config
-MINI_PANEL_SCROLL_DURATION:             f32 : 0.15; // TODO(jt): Make this configurable. :Config
+MINI_PANEL_SCROLL_DURATION:             f32 : 0.10; // TODO(jt): Make this configurable. :Config
 
 PANEL_SCROLL_DURATION:                  f32 : 0.15; // TODO(jt): Make this configurable. :Config
 CURSOR_FLASH_DURATION:                  f32 : 0.50; // TODO(jt): Make flash time configurable. :Config
@@ -604,7 +604,7 @@ Mini_Panel :: struct {
 
     userdata_arena: *Arena;
     userdata: *void; // Set this by passing it to open_mini_panel. You can allocate it with userdata_arena.
-    
+
     scroll_y: Interpolation(f64, ROUND = true);
 
     Item :: struct {
@@ -623,7 +623,7 @@ Mini_Panel :: struct {
             BINARY  :: 0x01;
             WARNING :: 0x02;
         }
-        
+
         line_number_or_zero: s64;
         line_number_padding: s64;
     }
@@ -1087,7 +1087,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     for * document: editor.documents {
         document.flags &= ~.TRANSIENT;
     }
-    
+
     //
     // Update Mini_Panel
     //
@@ -1095,7 +1095,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         interpolation_running := false;
         interpolation_running |= interpolation_update(*editor.mini_panel.open_t, input.time, dt);
         interpolation_running |= interpolation_update(*editor.mini_panel.scroll_y, input.time, dt);
-        
+
         wants_this_frame |= interpolation_running;
         wants_next_frame |= interpolation_running;
     }
@@ -1177,7 +1177,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
 
             main_line := tprint("%%", action_text, line_view);
-            
+
             mini_panel_scissor:       Rect = { mini_panel_x0, mini_panel_y,          mini_panel_x1, window_h }; // Entire mini panel contents
             mini_panel_items_scissor: Rect = { mini_panel_x0, mini_panel_y + cell_h, mini_panel_x1, window_h }; // Just the items (need their own scissor, because they scroll)
 
@@ -1190,49 +1190,49 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             mini_viewport_y0 := mini_panel.scroll_y.value;
             mini_viewport_y1 := mini_panel.scroll_y.value + mini_panel_h;
-            
+
             mini_viewport_line0 := clamp(cast(s64, floor(mini_viewport_y0 / cell_h)), 0, mini_panel.items.count - 1);
             mini_viewport_line1 := clamp(cast(s64, ceil(mini_viewport_y1 / cell_h)), 0, mini_panel.items.count - 1);
-            
+
             // Bounds check, because there can be no results.
             // TODO(jt): Insert a dummy "(no results)" item so we can show people?
             if mini_panel.items.count {
                 set_scissor(*render_commands, mini_panel_items_scissor);
-                
+
                 for mini_viewport_line0..mini_viewport_line1 {
                     item := *mini_panel.items[it];
-                    
+
                     invert_ranges: [..] Font_Invert_Range;
                     invert_ranges.allocator = temp;
-                    
+
                     if it == mini_panel.item_index {
                         y0 := cast(f32, mini_panel_y + cast(f64, it + 1) * cell_h - mini_viewport_y0);
                         y1 := cast(f32, mini_panel_y + cast(f64, it + 2) * cell_h - mini_viewport_y0);
                         draw_rect(*render_commands, mini_panel_x0, y0, mini_panel_x1, y1, editor.theme.mini_panel_line_color);
-                        
+
                         // TODO(jt): @Speed We need an incremental version of font_compute_position_on_line
                         // that can resume where it left of last time. In can see multiple places in this
                         // file where that would be useful. It will become more important for long lines.
                         x0 := item.line_number_padding * cell_w + font_compute_position_on_line(editor.font, item.text, item.highlight_x0, binary = cast(bool, item.flags & .BINARY));
                         x1 := item.line_number_padding * cell_w + font_compute_position_on_line(editor.font, item.text, item.highlight_x1, binary = cast(bool, item.flags & .BINARY));
-                        
+
                         draw_rect(*render_commands, mini_panel_x0 + cast(f32, x0), y0, mini_panel_x0 + cast(f32, x1), y1, editor.theme.highlight_color);
-                        
+
                         if editor.theme.invert_color_under_selected_mini_panel_line {
                             invert_range := array_add(*invert_ranges);
                             invert_range.x0 = 0;
                             invert_range.x1 = S64_MAX; // @Hack We want to invert the whole line anyway.
                         }
                     }
-                    
+
                     offset_y: f64 = mini_panel_y + cast(f64, it + 1) * cell_h - mini_viewport_y0;
                     color := editor.theme.mini_panel_item_text_color;
                     if item.flags & .WARNING {
                         color = editor.theme.mini_panel_item_warning_text_color;
                     }
-                    
+
                     x0 := mini_panel_x0;
-                    
+
                     if item.line_number_or_zero {
                         _font_layout_and_draw_text(*editor.font, tprint("%", item.line_number_or_zero),
                                                    *render_commands, *atlas_update_regions,
@@ -1240,10 +1240,10 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                                    color, .REGULAR,
                                                    .[], .[],
                                                    binary = false);
-                        
+
                         x0 += item.line_number_padding * cell_w;
                     }
-                    
+
                     font_layout_and_draw_text(*editor.font, item.text,
                                               *render_commands, *atlas_update_regions,
                                               { x0, offset_y }, mini_panel_items_scissor,
@@ -1251,7 +1251,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                                               .[], invert_ranges,
                                               binary = cast(bool, item.flags & .BINARY));
                 }
-                
+
                 set_scissor(*render_commands, { 0, 0, window_w, window_h });
             }
         } else if editor.modal_interaction.open {
@@ -2109,7 +2109,7 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
 
 route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Platform, input: Input) {
     mp := *editor.mini_panel;
-    
+
     cell_h := editor.font.line_height_in_pixels;
 
     min_item_index := ifx mp.procs.can_select_text_line(editor, platform, input) then -1 else 0;
@@ -2206,12 +2206,6 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         char := cast(u32, event.codepoint);
         buffer_changed |= text_buffer_insert_char(*mp.buffer, *mp.cursors, char);
     }
-    
-    if mp.item_index != old_item_index {
-        // We could also defer this interpolation setup by setting a flag, like we do for panels, but for now this is fine?
-        target_y := cast(f64, max(mp.item_index - MINI_PANEL_LINES / 2, 0)) * cell_h;
-        interpolation_chain(*mp.scroll_y, target_y, input.time, MINI_PANEL_SCROLL_DURATION);
-    }
 
     if mp.open {
         // TODO(jt): @Speed In case we'll be processing multiple events this frame, we want to delay
@@ -2219,6 +2213,11 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         // multiple times per frame. Maybe we need to move this one level up and track the dirty
         // flags on the mini panel itself?
         mp.procs.update(editor, platform, input, buffer_changed, mp.item_index != old_item_index);
+
+        if buffer_changed || mp.item_index != old_item_index {
+            target_y := cast(f64, max(mp.item_index - MINI_PANEL_LINES / 2, 0)) * cell_h;
+            interpolation_chain(*mp.scroll_y, target_y, input.time, MINI_PANEL_SCROLL_DURATION);
+        }
     }
 }
 
@@ -3078,11 +3077,11 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             prev_line_index := min(view.cursors.c0.y, view.cursors.c1.y) - 1;
             if prev_line_index >= 0 {
                 selected_lines := abs(view.cursors.c0.y - view.cursors.c1.y) + 1;
-                
+
                 prev_start := text_buffer_get_start_of_line(document.buffer, prev_line_index);
                 prev_end   := text_buffer_get_end_of_line(document.buffer, prev_line_index, include_newline = true);
                 prev       := text_buffer_make_view_for_interval(document.buffer, prev_start, prev_end, force_allocate = true,, temp);
-                
+
                 // If the selection extends to the last line where there is no newline at the end, we temporarily
                 // add a newline so that insert doesn't OOB assert. Because we can't create something out of nothing,
                 // we delete this temporary newline afterwards. There is probably a simpler way of doing this.
@@ -3093,7 +3092,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 cursors.c0 = prev_start;
                 cursors.c1 = prev_end;
                 text_buffer_delete_selection(*document.buffer, *cursors, .NONE);
-                
+
                 if touching_last_line {
                     cursors: Text_Cursors;
                     cursors.c0 = text_buffer_get_end(document.buffer);
@@ -3104,7 +3103,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 cursors.c0.y += selected_lines;
                 cursors.c1.y += selected_lines;
                 text_buffer_insert(*document.buffer, *cursors, prev, .FUSE);
-                
+
                 if touching_last_line {
                     cursors: Text_Cursors;
                     cursors.c0 = text_buffer_get_end(document.buffer);
@@ -3135,11 +3134,11 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     cursors.c1 = text_buffer_get_end(document.buffer);
                     text_buffer_insert_char(*document.buffer, *cursors, #char "\n", .NONE);
                 }
-                
+
                 next_start := text_buffer_get_start_of_line(document.buffer, next_line_index);
                 next_end   := text_buffer_get_end_of_line(document.buffer, next_line_index, include_newline = true);
                 next       := text_buffer_make_view_for_interval(document.buffer, next_start, next_end, force_allocate = true,, temp);
-                
+
                 cursors: Text_Cursors;
                 cursors.c0 = next_start;
                 cursors.c1 = next_end;
@@ -3148,7 +3147,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 cursors.c0.y -= selected_lines;
                 cursors.c1.y -= selected_lines;
                 text_buffer_insert(*document.buffer, *cursors, next, .FUSE);
-                
+
                 if touching_last_line {
                     cursors: Text_Cursors;
                     cursors.c0 = text_buffer_get_end(document.buffer);
@@ -3215,7 +3214,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
                 if !handled {
                     view.selecting = false;
-                    
+
                     deleted := text_buffer_delete_backward(*document.buffer, *view.cursors, .CAN_AUTOFUSE);
                     buffer_changed |= deleted.count > 0;
 
@@ -4817,18 +4816,18 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             if listing.items.count {
                 for viewport_line0..viewport_line1 {
                     item := *listing.items[it];
-                    
+
                     line_y_world  := cast(f64, it) * cell_h;
                     line_y_screen := panel_content_y + cast(f32, line_y_world - panel.scroll.value.y);
                     line_rect_screen := rect_from_point_and_size(panel_content_x, line_y_screen, panel_content_w, cell_h);
-                    
+
                     invert_ranges: [..] Font_Invert_Range;
                     invert_ranges.allocator = temp;
-                    
+
                     if it == view.item_index {
                         if panel_is_active {
                             draw_rect(render_commands, line_rect_screen, editor.theme.listing_line_color);
-                            
+
                             if editor.theme.invert_color_under_selected_listing_line {
                                 invert_range := array_add(*invert_ranges);
                                 invert_range.x0 = 0;
@@ -4846,22 +4845,22 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                             draw_rect(render_commands, bottom, editor.theme.listing_line_color);
                         }
                     }
-                    
+
                     // Because we start the layout just before the current viewport, the rendering scroll Y offset
                     // is just the fractional part of the cell.
                     offset: DVector2;
                     offset.x = panel_content_x + -panel.scroll.value.x;
                     offset.y = -viewport_y0 + cell_h * cast(f64, it);
-                    
+
                     scissor := rect_from_point_and_size(panel_content_x, 0.0, panel_content_w, panel_h);
-                    
+
                     color   := editor.theme.listing_item_text_color;
                     variant := editor.theme.listing_item_text_variant;
                     if table_find(*listing.marked_items, it) {
                         color   = editor.theme.listing_item_text_color_marked;
                         variant = editor.theme.listing_item_text_variant_marked;
                     }
-                    
+
                     _font_layout_and_draw_text(*editor.font, item.text,
                                                render_commands, atlas_update_regions,
                                                offset, scissor,
@@ -4870,7 +4869,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                                                binary = false);
                 }
             }
-            
+
             //
             // Draw modeline
             //
@@ -4910,20 +4909,24 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 }
 
 open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mini_Panel_Procs) {
-    mini_panel := *editor.mini_panel;
+    mp := *editor.mini_panel;
 
-    assert(!mini_panel.open);
+    assert(!mp.open);
 
-    mini_panel.open = true;
-    interpolation_start(*mini_panel.open_t, 0.0, 1.0, input.time, MINI_PANEL_OPEN_DURATION);
-    
-    mini_panel.procs = procs;
+    mp.open = true;
+    interpolation_start(*mp.open_t, 0.0, 1.0, input.time, MINI_PANEL_OPEN_DURATION);
+
+    mp.procs = procs;
 
     procs.init(editor, platform, input);
 
-    // init is allowed to close the mini_panel, so we have to check whether it didn't do so.
-    if mini_panel.open {
+    // init is allowed to close the mini panel, so we have to check whether it didn't do so.
+    if mp.open {
         procs.update(editor, platform, input, true, true);
+
+        cell_h   := editor.font.line_height_in_pixels;
+        target_y := cast(f64, max(mp.item_index - MINI_PANEL_LINES / 2, 0)) * cell_h;
+        interpolation_init(*mp.scroll_y, target_y);
     }
 }
 
@@ -4947,7 +4950,7 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
 
     arena_reset(mini_panel.userdata_arena);
     mini_panel.userdata = null;
-    
+
     // Measure time again instead of using the frame's timestamp, because the operation could have taken long,
     // and we'd skip frames in the animation.
     time := platform.get_current_time_monotonic() - input.time_of_program_start;
