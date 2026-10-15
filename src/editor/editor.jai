@@ -2214,9 +2214,13 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         // flags on the mini panel itself?
         mp.procs.update(editor, platform, input, buffer_changed, mp.item_index != old_item_index);
 
-        if buffer_changed || mp.item_index != old_item_index {
+        if mp.item_index != old_item_index {
             target_y := cast(f64, max(mp.item_index - MINI_PANEL_LINES / 2, 0)) * cell_h;
-            interpolation_chain(*mp.scroll_y, target_y, input.time, MINI_PANEL_SCROLL_DURATION);
+            if buffer_changed {
+                interpolation_init(*mp.scroll_y, target_y);
+            } else {
+                interpolation_chain(*mp.scroll_y, target_y, input.time, MINI_PANEL_SCROLL_DURATION);
+            }
         }
     }
 }
