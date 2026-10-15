@@ -12,7 +12,7 @@ New features:
 
 Speed improvements:
 
-- Search now doesn't arena-allocate the result strings. This makes it go from 9ms -> 3ms on kb_text_shape.h. Contribution by @paylanon.
+- Search now doesn't  arena-allocate the result strings eagerly. This makes it go from 9ms -> 3ms on kb_text_shape.h. Contribution by @paylanon.
 
 Fixes:
 
