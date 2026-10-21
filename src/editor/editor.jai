@@ -13,7 +13,6 @@ TODO(jt): Known serious bugs:
 - Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
 - macOS: need to fix C-u C-<space>
 - find_compilation link should support dotnet/typescript (also MSVC?) link format: <filename>(<line>,<col)
-- pop_cursor_location doesn't recenter
 
 TODO(jt): Roadmap:
 
@@ -6299,6 +6298,8 @@ pop_cursor_location :: (view: *Document_View) {
 
     text_buffer_clamp_cursors(view.document.buffer, *view.cursors);
     text_cursors_horizontal_move_was_explicit(*view.cursors);
+    
+    view.flags |= .CLAMP_SCROLL_TO_CURSOR;
 }
 
 canonicalize_path :: (path: *string) {
