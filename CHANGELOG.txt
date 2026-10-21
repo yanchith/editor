@@ -9,15 +9,19 @@ New features:
 - F11 fullscreen is now supported on Windows.
 - Support for the language that must not be named.
 - Opening/closing and scrolling the mini panel is now animated. For now, the animation duration can only be configured in code.
+- Mini panel and modal interaction buffer cursors are now animated the same way regular document cursors are, including changing color on edits.
+- Mini panel and modal interaction text buffer can now be interacted with mouse.
+- Mini panel listing can now be interacted with mouse, similar to directory listings.
 
 Speed improvements:
 
-- Search now doesn't  arena-allocate the result strings eagerly. This makes it go from 9ms -> 3ms on kb_text_shape.h. Contribution by @paylanon.
+- Search now doesn't arena-allocate the result strings eagerly. This makes it go from 9ms -> 3ms on kb_text_shape.h. Contribution by @paylanon.
 
 Fixes:
 
 - Fixed subtle occasional uneven line spacing bug caused by FONT_LINE_HEIGHT_MULTIPLIER. The bug was likely present for a long time,
-  but surfaced with the animated mini panel changes.
+  but surfaced with animating the mini panel open/close.
+- Fixed directory listing mouse interaction not requesting rendering of the current frame.
 
 Other:
 
