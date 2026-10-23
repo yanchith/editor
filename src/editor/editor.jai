@@ -14,6 +14,11 @@ TODO(jt): Known serious bugs:
 - macOS: need to fix C-u C-<space>
 - find_compilation link should support dotnet/typescript (also MSVC?) link format: <filename>(<line>,<col)
 
+TODO(jt): Minor features and improvements:
+
+- Bind C-z And C-S-z for undo/redo even in the Emacs-like config (and verify consistency with other configs)
+- Bind M-<up> and M-<down> to swap_line_up and swap_line_down even in the Emacs-like config (and verify consistency with other configs)
+
 TODO(jt): Roadmap:
 
 - [X] Display text on screen
