@@ -13,11 +13,7 @@ TODO(jt): Known serious bugs:
 - Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
 - macOS: need to fix C-u C-<space>
 - find_compilation link should support dotnet/typescript (also MSVC?) link format: <filename>(<line>,<col)
-
-TODO(jt): Minor features and improvements:
-
-- Bind C-z And C-S-z for undo/redo even in the Emacs-like config (and verify consistency with other configs)
-- Bind M-<up> and M-<down> to swap_line_up and swap_line_down even in the Emacs-like config (and verify consistency with other configs)
+- Ctrl-Shift-z keybind doesn't work (unless defined before Ctrl-z), because we allow extra shift on the last key for other reasons.
 
 TODO(jt): Roadmap:
 
