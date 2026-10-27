@@ -85,7 +85,6 @@ adjust_value :: (rgb: Vector3, multiplier: f32) -> Vector3 {
 rgb_to_hsv :: (rgb: Vector3) -> Vector3 {
     R6: f32 : 1.0 / 6.0;
 
-    // TODO(jt): log_error out of bounds in sanity builds?
     r := clamp(rgb.x, 0, 1);
     g := clamp(rgb.y, 0, 1);
     b := clamp(rgb.z, 0, 1);
@@ -118,7 +117,6 @@ rgb_to_hsv :: (rgb: Vector3) -> Vector3 {
 // Takes HSV color (where hue, saturation and value are all [0, 1]) and produces an RGB color (where
 // each channel is [0, 1]). Hue is in circle parameter space instead of degrees.
 hsv_to_rgb :: (hsv: Vector3) -> Vector3 {
-    // TODO(jt): log_error out of bounds in sanity builds?
     hue        := clamp(hsv.x, 0, 1);
     saturation := clamp(hsv.y, 0, 1);
     value      := clamp(hsv.z, 0, 1);
