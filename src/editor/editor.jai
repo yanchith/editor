@@ -9,7 +9,6 @@ TODO(jt): Known serious bugs:
 - Refreshing large files (such as the output of objdump) from disk takes too long. The delete needs to be optimized.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
-- macOS: need to fix C-u C-<space>
 - Ctrl-Shift-z keybind doesn't work (unless defined before Ctrl-z), because we allow extra shift on the last key for other reasons.
 
 TODO(jt): Roadmap:
