@@ -9,13 +9,13 @@ Shortcut_Key :: struct {
 
 #assert size_of(Shortcut_Key) == 8;
 
-// TODO(jt): @Cleanup Because our platform layer is a mess, and we make up synthetic events for
-// ctrl/alt + key, we sometimes (on Windows) and othertimes (on macOS) get the key in the wrong
-// case. For this reason, we do the comparison case insensitively here, but maybe we should just fix
-// that at the source, if at all possible. (If not possible, I guess we can live without case
-// sensitive keyboard shortcuts.)
-
 shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key, allow_extra_shift_on_b: bool) -> bool {
+    // TODO(jt): @Cleanup @Hack allow_extra_shift_on_b is here to make M-< and M-> work. To
+    // produce < and >, we need to press shift on en-us, but that's an additional modifier.
+    // How do we clean it up? can we consume the shift, because we know it was used to produce those keys?
+    // Does the presence of those keys on the shortcut key itself allow (or even require) the shift modifier?]
+    // I feel like this requires knowledge of keyboard layout. Let's try and remove the hack, because this
+    // is causing problems in other places.
     if allow_extra_shift_on_b {
         if a.modifier_flags != b.modifier_flags && a.modifier_flags | .SHIFT != b.modifier_flags {
             return false;
@@ -70,9 +70,6 @@ shortcut_equals_nocase :: (a: Shortcut, b: Shortcut) -> bool {
         key_a := a.sequence[it];
         key_b := b.sequence[it];
 
-        // TODO(jt): @Cleanup @Hack The 'it == a.count - 1' is here to make M-< and M-> work. To
-        // produce < and >, we need to press shift on en-us, but that's an additional modifier. We
-        // should really think more carefully about this whole system.  -jt, 4 August 2026
         if !shortcut_key_equals_nocase(key_a, key_b, it == a.count - 1) {
             return false;
         }
@@ -310,18 +307,7 @@ key_map_add :: (key_map: *Key_Map($T), shortcut_string: string, action: T) {
     }
 }
 
-// TODO(jt): We should validate against:
-//
-// - One keyboard shortcut being a prefix of another
-// - One keyboard shortcut requiring a subset of the modifier keys of another in a branching
-//   place, e.g.: 'C-M-x a' vs 'C-x a' or 'C-M-y' vs 'M-y'.
-//
-// The second one is only because of shift-selecting, and maybe we want to instead bind a
-// different move action when shift is held:
-//
-// - C-S-n, S-<down>: MOVE_DOWN_KEEPING_SELECTION
-// - C-n, <down>:     MOVE_DOWN
-//
+// TODO(jt): Validate against one keyboard shortcut being a prefix of another.
 key_map_add :: (key_map: *Key_Map($T), shortcut: Shortcut, action: T) {
     InitAllocators(key_map);
     array_add(*key_map.registered, { shortcut, action });
