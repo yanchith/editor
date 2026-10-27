@@ -415,6 +415,10 @@ main :: () {
     }
 
     platform.run_in_process = (_args: string, working_directory: string) -> exit_code: s32, exit_type: Editor.Exit_Type, output: string, error: string {
+        // TODO(jt): @Incomplete On Windows, we can't run shell scripts out of the box. This is makes it a little harder to interact with
+        // some scripty things, e.g. the node's npm, because it is not an executable. I don't want to make exceptions for them, so maybe we add a
+        // platform.run_shell_script or something?
+
         args := _args;
         #if OS == .WINDOWS {
             space_index := String.find_index_from_left(args, " ");

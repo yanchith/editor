@@ -12,6 +12,8 @@ New features:
 - Mini panel and modal interaction buffer cursors are now animated the same way regular document cursors are, including changing color on edits.
 - Mini panel and modal interaction text buffer can now be interacted with mouse.
 - Mini panel listing can now be interacted with mouse, similar to directory listings.
+- Dotnet/C# and TypeScript compilation links are now detected in *compilation* buffers. These look like: <filepath>(<line>,<col>).
+- MSVC compilation links are now detected in *compilation* buffers. These look like: <filepath>(<line>).
 
 Speed improvements:
 

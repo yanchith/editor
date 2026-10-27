@@ -12,7 +12,6 @@ TODO(jt): Known serious bugs:
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
 - macOS: need to fix C-u C-<space>
-- find_compilation link should support dotnet/typescript (also MSVC?) link format: <filename>(<line>,<col)
 - Ctrl-Shift-z keybind doesn't work (unless defined before Ctrl-z), because we allow extra shift on the last key for other reasons.
 
 TODO(jt): Roadmap:
@@ -86,6 +85,8 @@ TODO(jt): Roadmap:
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [ ] q to hide compilation or listing
+- [ ] align: aligns selection on first occurence of string
+- [X] Compilation links for C# (dotnet build) and TypeScript (tsc): <filepath>(<line>,<col>)
 - [X] Mouse interaction in the mini panel (text selection, item clicking)
 - [X] Mouse interaction in the modal interaction (text selection)
 - [ ] Mouse interaction in the mode line (click change view, lang, crlf, indentation level)
@@ -150,9 +151,10 @@ f64 :: float64;
 #import "Hash_Table";
 #import "Profiler";
 
-String  :: #import "String";
-Math    :: #import "Math";
-Unicode :: #import "Unicode";
+String     :: #import "String";
+Math       :: #import "Math";
+Unicode    :: #import "Unicode";
+Reflection :: #import "Reflection";
 
 S64_MAX        :: Math.S64_MAX;
 Vector2        :: Math.Vector2;
@@ -599,7 +601,7 @@ Mini_Panel :: struct {
 
     old_cursor: Text_Location;
     old_cursor_x: f64;
-    
+
     cursor_x:     Interpolation(f64, ROUND = false);
     cursor_color: Interpolation(Vector4, ROUND = false);
 
@@ -635,16 +637,16 @@ Mini_Panel :: struct {
         line_number_or_zero: s64;
         line_number_padding: s64;
     }
-    
+
     Flags :: enum_flags u32 {
         NONE :: 0;
-        
+
         LAST_CLICK_WAS_INSIDE_MESSAGE_LINE :: 0x01;
         LAST_CLICK_WAS_INSIDE_ITEM_LIST    :: 0x02;
-        
+
         RECEIVED_KEYBOARD_INTERACTION :: 0x10;
         RECEIVED_MOUSE_INTERACTION    :: 0x20;
-        
+
         TRANSIENT :: RECEIVED_KEYBOARD_INTERACTION | RECEIVED_MOUSE_INTERACTION;
     }
 }
@@ -678,10 +680,10 @@ Modal_Interaction :: struct {
 
     cursors: Text_Cursors;
     selecting: bool;
-    
+
     old_cursor: Text_Location;
     old_cursor_x: f64;
-    
+
     cursor_x:     Interpolation(f64, ROUND = false);
     cursor_color: Interpolation(Vector4, ROUND = false);
 
@@ -689,15 +691,15 @@ Modal_Interaction :: struct {
 
     userdata_arena: *Arena;
     userdata: *void;
-    
+
     Flags :: enum_flags u32 {
         NONE :: 0;
-        
+
         LAST_CLICK_WAS_INSIDE_MESSAGE_LINE :: 0x01;
-        
+
         RECEIVED_KEYBOARD_INTERACTION :: 0x10;
         RECEIVED_MOUSE_INTERACTION    :: 0x20;
-        
+
         TRANSIENT :: RECEIVED_KEYBOARD_INTERACTION | RECEIVED_MOUSE_INTERACTION;
     }
 }
@@ -948,14 +950,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             }
         }
     }
-    
+
     if editor.mini_panel.open {
         if editor.mini_panel.old_cursor != editor.mini_panel.cursors.c0 {
             editor.mini_panel.old_cursor = editor.mini_panel.cursors.c0;
             editor.mini_panel.old_cursor_x = get_x_at_mini_panel_cursor(editor.mini_panel, editor.font);
         }
     }
-    
+
     if editor.modal_interaction.open {
         if editor.modal_interaction.old_cursor != editor.modal_interaction.cursors.c0 {
             editor.modal_interaction.old_cursor = editor.modal_interaction.cursors.c0;
@@ -1110,44 +1112,44 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     if editor.mini_panel.open {
         mp := *editor.mini_panel;
-        
+
         mp_h := (MINI_PANEL_LINES + 1) * cell_h;
         mp_x0 := GUTTER_PIXELS;
         mp_x1 := window_w - GUTTER_PIXELS;
         mp_y := max(window_h - mp_h, 0);
         mp_rect: Rect = { mp_x0, mp_y, mp_x1, window_h };
-        
+
         mouse := input.mouse_position;
 
         message_line_rect: Rect = { mp_x0, mp_y, mp_x1, mp_y + cell_h };
         item_listing_rect: Rect = { mp_x0, mp_y + cell_h, mp_x1, window_h };
-        
+
         if editor.input_state.keys[Key.MB_LEFT] & .PRESSED {
             if rect_contains_point(message_line_rect, mouse) {
                 mp.flags |= .LAST_CLICK_WAS_INSIDE_MESSAGE_LINE;
             } else {
                 mp.flags &= ~.LAST_CLICK_WAS_INSIDE_MESSAGE_LINE;
             }
-            
+
             if rect_contains_point(item_listing_rect, mouse) {
                 mp.flags |= .LAST_CLICK_WAS_INSIDE_ITEM_LIST;
             } else {
                 mp.flags &= ~.LAST_CLICK_WAS_INSIDE_ITEM_LIST;
             }
         }
-        
+
         //
         // Mouse wheel scrolling in the mini panel items
-        // 
+        //
         if rect_contains_point(item_listing_rect, mouse) {
             if input.mouse_wheel_delta != 0 && !(editor.input_state.modifiers & .CTRL) {
                 target := mp.scroll_y.target;
                 target -= cast(f64, input.mouse_wheel_delta);
                 target = clamp(target, 0, cell_h * cast(f64, mp.items.count - 1));
                 interpolation_init(*mp.scroll_y, target);
-                
+
                 mp.flags |= .RECEIVED_MOUSE_INTERACTION;
-                
+
                 // Clamp item index to scroll
                 viewport_y0 := mp.scroll_y.target;
                 viewport_y1 := mp.scroll_y.target + (MINI_PANEL_LINES - 1) * cell_h;
@@ -1162,7 +1164,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 }
             }
         }
-        
+
         if editor.input_state.keys[Key.MB_LEFT] & .DOWN {
             //
             // Mouse selection and multiclicking in the mini panel message line
@@ -1170,20 +1172,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if mp.flags & .LAST_CLICK_WAS_INSIDE_MESSAGE_LINE {
                 action_text := mp.procs.get_action_text(editor, platform, input);
                 action_text_length := _font_compute_line_length(editor.font, action_text, binary = false);
-                
+
                 // TODO(jt): Scrolling in the message line, both mouse and keyboard.
                 line_view := text_buffer_make_view_for_line(mp.buffer, 0,, temp);
                 col, overflow := _font_compute_char_index_on_line(editor.font, line_view, mouse.x - mp_x0 - action_text_length, binary = false);
-                
+
                 // Include synthetic newline at the end.
                 if overflow {
                     col += 1;
                 }
-                
+
                 if editor.input_state.mb_left_multiclicks < 2 {
                     text_buffer_move_to(mp.buffer, *mp.cursors, col, 0, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
                 }
-                
+
                 if editor.input_state.keys[Key.MB_LEFT] & .PRESSED {
                     if editor.input_state.mb_left_multiclicks == 2 {
                         text_buffer_expand_selection(mp.buffer, *mp.cursors);
@@ -1191,14 +1193,14 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         text_buffer_move_to(mp.buffer, *mp.cursors, col, 0, false);
                         start := text_buffer_get_start_of_line(mp.buffer, 0);
                         end   := text_buffer_get_end_of_line(mp.buffer, 0);
-                        
+
                         mp.cursors = { end, start, end.x };
                     }
                 }
-                
+
                 mp.flags |= .RECEIVED_MOUSE_INTERACTION;
             }
-            
+
             //
             // Mouse selection and multiclicking in the mini panel items
             //
@@ -1208,30 +1210,30 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 row := cast(s64, floor((mouse.y - item_listing_rect.y0 + mp.scroll_y.value) / cell_h));
                 mp.item_index = clamp(row, 0, mp.items.count - 1);
                 mp.procs.update(editor, platform, input, false, true);
-                
+
                 if row >= 0 && row < mp.items.count {
                     if editor.input_state.mb_left_multiclicks >= 2 {
                         mp.procs.confirm(editor, platform, input);
                     }
                 }
-                
+
                 wants_this_frame = true;
             }
         }
-        
+
         if editor.input_state.keys[Key.MB_LEFT] & .PRESSED && !rect_contains_point(mp_rect, mouse) {
             mp.procs.cancel(editor, platform, input);
         }
     } else if editor.modal_interaction.open {
         mi := *editor.modal_interaction;
-        
+
         mouse := input.mouse_position;
-        
+
         message_line_x0 := GUTTER_PIXELS;
         message_line_x1 := window_w - GUTTER_PIXELS;
         message_line_y := window_h - cell_h;
         message_line_rect: Rect = { message_line_x0, message_line_y, message_line_x1, message_line_y + cell_h };
-        
+
         if editor.input_state.keys[Key.MB_LEFT] & .PRESSED {
             if rect_contains_point(message_line_rect, mouse) {
                 mi.flags |= .LAST_CLICK_WAS_INSIDE_MESSAGE_LINE;
@@ -1239,7 +1241,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                 mi.flags &= ~.LAST_CLICK_WAS_INSIDE_MESSAGE_LINE;
             }
         }
-        
+
         if editor.input_state.keys[Key.MB_LEFT] & .DOWN {
             //
             // Mouse selection and multiclicking in the modal interaction message line
@@ -1247,20 +1249,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             if mi.flags & .LAST_CLICK_WAS_INSIDE_MESSAGE_LINE {
                 action_text := mi.procs.get_action_text(editor, platform, input);
                 action_text_length := _font_compute_line_length(editor.font, action_text, binary = false);
-                
+
                 // TODO(jt): Scrolling in the message line, both mouse and keyboard.
                 line_view := text_buffer_make_view_for_line(mi.buffer, 0,, temp);
                 col, overflow := _font_compute_char_index_on_line(editor.font, line_view, mouse.x - message_line_x0 - action_text_length, binary = false);
-                
+
                 // Include synthetic newline at the end.
                 if overflow {
                     col += 1;
                 }
-                
+
                 if editor.input_state.mb_left_multiclicks < 2 {
                     text_buffer_move_to(mi.buffer, *mi.cursors, col, 0, !(editor.input_state.keys[Key.MB_LEFT] & .PRESSED));
                 }
-                
+
                 if editor.input_state.keys[Key.MB_LEFT] & .PRESSED {
                     if editor.input_state.mb_left_multiclicks == 2 {
                         text_buffer_expand_selection(mi.buffer, *mi.cursors);
@@ -1268,20 +1270,20 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
                         text_buffer_move_to(mi.buffer, *mi.cursors, col, 0, false);
                         start := text_buffer_get_start_of_line(mi.buffer, 0);
                         end   := text_buffer_get_end_of_line(mi.buffer, 0);
-                        
+
                         mi.cursors = { end, start, end.x };
                     }
                 }
-                
+
                 mi.flags |= .RECEIVED_MOUSE_INTERACTION;
             }
         }
-        
+
         if editor.input_state.keys[Key.MB_LEFT] & .PRESSED && !rect_contains_point(message_line_rect, mouse) {
             mi.procs.cancel(editor, platform, input);
         }
-    } 
-    
+    }
+
     // Not an 'else' on purpose. The mini panel and modal interaction can close as a response to the mouse event,
     // in which case we'd like to update the panels immediately.
     if !editor.mini_panel.open && !editor.modal_interaction.open {
@@ -1303,30 +1305,30 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     //
     {
         mp := *editor.mini_panel;
-        
+
         // :CentralizedMiniPanelCursorInterpolationSetup
         if mp.old_cursor != mp.cursors.c0 {
             new_cursor_x := get_x_at_mini_panel_cursor(mp, editor.font);
-            
+
             anim_duration := 0.0;
             if mp.flags & .RECEIVED_KEYBOARD_INTERACTION  anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_KEYBOARD_DIRECT);
             if mp.flags & .RECEIVED_MOUSE_INTERACTION     anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_MOUSE);
-            
+
             interpolation_start(*mp.cursor_x, mp.old_cursor_x, new_cursor_x, input.time, anim_duration);
         }
-        
+
         interpolation_running := false;
         interpolation_running |= interpolation_update(*mp.open_t, input.time, dt);
         interpolation_running |= interpolation_update(*mp.scroll_y, input.time, dt);
         interpolation_running |= interpolation_update(*mp.cursor_x, input.time, dt);
         interpolation_running |= interpolation_update(*mp.cursor_color, input.time, dt);
-        
+
         wants_this_frame |= interpolation_running;
         wants_next_frame |= interpolation_running;
-        
+
         mp.flags &= ~.TRANSIENT;
     }
-    
+
     //
     // Update modal interaction
     //
@@ -1336,21 +1338,21 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
         // :CentralizedModalInteractionPanelCursorInterpolationSetup
         if mi.old_cursor != mi.cursors.c0 {
             new_cursor_x := get_x_at_modal_interaction_cursor(mi, editor.font);
-            
+
             anim_duration := 0.0;
             if mi.flags & .RECEIVED_KEYBOARD_INTERACTION  anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_KEYBOARD_DIRECT);
             if mi.flags & .RECEIVED_MOUSE_INTERACTION     anim_duration = max(anim_duration, CURSOR_ANIM_DURATION_MOUSE);
-            
+
             interpolation_start(*mi.cursor_x, mi.old_cursor_x, new_cursor_x, input.time, anim_duration);
         }
-        
+
         interpolation_running := false;
         interpolation_running |= interpolation_update(*mi.cursor_x, input.time, dt);
         interpolation_running |= interpolation_update(*mi.cursor_color, input.time, dt);
-        
+
         wants_this_frame |= interpolation_running;
         wants_next_frame |= interpolation_running;
-        
+
         mi.flags &= ~.TRANSIENT;
     }
 
@@ -1523,7 +1525,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
             action_text := mi.procs.get_action_text(editor, platform, input);
 
             line_view := text_buffer_make_view_for_line(mi.buffer, 0,, temp);
-            
+
             line_x       := _font_compute_line_length(editor.font, action_text, binary = false);
             selection_x0 := _font_compute_position_on_line(editor.font, line_view, mi.cursors.c0.x, binary = false);
             selection_x1 := _font_compute_position_on_line(editor.font, line_view, mi.cursors.c1.x, binary = false);
@@ -2491,7 +2493,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         // multiple times per frame. Maybe we need to move this one level up and track the dirty
         // flags on the mini panel itself?
         mp.procs.update(editor, platform, input, buffer_changed, mp.item_index != old_item_index);
-        
+
         // :CentralizedMiniPanelCursorInterpolationSetup
         //
         // The cursor position interpolation gets setup in a centralized place instead of here, because the
@@ -2499,7 +2501,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
         if cursor_moved || buffer_changed {
             mp.flags |= .RECEIVED_KEYBOARD_INTERACTION;
         }
-        
+
         if buffer_changed {
             interpolation_start(*mp.cursor_color, editor.theme.cursor_color_hot, editor.theme.cursor_color, input.time, CURSOR_FLASH_DURATION);
         }
@@ -2617,7 +2619,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         char := cast(u32, event.codepoint);
         buffer_changed |= text_buffer_insert_char(*mi.buffer, *mi.cursors, char);
     }
-    
+
     if mi.open {
         // :CentralizedModalInteractionCursorInterpolationSetup
         //
@@ -2626,7 +2628,7 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
         if cursor_moved || buffer_changed {
             mi.flags |= .RECEIVED_KEYBOARD_INTERACTION;
         }
-        
+
         if buffer_changed {
             interpolation_start(*mi.cursor_color, editor.theme.cursor_color_hot, editor.theme.cursor_color, input.time, CURSOR_FLASH_DURATION);
         }
@@ -4449,7 +4451,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
 
                         view.cursors = { end, start, end.x };
                     }
-                    
+
                     // Only request the clamp if we got a press, because the interpolation it will interfere with our mouse scrolling .
                     view.flags |= .CLAMP_SCROLL_TO_CURSOR;
                 }
@@ -4474,7 +4476,7 @@ update_panel_for_mouse :: (editor: *Editor, platform: Platform, input: Input, pa
                         execute_listing_action(editor, platform, input, panel, view, listing, .OPEN);
                     }
                 }
-                
+
                 wants_this_frame = true;
             }
         }
@@ -5254,7 +5256,7 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
         // Visual state (old_cursor, old_cursor_x, cursor interpolations) are initted here,
         // because they have to react to init/update procs, as well as some of them can't be
         // zero-initialized (e.g. the cursor color interpolation).
-        
+
         mp.old_cursor = mp.cursors.c0;
         mp.old_cursor_x = get_x_at_mini_panel_cursor(mp, editor.font);
         interpolation_init(*mp.cursor_x, mp.old_cursor_x);
@@ -5273,7 +5275,7 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     assert(mp.open);
 
     mp.flags = 0;
-    
+
     mp.cursors.c0 = { 0, 0 };
     mp.cursors.c1 = { 0, 0 };
     mp.selecting = false;
@@ -5311,11 +5313,11 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, pr
     mi.open = true;
 
     procs.init(editor, platform, input, params);
-    
+
     // Visual state (old_cursor, old_cursor_x, cursor interpolations) are initted here,
     // because they have to react to init/update procs, as well as some of them can't be
     // zero-initialized (e.g. the cursor color interpolation).
-        
+
     mi.old_cursor = mi.cursors.c0;
     mi.old_cursor_x = get_x_at_modal_interaction_cursor(mi, editor.font);
     interpolation_init(*mi.cursor_x, mi.old_cursor_x);
@@ -5329,7 +5331,7 @@ close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
     assert(mi.open);
 
     mi.flags = 0;
-    
+
     mi.cursors.c0 = { 0, 0 };
     mi.cursors.c1 = { 0, 0 };
     mi.selecting = false;
@@ -6299,7 +6301,7 @@ pop_cursor_location :: (view: *Document_View) {
 
     text_buffer_clamp_cursors(view.document.buffer, *view.cursors);
     text_cursors_horizontal_move_was_explicit(*view.cursors);
-    
+
     view.flags |= .CLAMP_SCROLL_TO_CURSOR;
 }
 
@@ -6322,68 +6324,115 @@ Compilation_Link :: struct {
 // Currently detected:
 //   <filepath>:<line>:<col>
 //   <filepath>:<line>,<col>
+//   <filepath>(<line>:<col>)
+//   <filepath>(<line>,<col>)
+//   <filepath>(<line>)
 //
 // Known formats:
 //
-// jai:    C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
-// rustc:  game_platform_winit\src\main.rs:6:1
-// clang:  sdl_asteroids.cpp:1:10 or .\asteroids.h:12:16
-// tsc:    index.ts(2,5) or index.ts:2:5 (based on console feature detection?)
-// dotnet: /path/Source/Thething.cs(6,14)
+//   jai:          C:/Users/yanchith/workspace/editor/src/editor/editor.jai:4801,5
+//   rustc:        game_platform_winit\src\main.rs:6:1
+//   clang:        sdl_asteroids.cpp:1:10 or .\asteroids.h:12:16
+//   tsc:          index.ts(2,5) or index.ts:2:5 (based on console feature detection?)
+//   dotnet build: /path/Source/Thething.cs(6,14)
+//   cl:           hello.c(3)
 //
-// TODO(jt): @Incomplete Detect alternative tsc format: "index.ts(2,5)" and
-// dotnet format: "/path/Source/TheThing.cs(6,14): error CS1519: Invalid token '!' in ...".
-// Both of these require us to be smarter in parsing the commpilation links. For instance the dotnet
-// line above contains both "<something:<something>" and "(<something>,<something>)", so we have to
-// try and fully parse the line-col pair before commiting.
-//
-// TODO(jt): @Bug dotnet build outputs build timing, which matches our <filenamt>:<line>:<col> pattern.
+// TODO(jt): @Bug dotnet build outputs build timing, which matches our <filepath>:<line>:<col> pattern.
 find_compilation_link :: (line: string) -> found: bool, Compilation_Link {
     result: Compilation_Link;
     if !line.count {
         return false, result;
     }
 
-    // We are looking for <path>:<line>:<col> or <path>:<line>,<col>.
-    // We can't rely on the path containing a slash, so detect the line-col pair first.
-    colon_index := String.find_index_from_left(line, #char ":");
-    if colon_index == -1 {
-        return false, result;
-    }
+    // Because detecting the start of a path is very unreliable, we instead detect
+    // the line/column number pair first and then search backwards to find the path.
 
-    // Skip over : in Windows absolute paths.
-    if colon_index >= 1 && colon_index < line.count - 1 {
-        next_c := line[colon_index + 1];
-        if next_c == "/" || next_c == "\\" {
-            colon_index = String.find_index_from_left(line, #char ":", colon_index + 2);
-            if colon_index == -1 {
-                return false, result;
+    line_col_pair_index := -1;
+    line_col_pair_count := 0;
+
+    // Look for the line-col pair in <path>:<line>:<col> or <path>:<line>,<col>.
+    {
+        colon_index := String.find_index_from_left(line, #char ":");
+        while colon_index != -1 {
+            s := slice(line, colon_index);
+
+            success: bool;
+            advance: s64;
+            line_number: s64;
+            column_number: s64;
+
+            success, advance = scan3(s, ":%:%", *line_number, *column_number);
+            if success {
+                result.line_number = line_number;
+                result.column_number = column_number;
+                line_col_pair_index = colon_index;
+                line_col_pair_count = advance;
+                break;
             }
+
+            success, advance = scan3(s, ":%,%", *line_number, *column_number);
+            if success {
+                result.line_number = line_number;
+                result.column_number = column_number;
+                line_col_pair_index = colon_index;
+                line_col_pair_count = advance;
+                break;
+            }
+
+            // Advance to next ":", if we haven't found the thing. This helps skip over ":" in absolute paths on Windows.
+            colon_index = String.find_index_from_left(line, #char ":", colon_index + 1);
         }
     }
 
-    s := slice(line, colon_index + 1);
+    // Look for the line-col pair in <path>(<line>:<col>), <path>(<line>,<col>), or <path>(<line>).
+    if line_col_pair_index == -1 {
+        paren_index := String.find_index_from_left(line, #char "(");
+        while paren_index != -1 {
+            s := slice(line, paren_index);
 
-    success: bool;
-    result.line_number, success, s = string_to_int(s, T = s64);
-    if !success {
-        return false, result;
+            success: bool;
+            advance: s64;
+            line_number: s64;
+            column_number: s64;
+
+            success, advance = scan3(s, "(%:%)", *line_number, *column_number);
+            if success {
+                result.line_number = line_number;
+                result.column_number = column_number;
+                line_col_pair_index = paren_index;
+                line_col_pair_count = advance;
+                break;
+            }
+
+            success, advance = scan3(s, "(%,%)", *line_number, *column_number);
+            if success {
+                result.line_number = line_number;
+                result.column_number = column_number;
+                line_col_pair_index = paren_index;
+                line_col_pair_count = advance;
+                break;
+            }
+
+            success, advance = scan3(s, "(%)", *line_number);
+            if success {
+                result.line_number = line_number;
+                line_col_pair_index = paren_index;
+                line_col_pair_count = advance;
+                break;
+            }
+
+            paren_index = String.find_index_from_left(line, #char "(", paren_index + 1);
+        }
     }
 
-    if !s.count || (s[0] != ":" && s[0] != ",") {
-        return false, result;
-    }
-    advance(*s);
-
-    result.column_number, success, s = string_to_int(s, T = s64);
-    if !success {
+    if line_col_pair_index == -1 {
         return false, result;
     }
 
     // Do messy heuristic path detection. This can be a relative path without any slashes, or it can be an absolute path.
     // It can also contain spaces. We currently miss some relative paths with spaces, if the parts with spaces precede
     // the first slash.
-    space_index := find_index_from_right(line, #char " ", colon_index);
+    space_index := find_index_from_right(line, #char " ", line_col_pair_index);
     slash_index := String.find_index_of_any_from_left(line, "/\\");
     // Skip -1 check for space index, as the path could be the first thing. Works out with the +1 below.
     path_index := space_index + 1;
@@ -6399,13 +6448,13 @@ find_compilation_link :: (line: string) -> found: bool, Compilation_Link {
         }
     }
 
-    path_count := colon_index - path_index;
+    path_count := line_col_pair_index - path_index;
     if path_count == 0 {
         return false, result;
     }
 
     result.index = path_index;
-    result.count = s.data - line.data - path_index;
+    result.count = path_count + line_col_pair_count;
 
     result.path = String.slice(line, path_index, path_count);
     result.path_is_absolute = String.is_absolute_path(result.path);
