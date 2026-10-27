@@ -1,6 +1,6 @@
 # My editor
 
-This is a small text editor I wrote for my personal use. The design goals are roughly:
+This is a text editor I wrote for my personal use. The design goals are roughly:
 
 - Small and simple, so I can make modifications with understanding.
 - Fast, unless it conflicts too much with the previous point.
