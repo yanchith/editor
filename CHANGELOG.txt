@@ -24,6 +24,7 @@ Fixes:
 - Fixed subtle occasional uneven line spacing bug caused by FONT_LINE_HEIGHT_MULTIPLIER. The bug was likely present for a long time,
   but surfaced with animating the mini panel open/close.
 - Fixed directory listing mouse interaction not requesting rendering of the current frame.
+- *compilation* now scrolls to top on refresh, whereas previously it the scroll could have stayed out of bounds of new compilation output.
 
 Other:
 

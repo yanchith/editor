@@ -7,7 +7,6 @@ TODO(jt): Known critical bugs:
 TODO(jt): Known serious bugs:
 
 - Bare ^M is not rendered, but we maybe should render it so that poeple know it is there?
-- *compilation* buffer's scroll is not clamped after compilation finishes.
 - Refreshing large files (such as the output of objdump) from disk takes too long. The delete needs to be optimized.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
@@ -6067,8 +6066,7 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
 
     args := document.compilation_args;
 
-    view.cursors.c0 = { 0, 0 };
-    view.cursors.c1 = { 0, 0 };
+    view.cursors = {};
     text_buffer_reset(*document.buffer);
     text_buffer_insert(*document.buffer, *view.cursors, "Compilation directory: ", .OMIT);
     text_buffer_insert(*document.buffer, *view.cursors, working_directory, .OMIT);
@@ -6095,6 +6093,8 @@ run_compilation :: (editor: *Editor, platform: Platform, panel: *Panel) {
     }
 
     text_buffer_insert(*document.buffer, *view.cursors, tprint("\nCompilation exited after % seconds with code: % (exit type: %)\n", to_float64_seconds(time_elapsed), exit_code, exit_type), undo_modifier = .OMIT);
+    view.cursors = {};
+    view.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
     for :text_buffer_temp_lines line_text, line_index: document.buffer {
         found, link := find_compilation_link(line_text);
