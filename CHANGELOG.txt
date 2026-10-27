@@ -33,6 +33,8 @@ Other:
 - swap_line_up/swap_line_down now respect selection and can move entire blocks of subsequent lines.
 - Removed old frame pacing code. The code was present since before a workaround for Windows VSync bug, and should be unnecessary,
   given VSync works. If you experience problems (high power usage or stutter), please report.
+- CR (Carriage Return) is once again rendered and can be navigated around (it was hidden in some previous release).
+  While this is ugly, you at least know it is there. This will improve once we have proper CRLF support.
 
 alpha 0.0.2
 -----------

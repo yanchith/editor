@@ -6,7 +6,6 @@ TODO(jt): Known critical bugs:
 
 TODO(jt): Known serious bugs:
 
-- Bare ^M is not rendered, but we maybe should render it so that poeple know it is there?
 - Refreshing large files (such as the output of objdump) from disk takes too long. The delete needs to be optimized.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
@@ -121,7 +120,8 @@ TODO(jt): Roadmap:
 - [ ] Pretty things: blinking cursor, cursor trail, round corners for cursor&selection, scrollbars...
 - [ ] Flash pasted text
 - [ ] Flash text inserted by undo/redo
-- [ ] Writing CRLF and CRLF navigation (cursor movement should skip over)
+- [ ] Writing CRLF and CRLF navigation (cursor movement should skip over the CRLF as a whole). Consider supporting mixed line endings.
+- [ ] Special rendering for CRLF in documents with mixed line endings. Bare CR still gets ugly replacement-char rendering.
 - [ ] Configurable limits: max_filesize_to_open, max_filesize_to_watch (unless we make speed improvements), max_filesize_to_presume_utf8
 
 ... after beta ...

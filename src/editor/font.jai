@@ -371,11 +371,15 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
                 it = 0;
             }
         } else {
-            if it == #char "\r" {
-                current_char_index += 1;
-
-                continue;
-            }
+            // :ExplicitCR
+            //
+            // For now, we turned off hiding of CR to make it visible in the files. We might add custom rendering for it later,
+            // as well as text navigation that doesn't allow you to put something between CR and LF.
+            //
+            // if it == #char "\r" {
+            //     current_char_index += 1;
+            //     continue;
+            // }
 
             if it == #char "\t" {
                 current_char_index += 1;
@@ -617,9 +621,11 @@ _font_compute_line_length :: (font: Font, line_text: string, $binary: bool) -> f
                 it = 0;
             }
         } else {
-            if it == #char "\r" {
-                continue;
-            }
+            // :ExplicitCR
+            //
+            // if it == #char "\r" {
+            //     continue;
+            // }
 
             if it == #char "\t" {
                 advance += INDENTATION_STEP * font.advance_for_space;
@@ -676,9 +682,11 @@ _font_compute_position_on_line :: (font: Font, line_text: string, char_index: s6
                 it = 0;
             }
         } else {
-            if it == #char "\r" {
-                continue;
-            }
+            // :ExplicitCR
+            //
+            // if it == #char "\r" {
+            //     continue;
+            // }
 
             if it == #char "\t" {
                 advance += INDENTATION_STEP * font.advance_for_space;
@@ -734,9 +742,11 @@ _font_compute_char_index_on_line :: (font: Font, line_text: string, x: f64, $bin
                 it = 0;
             }
         } else {
-            if it == #char "\r" {
-                continue;
-            }
+            // :ExplicitCR
+            //
+            // if it == #char "\r" {
+            //     continue;
+            // }
 
             if it == #char "\t" {
                 advance += INDENTATION_STEP * font.advance_for_space;
