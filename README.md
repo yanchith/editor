@@ -53,6 +53,11 @@ If you want to add support for a language for yourself, look at the existing `la
 The parser for indentation and lexers for syntax highlighting need to get faster.
 The editor turns them off for files above 10 megabytes.
 
+**Config**
+
+The config file option is pretty weak compared to modifying the source. Eventually, many code-only things will
+be modifiable through config, for instance animation speeds, sizes and layouts, custom themes...
+
 **Misc**
 
 Spawning a process and collecting its output (for compilation or project search) is synchronous for now.
