@@ -474,6 +474,7 @@ text_buffer_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, cha
             buffer.line_chars[cursors.c0.y] += buffer.line_chars[cursors.c0.y + 1];
             buffer.line_bytes[cursors.c0.y] += buffer.line_bytes[cursors.c0.y + 1];
 
+            // TODO(jt): @Speed If this becomes a speed problem, try doing remove_lines, like update_index_for_delete_forward does.
             remove_line(buffer, cursors.c0.y + 1);
 
             advance(*text);
@@ -575,6 +576,7 @@ text_buffer_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursors, un
         buffer.line_chars[cursors.c0.y - 1] += buffer.line_chars[cursors.c0.y];
         buffer.line_bytes[cursors.c0.y - 1] += buffer.line_bytes[cursors.c0.y];
 
+        // TODO(jt): @Speed If this becomes a speed problem (after we can delete multiple characters), try doing remove_lines, like update_index_for_delete_forward does.
         remove_line(buffer, cursors.c0.y);
 
         old_cursor := cursors.c0;
@@ -2350,6 +2352,12 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors
     ProfileZone("update_index_for_delete_forward");
 
     text := _text;
+    
+    // We used to call remove_line() in the place where we now increment remove_line_count, but that's quadratic
+    // and took a long time for large deletions (such as when we hot-reload a file because of external change).
+    // We now delete in batch at the end, and until then skip over soon-to-be-deleted lines.
+    remove_line_index := cursors.c0.y + 1;
+    remove_line_count := 0;
 
     while text.count {
         if text[0] == "\n" {
@@ -2359,10 +2367,10 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors
             buffer.line_chars[cursors.c0.y] -= 1;
             buffer.line_bytes[cursors.c0.y] -= 1;
 
-            buffer.line_chars[cursors.c0.y] += buffer.line_chars[cursors.c0.y + 1];
-            buffer.line_bytes[cursors.c0.y] += buffer.line_bytes[cursors.c0.y + 1];
+            buffer.line_chars[cursors.c0.y] += buffer.line_chars[remove_line_index + remove_line_count];
+            buffer.line_bytes[cursors.c0.y] += buffer.line_bytes[remove_line_index + remove_line_count];
 
-            remove_line(buffer, cursors.c0.y + 1);
+            remove_line_count += 1;
 
             advance(*text);
             assert(text.count >= 0);
@@ -2379,6 +2387,8 @@ update_index_for_delete_forward :: (buffer: *Text_Buffer, cursors: *Text_Cursors
             assert(text.count >= 0);
         }
     }
+    
+    remove_lines(buffer, remove_line_index, remove_line_count);
 }
 
 // c1 must be handled at the caller level
@@ -2400,6 +2410,7 @@ update_index_for_delete_backward :: (buffer: *Text_Buffer, cursors: *Text_Cursor
             buffer.line_chars[cursors.c0.y - 1] += buffer.line_chars[cursors.c0.y];
             buffer.line_bytes[cursors.c0.y - 1] += buffer.line_bytes[cursors.c0.y];
 
+            // TODO(jt): @Speed If this becomes a speed problem, try doing remove_lines, like update_index_for_delete_forward does.
             remove_line(buffer, cursors.c0.y);
 
             cursors.c0.x = new_cursor_x;
@@ -2451,6 +2462,23 @@ remove_line :: (buffer: *Text_Buffer, index: s64) {
     array_ordered_remove_by_index(*buffer.line_bytes, index);
     array_ordered_remove_by_index(*buffer.line_chars, index);
     buffer.line_count -= 1;
+}
+
+remove_lines :: (buffer: *Text_Buffer, index: s64, count: s64) {
+    sanity_assert(buffer.line_count == buffer.line_bytes.count);
+    sanity_assert(buffer.line_count == buffer.line_chars.count);
+
+    assert(index >= 0);
+    assert(index + count <= buffer.line_count);
+    
+    for index..buffer.line_count - count - 1 {
+        buffer.line_bytes[it] = buffer.line_bytes[it + count];
+        buffer.line_chars[it] = buffer.line_chars[it + count];
+    }
+    
+    buffer.line_bytes.count -= count;
+    buffer.line_chars.count -= count;
+    buffer.line_count       -= count;
 }
 
 invalidate_chunk_for_line :: (buffer: Text_Buffer, line_index: s64) {

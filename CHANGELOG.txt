@@ -18,6 +18,8 @@ New features:
 Speed improvements:
 
 - Search now doesn't arena-allocate the result strings eagerly. This makes it go from 9ms -> 3ms on kb_text_shape.h. Contribution by @paylanon.
+- Removed quadratic behavior from updating line indices when deleting forward. This was somewhat hard to notice during regular editing,
+  but affected hot-reloading files changed on disk. Now large files (such as object dumps) reload fast after external change.
 
 Fixes:
 

@@ -6,7 +6,6 @@ TODO(jt): Known critical bugs:
 
 TODO(jt): Known serious bugs:
 
-- Refreshing large files (such as the output of objdump) from disk takes too long. The delete needs to be optimized.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
 
@@ -2330,8 +2329,6 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                         reload_shortcut := shortcut_sprint(key_map_find_shortcut(editor.document_key_map, .RELOAD_DOCUMENT),, temp);
                         editor_log(editor, "% modified, but file changed on filesystem. % or % to exit read only mode", String.path_filename(document.backing_file_path), save_shortcut, reload_shortcut);
                     } else {
-                        // TODO(jt): @Speed @Memory Figure out a diff instead of changing the whole file?
-
                         cursor_before_reload := document.cursors_cold.c0;
 
                         // TODO(jt): @Speed This delete takes an enormous amount of time for large files.
