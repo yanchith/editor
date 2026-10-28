@@ -1,11 +1,21 @@
+//
 // This file provides basic support for the C Programming language.
 //
-// The lexer is not yet very well tested, so expect bugs.
+// This is not yet very well tested, so expect bugs.
 //
 // Apart for supporting C, this file also supports some basic C++.
 // Some C++ tokens (like ::) are not lexed properly, but this is hard to notice
-// until we'd enable syntax highlighting for these (which we currently don't support)
-//   -jt 30 August 2026
+// until we'd enable syntax highlighting for these (which we currently don't support).
+//
+// The lexer in this file was created by looking at the tokenizer in the Focus editor for C language reference.
+// Structural similarities are not accidental. Thank you, Focus developers. (https://github.com/focus-editor/focus)
+//
+// However, we preserve less information on our tokens than Focus does, so we did away with some things.
+// For example, almost every token here is PUNCTUATION, we don't distinguish operators, etc.
+//
+// Additionally, I did find some bugs in the the focus implementation, which I fixed here (like the missing case for double_greater_than).
+// There might be more bugs.
+//
 
 // TODO(jt): @Bug 0ull is not highlighted.
 
@@ -70,17 +80,6 @@ lang_c_update_tokens :: (document: *Document) {
 }
 
 #scope_file
-
-//
-// The lexer in this file was created by looking at the tokenizer in the Focus editor for C language reference.
-// Structural similarities are not accidental. Thank you, Focus developers. (https://github.com/focus-editor/focus)
-//
-// However, we preserve less information on our tokens than Focus does, so we did away with some things.
-// For example, almost every token here is PUNCTUATION, we don't distinguish operators, etc.
-//
-// Additionally, I did find some bugs in the the focus implementation, which I fixed here (like the missing case for double_greater_than).
-// There might be more bugs.
-//
 
 USERDATA__IS_INCLUDE_DIRECTIVE: u16 : 0x01;
 
@@ -573,16 +572,41 @@ KEYWORDS :: string.[
     //
     // These are the official keywords as of C23 (https://cppreference.com/c/keyword)
     //
-    "alignas", "alignof", "auto", "bool", "break", "case", "char", "const", "constexpr",
-    "continue", "default", "do", "double", "else", "enum",
-    "extern", "false", "float", "for", "goto", "if", "inline", "int", "long", "nullptr", "register",
-    "restrict", "return", "short", "signed",
-    "sizeof", "static", "static_assert", "struct", "switch", "thread_local", "true", "typedef",
-    "typeof", "typeof_unqual", "union", "unsigned", "void", "volatile", "while",
-    "_Alignas", "_Alignof", "_Atomic", "_BitInt", "_Bool", "_Complex", "_Decimal128", "_Decimal32",
-    "_Decimal64", "_Generic", "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local",
+    "alignas", "alignof", "auto",
+    "bool", "break", "case", "char", "const", "constexpr", "continue",
+    "default", "do", "double",
+    "else", "enum", "extern",
+    "false", "float", "for",
+    "goto",
+    "if", "inline", "int",
+    "long",
+    "nullptr",
+    "register", "restrict", "return",
+    "short", "signed", "sizeof", "static", "static_assert", "struct", "switch",
+    "thread_local", "true", "typedef", "typeof", "typeof_unqual",
+    "union", "unsigned",
+    "void", "volatile",
+    "while",
+    "_Alignas", "_Alignof", "_Atomic",
+    "_BitInt", "_Bool",
+    "_Complex",
+    "_Decimal128", "_Decimal32", "_Decimal64",
+    "_Generic",
+    "_Imaginary",
+    "_Noreturn",
+    "_Static_assert",
+    "_Thread_local",
 
     // These are some additional C++ keywords that may appear in C-like C++ codebases.
-    "asm", "class", "const_cast", "decltype", "namespace", "noexcept", "operator", "private", "protected", "public",
-    "reinterpret_cast", "static_cast", "template", "typename", "using", "virtual",
+    "asm",
+    "class", "const_cast",
+    "decltype",
+    "namespace", "noexcept", 
+    "operator",
+    "private", "protected", "public",
+    "reinterpret_cast",
+    "static_cast",
+    "template", "typename",
+    "using",
+    "virtual",
 ];

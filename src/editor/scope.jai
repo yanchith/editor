@@ -59,6 +59,12 @@ update_scopes :: (document: *Document) {
                            LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END, LANG_C_BLOCK_COMMENTS_CAN_NEST,
                            LANG_C_SINGLE_LINE_STRING, LANG_C_MULTI_LINE_STRING);
         }
+        case .CSHARP; {
+            _update_scopes(document, LANG_CSHARP_INDENTATION_PAREN_PAIRS,
+                           LANG_CSHARP_LINE_COMMENT,
+                           LANG_CSHARP_BLOCK_COMMENT_START, LANG_CSHARP_BLOCK_COMMENT_END, LANG_CSHARP_BLOCK_COMMENTS_CAN_NEST,
+                           LANG_CSHARP_SINGLE_LINE_STRING, LANG_CSHARP_MULTI_LINE_STRING);
+        }
         case .JAI; {
             _update_scopes(document, LANG_JAI_INDENTATION_PAREN_PAIRS,
                            LANG_JAI_LINE_COMMENT,

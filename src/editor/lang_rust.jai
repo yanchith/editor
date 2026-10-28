@@ -1,6 +1,10 @@
+//
 // This file provides basic support for the Rust Programming language.
 //
-// The lexer is not yet very well tested, so expect bugs.
+// This is not yet very well tested, so expect bugs.
+//
+// The lexer in this file is a modified version of the C lexer from lang_c.jai.
+//
 
 LANG_RUST_LINE_COMMENT        :: "//";
 LANG_RUST_BLOCK_COMMENT_START :: "/*";
@@ -62,10 +66,6 @@ lang_rust_update_tokens :: (document: *Document) {
 }
 
 #scope_file
-
-//
-// The lexer in this file is a modified version of the C lexer from lang_c.jai.
-//
 
 get_next_token :: (lexer: *Lexer) -> Token {
     lexer_eat_whitespace(lexer);
