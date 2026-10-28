@@ -35,6 +35,9 @@ Other:
   given VSync works. If you experience problems (high power usage or stutter), please report.
 - CR (Carriage Return) is once again rendered and can be navigated around (it was hidden in some previous release).
   While this is ugly, you at least know it is there. This will improve once we have proper CRLF support.
+- Improve keybind matching when Shift modifier is pressed. You need to press Shift get some keys on the keyboard,
+  but the keybinds usually don't specify Shift. There was a workaround in place to allow this, but it caused problems.
+  Now we have a more robust workaround. In particular, it fixed the order dependence of keybind definitions, if multiple would match.
 
 alpha 0.0.2
 -----------

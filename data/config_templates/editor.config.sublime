@@ -80,8 +80,8 @@ Ctrl-]                                 = indent_or_autocomplete
 
 Ctrl-/                                 = toggle_comment
 
-Ctrl-Shift-z                           = redo_edit # TODO(jt): @Hack Defined before Ctrl-Z as a temporary workaround.
 Ctrl-z                                 = undo_edit
+Ctrl-Shift-z                           = redo_edit
 
 Ctrl-c                                 = copy
 Ctrl-x                                 = cut

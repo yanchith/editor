@@ -9,32 +9,26 @@ Shortcut_Key :: struct {
 
 #assert size_of(Shortcut_Key) == 8;
 
-shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key, allow_extra_shift_on_b: bool) -> bool {
-    // TODO(jt): @Cleanup @Hack allow_extra_shift_on_b is here to make M-< and M-> work. To
-    // produce < and >, we need to press shift on en-us, but that's an additional modifier.
-    // How do we clean it up? can we consume the shift, because we know it was used to produce those keys?
-    // Does the presence of those keys on the shortcut key itself allow (or even require) the shift modifier?]
-    // I feel like this requires knowledge of keyboard layout. Let's try and remove the hack, because this
-    // is causing problems in other places.
-    if allow_extra_shift_on_b {
-        if a.modifier_flags != b.modifier_flags && a.modifier_flags | .SHIFT != b.modifier_flags {
-            return false;
-        }
-    } else {
-        if a.modifier_flags != b.modifier_flags {
-            return false;
-        }
-    }
 
+// Sometimes we need to press shift to get characters like '<'. This leaves an extraneous shift modifier.
+// We want to successfully match against inputs that pressed shift even if it wasn't explicitly present in the definition,
+// but we also want to prefer exact matches.
+Shortcut_Match :: enum u32 {
+    NONE             :: 0;
+    WITH_EXTRA_SHIFT :: 1;
+    EXACT            :: 2;
+}
+
+shortcut_key_match :: (a: Shortcut_Key, b: Shortcut_Key) -> Shortcut_Match {
     if a.type != b.type {
-        return false;
+        return .NONE;
     }
 
     if a.type == {
         case .KEY; {
             // TODO(jt): should we also handle to_lower here?
             if a.key != b.key {
-                return false;
+                return .NONE;
             }
         }
         case .CODEPOINT; {
@@ -44,15 +38,23 @@ shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key, allow_extra_shi
 
                 // TODO(jt): We need a Unicode version of to_lower here eventually.
                 if to_lower(ascii_a) != to_lower(ascii_b) {
-                    return false;
+                    return .NONE;
                 }
             } else if a.codepoint != b.codepoint {
-                return false;
+                return .NONE;
             }
         }
     }
-
-    return true;
+    
+    if a.modifier_flags != b.modifier_flags {
+        if a.modifier_flags | .SHIFT == b.modifier_flags {
+            return .WITH_EXTRA_SHIFT;
+        } else {
+            return .NONE;
+        }
+    }
+    
+    return .EXACT;
 }
 
 SHORTCUT_COUNT_MAX :: 8;
@@ -61,21 +63,49 @@ Shortcut :: struct {
     count:     s64;
 }
 
-shortcut_equals_nocase :: (a: Shortcut, b: Shortcut) -> bool {
+shortcut_match :: (a: Shortcut, b: Shortcut) -> Shortcut_Match {
     if a.count != b.count {
-        return false;
+        return .NONE;
     }
-
+    
+    result := Shortcut_Match.EXACT;
     for 0..a.count - 1 {
         key_a := a.sequence[it];
         key_b := b.sequence[it];
 
-        if !shortcut_key_equals_nocase(key_a, key_b, it == a.count - 1) {
-            return false;
+        match := shortcut_key_match(key_a, key_b);
+        if match < result {
+            result = match;
+        }
+        if result == .NONE {
+            return .NONE;
+        }
+    }
+    
+    return result;
+}
+
+
+shortcut_match_prefix :: (shortcut: Shortcut, prefix: Shortcut) -> Shortcut_Match {
+    if prefix.count > shortcut.count {
+        return .NONE;
+    }
+
+    result := Shortcut_Match.EXACT;
+    for 0..prefix.count - 1 {
+        key_a := shortcut.sequence[it];
+        key_b := prefix.sequence[it];
+
+        match := shortcut_key_match(key_a, key_b);
+        if match < result {
+            result = match;
+        }
+        if result == .NONE {
+            return .NONE;
         }
     }
 
-    return true;
+    return result;
 }
 
 // Parses stuff like "n" or "C-x" or "C-S-M <up>" into a shortcut sequence.
@@ -163,23 +193,6 @@ shortcut_parse :: (_s: string) -> success: bool, Shortcut {
     }
 
     return true, shortcut;
-}
-
-shortcut_begins_with_nocase :: (shortcut: Shortcut, prefix: Shortcut) -> bool {
-    if prefix.count > shortcut.count {
-        return false;
-    }
-
-    for 0..prefix.count - 1 {
-        key_a := shortcut.sequence[it];
-        key_b := prefix.sequence[it];
-
-        if !shortcut_key_equals_nocase(key_a, key_b, it == prefix.count - 1) {
-            return false;
-        }
-    }
-
-    return true;
 }
 
 shortcut_print_to_builder :: (shortcut: Shortcut, sb: *String_Builder) {
@@ -356,19 +369,27 @@ key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, 
         key_map.buffered_input.sequence[key_map.buffered_input.count] = key;
         key_map.buffered_input.count += 1;
 
-        has_candidates := false;
+        has_match_candidates := false;
+        
+        best_shortcut_action := default_of(T);
+        best_shortcut_match  := Shortcut_Match.NONE;
+        
         for key_map.registered {
-            if shortcut_begins_with_nocase(it.shortcut, key_map.buffered_input) {
-                has_candidates = true;
+            if shortcut_match_prefix(it.shortcut, key_map.buffered_input) != .NONE {
+                has_match_candidates = true;
             }
 
-            if shortcut_equals_nocase(it.shortcut, key_map.buffered_input) {
-                key_map.buffered_input = {};
-                return false, it.action;
+            match := shortcut_match(it.shortcut, key_map.buffered_input);
+            if match > best_shortcut_match {
+                best_shortcut_action = it.action;
+                best_shortcut_match = match;
             }
         }
-
-        if has_candidates {
+    
+        if best_shortcut_match != .NONE {
+            key_map.buffered_input = {};
+            return false, best_shortcut_action;
+        } else if has_match_candidates {
             return true, default_of(T);
         } else {
             key_map.buffered_input = {};
