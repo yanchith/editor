@@ -29,18 +29,24 @@ Font :: struct {
     ft_face_for_bold_italic: FT_Face;
 
     //
-    // Scaled metrics for currently set pixel_height in the FreeType 26:6 fixed point format. (64-bit, because FT_Pos is 64-bit on Unix)
+    // Metrics scanled for currently set pixel_height in the FreeType's 26:6 fixed point. (64-bit, because FT_Pos is 64-bit on Unix.)
+    // line_height_multiplier is not applied.
     //
 
     ascender: s64;
     descender: s64;
-    line_height: s64; // line_height_multiplier not applied.
+    line_height: s64;
 
     //
     // Scaled metrics for currently set pixel_height in pixels.
     //
-
-    line_height_in_pixels: f32; // WARNING: line_height_multiplier applied. You need to round if you multiply with this.
+    // :VerticalRounding
+    //
+    // The line_height_in_pixels has line_height_multiplier applied, but is also rounded to whole pixels,
+    // so you can safely use this as vertical advance in user code without introducing subtle rendering bugs,
+    // e.g. blur due to filtering, uneven line spacing due to rounding to prevent filtering...
+    //
+    line_height_in_pixels: f32; // line_height_multiplier applied!
     max_glyph_width_in_pixels: f32;
     max_glyph_height_in_pixels: f32;
     max_glyph_width_in_integer_pixels: s32;
@@ -205,7 +211,7 @@ font_reset_for_options :: (font: *Font, pixel_height: s32, line_height_multiplie
     font.descender   = font.ft_face_for_regular.size.metrics.descender;
     font.line_height = font.ft_face_for_regular.size.metrics.height;
 
-    font.line_height_in_pixels = cast(f32, font.ft_face_for_regular.size.metrics.height) * R64 * line_height_multiplier;
+    font.line_height_in_pixels = round(cast(f32, font.ft_face_for_regular.size.metrics.height) * R64 * line_height_multiplier);
     font.max_glyph_width_in_pixels  = cast(f32, font.ft_face_for_regular.size.metrics.max_advance) * R64;
     font.max_glyph_height_in_pixels = cast(f32, font.ft_face_for_regular.size.metrics.height) * R64;
     font.max_glyph_width_in_integer_pixels  = cast(s32, ceil(font.max_glyph_width_in_pixels));
@@ -344,7 +350,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
 
     // Cursors are in 26:6 pixels (64-bit, because on Unix, FT_Pos is 64-bit even if they only use 32 bits).
     cursor_x: s64 = 0;
-    cursor_y: s64 = font.ascender;
+    cursor_y: s64 = multiply_and_round(font.ascender, font.line_height_multiplier);
 
     current_line_index: s64 = 0;
     current_char_index: s64 = 0;
@@ -353,7 +359,7 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
     for :ITERATOR text {
         if it == #char "\n" {
             cursor_x = 0;
-            cursor_y += font.line_height;
+            cursor_y += multiply_and_round(font.line_height, font.line_height_multiplier);
             current_char_index = 0;
             current_line_index += 1;
 
@@ -365,11 +371,15 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
                 it = 0;
             }
         } else {
-            if it == #char "\r" {
-                current_char_index += 1;
-
-                continue;
-            }
+            // :ExplicitCR
+            //
+            // For now, we turned off hiding of CR to make it visible in the files. We might add custom rendering for it later,
+            // as well as text navigation that doesn't allow you to put something between CR and LF.
+            //
+            // if it == #char "\r" {
+            //     current_char_index += 1;
+            //     continue;
+            // }
 
             if it == #char "\t" {
                 current_char_index += 1;
@@ -543,18 +553,18 @@ _font_layout_and_draw_text :: (font: *Font, text: string,
             sanity_assert(font.glyph_entries_tail == entry_index);
         }
 
-        // A couple of things to notice here:
+        // A couple of things of note:
         //
-        // Order of operations here is careful to convert to f64 for global coordinates and only converts to f32 for local coordinates.
+        // Order of operations is careful to convert to f64 for global coordinates and only convert to f32 for local coordinates.
         //
-        // line_height_multiplier causes line_height_in_pixels to have fractional digits.
-        // If outside code multiplies with it to compute the offset passed in here, that offset will also likely have fractional
-        // digits, and possible different for every invocation. This will cause us to emit fractional pixel coordinates, blurring
-        // and otherwise deforming the font. We round offset.y on the caller's behalf here to make sure the whole-pixel snapping
-        // is preserved.
+        // :VerticalRounding
+        //
+        // If outside code passes fractional offset in here, we will emit fractional pixel coordinates, blurring the text,
+        // or even causing fine features to disappear completely. We round offset.y to preserve the whole-pixel snapping, but this
+        // introduces uneven line spacing, which is also bad. In theory, we should also preemptively round horizontally,
+        // but that bug hasn't happened yet (or is so subtle I didn't notice).
         rx := cast(f64, cursor_x) * R64 + offset.x + glyph_offset_x;
-        ry := round(cast(f64, cursor_y) * R64 * font.line_height_multiplier) + round(offset.y) + glyph_offset_y;
-
+        ry := cast(f64, cursor_y) * R64 + round(offset.y) + glyph_offset_y;
         r := rect_from_point_and_size(
             cast(f32, rx),
             cast(f32, ry),
@@ -611,9 +621,11 @@ _font_compute_line_length :: (font: Font, line_text: string, $binary: bool) -> f
                 it = 0;
             }
         } else {
-            if it == #char "\r" {
-                continue;
-            }
+            // :ExplicitCR
+            //
+            // if it == #char "\r" {
+            //     continue;
+            // }
 
             if it == #char "\t" {
                 advance += INDENTATION_STEP * font.advance_for_space;
@@ -670,9 +682,11 @@ _font_compute_position_on_line :: (font: Font, line_text: string, char_index: s6
                 it = 0;
             }
         } else {
-            if it == #char "\r" {
-                continue;
-            }
+            // :ExplicitCR
+            //
+            // if it == #char "\r" {
+            //     continue;
+            // }
 
             if it == #char "\t" {
                 advance += INDENTATION_STEP * font.advance_for_space;
@@ -728,9 +742,11 @@ _font_compute_char_index_on_line :: (font: Font, line_text: string, x: f64, $bin
                 it = 0;
             }
         } else {
-            if it == #char "\r" {
-                continue;
-            }
+            // :ExplicitCR
+            //
+            // if it == #char "\r" {
+            //     continue;
+            // }
 
             if it == #char "\t" {
                 advance += INDENTATION_STEP * font.advance_for_space;
@@ -910,6 +926,16 @@ maybe_advance_range_index_and_get_containing_range :: (range_index: *s64, ranges
         }
     }
 
+    return result;
+}
+
+// If the 26:6 input is an integer, this keeps it an integer. 
+multiply_and_round :: inline (fixed_point: s64, multiplier: f32) -> s64 {
+    floating_point := cast(f32, fixed_point) * R64; // 26:6 -> float
+    floating_point *= multiplier;
+    floating_point = round(floating_point);
+
+    result := cast(s64, floating_point) * 64; // float -> 26:6
     return result;
 }
 

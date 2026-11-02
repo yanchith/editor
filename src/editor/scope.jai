@@ -71,6 +71,12 @@ update_scopes :: (document: *Document) {
                            LANG_GLSL_BLOCK_COMMENT_START, LANG_GLSL_BLOCK_COMMENT_END, LANG_GLSL_BLOCK_COMMENTS_CAN_NEST,
                            LANG_GLSL_SINGLE_LINE_STRING, LANG_GLSL_MULTI_LINE_STRING);
         }
+        case .RUST; {
+            _update_scopes(document, LANG_RUST_INDENTATION_PAREN_PAIRS,
+                           LANG_RUST_LINE_COMMENT,
+                           LANG_RUST_BLOCK_COMMENT_START, LANG_RUST_BLOCK_COMMENT_END, LANG_RUST_BLOCK_COMMENTS_CAN_NEST,
+                           LANG_RUST_SINGLE_LINE_STRING, LANG_RUST_MULTI_LINE_STRING);
+        }
     }
 }
 

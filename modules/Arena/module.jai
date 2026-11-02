@@ -368,9 +368,9 @@ arena_push_array :: (arena: *Arena, a: [] $T, min_alignment := 1) -> [] T {
     return result;
 }
 
-// TODO(jt): arena_push_print :: (arena: *Arena, format_string: string, args: .. Any), so that
-// we don't have to tprint, only to copy into the arena. This won't be super trivial, because sprint/tprint
-// use String_Builder under the hood.
+// TODO(jt): arena_push_print :: (arena: *Arena, format_string: string, args: .. Any)
+// The low-effort version of this is tprint(format, ..args) and then arena_push_string,
+// but this does an intermediate allocation and depends on modules/Basic. We should do better!
 
 arena_push_string :: (arena: *Arena, s: string, min_alignment := 1) -> string {
     assert(s.count > 0, "Can not push empty strings");

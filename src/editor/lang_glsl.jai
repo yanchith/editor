@@ -230,157 +230,140 @@ parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
     ident := lexer_eat_identifier(lexer);
 
     token.type = .IDENTIFIER;
-    lexer_set_token_end(lexer, token);
-
     if lexer_is_keyword(ident, KEYWORDS) {
         token.type = .KEYWORD;
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_equal :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  lexer_advance_horizontally(lexer);
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_minus :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case "-"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case "-";  lexer_advance_horizontally(lexer);
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_plus :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case "+"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case "+";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_asterisk :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  lexer_advance_horizontally(lexer);
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_less_than :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case "<"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case "<";  lexer_advance_horizontally(lexer);
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_greater_than :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case ">"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case ">";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_bang :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  lexer_advance_horizontally(lexer);
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_directive :: (lexer: *Lexer, token: *Token) {
     lexer_advance_horizontally(lexer);
-
     lexer_eat_whitespace(lexer);
     
     ident := lexer_eat_identifier(lexer);
     if ident.count  {
         token.type = .DIRECTIVE;
-        lexer_set_token_end(lexer, token);
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
             case "="; {
                 lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
             }
             case "/"; {
                 token.type = .LINE_COMMENT;
                 lexer_eat_until_newline(lexer);
-                lexer_set_token_end(lexer, token);
             }
             case "*"; {
                 token.type = .BLOCK_COMMENT;
@@ -394,7 +377,6 @@ parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
                             if c1 == "/" {
                                 lexer_advance_horizontally(lexer);
                                 lexer_advance_horizontally(lexer);
-                                lexer_set_token_end(lexer, token);
                                 break;
                             }
                         }
@@ -405,73 +387,67 @@ parse_slash_or_comment :: (lexer: *Lexer, token: *Token) {
             }
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_ampersand :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case "&"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case "&";  lexer_advance_horizontally(lexer);
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_pipe :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; #through;
-            case "|"; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  #through;
+            case "|";  lexer_advance_horizontally(lexer);
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_percent :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "="; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "=";  lexer_advance_horizontally(lexer);
         }
     }
+
+    lexer_set_token_end(lexer, token);
 }
 
 parse_caret :: (lexer: *Lexer, token: *Token) {
     token.type = .PUNCTUATION;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
         c := lexer.input[0];
         if c == {
-            case "^"; #through;
-            case "="; {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
-            }
+            case "^";  #through;
+            case "=";  lexer_advance_horizontally(lexer);
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 KEYWORDS :: string.[

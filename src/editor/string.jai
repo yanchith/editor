@@ -57,6 +57,53 @@ slice :: inline (s: string, index: s64) -> string {
     return c;
 }
 
+// TODO(jt): @Cleanup This is modified scan2 from modules/String. It doesn't require the input to end when the format does.
+// It also returns the number of bytes consumed.
+scan3 :: (_text: string, format: string, args: ..Any) -> bool, consumed_count: s64 {
+    text := _text;
+    n := 0;
+
+    while true {
+        if format[0] == #char "%" {
+            if format.count > 1 && format[1] == #char "%" {
+                if text[0] != #char "%" return false, text.data - _text.data;
+                advance(*format, 2);
+                advance(*text);
+            } else {
+                if n >= args.count return false, text.data - _text.data;
+
+                if args[n].type.type != .POINTER return false, text.data - _text.data;
+
+                arg_type := (cast(*Type_Info_Pointer)args[n].type).pointer_to;
+
+                any : Any;
+                any.type = arg_type;
+                any.value_pointer = (.*)cast(**void)args[n].value_pointer;
+
+                // The implementation of any -> string is in Print, but the implementation of string -> any is in Reflection. Maybe this should be unified.
+                success := Reflection.set_value_from_string(any, *text);
+
+                if !success return false, text.data - _text.data;
+                advance(*format);
+                n += 1;
+            }
+        }
+        else {
+            if text[0] != format[0] return false, text.data - _text.data;
+            advance(*format);
+            advance(*text);
+        }
+
+        // If format is done, the we found a match. (text might not be done, and we return consumed length)
+        if format.count == 0 return true, text.data - _text.data;
+
+        // If text is done, then there's a mismatch.
+        if text.count == 0 return false, text.data - _text.data;
+    }
+
+    return true, text.data - _text.data; // To silence warnings.
+} @ScanLike
+
 //
 // Unicode stuff
 //
@@ -73,7 +120,7 @@ UTF8_LENGTH_FOR_STARTING_BYTE :: u8.[
     1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // 5
     1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // 6
     1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1, // 7
-    
+
     0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, // 8
     0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, // 9
     0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, // A
@@ -98,7 +145,7 @@ UTF8_LENGTH_FOR_STARTING_BYTE_CLAMPED :: u8.[
     1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,
     1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,
     1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,
-    
+
     1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,
     1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,
     1,1,1,1,1,1,1,1, 1,1,1,1,1,1,1,1,
@@ -199,12 +246,12 @@ validate_utf8 :: (s: string) -> bool, length: s64 {
     if !s.count {
         return false, 0;
     }
-    
+
     b0 := s[0];
-    
+
     length := UTF8_LENGTH_FOR_STARTING_BYTE[b0];
     valid  := cast(bool, length);
-    
+
     if !valid            return false, length;
     if length > s.count  return false, s.count;
 
@@ -214,7 +261,7 @@ validate_utf8 :: (s: string) -> bool, length: s64 {
     // https://www.unicode.org/versions/Unicode16.0.0/core-spec/chapter-3/#G27506
     //
     // TODO(jt): @Speed Consider making LUTs for the 5 other cases for byte 2 (and 3 and 4).
-    
+
     // The range is almost always 80..bf, except for 4 edge cases on the second byte.
     if b0 >= 0xc2 && b0 <= 0xdf {
         b1 := s[1];
@@ -255,7 +302,7 @@ validate_utf8 :: (s: string) -> bool, length: s64 {
         b3 := s[3];
         valid = b1 >= 0x80 && b1 <= 0x8f && b2 >= 0x80 && b2 <= 0xbf && b3 >= 0x80 && b3 <= 0xbf;
     }
-    
+
     return valid, length;
 }
 

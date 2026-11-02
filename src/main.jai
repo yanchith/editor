@@ -181,8 +181,6 @@ IRect   :: Editor.IRect;
 #load "renderer_simp.jai";
 #load "logger.jai";
 
-SCHEDULER_PRECISION_MILLIS :: 1;
-
 MAX_LOGFILES :: 10;
 
 // :OperatingSystemSpecificHacks
@@ -227,11 +225,6 @@ main :: () {
         // okay, if you do your own text rendering. We could further improve this with
         // per-monitor awareness: SetProcessDpiAwarenessContext.
         SetProcessDPIAware();
-        // :OperatingSystemSpecificHacks
-        //
-        // Unless we set timing resolution, our end of frame naptime on Windows is too course grained.
-        // See :BatterySaver in this file.
-        timeBeginPeriod(SCHEDULER_PRECISION_MILLIS);
     } else #if OS == .MACOS {
         // :OperatingSystemSpecificHacks
         //
@@ -422,6 +415,10 @@ main :: () {
     }
 
     platform.run_in_process = (_args: string, working_directory: string) -> exit_code: s32, exit_type: Editor.Exit_Type, output: string, error: string {
+        // TODO(jt): @Incomplete On Windows, we can't run shell scripts out of the box. This is makes it a little harder to interact with
+        // some scripty things, e.g. the node's npm, because it is not an executable. I don't want to make exceptions for them, so maybe we add a
+        // platform.run_shell_script or something?
+
         args := _args;
         #if OS == .WINDOWS {
             space_index := String.find_index_from_left(args, " ");
@@ -930,39 +927,13 @@ main :: () {
         time_of_last_frame_start = time_of_frame_start;
 
         if should_run {
+            //
             // :BatterySaver
             //
-            // For various reasons we can't always count on V-sync and render queue depth to pace us.
-            // (For one, we'd like to be low-latency, and will try to enable mailbox presentation, etc.)
+            // There was previously sleep code in here, but we have since fixed the Windows VSync bug.
+            // For now, we are relying on VSync to pace our frames, but we can revisit that in the future.
             //
-            // However, this means that we could have gotten through the frame really fast, and would
-            // start the next one as soon as there are events in our message queue (like if the mouse is being moved).
-            //
-            // For this reason, we also manually sleep here, approximately until the next frame should start.
-            //
-            // However, on Windows specifically, the default sleep timer is really coarse grained (around 15 ms).
-            // A quick hack is timeBeginPeriod, but that brings problems on its own: it affects
-            // scheduler efficiency and power-consumption, but also is either completely global to all apps,
-            // or global to all apps that opted into timeBeginPeriod by picking the most precise thing.
-            //
-            // The better solution is CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, but that only arrived in
-            // Windows 10, version 1803. We should probably detect and do that if possible.
-            //
-            // UPDATE: This is also not really tested without VSync. Maybe it is a bad idea and we should
-            // always just wait on some kind of presentation fence. I don't know.
-            //
-            //   -jt, 26 August 2026
-
-            time_of_frame_end := current_time_monotonic();
-
-            seconds_since_frame_start := to_float64_seconds(time_of_frame_end - time_of_frame_start);
-            target_frame_seconds      := 1.0 / input.monitor_refresh_rate;
-
-            remainder_millis := cast(s32, floor((target_frame_seconds - seconds_since_frame_start) * 1000.0));
-            sleep_millis     := max(remainder_millis - SCHEDULER_PRECISION_MILLIS, 0);
-            if sleep_millis {
-                sleep_milliseconds(sleep_millis);
-            }
+            //   -jt, 12 October 2026
 
             if !wants_next_frame {
                 platform_wait_for_events();
