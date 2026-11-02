@@ -1599,8 +1599,6 @@ compose_new_token :: (lexer: *Lexer) -> *Token {
                 return token;
             }
 
-            // TODO(jt): @LibraryBug If dot is at EOF, cast below is out of bounds and we crash!
-            // if is_digit(cast(u8) c) {
             if c != -1 && starts_number(c) {
                 unwind_one_character(lexer);  // Get the '.' back.
                 return make_number(lexer);
