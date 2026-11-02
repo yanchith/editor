@@ -9,6 +9,7 @@
 // We fixed another crash when we encounter end of file while parsing a string escape sequence (cast bounds check failed otherwise).
 // We fixed yet another crash when an integer literal overflows. The lexer detects the overflow, but than crashes on AOC (possibly, becuase AOC was added to the language after Jai_Lexer was written, or becuase it is still not enabled by default as of beta 0.2.030).
 // We pass a NO_FILE user flag to log when we report a parse error, so that we don't spam the log file. 
+// We fixed a crash when checking for double dot upon a dot at end of file (another cast bounds check failed).
 
 // @Cleanup: Explicitly check against end-of-input for all sub-lexers.
 // @Cleanup: We have all these no_checks in here because end-of-input is -1. We probably want to be cleaner about that in some way.
@@ -1598,9 +1599,9 @@ compose_new_token :: (lexer: *Lexer) -> *Token {
                 return token;
             }
 
-            // @LibraryBug If dot is at EOF, cast below is out of bounds and we crash!
+            // TODO(jt): @LibraryBug If dot is at EOF, cast below is out of bounds and we crash!
             // if is_digit(cast(u8) c) {
-            if c != -1 && starts_number(cast(u8) c) {
+            if c != -1 && starts_number(c) {
                 unwind_one_character(lexer);  // Get the '.' back.
                 return make_number(lexer);
             }
