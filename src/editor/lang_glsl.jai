@@ -1,6 +1,10 @@
+//
 // This file provides basic support for the C Programming language.
 //
-// The lexer is not yet very well tested, so expect bugs.
+// This is not yet very well tested, so expect bugs.
+//
+// The lexer in this file is a modified version of the C lexer from lang_c.jai.
+//
 
 LANG_GLSL_LINE_COMMENT        :: "//";
 LANG_GLSL_BLOCK_COMMENT_START :: "/*";
@@ -61,10 +65,6 @@ lang_glsl_update_tokens :: (document: *Document) {
 }
 
 #scope_file
-
-//
-// The lexer in this file is a modified version of the C lexer from lang_c.jai.
-//
 
 get_next_token :: (lexer: *Lexer) -> Token {
     lexer_eat_whitespace(lexer);
@@ -139,9 +139,10 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
 
     token.type = .NUMBER_LITERAL;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
+        must_be_float := false;
+        
         c := lexer.input[0];
         if parsed_decimal_point && !is_digit(c) {
             // Not a number literal after all.
@@ -153,20 +154,11 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
                 while lexer.input.count && lexer_byte_matches(lexer, is_hex) {
                     lexer_advance_horizontally(lexer);
                 }
-                
-                lexer_set_token_end(lexer, token);
             } else {
                 // Octal
                 while lexer.input.count && lexer_byte_is_any(lexer, "01234567") {
                     lexer_advance_horizontally(lexer);
                 }
-                
-                lexer_set_token_end(lexer, token);
-            }
-
-            if lexer_byte_is_any(lexer, "uU") {
-                lexer_advance_horizontally(lexer);
-                lexer_set_token_end(lexer, token);
             }
         } else {
             // Parse decimal
@@ -185,7 +177,7 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
                 lexer_advance_horizontally(lexer);
             }
             
-            lexer_set_token_end(lexer, token);
+            must_be_float = parsed_decimal_point;
 
             // Parse exponent
             if lexer_byte_is_any(lexer, "eE") {
@@ -199,31 +191,37 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
                     lexer_advance_horizontally(lexer);
                 }
                 
-                lexer_set_token_end(lexer, token);
+                must_be_float = true;
             }
-
-            // Parse suffixes
-            if parsed_decimal_point {
-                if lexer_byte_is_any(lexer, "fF") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_set_token_end(lexer, token);
-                } else if lexer_byte_equals(lexer, "L") && lexer_byte_equals(lexer, "F", 1) {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_set_token_end(lexer, token);
-                } else if lexer_byte_equals(lexer, "l") && lexer_byte_equals(lexer, "f", 1) {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_set_token_end(lexer, token);
-                }
-            } else {
-                if lexer_byte_is_any(lexer, "uU") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_set_token_end(lexer, token);
-                }
+        }
+        
+        // Parse suffixes
+        if must_be_float {
+            if lexer_byte_is_any(lexer, "fF") {
+                lexer_advance_horizontally(lexer);
+            } else if lexer_byte_equals(lexer, "L") && lexer_byte_equals(lexer, "F", 1) {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if lexer_byte_equals(lexer, "l") && lexer_byte_equals(lexer, "f", 1) {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            }
+        } else {
+            if lexer_byte_is_any(lexer, "uU") {
+                lexer_advance_horizontally(lexer);
+            } else if lexer_byte_is_any(lexer, "fF") {
+                lexer_advance_horizontally(lexer);
+            } else if lexer_byte_equals(lexer, "L") && lexer_byte_equals(lexer, "F", 1) {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if lexer_byte_equals(lexer, "l") && lexer_byte_equals(lexer, "f", 1) {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
             }
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {

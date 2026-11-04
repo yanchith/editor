@@ -1,5 +1,10 @@
 #![my_thingy]
 
+const S: &str = "
+asdfasdf
+asdfasdfasdffsd
+sadfasdfppasdf
+";
 
 #[inner]
 #[another = "thingy"]

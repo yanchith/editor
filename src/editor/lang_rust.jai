@@ -1,6 +1,10 @@
+//
 // This file provides basic support for the Rust Programming language.
 //
-// The lexer is not yet very well tested, so expect bugs.
+// This is not yet very well tested, so expect bugs.
+//
+// The lexer in this file is a modified version of the C lexer from lang_c.jai.
+//
 
 LANG_RUST_LINE_COMMENT        :: "//";
 LANG_RUST_BLOCK_COMMENT_START :: "/*";
@@ -8,7 +12,7 @@ LANG_RUST_BLOCK_COMMENT_END   :: "*/";
 LANG_RUST_BLOCK_COMMENTS_CAN_NEST :: false;
 
 LANG_RUST_SINGLE_LINE_STRING :: "\"";
-LANG_RUST_MULTI_LINE_STRING  :: "";
+LANG_RUST_MULTI_LINE_STRING  :: "\"";
 
 LANG_RUST_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
@@ -62,10 +66,6 @@ lang_rust_update_tokens :: (document: *Document) {
 }
 
 #scope_file
-
-//
-// The lexer in this file is a modified version of the C lexer from lang_c.jai.
-//
 
 get_next_token :: (lexer: *Lexer) -> Token {
     lexer_eat_whitespace(lexer);
@@ -152,8 +152,8 @@ parse_number :: (lexer: *Lexer, token: *Token) {
 
     Floats:
 
-    <numbers>.<numbers><float_suffix>
-    <numbers>e<numbers><float_suffix>
+    <numbers>.<numbers>(<float_suffix>)
+    <numbers>e<numbers>(<float_suffix>)
     <numbers><float_suffix>
 
     <numbers>: 0-9 + _
@@ -166,124 +166,18 @@ parse_number :: (lexer: *Lexer, token: *Token) {
     lexer_advance_horizontally(lexer);
 
     if lexer.input.count {
-        if start_c == "0" && lexer_byte_is_any(lexer, "bB") {
-            // Binary integer literal
-            lexer_advance_horizontally(lexer);
-            while lexer.input.count && lexer_byte_is_any(lexer, "01_") {
-                lexer_advance_horizontally(lexer);
-            }
-
-            if String.begins_with(lexer.input, "u8") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "u16") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "u32") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "u64") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "u128") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "usize") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if  String.begins_with(lexer.input, "i8")  {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "i16") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "i32") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "i64") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "i128") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "isize") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            }
-        } else if start_c == "0" && lexer_byte_is_any(lexer, "xX") {
-            // Hex integer literal
+        must_be_float := false;
+        
+        if start_c == "0" && lexer_byte_is_any(lexer, "xX") {
+            // Hexadecimal
             lexer_advance_horizontally(lexer);
             while lexer.input.count && lexer_byte_is_any(lexer, "0123456789aAbBcCdDeEfF_") {
                 lexer_advance_horizontally(lexer);
             }
-
-            if String.begins_with(lexer.input, "u8") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "u16") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "u32") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "u64") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "u128") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "usize") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if  String.begins_with(lexer.input, "i8")  {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "i16") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "i32") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "i64") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "i128") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-            } else if String.begins_with(lexer.input, "isize") {
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
-                lexer_advance_horizontally(lexer);
+        } else if start_c == "0" && lexer_byte_is_any(lexer, "bB") {
+            // Binary
+            lexer_advance_horizontally(lexer);
+            while lexer.input.count && lexer_byte_is_any(lexer, "01_") {
                 lexer_advance_horizontally(lexer);
             }
         } else {
@@ -291,8 +185,6 @@ parse_number :: (lexer: *Lexer, token: *Token) {
             while lexer.input.count && lexer_byte_is_any(lexer, "0123456789_") {
                 lexer_advance_horizontally(lexer);
             }
-
-            must_be_float := false;
 
             // If we have "..", nothing will match and we don't advance.
             if lexer_byte_equals(lexer, ".") && !lexer_byte_equals(lexer, ".", 1) {
@@ -314,77 +206,76 @@ parse_number :: (lexer: *Lexer, token: *Token) {
                     lexer_advance_horizontally(lexer);
                 }
             }
-
-            if must_be_float {
-                if String.begins_with(lexer.input, "f32") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "f64") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                }
-            } else {
-                if String.begins_with(lexer.input, "u8") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "u16") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "u32") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "u64") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "u128") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "usize") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if  String.begins_with(lexer.input, "i8")  {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "i16") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "i32") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "i64") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "i128") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "isize") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "f32") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                } else if String.begins_with(lexer.input, "f64") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_advance_horizontally(lexer);
-                }
+        }
+        
+        if must_be_float {
+            if String.begins_with(lexer.input, "f32") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "f64") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
             }
-
+        } else {
+            if String.begins_with(lexer.input, "u8") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "u16") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "u32") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "u64") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "u128") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "usize") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if  String.begins_with(lexer.input, "i8")  {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "i16") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "i32") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "i64") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "i128") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "isize") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "f32") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            } else if String.begins_with(lexer.input, "f64") {
+                lexer_advance_horizontally(lexer);
+                lexer_advance_horizontally(lexer);
+            }
         }
     }
     

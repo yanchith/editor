@@ -191,6 +191,7 @@ operator==     :: Math.operator==;
 #load "scope.jai";
 #load "lexer.jai";
 #load "lang_c.jai";
+#load "lang_csharp.jai";
 #load "lang_jai.jai";
 #load "lang_glsl.jai";
 #load "lang_rust.jai";
@@ -511,6 +512,7 @@ Document :: struct {
     Lang :: enum u32 {
         TEXT;
         C;
+        CSHARP;
         JAI;
         GLSL;
         RUST;
@@ -2168,11 +2170,12 @@ get_panel_rect :: (editor: Editor, panel_index: s64) -> Rect, content_rect: Rect
 
 get_document_lang :: (document: Document) -> string {
     if #complete document.lang == {
-        case .TEXT;  return "Text";
-        case .C;     return "C";
-        case .JAI;   return "Jai";
-        case .GLSL;  return "GLSL";
-        case .RUST;  return "Rust";
+        case .TEXT;    return "Text";
+        case .C;       return "C";
+        case .CSHARP;  return "C#";
+        case .JAI;     return "Jai";
+        case .GLSL;    return "GLSL";
+        case .RUST;    return "Rust";
     }
 }
 
@@ -2749,8 +2752,10 @@ Document_Action :: enum {
 
     LANGUAGE_TEXT;
     LANGUAGE_C;
+    LANGUAGE_CSHARP;
     LANGUAGE_JAI;
     LANGUAGE_GLSL;
+    LANGUAGE_RUST;
 
     DEBUG_PRINT_BYTE_AT_CURSOR;
     DEBUG_INSERT_BENCHMARK_TEXT;
@@ -3868,10 +3873,12 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .LANGUAGE_TEXT;  document_change_lang(document, .TEXT);
-        case .LANGUAGE_C;     document_change_lang(document, .C);
-        case .LANGUAGE_JAI;   document_change_lang(document, .JAI);
-        case .LANGUAGE_GLSL;  document_change_lang(document, .GLSL);
+        case .LANGUAGE_TEXT;    document_change_lang(document, .TEXT);
+        case .LANGUAGE_C;       document_change_lang(document, .C);
+        case .LANGUAGE_CSHARP;  document_change_lang(document, .CSHARP);
+        case .LANGUAGE_JAI;     document_change_lang(document, .JAI);
+        case .LANGUAGE_GLSL;    document_change_lang(document, .GLSL);
+        case .LANGUAGE_RUST;    document_change_lang(document, .RUST);
 
         case .DEBUG_PRINT_BYTE_AT_CURSOR; {
             if text_buffer_can_read_at_location(document.buffer, view.cursors.c0) {
@@ -5361,11 +5368,12 @@ TEXT_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
 
 get_surround_pairs :: (document: Document) -> /* Static */ [] Paren_Pair {
     if #complete document.lang == {
-        case .TEXT;  return TEXT_SURROUND_PAREN_PAIRS;
-        case .C;     return LANG_C_SURROUND_PAREN_PAIRS;
-        case .JAI;   return LANG_JAI_SURROUND_PAREN_PAIRS;
-        case .GLSL;  return LANG_GLSL_SURROUND_PAREN_PAIRS;
-        case .RUST;  return LANG_RUST_SURROUND_PAREN_PAIRS;
+        case .TEXT;    return TEXT_SURROUND_PAREN_PAIRS;
+        case .C;       return LANG_C_SURROUND_PAREN_PAIRS;
+        case .CSHARP;  return LANG_CSHARP_SURROUND_PAREN_PAIRS;
+        case .JAI;     return LANG_JAI_SURROUND_PAREN_PAIRS;
+        case .GLSL;    return LANG_GLSL_SURROUND_PAREN_PAIRS;
+        case .RUST;    return LANG_RUST_SURROUND_PAREN_PAIRS;
     }
 }
 
@@ -5658,6 +5666,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
                 case "cpp";   #through;
                 case "h";     #through;
                 case "c";     document.lang = .C;
+                case "cs";    document.lang = .CSHARP;
                 case "jai";   document.lang = .JAI;
                 case "vert";  #through;
                 case "frag";  #through;
@@ -5853,11 +5862,12 @@ close_listing :: (editor: *Editor, input: Input, listing: *Listing) {
 
 document_get_comment_style :: (document: Document) -> /* Static */ line: string, block_start: string, block_end: string {
     if #complete document.lang == {
-        case .TEXT;  return "", "", "";
-        case .C;     return LANG_C_LINE_COMMENT, LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END;
-        case .JAI;   return LANG_JAI_LINE_COMMENT, LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END;
-        case .GLSL;  return LANG_GLSL_LINE_COMMENT, LANG_GLSL_BLOCK_COMMENT_START, LANG_GLSL_BLOCK_COMMENT_END;
-        case .RUST;  return LANG_RUST_LINE_COMMENT, LANG_RUST_BLOCK_COMMENT_START, LANG_RUST_BLOCK_COMMENT_END;
+        case .TEXT;    return "", "", "";
+        case .C;       return LANG_C_LINE_COMMENT, LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END;
+        case .CSHARP;  return LANG_CSHARP_LINE_COMMENT, LANG_CSHARP_BLOCK_COMMENT_START, LANG_CSHARP_BLOCK_COMMENT_END;
+        case .JAI;     return LANG_JAI_LINE_COMMENT, LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END;
+        case .GLSL;    return LANG_GLSL_LINE_COMMENT, LANG_GLSL_BLOCK_COMMENT_START, LANG_GLSL_BLOCK_COMMENT_END;
+        case .RUST;    return LANG_RUST_LINE_COMMENT, LANG_RUST_BLOCK_COMMENT_START, LANG_RUST_BLOCK_COMMENT_END;
     }
 }
 
@@ -5868,11 +5878,12 @@ document_update_tokens :: (document: *Document) {
     }
 
     if #complete document.lang == {
-        case .TEXT;  // Nothing
-        case .C;     lang_c_update_tokens(document);
-        case .JAI;   lang_jai_update_tokens(document);
-        case .GLSL;  lang_glsl_update_tokens(document);
-        case .RUST;  lang_rust_update_tokens(document);
+        case .TEXT;    // Nothing
+        case .C;       lang_c_update_tokens(document);
+        case .CSHARP;  lang_csharp_update_tokens(document);
+        case .JAI;     lang_jai_update_tokens(document);
+        case .GLSL;    lang_glsl_update_tokens(document);
+        case .RUST;    lang_rust_update_tokens(document);
     }
 }
 

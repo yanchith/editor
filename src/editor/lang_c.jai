@@ -1,11 +1,21 @@
+//
 // This file provides basic support for the C Programming language.
 //
-// The lexer is not yet very well tested, so expect bugs.
+// This is not yet very well tested, so expect bugs.
 //
 // Apart for supporting C, this file also supports some basic C++.
 // Some C++ tokens (like ::) are not lexed properly, but this is hard to notice
-// until we'd enable syntax highlighting for these (which we currently don't support)
-//   -jt 30 August 2026
+// until we'd enable syntax highlighting for these (which we currently don't support).
+//
+// The lexer in this file was created by looking at the tokenizer in the Focus editor for C language reference.
+// Structural similarities are not accidental. Thank you, Focus developers. (https://github.com/focus-editor/focus)
+//
+// However, we preserve less information on our tokens than Focus does, so we did away with some things.
+// For example, almost every token here is PUNCTUATION, we don't distinguish operators, etc.
+//
+// Additionally, I did find some bugs in the the focus implementation, which I fixed here (like the missing case for double_greater_than).
+// There might be more bugs.
+//
 
 // TODO(jt): @Bug 0ull is not highlighted.
 
@@ -70,17 +80,6 @@ lang_c_update_tokens :: (document: *Document) {
 }
 
 #scope_file
-
-//
-// The lexer in this file was created by looking at the tokenizer in the Focus editor for C language reference.
-// Structural similarities are not accidental. Thank you, Focus developers. (https://github.com/focus-editor/focus)
-//
-// However, we preserve less information on our tokens than Focus does, so we did away with some things.
-// For example, almost every token here is PUNCTUATION, we don't distinguish operators, etc.
-//
-// Additionally, I did find some bugs in the the focus implementation, which I fixed here (like the missing case for double_greater_than).
-// There might be more bugs.
-//
 
 USERDATA__IS_INCLUDE_DIRECTIVE: u16 : 0x01;
 
@@ -160,28 +159,34 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
 
     token.type = .NUMBER_LITERAL;
     lexer_advance_horizontally(lexer);
-    lexer_set_token_end(lexer, token);
 
     if lexer.input.count {
+        must_be_float := false;
+        
         c := lexer.input[0];
         if parsed_decimal_point && !is_digit(c) {
             // Not a number literal after all.
             token.type = .PUNCTUATION;
         } else if start_c == "0" {
+            // TODO(jt): If we type something like 09 or 0b1121, these will both be split into two literals (0 and 9, 0b11 and 21),
+            // but both will be highlighted. Maybe we want to be a little greedier when parsing to help detect invalid octal literals, etc.
             if c == "x" || c == "X" {
+                // Hexadecimal
                 lexer_advance_horizontally(lexer);
                 while lexer.input.count && lexer_byte_matches(lexer, is_hex) {
                     lexer_advance_horizontally(lexer);
                 }
-                
-                lexer_set_token_end(lexer, token);
             } else if c == "b" || c == "B" {
+                // Binary
                 lexer_advance_horizontally(lexer);
                 while lexer.input.count && lexer_byte_is_any(lexer, "01") {
                     lexer_advance_horizontally(lexer);
                 }
-                
-                lexer_set_token_end(lexer, token);
+            } else {
+                // Octal
+                while lexer.input.count && lexer_byte_is_any(lexer, "01234567") {
+                    lexer_advance_horizontally(lexer);
+                }
             }
         } else {
             // Parse decimal
@@ -200,7 +205,7 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
                 lexer_advance_horizontally(lexer);
             }
             
-            lexer_set_token_end(lexer, token);
+            must_be_float |= parsed_decimal_point;
 
             // Parse exponent
             if lexer_byte_is_any(lexer, "eE") {
@@ -213,46 +218,42 @@ parse_number_or_period :: (lexer: *Lexer, token: *Token) {
                 while lexer.input.count && lexer_byte_matches(lexer, is_digit) {
                     lexer_advance_horizontally(lexer);
                 }
-
-                lexer_set_token_end(lexer, token);
+                
+                must_be_float = true;
             }
-
-            // Parse suffixes
-            if parsed_decimal_point {
-                if lexer_byte_is_any(lexer, "fFdD") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_set_token_end(lexer, token);
-                }
-            } else {
+        }
+        
+        // Parse suffixes
+        if must_be_float {
+            if lexer_byte_is_any(lexer, "fFdD") {
+                lexer_advance_horizontally(lexer);
+            }
+        } else {
+            if lexer_byte_is_any(lexer, "lL") {
+                lexer_advance_horizontally(lexer); // l
                 if lexer_byte_is_any(lexer, "lL") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_set_token_end(lexer, token); // l
-                    if lexer_byte_is_any(lexer, "lL") {
-                        lexer_advance_horizontally(lexer);
-                        lexer_set_token_end(lexer, token); // ll
-                        if lexer_byte_is_any(lexer, "uU") {
-                            lexer_advance_horizontally(lexer);
-                            lexer_set_token_end(lexer, token); // llu
-                        }
-                    } else if lexer_byte_is_any(lexer, "uU") {
-                        lexer_advance_horizontally(lexer);
-                        lexer_set_token_end(lexer, token); // lu
+                    lexer_advance_horizontally(lexer); // ll
+                    if lexer_byte_is_any(lexer, "uU") {
+                        lexer_advance_horizontally(lexer); // llu
                     }
                 } else if lexer_byte_is_any(lexer, "uU") {
-                    lexer_advance_horizontally(lexer);
-                    lexer_set_token_end(lexer, token); // u
+                    lexer_advance_horizontally(lexer); // lu
+                }
+            } else if lexer_byte_is_any(lexer, "uU") {
+                lexer_advance_horizontally(lexer); // u
+                if lexer_byte_is_any(lexer, "lL") {
+                    lexer_advance_horizontally(lexer); // ul
                     if lexer_byte_is_any(lexer, "lL") {
-                        lexer_advance_horizontally(lexer);
-                        lexer_set_token_end(lexer, token); // ul
-                        if lexer_byte_is_any(lexer, "lL") {
-                            lexer_advance_horizontally(lexer);
-                            lexer_set_token_end(lexer, token); // ull
-                        }
+                        lexer_advance_horizontally(lexer); // ull
                     }
                 }
+            } else if lexer_byte_is_any(lexer, "fFdD") {
+                lexer_advance_horizontally(lexer);
             }
         }
     }
+    
+    lexer_set_token_end(lexer, token);
 }
 
 parse_identifier_or_keyword :: (lexer: *Lexer, token: *Token) {
@@ -573,16 +574,41 @@ KEYWORDS :: string.[
     //
     // These are the official keywords as of C23 (https://cppreference.com/c/keyword)
     //
-    "alignas", "alignof", "auto", "bool", "break", "case", "char", "const", "constexpr",
-    "continue", "default", "do", "double", "else", "enum",
-    "extern", "false", "float", "for", "goto", "if", "inline", "int", "long", "nullptr", "register",
-    "restrict", "return", "short", "signed",
-    "sizeof", "static", "static_assert", "struct", "switch", "thread_local", "true", "typedef",
-    "typeof", "typeof_unqual", "union", "unsigned", "void", "volatile", "while",
-    "_Alignas", "_Alignof", "_Atomic", "_BitInt", "_Bool", "_Complex", "_Decimal128", "_Decimal32",
-    "_Decimal64", "_Generic", "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local",
+    "alignas", "alignof", "auto",
+    "bool", "break", "case", "char", "const", "constexpr", "continue",
+    "default", "do", "double",
+    "else", "enum", "extern",
+    "false", "float", "for",
+    "goto",
+    "if", "inline", "int",
+    "long",
+    "nullptr",
+    "register", "restrict", "return",
+    "short", "signed", "sizeof", "static", "static_assert", "struct", "switch",
+    "thread_local", "true", "typedef", "typeof", "typeof_unqual",
+    "union", "unsigned",
+    "void", "volatile",
+    "while",
+    "_Alignas", "_Alignof", "_Atomic",
+    "_BitInt", "_Bool",
+    "_Complex",
+    "_Decimal128", "_Decimal32", "_Decimal64",
+    "_Generic",
+    "_Imaginary",
+    "_Noreturn",
+    "_Static_assert",
+    "_Thread_local",
 
     // These are some additional C++ keywords that may appear in C-like C++ codebases.
-    "asm", "class", "const_cast", "decltype", "namespace", "noexcept", "operator", "private", "protected", "public",
-    "reinterpret_cast", "static_cast", "template", "typename", "using", "virtual",
+    "asm",
+    "class", "const_cast",
+    "decltype",
+    "namespace", "noexcept", 
+    "operator",
+    "private", "protected", "public",
+    "reinterpret_cast",
+    "static_cast",
+    "template", "typename",
+    "using",
+    "virtual",
 ];

@@ -14,6 +14,7 @@ New features:
 - Mini panel listing can now be interacted with mouse, similar to directory listings.
 - Dotnet/C# and TypeScript compilation links are now detected in *compilation* buffers. These look like: <filepath>(<line>,<col>).
 - MSVC compilation links are now detected in *compilation* buffers. These look like: <filepath>(<line>).
+- Syntax highlighting and indentation rules for C#.
 
 Speed improvements:
 
@@ -28,6 +29,7 @@ Fixes:
 - Fixed directory listing mouse interaction not requesting rendering of the current frame.
 - *compilation* now scrolls to top on refresh, whereas previously it the scroll could have stayed out of bounds of new compilation output.
 - Fix cast bounds check crash in Jai_Lexer when someone types a dot at the end of file. Contribution by @paylanon.
+- Make number parsing in lexers more robust.
 
 Other:
 

@@ -11,8 +11,7 @@ This is a text editor I wrote for my personal use. The design goals are roughly:
 If you want to make this editor yours, there's two options:
 
 1) Use a binary build and customize `editor.config`. There's a few starter templates,
-   depending on where you are coming from, but note that these don't map precisely
-   to their source behavior.
+   depending on where you are coming from.
 
 2) Modify the code and compile your own build.
 
