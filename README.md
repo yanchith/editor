@@ -44,7 +44,7 @@ This is an early alpha. Bugs and occasional crashes may happen. Save often.
 
 **Language support**
 
-Only C/C++, Jai, GLSL and Rust, are supported right now. I plan to add support for more languages soon.
+Only C/C++, Jai, GLSL, Rust and C#, are supported right now. I plan to add support for more languages soon.
 If you want to add support for a language for yourself, look at the existing `lang_xyz.jai` files.
 
 **Performance**
