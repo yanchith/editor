@@ -81,6 +81,7 @@ TODO(jt): Roadmap:
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [ ] q to hide compilation or listing
 - [ ] align: aligns selection on first occurence of string
+- [ ] create_directory modal interaction command (executable from anywhere we have a backing directory)
 - [X] Compilation links for C# (dotnet build) and TypeScript (tsc): <filepath>(<line>,<col>)
 - [X] Mouse interaction in the mini panel (text selection, item clicking)
 - [X] Mouse interaction in the modal interaction (text selection)
@@ -101,7 +102,7 @@ TODO(jt): Roadmap:
 - [X] Language: Rust
 - [ ] Language: Javascript
 - [ ] Language: Typescript
-- [ ] Language: C#
+- [X] Language: C#
 - [ ] Language: Odin
 - [ ] Language: Lua
 - [ ] Language: Java
