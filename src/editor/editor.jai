@@ -8,6 +8,19 @@ TODO(jt): Known serious bugs:
 
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
+- Following code messes scope parsing in Rust:
+
+    #[inline]
+    pub fn push_str(&mut self, s: &str) {
+        match self.try_push_str(s) {
+            Ok(()) => (),
+            Err(_) => panic!(
+                "Failed to push string of length {}: InlineString at full capacity ({}).",
+                s.len(),
+                N,
+            ),
+        }
+    }
 
 TODO(jt): Roadmap:
 
