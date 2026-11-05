@@ -12,7 +12,7 @@ LANG_RUST_BLOCK_COMMENT_END   :: "*/";
 LANG_RUST_BLOCK_COMMENTS_CAN_NEST :: false;
 
 LANG_RUST_SINGLE_LINE_STRING :: "\"";
-LANG_RUST_MULTI_LINE_STRING  :: "\"";
+LANG_RUST_MULTI_LINE_STRING  :: ""; // TODO(jt): @Bug Enabling this messes up scope parsing. Investigate!
 
 LANG_RUST_SURROUND_PAREN_PAIRS: [] Paren_Pair = .[
     { #char "{", #char "}" },
