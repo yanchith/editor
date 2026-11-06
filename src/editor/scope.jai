@@ -121,24 +121,25 @@ find_scope_for_location :: (document: Document, loc: Text_Location, x0_inclusive
 
 find_indentation_level_for_location :: (document: Document, loc: Text_Location) -> s64 {
     // The Y range check is start-exclusive and end-inclusive by design: we indent the line of
-    // the closing paren depending on whether the scope has regular or HANGING indentation,
+    // the closing paren depending on whether the scope is HANGING,
     // while the opening paren always belongs to its parent scope, so we exclude it.
     scope := find_scope_for_location(document, loc, y0_inclusive = false);
     if !scope {
         return 0;
     }
 
-    sanity_assert(scope.indentation_level >= 0);
     level := scope.indentation_level;
+    sanity_assert(level >= 0);
 
     // If this is the last line of the scope (and it is not a HANGING indentation style),
     // indent to the parent scope's level, if it exists.
+    // However, that parent can be HANGING or PREFIXED, and we want to ignore that.
     if scope.loc1.y == loc.y && !(scope.indentation_flags & .HANGING) {
         if scope.parent_index >= 0 {
             parent := *document.scopes[scope.parent_index];
-            sanity_assert(parent.indentation_level >= 0);
 
             level = parent.indentation_level;
+            sanity_assert(level >= 0);
         }
     }
 
@@ -148,18 +149,18 @@ find_indentation_level_for_location :: (document: Document, loc: Text_Location) 
 #scope_file
 
 contains :: (scope: Scope, loc: Text_Location, x0_inclusive: bool, x1_inclusive: bool, y0_inclusive: bool, y1_inclusive: bool) -> bool {
-    test_top    := ifx y0_inclusive then loc.y >= scope.loc0.y else loc.y > scope.loc0.y;
-    test_bottom := ifx y1_inclusive then loc.y <= scope.loc1.y else loc.y < scope.loc1.y;
-    test_left   := ifx x0_inclusive then loc.x >= scope.loc0.x else loc.x > scope.loc0.x;
-    test_right  := ifx x1_inclusive then loc.x <= scope.loc1.x else loc.x < scope.loc1.x;
+    top    := ifx y0_inclusive then loc.y >= scope.loc0.y else loc.y > scope.loc0.y;
+    bottom := ifx y1_inclusive then loc.y <= scope.loc1.y else loc.y < scope.loc1.y;
+    left   := ifx x0_inclusive then loc.x >= scope.loc0.x else loc.x > scope.loc0.x;
+    right  := ifx x1_inclusive then loc.x <= scope.loc1.x else loc.x < scope.loc1.x;
 
-    if test_top && test_bottom {
+    if top && bottom {
         if scope.loc0.y == scope.loc1.y {
-            return test_left && test_right;
+            return left && right;
         } else if scope.loc0.y == loc.y {
-            return test_left;
+            return left;
         } else if scope.loc1.y == loc.y {
-            return test_right;
+            return right;
         } else {
             return true;
         }
@@ -205,12 +206,12 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                         }
                     }
                 }
-                
+
                 #if block_comment_start.count && block_comment_end.count {
                     #if block_comments_can_nest {
                         if String.begins_with(slice(line_text, byte_index), block_comment_start) {
                             inside_block_comment += 1;
-                            
+
                             byte_index += block_comment_start.count - 1; // Advance over the block comment start.
                             continue;
                         }
@@ -218,13 +219,13 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                         if inside_block_comment == 0 {
                             if String.begins_with(slice(line_text, byte_index), block_comment_start) {
                                 inside_block_comment += 1;
-                                
+
                                 byte_index += block_comment_start.count - 1; // Advance over the block comment start.
                                 continue;
                             }
                         }
                     }
-                    
+
                     if String.begins_with(slice(line_text, byte_index), block_comment_end) {
                         #if block_comments_can_nest {
                             inside_block_comment -= 1;
@@ -232,24 +233,24 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                         } else {
                             inside_block_comment = 0;
                         }
-                        
+
                         byte_index += block_comment_end.count - 1; // Advance over the block comment end.
                         continue;
                     }
                 }
             }
-            
+
             if inside_block_comment > 0 {
                 continue;
             }
-            
+
             #if single_line_string.count {
                 if !inside_multi_line_string {
                     if String.begins_with(slice(line_text, byte_index), single_line_string) {
                         if inside_single_line_string {
                             prev_is_backslash     := byte_index >= 1 && line_text[byte_index - 1] == "\\";
                             prevprev_is_backslash := byte_index >= 2 && line_text[byte_index - 2] == "\\";
-                            
+
                             if !prev_is_backslash || prev_is_backslash && prevprev_is_backslash {
                                 inside_single_line_string = false;
                             }
@@ -259,14 +260,14 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                     }
                 }
             }
-            
+
             #if multi_line_string.count {
                 if !inside_single_line_string {
                     if String.begins_with(slice(line_text, byte_index), multi_line_string) {
                         if inside_multi_line_string {
                             prev_is_backslash     := byte_index >= 1 && line_text[byte_index - 1] == "\\";
                             prevprev_is_backslash := byte_index >= 2 && line_text[byte_index - 2] == "\\";
-                            
+
                             if !prev_is_backslash || prev_is_backslash && prevprev_is_backslash {
                                 inside_single_line_string = false;
                             }
@@ -276,56 +277,56 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                     }
                 }
             }
-            
+
             if inside_single_line_string || inside_multi_line_string {
                 continue;
             }
-            
+
             byte := line_text[byte_index];
             for paren_pair: indentation_pairs {
                 if byte == paren_pair.open {
                     index := document.scopes.count;
                     parent := *document.scopes[parent_index];
-                    
+
                     scope: Scope;
                     scope.loc0.x = count_utf8_chars(String.slice(line_text, 0, byte_index));
                     scope.loc0.y = line_index;
-                    
+
                     // loc1 is properly set when we find the closing paren, but until then we set it
                     // to the end of the document, so that it forms a non-empty interval that can be
                     // found when someone searches the tree.
                     scope.loc1 = text_buffer_get_end(document.buffer);
-                    
+
                     scope.open_paren_char = byte;
                     // close_paren is set when we find the closing paren
-                    
+
                     //
                     // indentation_level is set based on kind of indentation scope this is. We
                     // detect that here by looking for nonwhitespace character before and after the
                     // opening paren.
                     //
-                    
+
                     scope.indentation_level = scope.loc0.x + INDENTATION_STEP;
-                    
+
                     for 0..byte_index - 1 {
                         // TODO(jt): @Speed We could SIMD this.
                         if !String.is_any(line_text[it], String.DEFAULT_SPACES) {
                             scope.indentation_flags |= .PREFIXED;
-                            scope.indentation_level = it + INDENTATION_STEP; // DEFAULT_SPACES are all single-byte.
+                            scope.indentation_level = it + INDENTATION_STEP;
                             break;
                         }
                     }
-                    
+
                     for byte_index + 1..line_text.count - 1 {
                         // TODO(jt): @Speed We could SIMD this.
                         if !String.is_any(line_text[it], String.DEFAULT_SPACES) {
                             // HANGING scopes are indented Casey-style (or is it Microsoft-style?)
                             scope.indentation_flags |= .HANGING;
-                            scope.indentation_level = scope.loc0.x + it - byte_index; // DEFAULT_SPACES are all single-byte.
+                            scope.indentation_level = scope.loc0.x + it - byte_index;
                             break;
                         }
                     }
-                    
+
                     scope.parent_index = parent_index;
                     if sibling_index == -1 {
                         assert(parent.first_child_index == -1);
@@ -334,12 +335,12 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                         sibling := *document.scopes[sibling_index];
                         sibling.next_sibling_index = index;
                     }
-                    
+
                     array_add(*document.scopes, scope); // We potentially invalidate pointers here, careful!
-                    
+
                     parent_index = index;
                     sibling_index = -1;
-                    
+
                     break;
                 } else if byte == paren_pair.close {
                     scope_index := parent_index;
@@ -348,16 +349,16 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                         // TODO(jt): @Speed Maintain count so we don't have to rescan the line?
                         scope.loc1.x = count_utf8_chars(String.slice(line_text, 0, byte_index));
                         scope.loc1.y = line_index;
-                        
+
                         scope.close_paren_char = byte;
-                        
+
                         parent_index  = scope.parent_index;
                         sibling_index = scope_index;
                     }
-                    
+
                     // Ignoring mismatching closing parens is an alright behavior, but maybe there
                     // is something better we can do?
-                    
+
                     break;
                 }
             }
