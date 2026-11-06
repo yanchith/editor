@@ -6,7 +6,9 @@ Scope :: struct {
     close_paren_char: u32;
 
     indentation_flags: Indentation_Flags;
-    indentation_level: s64;
+    indentation_level: s64;          // Always filled in
+    indentation_level_prefixed: s64; // Zero if not PREFIXED_OPEN
+    indentation_level_hanging: s64;  // Zero if not HANGING
 
     parent_index:       s64 = -1;
     first_child_index:  s64 = -1;
@@ -15,16 +17,11 @@ Scope :: struct {
     Indentation_Flags :: enum_flags u32 {
         NONE :: 0;
 
-        HANGING  :: 0x01; // Casey-style scope, e.g. 'hwnd = CreateWindowExW(0,' (continues on the next line).
-        PREFIXED :: 0x02; // The scope opening paren has text before it, e.g. 'for {'. Not actually read, but maybe it will be useful later?
+        PREFIXED_OPEN  :: 0x01; // The opening paren has text before it, e.g. 'for {'.
+        PREFIXED_CLOSE :: 0x02; // The closing paren has text before it.
+        HANGING        :: 0x04; // Casey-style scope, e.g. 'hwnd = CreateWindowExW(0,' (continues on the next line).
     }
 }
-
-// TODO(jt): Support indentation like this:
-// (
-//     asdfasdfdfas)
-//
-// (This is how things can look when we switch from a single-line parenthesized block to a multiline one.)
 
 // TODO(jt): @Speed When we indent the entirety of a 10000-line document, this takes ~8 seconds. Even if
 // we SIMD this, it will traverse the whole document contents too many times. We need an incremental
@@ -119,28 +116,33 @@ find_scope_for_location :: (document: Document, loc: Text_Location, x0_inclusive
     return scope;
 }
 
-find_indentation_level_for_location :: (document: Document, loc: Text_Location) -> s64 {
-    // The Y range check is start-exclusive and end-inclusive by design: we indent the line of
-    // the closing paren depending on whether the scope is HANGING,
-    // while the opening paren always belongs to its parent scope, so we exclude it.
-    scope := find_scope_for_location(document, loc, y0_inclusive = false);
+find_indentation_level_for_line :: (document: Document, y: s64) -> s64 {
+    // The Y range check is start-exclusive by design: the opening paren belongs to its parent scope.
+    scope := find_scope_for_location(document, { 0, y }, y0_inclusive = false);
     if !scope {
         return 0;
     }
 
+    // Apply parsed indentation level. A scope can be both PREFIXED_OPEN and HANGING, in which case HANGING indentation wins.
     level := scope.indentation_level;
+    if scope.indentation_flags & .HANGING {
+        level = scope.indentation_level_hanging;
+    } else if scope.indentation_flags & .PREFIXED_OPEN {
+        level = scope.indentation_level_prefixed;
+    }
     sanity_assert(level >= 0);
 
-    // If this is the last line of the scope (and it is not a HANGING indentation style),
-    // indent to the parent scope's level, if it exists.
-    // However, that parent can be HANGING or PREFIXED, and we want to ignore that.
-    if scope.loc1.y == loc.y && !(scope.indentation_flags & .HANGING) {
-        if scope.parent_index >= 0 {
-            parent := *document.scopes[scope.parent_index];
-
-            level = parent.indentation_level;
-            sanity_assert(level >= 0);
+    // If this is the line of the scope's closing paren and the scope is not PREFIXED_CLOSE, indent it according
+    // to the parent scope of the topmost scope on this line. Basically, we want to take indentation from the parent
+    // of the rightmost closing paren.
+    if scope.parent_index >= 0 && scope.loc1.y == y && !(scope.indentation_flags & .PREFIXED_CLOSE) {
+        while scope.parent_index >= 0 && scope.loc1.y == y {
+            scope = *document.scopes[scope.parent_index];
         }
+
+        // Do not take HANGING into account here.
+        level = ifx scope.indentation_flags & .PREFIXED_OPEN then scope.indentation_level_prefixed else scope.indentation_level;
+        sanity_assert(level >= 0);
     }
 
     return level;
@@ -311,8 +313,8 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                     for 0..byte_index - 1 {
                         // TODO(jt): @Speed We could SIMD this.
                         if !String.is_any(line_text[it], String.DEFAULT_SPACES) {
-                            scope.indentation_flags |= .PREFIXED;
-                            scope.indentation_level = it + INDENTATION_STEP;
+                            scope.indentation_flags |= .PREFIXED_OPEN;
+                            scope.indentation_level_prefixed = it + INDENTATION_STEP;
                             break;
                         }
                     }
@@ -322,7 +324,7 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                         if !String.is_any(line_text[it], String.DEFAULT_SPACES) {
                             // HANGING scopes are indented Casey-style (or is it Microsoft-style?)
                             scope.indentation_flags |= .HANGING;
-                            scope.indentation_level = scope.loc0.x + it - byte_index;
+                            scope.indentation_level_hanging = scope.loc0.x + it - byte_index;
                             break;
                         }
                     }
@@ -351,6 +353,14 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                         scope.loc1.y = line_index;
 
                         scope.close_paren_char = byte;
+
+                        for 0..byte_index - 1 {
+                            // TODO(jt): @Speed We could SIMD this.
+                            if !String.is_any(line_text[it], String.DEFAULT_SPACES) {
+                                scope.indentation_flags |= .PREFIXED_CLOSE;
+                                break;
+                            }
+                        }
 
                         parent_index  = scope.parent_index;
                         sibling_index = scope_index;

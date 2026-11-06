@@ -30,6 +30,7 @@ Fixes:
 - *compilation* now scrolls to top on refresh, whereas previously it the scroll could have stayed out of bounds of new compilation output.
 - Fix cast bounds check crash in Jai_Lexer when someone types a dot at the end of file. Contribution by @paylanon.
 - Make number parsing in lexers more robust.
+- Fix edge cases in indentation code. This was a little bit scary. Hopefully it didn't break something else.
 
 Other:
 

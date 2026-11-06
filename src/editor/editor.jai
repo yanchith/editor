@@ -3652,7 +3652,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     if document.scopes.count {
                         update_scopes(document);
 
-                        level := find_indentation_level_for_location(document, view.cursors.c0);
+                        level := find_indentation_level_for_line(document, view.cursors.c0.y);
                         buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .FUSE);
                     }
                     cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors, 1, false);
@@ -3661,7 +3661,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                 if document.scopes.count {
                     update_scopes(document);
 
-                    level := find_indentation_level_for_location(document, view.cursors.c0);
+                    level := find_indentation_level_for_line(document, view.cursors.c0.y);
                     buffer_changed |= text_buffer_indent_line(*document.buffer, *view.cursors, level, .FUSE);
                 }
 
@@ -3696,7 +3696,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 
                     first := true;
                     for y0..y1 {
-                        level := find_indentation_level_for_location(document, { 0, it });
+                        level := find_indentation_level_for_line(document, it);
                         text_buffer_move_to(document.buffer, *view.cursors, { 0, it }, false);
                         changed := text_buffer_indent_line(*document.buffer, *view.cursors, level, ifx first then .NONE else .FUSE);
 
