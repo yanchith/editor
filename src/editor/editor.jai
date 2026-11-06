@@ -9,7 +9,7 @@ TODO(jt): Known serious bugs:
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
 - Compilation link navigation doesn't respect cursor position. It uses its own index.
-- Following code messes scope parsing in Rust (with multiline strings enabled)
+- Following code messes scope parsing in Rust, if set the multiling string character that we forgot to set:
 
     #[inline]
     pub fn push_str(&mut self, s: &str) {
@@ -22,16 +22,6 @@ TODO(jt): Known serious bugs:
             ),
         }
     }
-
-- Following code also messes scope parsing in Rust:
-
-        for wall in &game.scene.walls {
-            wall_voxels.push(VoxelInstance {
-                position: wall.position,
-                scale: vec3(0.8, 0.8, 0.8),
-                             });
-        }
-
 
 TODO(jt): Roadmap:
 

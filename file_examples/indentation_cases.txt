@@ -69,11 +69,28 @@ for wall in &game.scene.walls {
     wall_voxels.push( VoxelInstance {
         position: wall.position,
         thing: ding,
-        } // TODO(jt): @Bug Fix this one?
+    }
     );
 }
 
+{
+    Thing ( 1,
+            Foo {
+                1, 2,
+                3, 4,
+            },
+    )
+}
+
 // EDGECASES from here onwards, we don't really care that much if these are not pretty
+
+{
+    Thing ( 1
+            Foo {
+                1, 2,
+                3, 4,
+    })
+}
 
 for wall in &game.scene.walls {
     wall_voxels.push(   VoxelInstance {
@@ -84,8 +101,8 @@ for wall in &game.scene.walls {
 for wall in &game.scene.walls {
     DoStuff(wall_voxels.push(VoxelInstance { position: wall.position,
                                              thing: ding,
-        }
-        )
+    }
+    )
     );
 }
 

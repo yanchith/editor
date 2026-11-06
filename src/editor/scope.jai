@@ -117,32 +117,41 @@ find_scope_for_location :: (document: Document, loc: Text_Location, x0_inclusive
 }
 
 find_indentation_level_for_line :: (document: Document, y: s64) -> s64 {
+    get_level :: inline (scope: Scope) -> s64 {
+        // Apply indentation level from our per-parsed tree. A scope can be both PREFIXED_OPEN and HANGING,
+        // in which case HANGING indentation wins.
+        level := scope.indentation_level;
+        if scope.indentation_flags & .HANGING {
+            level = scope.indentation_level_hanging;
+        } else if scope.indentation_flags & .PREFIXED_OPEN {
+            level = scope.indentation_level_prefixed;
+        }
+        sanity_assert(level >= 0);
+        
+        return level;
+    }
+    
     // The Y range check is start-exclusive by design: the opening paren belongs to its parent scope.
     scope := find_scope_for_location(document, { 0, y }, y0_inclusive = false);
     if !scope {
         return 0;
     }
 
-    // Apply parsed indentation level. A scope can be both PREFIXED_OPEN and HANGING, in which case HANGING indentation wins.
-    level := scope.indentation_level;
-    if scope.indentation_flags & .HANGING {
-        level = scope.indentation_level_hanging;
-    } else if scope.indentation_flags & .PREFIXED_OPEN {
-        level = scope.indentation_level_prefixed;
-    }
-    sanity_assert(level >= 0);
+    level := get_level(scope);
 
     // If this is the line of the scope's closing paren and the scope is not PREFIXED_CLOSE, indent it according
-    // to the parent scope of the topmost scope on this line. Basically, we want to take indentation from the parent
-    // of the rightmost closing paren.
+    // to the parent scope of the topmost scope that shares a line with it.
+    //
+    // Basically, we want to take indentation from the parent of the rightmost closing paren or the leftmost opening paren.
+    // Traverse up as long as the parent scope shares opening or closing line with us.
     if scope.parent_index >= 0 && scope.loc1.y == y && !(scope.indentation_flags & .PREFIXED_CLOSE) {
-        while scope.parent_index >= 0 && scope.loc1.y == y {
+        y0 := scope.loc0.y;
+        y1 := scope.loc1.y;
+        while scope.parent_index >= 0 && (scope.loc0.y == y0 || scope.loc1.y == y1) {
             scope = *document.scopes[scope.parent_index];
         }
-
-        // Do not take HANGING into account here.
-        level = ifx scope.indentation_flags & .PREFIXED_OPEN then scope.indentation_level_prefixed else scope.indentation_level;
-        sanity_assert(level >= 0);
+        
+        level = get_level(scope);
     }
 
     return level;
