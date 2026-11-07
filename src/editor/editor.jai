@@ -86,6 +86,8 @@ TODO(jt): Roadmap:
 
 ... after alpha ...
 
+- [ ] OPEN_FILE_IN_PROJECT and SEARCH_IN_PROJECT should be (both globally and per-project) configurable to ignore paths (e.g. contents of .git, tmp build directories, etc.)
+- [ ] Nonblocking reading of process data (compilation, open_file_in_project, search_project)
 - [X] C-: or double-click (expand region)
 - [X] Triple click to select line. (expand to line)
 - [X] Speed improvements to scope parsing
@@ -101,7 +103,6 @@ TODO(jt): Roadmap:
 - [X] Mouse interaction in the modal interaction (text selection)
 - [ ] Mouse interaction in the mode line (click change view, lang, crlf, indentation level)
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
-- [ ] OPEN_FILE_IN_PROJECT and SEARCH_IN_PROJECT should be (globally) configurable to ignore paths (e.g. contents of .git)
 - [X] Animate scrolling in mini panel.
 - [X] Animate opening of the mini panel.
 - [X] Cursor flash in mini panel and modal interaction.
