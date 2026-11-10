@@ -98,6 +98,7 @@ TODO(jt): Roadmap:
 - [ ] q to hide compilation or listing
 - [ ] align: aligns selection on first occurence of string
 - [ ] create_directory modal interaction command (executable from anywhere we have a backing directory)
+- [ ] search_and_replace should preserve capitalization (camelCase, PamelCase, UPPER_CASE, lower_case)
 - [X] Compilation links for C# (dotnet build) and TypeScript (tsc): <filepath>(<line>,<col>)
 - [X] Mouse interaction in the mini panel (text selection, item clicking)
 - [X] Mouse interaction in the modal interaction (text selection)
