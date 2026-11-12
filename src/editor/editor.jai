@@ -7,7 +7,7 @@ TODO(jt): Known critical bugs:
 TODO(jt): Known serious bugs:
 
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
-- Renderer stutter when we start animating after a period of inactivity. Happens more frquently on the 100Hz monitor? Windows only?
+- Windows: Renderer stutter when we start animating after a period of inactivity.
 - Compilation link navigation doesn't respect cursor position. It uses its own index.
 - Following code messes scope parsing in Rust, if set the multiling string character that we forgot to set:
 

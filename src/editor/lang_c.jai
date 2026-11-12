@@ -17,8 +17,6 @@
 // There might be more bugs.
 //
 
-// TODO(jt): @Bug 0ull is not highlighted.
-
 LANG_C_LINE_COMMENT        :: "//";
 LANG_C_BLOCK_COMMENT_START :: "/*";
 LANG_C_BLOCK_COMMENT_END   :: "*/";
