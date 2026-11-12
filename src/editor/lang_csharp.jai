@@ -14,6 +14,7 @@ LANG_CSHARP_BLOCK_COMMENTS_CAN_NEST :: false;
 // TODO(jt): C# has verbatim string literals @"string" and raw string literals """string""" (the number of " is arbitrary),
 // both of which can be multiline. We support none of this currently. For verbatim @"string", we'd have to split the begin/end
 // of multiline string. For raw strings... idk. I don't want to do it.
+LANG_CSHARP_CHAR               :: "'";
 LANG_CSHARP_SINGLE_LINE_STRING :: "\"";
 LANG_CSHARP_MULTI_LINE_STRING  :: "";
 

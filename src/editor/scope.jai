@@ -48,37 +48,37 @@ update_scopes :: (document: *Document) {
             _update_scopes(document, TEXT_INDENTATION_PAREN_PAIRS,
                            "",
                            "", "", false,
-                           "", "");
+                           "", "", "");
         }
         case .C; {
             _update_scopes(document, LANG_C_INDENTATION_PAREN_PAIRS,
                            LANG_C_LINE_COMMENT,
                            LANG_C_BLOCK_COMMENT_START, LANG_C_BLOCK_COMMENT_END, LANG_C_BLOCK_COMMENTS_CAN_NEST,
-                           LANG_C_SINGLE_LINE_STRING, LANG_C_MULTI_LINE_STRING);
+                           LANG_C_CHAR, LANG_C_SINGLE_LINE_STRING, LANG_C_MULTI_LINE_STRING);
         }
         case .CSHARP; {
             _update_scopes(document, LANG_CSHARP_INDENTATION_PAREN_PAIRS,
                            LANG_CSHARP_LINE_COMMENT,
                            LANG_CSHARP_BLOCK_COMMENT_START, LANG_CSHARP_BLOCK_COMMENT_END, LANG_CSHARP_BLOCK_COMMENTS_CAN_NEST,
-                           LANG_CSHARP_SINGLE_LINE_STRING, LANG_CSHARP_MULTI_LINE_STRING);
+                           LANG_CSHARP_CHAR, LANG_CSHARP_SINGLE_LINE_STRING, LANG_CSHARP_MULTI_LINE_STRING);
         }
         case .JAI; {
             _update_scopes(document, LANG_JAI_INDENTATION_PAREN_PAIRS,
                            LANG_JAI_LINE_COMMENT,
                            LANG_JAI_BLOCK_COMMENT_START, LANG_JAI_BLOCK_COMMENT_END, LANG_JAI_BLOCK_COMMENTS_CAN_NEST,
-                           LANG_JAI_SINGLE_LINE_STRING, LANG_JAI_MULTI_LINE_STRING);
+                           LANG_JAI_CHAR, LANG_JAI_SINGLE_LINE_STRING, LANG_JAI_MULTI_LINE_STRING);
         }
         case .GLSL; {
             _update_scopes(document, LANG_GLSL_INDENTATION_PAREN_PAIRS,
                            LANG_GLSL_LINE_COMMENT,
                            LANG_GLSL_BLOCK_COMMENT_START, LANG_GLSL_BLOCK_COMMENT_END, LANG_GLSL_BLOCK_COMMENTS_CAN_NEST,
-                           LANG_GLSL_SINGLE_LINE_STRING, LANG_GLSL_MULTI_LINE_STRING);
+                           LANG_GLSL_CHAR, LANG_GLSL_SINGLE_LINE_STRING, LANG_GLSL_MULTI_LINE_STRING);
         }
         case .RUST; {
             _update_scopes(document, LANG_RUST_INDENTATION_PAREN_PAIRS,
                            LANG_RUST_LINE_COMMENT,
                            LANG_RUST_BLOCK_COMMENT_START, LANG_RUST_BLOCK_COMMENT_END, LANG_RUST_BLOCK_COMMENTS_CAN_NEST,
-                           LANG_RUST_SINGLE_LINE_STRING, LANG_RUST_MULTI_LINE_STRING);
+                           LANG_RUST_CHAR, LANG_RUST_SINGLE_LINE_STRING, LANG_RUST_MULTI_LINE_STRING);
         }
     }
 }
@@ -192,7 +192,28 @@ contains :: (scope: Scope, loc: Text_Location, x0_inclusive: bool, x1_inclusive:
 _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                    $line_comment: string,
                    $block_comment_start: string, $block_comment_end: string, $block_comments_can_nest: bool,
-                   $single_line_string: string, $multi_line_string: string)
+                   $char: string, $single_line_string: string, $multi_line_string: string)
+#modify {
+    // The code below assumes the 3 string types have different opening/closing tokens, but in e.g. Rust this is not the case.
+    // Because we don't care about other properties of the string, only whether it disables looking for parentheses,
+    // we turn off duplicates here. Alternatively, we could handle this in the runtime code, but that turned out 0.5ms
+    // slower on kb_text_shape.h.
+    //   -jt, 12 November 2026
+    
+    if char.count {
+        if char == single_line_string  single_line_string = "";
+        if char == multi_line_string   multi_line_string = "";
+    }
+
+    if single_line_string.count {
+        // We know char != singleline here.
+        if single_line_string == multi_line_string  multi_line_string = "";
+    }
+    
+    // We know multiline != char and multiline != singleline here.
+    
+    return true;
+}
 {
     parent_index  := 0;
     sibling_index := -1;
@@ -204,12 +225,13 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
     }
 
     inside_block_comment      := 0;
+    inside_char               := false;
     inside_single_line_string := false;
     inside_multi_line_string  := false;
 
     for :text_buffer_temp_lines line_text, line_index: document.buffer {
         for byte_index: 0..line_text.count - 1 {
-            if !inside_single_line_string && !inside_multi_line_string {
+            if !inside_char && !inside_single_line_string && !inside_multi_line_string {
                 #if line_comment.count {
                     if inside_block_comment == 0 {
                         if String.begins_with(slice(line_text, byte_index), line_comment) {
@@ -255,56 +277,48 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                 continue;
             }
 
-            // Generate code to handle single/multi-line strings. If the languages has only one of those,
-            // generate just that. We could potentially just emit the runtime uber-version, if we find
-            // that the usefulness does not outweigh the copypasta.
-            #if single_line_string.count && !multi_line_string.count {
-                if String.begins_with(slice(line_text, byte_index), single_line_string) {
-                    if inside_single_line_string {
-                        prev_is_backslash     := byte_index >= 1 && line_text[byte_index - 1] == "\\";
-                        prevprev_is_backslash := byte_index >= 2 && line_text[byte_index - 2] == "\\";
-                        
-                        if !prev_is_backslash || prev_is_backslash && prevprev_is_backslash {
-                            inside_single_line_string = false;
+            #if char.count {
+                if !inside_single_line_string && !inside_multi_line_string {
+                    if String.begins_with(slice(line_text, byte_index), char) {
+                        if inside_char {
+                            prev_is_backslash     := byte_index >= 1 && line_text[byte_index - 1] == "\\";
+                            prevprev_is_backslash := byte_index >= 2 && line_text[byte_index - 2] == "\\";
+
+                            if !prev_is_backslash || prevprev_is_backslash {
+                                inside_char = false;
+                            }
+                        } else {
+                            inside_char = true;
                         }
-                    } else {
-                        inside_single_line_string = true;
                     }
                 }
-            } else #if !single_line_string.count && multi_line_string.count {
-                if String.begins_with(slice(line_text, byte_index), multi_line_string) {
-                    if inside_multi_line_string {
-                        prev_is_backslash     := byte_index >= 1 && line_text[byte_index - 1] == "\\";
-                        prevprev_is_backslash := byte_index >= 2 && line_text[byte_index - 2] == "\\";
-                        
-                        if !prev_is_backslash || prev_is_backslash && prevprev_is_backslash {
-                            inside_multi_line_string = false;
-                        }
-                    } else {
-                        inside_multi_line_string = true;
-                    }
-                }
-            } else #if single_line_string.count && multi_line_string.count {
-                if !inside_multi_line_string {
+            }
+            
+            #if single_line_string.count {
+                if !inside_char && !inside_multi_line_string {
                     if String.begins_with(slice(line_text, byte_index), single_line_string) {
                         if inside_single_line_string {
                             prev_is_backslash     := byte_index >= 1 && line_text[byte_index - 1] == "\\";
                             prevprev_is_backslash := byte_index >= 2 && line_text[byte_index - 2] == "\\";
 
-                            if !prev_is_backslash || prev_is_backslash && prevprev_is_backslash {
+                            if !prev_is_backslash || prevprev_is_backslash {
                                 inside_single_line_string = false;
                             }
                         } else {
                             inside_single_line_string = true;
                         }
                     }
-                } else if !inside_single_line_string {
+                }
+            }
+
+            #if multi_line_string.count {
+                if !inside_char && !inside_single_line_string {
                     if String.begins_with(slice(line_text, byte_index), multi_line_string) {
                         if inside_multi_line_string {
                             prev_is_backslash     := byte_index >= 1 && line_text[byte_index - 1] == "\\";
                             prevprev_is_backslash := byte_index >= 2 && line_text[byte_index - 2] == "\\";
 
-                            if !prev_is_backslash || prev_is_backslash && prevprev_is_backslash {
+                            if !prev_is_backslash || prevprev_is_backslash {
                                 inside_multi_line_string = false;
                             }
                         } else {
@@ -314,7 +328,7 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                 }
             }
 
-            if inside_single_line_string || inside_multi_line_string {
+            if inside_char || inside_single_line_string || inside_multi_line_string {
                 continue;
             }
 

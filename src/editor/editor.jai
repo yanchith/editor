@@ -10,6 +10,10 @@ TODO(jt): Known serious bugs:
 - Windows: Renderer stutter when we start animating after a period of inactivity.
 - Compilation link navigation doesn't respect cursor position. It uses its own index.
 
+TODO(jt): Improvements:
+
+- move_to_start/end, move_to_start/end_of_scope should push cursor location.
+
 TODO(jt): Roadmap:
 
 - [X] Display text on screen
