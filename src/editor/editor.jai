@@ -9,19 +9,6 @@ TODO(jt): Known serious bugs:
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Windows: Renderer stutter when we start animating after a period of inactivity.
 - Compilation link navigation doesn't respect cursor position. It uses its own index.
-- Following code messes scope parsing in Rust, if set the multiling string character that we forgot to set:
-
-    #[inline]
-    pub fn push_str(&mut self, s: &str) {
-        match self.try_push_str(s) {
-            Ok(()) => (),
-            Err(_) => panic!(
-                "Failed to push string of length {}: InlineString at full capacity ({}).",
-                s.len(),
-                N,
-            ),
-        }
-    }
 
 TODO(jt): Roadmap:
 

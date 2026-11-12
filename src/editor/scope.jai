@@ -255,7 +255,36 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                 continue;
             }
 
-            #if single_line_string.count {
+            // Generate code to handle single/multi-line strings. If the languages has only one of those,
+            // generate just that. We could potentially just emit the runtime uber-version, if we find
+            // that the usefulness does not outweigh the copypasta.
+            #if single_line_string.count && !multi_line_string.count {
+                if String.begins_with(slice(line_text, byte_index), single_line_string) {
+                    if inside_single_line_string {
+                        prev_is_backslash     := byte_index >= 1 && line_text[byte_index - 1] == "\\";
+                        prevprev_is_backslash := byte_index >= 2 && line_text[byte_index - 2] == "\\";
+                        
+                        if !prev_is_backslash || prev_is_backslash && prevprev_is_backslash {
+                            inside_single_line_string = false;
+                        }
+                    } else {
+                        inside_single_line_string = true;
+                    }
+                }
+            } else #if !single_line_string.count && multi_line_string.count {
+                if String.begins_with(slice(line_text, byte_index), multi_line_string) {
+                    if inside_multi_line_string {
+                        prev_is_backslash     := byte_index >= 1 && line_text[byte_index - 1] == "\\";
+                        prevprev_is_backslash := byte_index >= 2 && line_text[byte_index - 2] == "\\";
+                        
+                        if !prev_is_backslash || prev_is_backslash && prevprev_is_backslash {
+                            inside_multi_line_string = false;
+                        }
+                    } else {
+                        inside_multi_line_string = true;
+                    }
+                }
+            } else #if single_line_string.count && multi_line_string.count {
                 if !inside_multi_line_string {
                     if String.begins_with(slice(line_text, byte_index), single_line_string) {
                         if inside_single_line_string {
@@ -269,18 +298,14 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                             inside_single_line_string = true;
                         }
                     }
-                }
-            }
-
-            #if multi_line_string.count {
-                if !inside_single_line_string {
+                } else if !inside_single_line_string {
                     if String.begins_with(slice(line_text, byte_index), multi_line_string) {
                         if inside_multi_line_string {
                             prev_is_backslash     := byte_index >= 1 && line_text[byte_index - 1] == "\\";
                             prevprev_is_backslash := byte_index >= 2 && line_text[byte_index - 2] == "\\";
 
                             if !prev_is_backslash || prev_is_backslash && prevprev_is_backslash {
-                                inside_single_line_string = false;
+                                inside_multi_line_string = false;
                             }
                         } else {
                             inside_multi_line_string = true;
@@ -331,7 +356,7 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                     for byte_index + 1..line_text.count - 1 {
                         // TODO(jt): @Speed We could SIMD this.
                         if !String.is_any(line_text[it], String.DEFAULT_SPACES) {
-                            // HANGING scopes are indented Casey-style (or is it Microsoft-style?)
+                            // HANGING scopes are indented Casey-style
                             scope.indentation_flags |= .HANGING;
                             scope.indentation_level_hanging = scope.loc0.x + it - byte_index;
                             break;

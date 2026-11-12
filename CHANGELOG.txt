@@ -31,6 +31,7 @@ Fixes:
 - Fix cast bounds check crash in Jai_Lexer when someone types a dot at the end of file. Contribution by @paylanon.
 - Make number parsing in lexers more robust.
 - Fix edge cases in indentation code. This change is a little scary. Hopefully it doesn't break something else.
+- Fix rare edgecase of single/multi-line string handling in indentation code.
 
 Other:
 
