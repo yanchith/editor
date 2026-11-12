@@ -10,10 +10,6 @@ TODO(jt): Known serious bugs:
 - Windows: Renderer stutter when we start animating after a period of inactivity.
 - Compilation link navigation doesn't respect cursor position. It uses its own index.
 
-TODO(jt): Improvements:
-
-- move_to_start/end, move_to_start/end_of_scope should push cursor location.
-
 TODO(jt): Roadmap:
 
 - [X] Display text on screen
@@ -3257,8 +3253,24 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .MOVE_TO_START_OF_LINE;  cursor_moved |= text_buffer_move_to_start_of_line(document.buffer, *view.cursors, view.selecting);
         case .MOVE_TO_END_OF_LINE;    cursor_moved |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, view.selecting);
 
-        case .MOVE_TO_START;          cursor_moved |= text_buffer_move_to_start(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_END;            cursor_moved |= text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_START; {
+            loc0 := view.cursors.c0;
+            if text_buffer_move_to_start(document.buffer, *view.cursors, view.selecting) {
+                push_cursor_location(view, loc0);
+                editor_log(editor, "Mark set");
+
+                cursor_moved = true;
+            }
+        }
+        case .MOVE_TO_END; {
+            loc0 := view.cursors.c0;
+            if text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting) {
+                push_cursor_location(view, loc0);
+                editor_log(editor, "Mark set");
+
+                cursor_moved = true;
+            }
+        }
 
         case .MOVE_FORWARD_WORD; {
             cursor_moved=, cursor_y_moved := text_buffer_move_forward_within(document.buffer, *view.cursors, view.selecting, is_alnum32);
@@ -3279,15 +3291,25 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .MOVE_TO_START_OF_SCOPE; {
             scope := find_scope_for_location(document, view.cursors.c0);
             if scope {
-                text_buffer_move_to(document.buffer, *view.cursors, scope.loc0, view.selecting);
-                cursor_moved = true;
+                loc0 := view.cursors.c0;
+                if text_buffer_move_to(document.buffer, *view.cursors, scope.loc0, view.selecting) {
+                    push_cursor_location(view, loc0);
+                    editor_log(editor, "Mark set");
+
+                    cursor_moved = true;
+                }
             }
         }
         case .MOVE_TO_END_OF_SCOPE; {
             scope := find_scope_for_location(document, view.cursors.c0);
             if scope {
-                text_buffer_move_to(document.buffer, *view.cursors, scope.loc1, view.selecting);
-                cursor_moved = true;
+                loc0 := view.cursors.c0;
+                if text_buffer_move_to(document.buffer, *view.cursors, scope.loc1, view.selecting) {
+                    push_cursor_location(view, loc0);
+                    editor_log(editor, "Mark set");
+
+                    cursor_moved = true;
+                }
             }
         }
 
@@ -3805,7 +3827,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .PUSH_CURSOR_LOCATION;  push_cursor_location(view);
+        case .PUSH_CURSOR_LOCATION;  push_cursor_location(view); editor_log(editor, "Mark set");
         case .POP_CURSOR_LOCATION;   pop_cursor_location(view);
 
         case .UNDO_EDIT; {

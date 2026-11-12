@@ -4,7 +4,7 @@
 New features:
 
 - MacOS .app bundle is now distributed. You still need to dequarantine it manually.
-- Cursor undo: C-u C-<space>. Actions start_selecting and confirming search in minipanel
+- Cursor undo: C-u C-<space>. Actions like start_selecting, confirming search in minipanel and jumping around in the document
   add previous cursor positions to the undo ring. You can then pop_cursor_location.
 - F11 fullscreen is now supported on Windows.
 - Support for the language that must not be named.

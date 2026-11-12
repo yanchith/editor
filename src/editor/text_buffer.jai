@@ -1490,14 +1490,16 @@ text_buffer_move_y :: (buffer: Text_Buffer, cursors: *Text_Cursors, delta: s64, 
     return original_cursor != cursors.c0;
 }
 
-text_buffer_move_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, _x: s64, _y: s64, selecting: bool) {
-    /*inline?*/ text_buffer_move_to(buffer, cursors, { _x, _y }, selecting);
+text_buffer_move_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, _x: s64, _y: s64, selecting: bool) -> cursor_moved: bool {
+    return /*inline?*/ text_buffer_move_to(buffer, cursors, { _x, _y }, selecting);
 }
 
-text_buffer_move_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, loc: Text_Location, selecting: bool) {
+text_buffer_move_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, loc: Text_Location, selecting: bool) -> cursor_moved: bool {
     ProfileZone("text_buffer_move_to");
 
     assert_valid(buffer, cursors);
+    
+    original_cursor := cursors.c0;
 
     y := clamp(loc.y, 0, buffer.line_count - 1);
     x: s64;
@@ -1515,6 +1517,8 @@ text_buffer_move_to :: (buffer: Text_Buffer, cursors: *Text_Cursors, loc: Text_L
     text_cursors_horizontal_move_was_explicit(cursors);
 
     assert_valid_cursors(buffer, cursors);
+    
+    return original_cursor != cursors.c0;
 }
 
 text_buffer_move_to_start :: (buffer: Text_Buffer, cursors: *Text_Cursors, selecting: bool) -> cursor_moved: bool {
