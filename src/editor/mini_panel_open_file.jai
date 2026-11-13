@@ -132,7 +132,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             }
         }
 
-        file_list := platform.list_directory(path_prefix, recursive = false, files = true, directories = true,, temp);
+        file_list := platform.list_directory(path_prefix, recursive = false, list_files = true, list_directories = true, ignore_directories = .[],, temp);
         for file_list {
             found, found_indices := line_search(it.name, filename_parts, smartcase,, temp);
             if found {

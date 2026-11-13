@@ -1,4 +1,4 @@
-CONFIG_VERSION :: 1;
+CONFIG_VERSION :: 1; // Increment for backwards incompatible changes. Since 0.0.3, the parser ignores unknown sections and keys.
 
 parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) -> success: bool {
     success := true;
@@ -18,6 +18,7 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
     }
 
     config_theme: string;
+    config_project_search_ignore_directories: string;
 
     config_macos_search_path: string;
 
@@ -44,7 +45,7 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
             break;
         }
 
-        if String.begins_with(lexer.input, SECTION_OPEN) {
+        if String.begins_with(lexer.input, "[") {
             success= , parsed_section := parse_section(*lexer);
             if !success {
                 editor_log(editor, "Failed to parse section on line %", lexer.line_index + 1);
@@ -60,12 +61,16 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
                 case "keybinds.mini_panel";         section = .KEYBINDS_MINI_PANEL;
                 case "keybinds.modal_interaction";  section = .KEYBINDS_MODAL_INTERACTION;
                 case; {
-                    editor_log(editor, "Invalid section on line %", lexer.line_index + 1);
-                    return false;
+                    editor_log(editor, "Ignoring contents of unknown section '%' on line %", parsed_section, lexer.line_index + 1);
+                    section = .UNKNOWN;
                 }
             }
         } else {
             if #complete section == {
+                case .UNKNOWN; {
+                    eat_line(*lexer);
+                }
+                
                 case .GLOBAL; {
                     success=, key, value := parse_pair(*lexer);
                     if !success {
@@ -74,11 +79,9 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
                     }
 
                     if key == {
-                        case "theme";  config_theme = value;
-                        case; {
-                            editor_log(editor, "Unknown key on line %", lexer.line_index + 1);
-                            return false;
-                        }
+                        case "theme";                              config_theme = value;
+                        case "project_search_ignore_directories";  config_project_search_ignore_directories = value;
+                        case;                                      editor_log(editor, "Ignoring unknown key '%' on line %", key, lexer.line_index + 1);
                     }
                 }
 
@@ -91,10 +94,7 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
 
                     if key == {
                         case "search_path";  config_macos_search_path = value;
-                        case; {
-                            editor_log(editor, "Unknown key on line %", lexer.line_index + 1);
-                            return false;
-                        }
+                        case;                editor_log(editor, "Ignoring unknown key '%' on line %", key, lexer.line_index + 1);
                     }
                 }
 
@@ -104,7 +104,7 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
                 case .KEYBINDS_LISTING;      #through;
                 case .KEYBINDS_MINI_PANEL;   #through;
                 case .KEYBINDS_MODAL_INTERACTION; {
-                    success=, _shortcut, _action := parse_keybind_pair(*lexer);
+                    success=, _shortcut, _action := parse_pair(*lexer);
                     if !success {
                         editor_log(editor, "Failed to parse keybind pair on line %", lexer.line_index + 1);
                         return false;
@@ -127,8 +127,7 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
                     }
 
                     if !success {
-                        editor_log(editor, "Failed to recognize keybind action on line %", lexer.line_index + 1);
-                        return false;
+                        editor_log(editor, "Ignoring unknown keybind action '%' on line %", _action, lexer.line_index + 1);
                     }
                 }
             }
@@ -138,6 +137,8 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
     if config_theme.count {
         change_theme(editor, config_theme);
     }
+    
+    set_project_search_ignore_directories(editor, config_project_search_ignore_directories);
 
     #if OS == .MACOS {
         platform.clear_search_path();
@@ -299,14 +300,14 @@ apply_emergency_config :: (editor: *Editor) {
 #scope_file
 
 Config_Section :: enum {
+    UNKNOWN;
+
     GLOBAL;
     MACOS;
     KEYBINDS_PANEL;
     KEYBINDS_DOCUMENT;
     KEYBINDS_COMPILATION;
     KEYBINDS_LISTING;
-    // TODO(jt): @Cleanup For the moment, modal interaction keybinds are a subset of the minipanel keybinds.
-    // Maybe we should unify to a degree?
     KEYBINDS_MINI_PANEL;
     KEYBINDS_MODAL_INTERACTION;
 }
@@ -351,7 +352,8 @@ parse_section :: (lexer: *Config_Lexer) -> success: bool, string {
 parse_pair :: (lexer: *Config_Lexer) -> success: bool, key: string, value: string {
     line := eat_line(lexer);
 
-    found, left, right := String.split_from_left(line, #char "=");
+    // Split from right, so it also works on shortcuts that can contain '=' in the left part.
+    found, left, right := String.split_from_right(line, #char "=");
     if !found {
         return false, "", "";
     }
@@ -360,21 +362,6 @@ parse_pair :: (lexer: *Config_Lexer) -> success: bool, key: string, value: strin
     value := String.trim(right);
 
     return true, key, value;
-}
-
-// This is almost like parse_pair, but splits from right, so the shortcut can contain '='
-parse_keybind_pair :: (lexer: *Config_Lexer) -> success: bool, shortcut: string, action: string {
-    line := eat_line(lexer);
-
-    found, left, right := String.split_from_right(line, #char "=");
-    if !found {
-        return false, "", "";
-    }
-
-    shortcut := String.trim(left);
-    action   := String.trim(right);
-
-    return true, shortcut, action;
 }
 
 eat_line :: (lexer: *Config_Lexer) -> string {
@@ -386,7 +373,7 @@ eat_line :: (lexer: *Config_Lexer) -> string {
             break;
         }
 
-        if lexer.input[0] == "#" {
+        if !result.count && lexer.input[0] == "#" {
             result.count = lexer.input.data - result.data;
         }
 
@@ -433,10 +420,12 @@ Keybind_Pair :: struct (T: Type) {
     action: T;
 }
 
-verify_and_add_keybind :: (keybinds: *[..] Keybind_Pair($T), shortcut: Shortcut, _action: string) -> success: bool #modify {
+verify_and_add_keybind :: (keybinds: *[..] Keybind_Pair($T), shortcut: Shortcut, _action: string) -> success: bool
+#modify {
     ti := cast(*Type_Info, T);
     return ti.type == .ENUM;
-} {
+}
+{
     // TODO(jt): @Speed Don't re-create names and values arrays each time through!
     names  := enum_names(T);
     values := enum_values_as_enum(T);
@@ -450,6 +439,44 @@ verify_and_add_keybind :: (keybinds: *[..] Keybind_Pair($T), shortcut: Shortcut,
     return found;
 }
 
-// TODO(jt): @Hack Our scope parse doesn't support strings, so we put this down here...
-SECTION_OPEN  :: "[";
-SECTION_CLOSE :: "]";
+#if OS == .WINDOWS {
+    PATHLIST_SEPARATOR :: PATHLIST_SEPARATOR_WINDOWS;
+} else #if OS_IS_UNIX {
+    PATHLIST_SEPARATOR :: PATHLIST_SEPARATOR_UNIX;
+}
+
+PATHLIST_SEPARATOR_WINDOWS :: #char ";";
+PATHLIST_SEPARATOR_UNIX    :: #char ":";
+
+// Fill a list of paths from a string separated by ';' on Windows and ';' or ':' on Unix.
+// If people want a crossplatform config, they have to write it Windows-style. (The alternative
+// would be to pick neither and use our own separator, or make up our own syntax completely.)
+set_project_search_ignore_directories :: (editor: *Editor, _paths: string) {
+    array_reset_keeping_memory(*editor.project_search_ignore_directories);
+    if !_paths.count {
+        return;
+    }
+    
+    paths: string;
+    #if OS_IS_UNIX {
+        paths = copy_string(_paths,, temp);
+        String.replace_chars(paths, ";", #char ":");
+    } else {
+        paths = _paths;
+    }
+    
+    found, left, right := String.split_from_left(paths, PATHLIST_SEPARATOR);
+    
+    left = String.trim(left);
+    if left.count {
+        array_add(*editor.project_search_ignore_directories, copy_string(left,, arena_allocator(editor.perm_arena)));
+    }
+    
+    while found {
+        found, left, right = String.split_from_left(right, PATHLIST_SEPARATOR);
+        left = String.trim(left);
+        if left.count {
+            array_add(*editor.project_search_ignore_directories, copy_string(left,, arena_allocator(editor.perm_arena)));
+        }
+    }
+}

@@ -93,11 +93,24 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             // TODO(jt): Add multiple backends, so people can choose what they usually have
             // installed: git grep, baregrep, GNU grep.
 
-            // --smart-case    matches both upper and lower case chars, if input is lowercase
-            // --max-columns   limits output if line too long
-            // --color never   just disables color codes, because we don't have a use for them
-            // --with-filename --no-heading --line-number --column: outputs something easy to parse: <filename>:<line-number>:<line-content>
+            // --smart-case  ->  matches both upper and lower case chars, if input is lowercase
+            // --max-columns ->  limits output if line too long
+            // --color never ->  disables color codes, because we don't have a use for them
+            // --with-filename --no-heading --line-number --column -> outputs something easy to parse: <filename>:<line-number>:<line-content>
             RG_BASE_COMMAND :: "rg --smart-case --max-columns 500 --with-filename --no-heading --line-number --column --color never";
+
+            // Generate ignore globs for our ignore directories.
+            ignore_directories: string;
+            if editor.project_search_ignore_directories.count {
+                b: String_Builder;
+                b.allocator = temp;
+
+                for editor.project_search_ignore_directories {
+                    print(*b, "-g !%/** ", it);
+                }
+
+                ignore_directories = builder_to_string(*b,, temp);
+            }
 
             search_regexp := line_search_prepare_regexp(search_text,, temp);
 
@@ -107,7 +120,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             // capture_and_return_output=true) and ripgrep. I should probably debug that.
             //
             //     -jt, 6 August 2026
-            args := tprint("% \"%\" ./", RG_BASE_COMMAND, search_regexp);
+            args := tprint("% % \"%\" ./", RG_BASE_COMMAND, ignore_directories, search_regexp);
 
             userdata: *Search_Project_Userdata = mini_panel.userdata;
             working_directory := userdata.working_directory;

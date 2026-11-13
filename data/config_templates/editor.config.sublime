@@ -1,6 +1,10 @@
 1 # Version number, do not remove.
 
-# theme = abulafia   # abulafia, naysayer, handmade, stb, ...
+theme = abulafia   # abulafia, naysayer, handmade, stb, ...
+
+# Directories to ignore by open_file_in_project and search_in_project.
+# Semicolon separated list of directories, e.g. .git;.build;target;tmp
+project_search_ignore_directories = .git;.build
 
 [macos]
 

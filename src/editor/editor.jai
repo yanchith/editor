@@ -90,6 +90,7 @@ TODO(jt): Roadmap:
 - [X] Mouse interaction in the mini panel (text selection, item clicking)
 - [X] Mouse interaction in the modal interaction (text selection)
 - [ ] Mouse interaction in the mode line (click change view, lang, crlf, indentation level)
+- [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] SEARCH should highlight all matches in the current view, not just the first one on the line.
 - [X] Animate scrolling in mini panel.
 - [X] Animate opening of the mini panel.
@@ -115,7 +116,6 @@ TODO(jt): Roadmap:
 - [ ] Theme: Visual Studio Dark
 - [ ] Theme: Delphi
 - [ ] Emacs-like kill ring
-- [ ] Keep displaying (and updating) panel selection while SEARCH is active.
 - [ ] Render subtle symbols for whitespace characters (space, tab, cr, lf)
 - [ ] Support for dropping files into the window
 - [ ] Pretty things: blinking cursor, cursor trail, round corners for cursor&selection, scrollbars...
@@ -297,6 +297,7 @@ Editor :: struct {
     listings:  Bucket_Array(Listing, 16);
 
     project_directories: [..] string;
+    project_search_ignore_directories: [..] string;
 
     // This is a simple hardcoded version of the view tree. We can replace it with full K-d tree
     // layout in an array, once we do arbitrary panel splitting.
@@ -721,7 +722,7 @@ Modal_Interaction_Advance_Proc         :: #type (editor: *Editor, platform: Plat
 Modal_Interaction_Cancel_Proc          :: #type (editor: *Editor, platform: Platform, input: Input);
 
 init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) {
-    ProfileZone("Editor.init");
+    ProfileZone("editor_init");
 
     // Delay attaching debug procs to perm, because the list of arenas itself is going to be in perm.
     // So we add it to the list manually and attach procs after.
@@ -791,10 +792,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         input_state_update_with_event(*editor.input_state, it);
     }
 
-    editor.panel_key_map.allocator = arena_allocator(editor.perm_arena);
-    editor.document_key_map.allocator = arena_allocator(editor.perm_arena);
+    editor.panel_key_map.allocator       = arena_allocator(editor.perm_arena);
+    editor.document_key_map.allocator    = arena_allocator(editor.perm_arena);
     editor.compilation_key_map.allocator = arena_allocator(editor.perm_arena);
-    editor.listing_key_map.allocator = arena_allocator(editor.perm_arena);
+    editor.listing_key_map.allocator     = arena_allocator(editor.perm_arena);
 
     key_map_reserve(*editor.panel_key_map, 128);
     key_map_reserve(*editor.document_key_map, 128);
@@ -805,11 +806,12 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     editor.watched_files.allocator = arena_allocator(editor.perm_arena);
 
-    editor.documents.allocator     = arena_allocator(editor.perm_arena);
-    editor.listings.allocator      = arena_allocator(editor.perm_arena);
-    editor.panels.allocator        = arena_allocator(editor.perm_arena);
+    editor.documents.allocator = arena_allocator(editor.perm_arena);
+    editor.listings.allocator  = arena_allocator(editor.perm_arena);
+    editor.panels.allocator    = arena_allocator(editor.perm_arena);
 
-    editor.project_directories.allocator = arena_allocator(editor.perm_arena);
+    editor.project_directories.allocator               = arena_allocator(editor.perm_arena);
+    editor.project_search_ignore_directories.allocator = arena_allocator(editor.perm_arena);
 
     // Create *scratch* document
     {
@@ -897,7 +899,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 }
 
 update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_this_frame: bool, wants_next_frame: bool {
-    ProfileZone("Editor.update_and_render");
+    ProfileZone("editor_update_and_render");
 
     mark_frame_timeline_point(editor, platform, input, .START);
     mark_frame_profile(editor, input);
@@ -5457,6 +5459,7 @@ change_theme :: (editor: *Editor, theme: string) {
         case "stb";                  editor.theme = stb_theme(); theme_changed = true;
         case "zenburn";              editor.theme = zenburn_theme(); theme_changed = true;
         case "visual_studio_light";  editor.theme = visual_studio_light_theme(); theme_changed = true;
+        case;                        editor_log(editor, "Unknown theme: '%'", theme);
     }
 
     if theme_changed {
@@ -5634,7 +5637,7 @@ refresh_directory_listing :: (platform: Platform, listing: *Listing) {
     table_reset(*listing.marked_items);
     arena_pop_to_mark(listing.arena, listing.arena_base_data_mark);
 
-    file_list := platform.list_directory(listing.backing_directory_path, recursive = false, files = true, directories = true,, temp);
+    file_list := platform.list_directory(listing.backing_directory_path, recursive = false, list_files = true, list_directories = true, ignore_directories = .[],, temp);
     {
         self_dir := array_add(*listing.items);
         self_dir.text = ".";

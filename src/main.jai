@@ -520,15 +520,39 @@ main :: () {
     platform.delete_directory = (path: string) -> success: bool {
         return File.delete_directory(path);
     }
-    platform.list_directory = (path: string, recursive: bool, files: bool, directories: bool) -> [] Editor.File_Info /* context.allocator */ {
+    platform.list_directory = (path: string, recursive: bool, list_files: bool, list_directories: bool, ignore_directories: [] string) -> [] Editor.File_Info /* context.allocator */ {
+        ProfileZone("platform_list_directory");
         compare_file_infos :: (a: Editor.File_Info, b: Editor.File_Info) -> s64 {
             return compare_strings(a.absolute_path, b.absolute_path);
         }
+        
+        Visit_Files_Userdata :: struct {
+            file_infos: [..] Editor.File_Info;
+            list_directories: bool;
+            ignore_directories: [] string;
+        }
+        
+        userdata: Visit_Files_Userdata;
+        userdata.list_directories   = list_directories;
+        userdata.ignore_directories = ignore_directories;
 
-        file_infos: [..] Editor.File_Info;
-
-        visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *[..] Editor.File_Info) {
-            file_info := array_add(userdata);
+        visitor :: (visit_info: *File_Utilities.File_Visit_Info, userdata: *Visit_Files_Userdata) {
+            // To recursively ignore specific subdirectories, the visitor may get called on directories
+            // even if we don't want to list them. This can only happen if the ignore list is not empty.
+            if userdata.ignore_directories.count {
+                if visit_info.is_directory {
+                    if array_find(userdata.ignore_directories, visit_info.short_name) {
+                        visit_info.descend_into_directory = false;
+                        return;
+                    }
+                    
+                    if !userdata.list_directories {
+                        return;
+                    }
+                }
+            }
+            
+            file_info := array_add(*userdata.file_infos);
             file_info.name          = copy_string(visit_info.short_name);
             file_info.absolute_path = copy_string(visit_info.full_name);
             file_info.size          = visit_info.size;
@@ -539,9 +563,10 @@ main :: () {
             file_info.is_directory = visit_info.is_directory;
         }
 
-        File_Utilities.visit_files(path, recursive, *file_infos, visitor,
-                                   visit_files = files,
-                                   visit_directories = directories,
+        File_Utilities.visit_files(path, recursive, *userdata, visitor,
+                                   visit_files = list_files,
+                                   // If we supplied an ignore list, we have to visit directories and filter them out in the proc.
+                                   visit_directories = list_directories || ignore_directories.count,
                                    visit_symlinks = true,
                                    follow_directory_symlinks = true);
 
@@ -551,9 +576,12 @@ main :: () {
         //
         // Also, beware stack overflow for large directories. There's a tailcall version
         // of quicksort, but this ain't it.
-        quick_sort(file_infos, compare_file_infos);
+        {
+            ProfileZone("platform_list_directory :QuickSort");
+            quick_sort(userdata.file_infos, compare_file_infos);
+        }
 
-        return file_infos;
+        return userdata.file_infos;
     }
     // WARNING: Do not override context allocator here when calling. Resources for watching are
     // allocated with a general-purpose allocator here for now.

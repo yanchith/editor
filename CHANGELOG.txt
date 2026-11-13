@@ -7,14 +7,18 @@ New features:
 - Cursor undo: C-u C-<space>. Actions like start_selecting, confirming search in minipanel and jumping around in the document
   add previous cursor positions to the undo ring. You can then pop_cursor_location.
 - F11 fullscreen is now supported on Windows.
-- Support for the language that must not be named.
 - Opening/closing and scrolling the mini panel is now animated. For now, the animation duration can only be configured in code.
 - Mini panel and modal interaction buffer cursors are now animated the same way regular document cursors are, including changing color on edits.
 - Mini panel and modal interaction text buffer can now be interacted with mouse.
 - Mini panel listing can now be interacted with mouse, similar to directory listings.
 - Dotnet/C# and TypeScript compilation links are now detected in *compilation* buffers. These look like: <filepath>(<line>,<col>).
 - MSVC compilation links are now detected in *compilation* buffers. These look like: <filepath>(<line>).
+- Syntax highlighting and indentation rules for the language that must not be named.
 - Syntax highlighting and indentation rules for C#.
+- The config file now supports the project_search_ignore_directories field. This is a separated list of directories to
+  be ignored by open_file_in_project and search_in_project. For now, this can only be configured globally, but we will
+  add a way to make project specific overrides once we support per-project configuration. For now, this should significantly
+  speed up open_file_in_project.
 
 Speed improvements:
 
