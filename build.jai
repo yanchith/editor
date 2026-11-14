@@ -20,6 +20,7 @@ Making a release:
 (macOS)
 
 3) jai -optimized_debug build.jai - -bundle -no-sanity
+4) Upload bundle
 
 TODO(jt): Finish macOS bundle stuff. Including adding a readme section on dequarantine.
 
@@ -29,7 +30,7 @@ TODO(jt): Finish macOS bundle stuff. Including adding a readme section on dequar
 
 VERSION_MAJOR :: 0;
 VERSION_MINOR :: 0;
-VERSION_PATCH :: 2;
+VERSION_PATCH :: 3;
 
 #import "Compiler";
 #import "Basic";
