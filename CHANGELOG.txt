@@ -1,6 +1,11 @@
 (unreleased)
 ------------
 
+(nothing yet)
+
+alpha 0.0.3
+-----------
+
 New features:
 
 - MacOS .app bundle is now distributed. You still need to dequarantine it manually.
