@@ -10,6 +10,20 @@ TODO(jt): Known serious bugs:
 - Windows: Renderer stutter when we start animating after a period of inactivity.
 - Compilation link navigation doesn't respect cursor position. It uses its own index.
 
+TODO(jt): HMN Beta Week feedback:
+
+- Make it possible to open in a directory from the command line. This should probably open
+  a directory lister on top of the welcome message.
+- Improve message translation part of the platform layer: It should be possible to create
+  keybinds such as C-: (which is C-S-; on the US keyboard) or C-S-à (C-S-z in bepo layout),
+  support AltGr key, etc.
+- Rename open_file to open_file_or_directory so people searching for 'directory' find it.
+- Open smaller window by default (smallest that is still useful).
+- Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
+- Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
+- Support line wrapping.
+- Say how to do a different config template in the welcome message. !!!
+
 TODO(jt): Roadmap:
 
 - [X] Display text on screen
