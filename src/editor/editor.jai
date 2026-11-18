@@ -23,6 +23,28 @@ TODO(jt): HMN Beta Week feedback:
 - Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Support line wrapping.
 - Say how to do a different config template in the welcome message. !!!
+- Leave a note in config files that reload_config exists. !!!
+- Leave a note in config files that there are multiple sections. !!!
+- Warn about conflicting keybinds. This requires the *Messages* buffer.
+- Consistently visualize that a file is modified in both modeline and view list. Current visualization is confusing to some people.
+- Make "file is modified, are you sure you want to close the view?" modal interaction.
+- Do a confirmation prompt warning about modified files when people try to exit.
+- Color of modeline vs active modeline and gutter width customizability.
+  Maybe let's get all visual tweaks from config? Even themes?
+- C-<space> doesn't work on bepo layout?
+- Make Shift+Home/End/PageUp/PageDown work.
+- Make it possible to change the color of the text line in the minipanel.
+- Add keybinds to close (or hide-swap behind other view) the directory lister and compilation panel.
+- Log a user message when unable to find external search tool for search_in_project.
+- Show a short description of commands in show_commands.
+- Missing features: more point/mark, kill ring, rectangle kill/yank, macros, (project) regexp search/replace, multiple cursors.
+- Missing features: Creating files and directories in directory listers. Renaming files and directories. Moving files and directories.
+- Bug/Missing feature: execute arbitrary bash in compile_*
+- Missing features: compile_project (taking the build command from editor.projectconfig)
+- Highlight all compilation messages. Distinguish between errors and warnings.
+- Navigate around compilation messages from the other panel.
+- Bug: Caps lock doesn't work on macOS? !!!
+- Bug: Running delete_backward_word in an empty file or in the command buffer with an empty prompt crashes the program
 
 TODO(jt): Roadmap:
 
