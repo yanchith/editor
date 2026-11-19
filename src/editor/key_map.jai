@@ -344,14 +344,14 @@ key_map_flush :: (key_map: *Key_Map) {
     key_map.buffered_input = {};
 }
 
-key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, action: T {
+key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, action: T, consumed_shift: bool {
     // Do nothing, if we haven't got shortcuts to compare against.
     if !key_map.registered.count {
-        return false, default_of(T);
+        return false, default_of(T), false;
     }
 
     if is_modifier_key_event(event) {
-        return true, default_of(T);
+        return true, default_of(T), false;
     }
 
     if event.flags & .PRESSED {
@@ -373,6 +373,7 @@ key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, 
         
         best_shortcut_action := default_of(T);
         best_shortcut_match  := Shortcut_Match.NONE;
+        best_shortcut_has_shift_in_last_place := false;
         
         for key_map.registered {
             if shortcut_match_prefix(it.shortcut, key_map.buffered_input) != .NONE {
@@ -383,21 +384,24 @@ key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, 
             if match > best_shortcut_match {
                 best_shortcut_action = it.action;
                 best_shortcut_match = match;
+                best_shortcut_has_shift_in_last_place = cast(bool, it.shortcut.sequence[it.shortcut.count - 1].modifier_flags & .SHIFT);
             }
         }
     
         if best_shortcut_match != .NONE {
             key_map.buffered_input = {};
-            return false, best_shortcut_action;
+            return false, best_shortcut_action, best_shortcut_has_shift_in_last_place;
         } else if has_match_candidates {
-            return true, default_of(T);
+            // Because no shortcut should be a prefix of another, and consumed_shift is only important
+            // if we have an exact match, we are not handling that right now.  -jt, 19 November 2026
+            return true, default_of(T), false;
         } else {
             key_map.buffered_input = {};
-            return false, default_of(T);
+            return false, default_of(T), false;
         }
     }
 
-    return false, default_of(T);
+    return false, default_of(T), false;
 }
 
 #scope_file

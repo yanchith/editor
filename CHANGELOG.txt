@@ -1,7 +1,25 @@
 (unreleased)
 ------------
 
+New features:
+
 (nothing yet)
+
+Speed improvements:
+
+(nothing yet)
+
+Fixes:
+
+- More (most?) movement commands now respect Shift being pressed, causing the command to select text.
+  This is a compatibility thing with other text editors. The preferred way to select stuff is still the
+  start_selecting command.
+
+Other:
+
+- Add a leading descritory comment in the the config templates.
+- open_file has been renamed to open_file_or_directory for better discoverability
+- Make the initial window size smaller: 1280x800. Eventually, this will be configurable.
 
 alpha 0.0.3
 -----------

@@ -9,6 +9,7 @@ TODO(jt): Known serious bugs:
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Windows: Renderer stutter when we start animating after a period of inactivity.
 - Compilation link navigation doesn't respect cursor position. It uses its own index.
+- Sticky cursor maybe shouldn't be active if we are selecting? It sometimes causes us to select more than we want to.
 
 TODO(jt): HMN Beta Week feedback:
 
@@ -17,8 +18,6 @@ TODO(jt): HMN Beta Week feedback:
 - Improve message translation part of the platform layer: It should be possible to create
   keybinds such as C-: (which is C-S-; on the US keyboard) or C-S-à (C-S-z in bepo layout),
   support AltGr key, etc.
-- Rename open_file to open_file_or_directory so people searching for 'directory' find it.
-- Open smaller window by default (smallest that is still useful).
 - Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
 - Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Support line wrapping.
@@ -29,7 +28,6 @@ TODO(jt): HMN Beta Week feedback:
 - Color of modeline vs active modeline and gutter width customizability.
   Maybe let's get all visual tweaks from config? Even themes?
 - C-<space> doesn't work on bepo layout?
-- Make Shift+Home/End/PageUp/PageDown work.
 - Make it possible to change the color of the text line in the minipanel.
 - Add keybinds to close (or hide-swap behind other view) the directory lister and compilation panel.
 - Log a user message when unable to find external search tool for search_in_project.
@@ -2412,21 +2410,54 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     buffer_changed := false;
     old_item_index := mp.item_index;
 
-    buffered, action := key_map_input(*mp.key_map, event);
+    buffered, action, consumed_shift := key_map_input(*mp.key_map, event);
+    
+    shift_selecting := editor.input_state.modifiers & .SHIFT && !consumed_shift;
+
     if action == {
         case .MOVE_UP;                 mp.item_index = clamp(mp.item_index - 1, min_item_index, mp.items.count - 1);
         case .MOVE_DOWN;               mp.item_index = clamp(mp.item_index + 1, min_item_index, mp.items.count - 1);
-        case .MOVE_BACKWARD;           cursor_moved |= text_buffer_move_x(mp.buffer, *mp.cursors, -1, mp.selecting);
-        case .MOVE_FORWARD;            cursor_moved |= text_buffer_move_x(mp.buffer, *mp.cursors,  1, mp.selecting);
+        case .MOVE_BACKWARD; {
+            cursor_moved |= text_buffer_move_x(mp.buffer, *mp.cursors, -1, shift_selecting || mp.selecting);
+            if shift_selecting {
+                mp.selecting = false;
+            }
+        }
+        case .MOVE_FORWARD; {
+            cursor_moved |= text_buffer_move_x(mp.buffer, *mp.cursors,  1, shift_selecting || mp.selecting);
+            if shift_selecting {
+                mp.selecting = false;
+            }
+        }
 
-        case .MOVE_TO_START_OF_LINE;   cursor_moved |= text_buffer_move_to_start_of_line(mp.buffer, *mp.cursors, mp.selecting);
-        case .MOVE_TO_END_OF_LINE;     cursor_moved |= text_buffer_move_to_end_of_line(mp.buffer, *mp.cursors, mp.selecting);
+        case .MOVE_TO_START_OF_LINE;   {
+            cursor_moved |= text_buffer_move_to_start_of_line(mp.buffer, *mp.cursors, shift_selecting || mp.selecting);
+            if shift_selecting {
+                mp.selecting = false;
+            }
+        }
+        case .MOVE_TO_END_OF_LINE; {
+            cursor_moved |= text_buffer_move_to_end_of_line(mp.buffer, *mp.cursors, shift_selecting || mp.selecting);
+            if shift_selecting {
+                mp.selecting = false;
+            }
+        }
 
         case .MOVE_TO_START;           mp.item_index = 0; // Not -1, even if the particular procs support it.
         case .MOVE_TO_END;             mp.item_index = max(mp.items.count - 1, 0);
 
-        case .MOVE_FORWARD_WORD;       cursor_moved |= text_buffer_move_forward_within(mp.buffer, *mp.cursors, mp.selecting, is_alnum32);
-        case .MOVE_BACKWARD_WORD;      cursor_moved |= text_buffer_move_backward_within(mp.buffer, *mp.cursors, mp.selecting, is_alnum32);
+        case .MOVE_FORWARD_WORD; {
+            cursor_moved |= text_buffer_move_forward_within(mp.buffer, *mp.cursors, shift_selecting || mp.selecting, is_alnum32);
+            if shift_selecting {
+                mp.selecting = false;
+            }
+        }
+        case .MOVE_BACKWARD_WORD; {
+            cursor_moved |= text_buffer_move_backward_within(mp.buffer, *mp.cursors, shift_selecting || mp.selecting, is_alnum32);
+            if shift_selecting {
+                mp.selecting = false;
+            }
+        }
 
         case .MOVE_UP_ONE_SCREEN;      mp.item_index = clamp(mp.item_index - MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
         case .MOVE_DOWN_ONE_SCREEN;    mp.item_index = clamp(mp.item_index + MINI_PANEL_LINES, min_item_index, mp.items.count - 1);
@@ -2562,17 +2593,50 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
     cursor_moved   := false;
     buffer_changed := false;
+    
+    buffered, action, consumed_shift := key_map_input(*mi.key_map, event);
+    
+    shift_selecting := editor.input_state.modifiers & .SHIFT && !consumed_shift;
 
-    buffered, action := key_map_input(*mi.key_map, event);
     if action == {
-        case .MOVE_BACKWARD;           cursor_moved |= text_buffer_move_x(mi.buffer, *mi.cursors, -1, mi.selecting);
-        case .MOVE_FORWARD;            cursor_moved |= text_buffer_move_x(mi.buffer, *mi.cursors,  1, mi.selecting);
+        case .MOVE_BACKWARD; {
+            cursor_moved |= text_buffer_move_x(mi.buffer, *mi.cursors, -1, shift_selecting || mi.selecting);
+            if shift_selecting {
+                mi.selecting = false;
+            }
+        }
+        case .MOVE_FORWARD; {
+            cursor_moved |= text_buffer_move_x(mi.buffer, *mi.cursors,  1, shift_selecting || mi.selecting);
+            if shift_selecting {
+                mi.selecting = false;
+            }
+        }
 
-        case .MOVE_TO_START_OF_LINE;   cursor_moved |= text_buffer_move_to_start_of_line(mi.buffer, *mi.cursors, mi.selecting);
-        case .MOVE_TO_END_OF_LINE;     cursor_moved |= text_buffer_move_to_end_of_line(mi.buffer, *mi.cursors, mi.selecting);
+        case .MOVE_TO_START_OF_LINE; {
+            cursor_moved |= text_buffer_move_to_start_of_line(mi.buffer, *mi.cursors, shift_selecting || mi.selecting);
+            if shift_selecting {
+                mi.selecting = false;
+            }
+        }
+        case .MOVE_TO_END_OF_LINE; {
+            cursor_moved |= text_buffer_move_to_end_of_line(mi.buffer, *mi.cursors, shift_selecting || mi.selecting);
+            if shift_selecting {
+                mi.selecting = false;
+            }
+        }
 
-        case .MOVE_FORWARD_WORD;       cursor_moved |= text_buffer_move_forward_within(mi.buffer, *mi.cursors, mi.selecting, is_alnum32);
-        case .MOVE_BACKWARD_WORD;      cursor_moved |= text_buffer_move_backward_within(mi.buffer, *mi.cursors, mi.selecting, is_alnum32);
+        case .MOVE_FORWARD_WORD; {
+            cursor_moved |= text_buffer_move_forward_within(mi.buffer, *mi.cursors, shift_selecting || mi.selecting, is_alnum32);
+            if shift_selecting {
+                mi.selecting = false;
+            }
+        }
+        case .MOVE_BACKWARD_WORD; {
+            cursor_moved |= text_buffer_move_backward_within(mi.buffer, *mi.cursors, shift_selecting || mi.selecting, is_alnum32);
+            if shift_selecting {
+                mi.selecting = false;
+            }
+        }
 
         case .DELETE_FORWARD; {
             deleted := text_buffer_delete_forward(*mi.buffer, *mi.cursors, 1);
@@ -2679,7 +2743,7 @@ Panel_Action :: enum {
     SHOW_COMMANDS;
     SEARCH;
 
-    OPEN_FILE;
+    OPEN_FILE_OR_DIRECTORY;
     SWITCH_VIEW;
     CLOSE_VIEW;
 
@@ -2935,9 +2999,9 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
     did_execute_action := false;
 
     {
-        buffered, action   := key_map_input(*editor.panel_key_map, event);
+        buffered, action, consumed_shift := key_map_input(*editor.panel_key_map, event);
         did_buffer_event   |= buffered;
-        did_execute_action |= execute_panel_action(editor, platform, input, panel, action);
+        did_execute_action |= execute_panel_action(editor, platform, input, panel, action, consumed_shift);
     }
 
     if did_execute_action {
@@ -2958,13 +3022,13 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
             }
 
             if document.kind == .COMPILATION {
-                buffered, action   := key_map_input(*editor.compilation_key_map, event);
+                buffered, action, consumed_shift := key_map_input(*editor.compilation_key_map, event);
                 did_buffer_event   |= buffered;
-                did_execute_action |= execute_compilation_action(editor, platform, input, panel, view, document, action);
+                did_execute_action |= execute_compilation_action(editor, platform, input, panel, view, document, action, consumed_shift);
             } else {
-                buffered, action   := key_map_input(*editor.document_key_map, event);
+                buffered, action, consumed_shift := key_map_input(*editor.document_key_map, event);
                 did_buffer_event   |= buffered;
-                did_execute_action |= execute_document_action(editor, platform, input, panel, view, document, action);
+                did_execute_action |= execute_document_action(editor, platform, input, panel, view, document, action, consumed_shift);
             }
 
             // TODO(jt): @Bug This is what our indentation does. I actually like it, but people will expect something else?
@@ -3090,7 +3154,7 @@ route_event_to_panel :: (editor: *Editor, event: Input_Event, platform: Platform
 
 #scope_module
 
-execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, action: Panel_Action) -> executed: bool {
+execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, action: Panel_Action, consumed_shift: bool) -> executed: bool {
     theme_changed := false;
 
     if #complete action == {
@@ -3099,13 +3163,13 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .SHOW_COMMANDS;         open_mini_panel(editor, platform, input, mini_panel_show_commands_procs);
         case .SEARCH;                open_mini_panel(editor, platform, input, mini_panel_search_procs);
 
-        case .OPEN_FILE;             open_mini_panel(editor, platform, input, mini_panel_open_file_procs);
-        case .SWITCH_VIEW;           open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
-        case .CLOSE_VIEW;            open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
+        case .OPEN_FILE_OR_DIRECTORY;  open_mini_panel(editor, platform, input, mini_panel_open_file_procs);
+        case .SWITCH_VIEW;             open_mini_panel(editor, platform, input, mini_panel_switch_view_procs);
+        case .CLOSE_VIEW;              open_mini_panel(editor, platform, input, mini_panel_close_view_procs);
 
         case .RECENTER;              recenter_panel(panel, editor, input);
-        case .MOVE_UP_ONE_SCREEN;    scroll_panel_up_one_screen(panel, input, editor.font.line_height_in_pixels);
-        case .MOVE_DOWN_ONE_SCREEN;  scroll_panel_down_one_screen(panel, input, editor.font.line_height_in_pixels);
+        case .MOVE_UP_ONE_SCREEN;    scroll_panel_up_one_screen(panel, editor, input, editor.font.line_height_in_pixels, consumed_shift);
+        case .MOVE_DOWN_ONE_SCREEN;  scroll_panel_down_one_screen(panel, editor, input, editor.font.line_height_in_pixels, consumed_shift);
 
         case .SPLIT_PANEL_HORIZONTALLY; {
             if editor.active_view == .FULL {
@@ -3241,7 +3305,7 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
 }
 
 // Panel, view and document correspond to each other here. Not sure if I like this amount aliasing, but eh?
-execute_document_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, view: *Document_View, document: *Document, action: Document_Action) -> executed: bool, cursor_moved: bool, buffer_changed: bool {
+execute_document_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, view: *Document_View, document: *Document, action: Document_Action, consumed_shift: bool) -> executed: bool, cursor_moved: bool, buffer_changed: bool {
     sanity_assert(document.kind != .COMPILATION);
     if document.kind == .COMPILATION {
         return false, false, false;
@@ -3251,72 +3315,92 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
     cursor_moved   := false;
     buffer_changed := false;
 
-    shift_selecting := editor.input_state.modifiers & .SHIFT;
+    shift_selecting := editor.input_state.modifiers & .SHIFT && !consumed_shift;
 
     if #complete action == {
         case .NONE;  return false, cursor_moved, buffer_changed;
 
         case .MOVE_UP; {
             cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
-            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_DOWN; {
             cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
-            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_BACKWARD; {
             cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
-            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_FORWARD; {
             cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
-            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
 
-        case .MOVE_TO_START_OF_LINE;  cursor_moved |= text_buffer_move_to_start_of_line(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_END_OF_LINE;    cursor_moved |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_START_OF_LINE; {
+            cursor_moved |= text_buffer_move_to_start_of_line(document.buffer, *view.cursors, shift_selecting || view.selecting);
+            if shift_selecting {
+                view.selecting = false;
+            }
+        }
+        case .MOVE_TO_END_OF_LINE; {
+            cursor_moved |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, shift_selecting || view.selecting);
+            if shift_selecting {
+                view.selecting = false;
+            }
+        }
 
         case .MOVE_TO_START; {
             loc0 := view.cursors.c0;
-            if text_buffer_move_to_start(document.buffer, *view.cursors, view.selecting) {
+            if text_buffer_move_to_start(document.buffer, *view.cursors, shift_selecting || view.selecting) {
                 push_cursor_location(view, loc0);
                 editor_log(editor, "Mark set");
 
                 cursor_moved = true;
+                if shift_selecting {
+                    view.selecting = false;
+                }
             }
         }
         case .MOVE_TO_END; {
             loc0 := view.cursors.c0;
-            if text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting) {
+            if text_buffer_move_to_end(document.buffer, *view.cursors, shift_selecting || view.selecting) {
                 push_cursor_location(view, loc0);
                 editor_log(editor, "Mark set");
 
                 cursor_moved = true;
+                if shift_selecting {
+                    view.selecting = false;
+                }
             }
         }
 
         case .MOVE_FORWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_forward_within(document.buffer, *view.cursors, view.selecting, is_alnum32);
+            cursor_moved=, cursor_y_moved := text_buffer_move_forward_within(document.buffer, *view.cursors, shift_selecting || view.selecting, is_alnum32);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
             }
+            
+            if shift_selecting {
+                view.selecting = false;
+            }
         }
         case .MOVE_BACKWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_backward_within(document.buffer, *view.cursors, view.selecting, is_alnum32);
+            cursor_moved=, cursor_y_moved := text_buffer_move_backward_within(document.buffer, *view.cursors, shift_selecting || view.selecting, is_alnum32);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
+            }
+            
+            if shift_selecting {
+                view.selecting = false;
             }
         }
 
@@ -3999,7 +4083,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
 }
 
 // Panel, view and document correspond to each other here. Not sure if I like this amount aliasing, but eh?
-execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, view: *Document_View, document: *Document, action: Compilation_Action) -> executed: bool, cursor_moved: bool, buffer_changed: bool {
+execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input, panel: *Panel, view: *Document_View, document: *Document, action: Compilation_Action, consumed_shift: bool) -> executed: bool, cursor_moved: bool, buffer_changed: bool {
     sanity_assert(document.kind == .COMPILATION);
     if document.kind != .COMPILATION {
         return false, false, false;
@@ -4008,56 +4092,92 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
     cursor_moved   := false;
     buffer_changed := false;
 
-    shift_selecting := editor.input_state.modifiers & .SHIFT;
+    shift_selecting := editor.input_state.modifiers & .SHIFT && !consumed_shift;
 
     if #complete action == {
         case .NONE;  return false, cursor_moved, buffer_changed;
 
         case .MOVE_UP; {
             cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
-            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_DOWN; {
             cursor_moved |= text_buffer_move_y(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
-            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_BACKWARD; {
             cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors, -1, shift_selecting || view.selecting);
-            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
         case .MOVE_FORWARD; {
             cursor_moved |= text_buffer_move_x(document.buffer, *view.cursors,  1, shift_selecting || view.selecting);
-            view.flags |= .CLAMP_SCROLL_TO_CURSOR;
             if shift_selecting {
                 view.selecting = false;
             }
         }
 
-        case .MOVE_TO_START_OF_LINE;        cursor_moved |= text_buffer_move_to_start_of_line(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_END_OF_LINE;          cursor_moved |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_START_OF_LINE; {
+            cursor_moved |= text_buffer_move_to_start_of_line(document.buffer, *view.cursors, shift_selecting || view.selecting);
+            if shift_selecting {
+                view.selecting = false;
+            }
+        }
+        case .MOVE_TO_END_OF_LINE; {
+            cursor_moved |= text_buffer_move_to_end_of_line(document.buffer, *view.cursors, shift_selecting || view.selecting);
+            if shift_selecting {
+                view.selecting = false;
+            }
+        }
 
-        case .MOVE_TO_START;                cursor_moved |= text_buffer_move_to_start(document.buffer, *view.cursors, view.selecting);
-        case .MOVE_TO_END;                  cursor_moved |= text_buffer_move_to_end(document.buffer, *view.cursors, view.selecting);
+        case .MOVE_TO_START; {
+            loc0 := view.cursors.c0;
+            if text_buffer_move_to_start(document.buffer, *view.cursors, shift_selecting || view.selecting) {
+                push_cursor_location(view, loc0);
+                editor_log(editor, "Mark set");
+
+                cursor_moved = true;
+                if shift_selecting {
+                    view.selecting = false;
+                }
+            }
+        }
+        case .MOVE_TO_END; {
+            loc0 := view.cursors.c0;
+            if text_buffer_move_to_end(document.buffer, *view.cursors, shift_selecting || view.selecting) {
+                push_cursor_location(view, loc0);
+                editor_log(editor, "Mark set");
+
+                cursor_moved = true;
+                if shift_selecting {
+                    view.selecting = false;
+                }
+            }
+        }
 
         case .MOVE_FORWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_forward_within(document.buffer, *view.cursors, view.selecting, is_alnum32);
+            cursor_moved=, cursor_y_moved := text_buffer_move_forward_within(document.buffer, *view.cursors, shift_selecting || view.selecting, is_alnum32);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
             }
+            
+            if shift_selecting {
+                view.selecting = false;
+            }
         }
         case .MOVE_BACKWARD_WORD; {
-            cursor_moved=, cursor_y_moved := text_buffer_move_backward_within(document.buffer, *view.cursors, view.selecting, is_alnum32);
+            cursor_moved=, cursor_y_moved := text_buffer_move_backward_within(document.buffer, *view.cursors, shift_selecting || view.selecting, is_alnum32);
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
+            }
+            
+            if shift_selecting {
+                view.selecting = false;
             }
         }
 
@@ -6240,16 +6360,22 @@ recenter_panel :: (panel: *Panel, editor: Editor, input: Input, force_center := 
     }
 }
 
-scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
+scroll_panel_up_one_screen :: (panel: *Panel, editor: Editor, input: Input, cell_h: f32, consumed_shift: bool) {
     // -2 for mode line and message line
     delta := cast(s64, floor(input.window_size.y / cell_h) - 2 - PANEL_SCROLL_PADDING_CELLS_Y);
 
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
-            text_buffer_move_y(view.document.buffer, *view.cursors, -delta, view.selecting);
+
+            shift_selecting := editor.input_state.modifiers & .SHIFT && !consumed_shift;
+            text_buffer_move_y(view.document.buffer, *view.cursors, -delta, shift_selecting || view.selecting);
 
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+
+            if shift_selecting {
+                view.selecting = false;
+            }
         }
         case .LISTING; {
             view := *panel.view._listing;
@@ -6260,16 +6386,22 @@ scroll_panel_up_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
     }
 }
 
-scroll_panel_down_one_screen :: (panel: *Panel, input: Input, cell_h: f32) {
+scroll_panel_down_one_screen :: (panel: *Panel, editor: Editor, input: Input, cell_h: f32, consumed_shift: bool) {
     // -2 for mode line and message line
     delta := cast(s64, floor(input.window_size.y / cell_h) - 2 - PANEL_SCROLL_PADDING_CELLS_Y);
 
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
-            text_buffer_move_y(view.document.buffer, *view.cursors, delta, view.selecting);
+            
+            shift_selecting := editor.input_state.modifiers & .SHIFT && !consumed_shift;
+            text_buffer_move_y(view.document.buffer, *view.cursors, delta, shift_selecting || view.selecting);
 
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
+            
+            if shift_selecting {
+                view.selecting = false;
+            }
         }
         case .LISTING; {
             view := *panel.view._listing;

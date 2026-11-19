@@ -184,7 +184,7 @@ apply_emergency_config :: (editor: *Editor) {
         key_map_add(km, "M-x",                .SHOW_COMMANDS);
         key_map_add(km, "C-S-p",              .SHOW_COMMANDS);
 
-        key_map_add(km, "C-x C-f",            .OPEN_FILE);
+        key_map_add(km, "C-x C-f",            .OPEN_FILE_OR_DIRECTORY);
         key_map_add(km, "C-x b",              .SWITCH_VIEW);
         key_map_add(km, "C-x k",              .CLOSE_VIEW);
     }

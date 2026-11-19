@@ -33,7 +33,7 @@ project_search_ignore_directories = .git;.build
 Ctrl-Shift-p                           = show_commands
 Ctrl-f                                 = search
 
-Ctrl-o                                 = open_file
+Ctrl-o                                 = open_file_or_directory
 Ctrl-<tab>                             = switch_view
 Ctrl-w                                 = close_view
 

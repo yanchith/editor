@@ -268,7 +268,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
             case .PANEL; {
                 action := cast(Panel_Action, userdata.value);
-                execute_panel_action(editor, platform, input, panel, action);
+                execute_panel_action(editor, platform, input, panel, action, false);
             }
 
             case .DOCUMENT; {
@@ -278,8 +278,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
                 sanity_assert(document.kind != .COMPILATION);
                 action := cast(Document_Action, userdata.value);
-                execute_document_action(editor, platform, input, panel, view, document, action);
-
+                execute_document_action(editor, platform, input, panel, view, document, action, false);
             }
 
             case .COMPILATION; {
@@ -289,7 +288,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 
                 sanity_assert(document.kind == .COMPILATION);
                 action := cast(Compilation_Action, userdata.value);
-                execute_compilation_action(editor, platform, input, panel, view, document, action);
+                execute_compilation_action(editor, platform, input, panel, view, document, action, false);
             }
 
             case .LISTING; {
