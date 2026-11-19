@@ -39,7 +39,6 @@ TODO(jt): HMN Beta Week feedback:
 - Highlight all compilation messages. Distinguish between errors and warnings.
 - Navigate around compilation messages from the other panel.
 - Bug: Caps lock doesn't work on macOS? !!!
-- Bug: Running delete_backward_word in an empty file or in the command buffer with an empty prompt crashes the program
 
 TODO(jt): Roadmap:
 
