@@ -3357,6 +3357,11 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
+        // TODO(jt): @Cleanup @Hack MOVE_TO_START/END are bound to M-> and M-<.
+        // You need shift to press those on the US keyboard, but the shortcut
+        // doesn't say so. The platform layer should tell us whether shift should
+        // be consumed.
+        
         case .MOVE_TO_START; {
             loc0 := view.cursors.c0;
             if text_buffer_move_to_start(document.buffer, *view.cursors, shift_selecting || view.selecting) {
