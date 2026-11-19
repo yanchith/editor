@@ -21,7 +21,7 @@ Other:
 
 - Add a leading descriptory comment in the the config templates.
 - open_file has been renamed to open_file_or_directory for better discoverability
-- Make the initial window size smaller: 1280x800. Eventually, this will be configurable.
+- Make the initial window size smaller: 1600x1200. Eventually, this will be configurable.
 
 alpha 0.0.3
 -----------

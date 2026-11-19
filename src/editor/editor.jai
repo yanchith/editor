@@ -6833,10 +6833,11 @@ Welcome to your text editor! (Version %.%.%, built on %)
 This is an alpha release, so expect some bugs. I apologize for the inconvenience.
 If you experience a crash, you can find logs %.
 
-If you are coming from Emacs, most of the keyboard shortcuts will be familiar to you.
-Otherwise, there are starter config templates based on other editors. To use a template,
-rename it to 'editor.config'. You can find the config %. 
+If you are coming from Emacs, most of the keyboard shortcuts should be familiar.
+Otherwise, there are starter config templates based on other editors.
+To use a template, rename it to 'editor.config'.
+You can find the config %. 
 
-You can list available commands and their bound shortcuts with Alt-x or Ctrl-Shift-p.
+To list available commands and their bound shortcuts, type Alt-x or Ctrl-Shift-p.
 
 DONE;

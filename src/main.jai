@@ -347,7 +347,7 @@ main :: () {
         }
     }
 
-    window := Window.create_window(1280, 800, "editor");
+    window := Window.create_window(1600, 1000, "editor");
     renderer_init(window);
 
     platform: Editor.Platform;
