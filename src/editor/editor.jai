@@ -22,9 +22,6 @@ TODO(jt): HMN Beta Week feedback:
 - Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
 - Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Support line wrapping.
-- Say how to do a different config template in the welcome message. !!!
-- Leave a note in config files that reload_config exists. !!!
-- Leave a note in config files that there are multiple sections. !!!
 - Warn about conflicting keybinds. This requires the *Messages* buffer.
 - Consistently visualize that a file is modified in both modeline and view list. Current visualization is confusing to some people.
 - Make "file is modified, are you sure you want to close the view?" modal interaction.
@@ -6702,13 +6699,13 @@ WELCOME_TEMPLATE :: #string DONE
 
 Welcome to your text editor! (Version %.%.%, built on %)
 
-This is an alpha release, so expect minor bugs. I apologize for the inconvenience.
+This is an alpha release, so expect some bugs. I apologize for the inconvenience.
 If you experience a crash, you can find logs %.
 
 If you are coming from Emacs, most of the keyboard shortcuts will be familiar to you.
-Otherwise, there are starter templates for the config files from other editors.
-You can find the config %.
+Otherwise, there are starter config templates based on other editors. To use a template,
+rename it to 'editor.config'. You can find the config %. 
 
-To list available commands and their bound shortcuts, type Alt-x or Ctrl-Shift-p.
+You can list available commands and their bound shortcuts with Alt-x or Ctrl-Shift-p.
 
 DONE;
