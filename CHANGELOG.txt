@@ -15,6 +15,7 @@ Fixes:
   This is a compatibility thing with other text editors. The preferred way to select stuff is still the
   start_selecting command.
 - Fixed a crash when doing delete_backward_word on an empty document.
+- Fixed applying the Caps Lock to events on macOS. Heresy.
 
 Other:
 

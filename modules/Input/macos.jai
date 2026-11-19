@@ -302,9 +302,17 @@ update_cocoa_window_events :: () {
                 // e.g. M->, which on macOS would be translated to something else, if we didn't
                 // ignore them.
                 //
+                // We make an exception for CAPSLOCK, so that it works.
+                //
                 // :ModifiedInputModule
-                characters := NSEvent.charactersIgnoringModifiers(nsevent);
                 modifiers := NSEvent.modifierFlags(nsevent);
+
+                characters: *NSString;
+                if modifiers & NSEventModifierFlagCapsLock {
+                    characters = NSEvent.characters(nsevent);
+                } else {
+                    characters = NSEvent.charactersIgnoringModifiers(nsevent);
+                }
 
                 shift_state := (modifiers & NSEventModifierFlagShift) != 0;
                 ctrl_state  := (modifiers & NSEventModifierFlagControl) != 0;
