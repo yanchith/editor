@@ -14,6 +14,7 @@ Fixes:
 - More (most?) movement commands now respect Shift being pressed, causing the command to select text.
   This is a compatibility thing with other text editors. The preferred way to select stuff is still the
   start_selecting command.
+- Fixed a crash when doing delete_backward_word on an empty document.
 
 Other:
 

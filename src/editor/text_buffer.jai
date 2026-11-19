@@ -1722,7 +1722,7 @@ text_buffer_move_backward_within :: (buffer: Text_Buffer, cursors: *Text_Cursors
     view_start_gb_index = max(view_start_gb_index, 0);
 
     if !buffer.binary_mode {
-        while !is_utf8_char_boundary(buffer.gb[view_start_gb_index]) {
+        while view_start_gb_index < buffer.gb.count && !is_utf8_char_boundary(buffer.gb[view_start_gb_index]) {
             view_start_gb_index += 1;
         }
     }
