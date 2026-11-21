@@ -18,6 +18,7 @@ TODO(jt): HMN Beta Week feedback:
 - Improve message translation part of the platform layer: It should be possible to create
   keybinds such as C-: (which is C-S-; on the US keyboard) or C-S-à (C-S-z in bepo layout),
   support AltGr key, etc.
+- C-<space> doesn't work in the bepo layout?
 - Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
 - Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Support line wrapping.
@@ -27,18 +28,16 @@ TODO(jt): HMN Beta Week feedback:
 - Do a confirmation prompt warning about modified files when people try to exit.
 - Color of modeline vs active modeline and gutter width customizability.
   Maybe let's get all visual tweaks from config? Even themes?
-- C-<space> doesn't work on bepo layout?
 - Make it possible to change the color of the text line in the minipanel.
 - Add keybinds to close (or hide-swap behind other view) the directory lister and compilation panel.
 - Log a user message when unable to find external search tool for search_in_project.
 - Show a short description of commands in show_commands.
-- Missing features: more point/mark, kill ring, rectangle kill/yank, macros, (project) regexp search/replace, multiple cursors.
+- Missing features (some of this is already on our roadmap): more point/mark, kill ring, rectangle kill/yank, macros, (project) regexp search/replace, multiple cursors.
 - Missing features: Creating files and directories in directory listers. Renaming files and directories. Moving files and directories.
-- Bug/Missing feature: execute arbitrary bash in compile_*
-- Missing features: compile_project (taking the build command from editor.projectconfig)
+- Bug/Missing feature: execute arbitrary bash in compile_*. Can we at least support this on Unix? Windows might be tricky.
+- Missing features: compile_project (taking the build command from editor.projectconfig). Once we have this, we can maybe remove compile_in_project_or_directory and just keep compile_in_directory.
 - Highlight all compilation messages. Make this highlighting consistent with what SEARCH does, but also distinguish between errors and warnings.
 - Navigate around compilation messages from the other panel.
-- Bug: Caps lock doesn't work on macOS? !!!
 
 TODO(jt): Roadmap:
 
