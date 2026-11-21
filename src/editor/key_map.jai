@@ -45,7 +45,7 @@ shortcut_key_match :: (a: Shortcut_Key, b: Shortcut_Key) -> Shortcut_Match {
             }
         }
     }
-    
+
     if a.modifier_flags != b.modifier_flags {
         if a.modifier_flags | .SHIFT == b.modifier_flags {
             return .WITH_EXTRA_SHIFT;
@@ -53,7 +53,7 @@ shortcut_key_match :: (a: Shortcut_Key, b: Shortcut_Key) -> Shortcut_Match {
             return .NONE;
         }
     }
-    
+
     return .EXACT;
 }
 
@@ -67,7 +67,7 @@ shortcut_match :: (a: Shortcut, b: Shortcut) -> Shortcut_Match {
     if a.count != b.count {
         return .NONE;
     }
-    
+
     result := Shortcut_Match.EXACT;
     for 0..a.count - 1 {
         key_a := a.sequence[it];
@@ -81,7 +81,7 @@ shortcut_match :: (a: Shortcut, b: Shortcut) -> Shortcut_Match {
             return .NONE;
         }
     }
-    
+
     return result;
 }
 
@@ -284,7 +284,7 @@ Key_Map :: struct (T: Type) {
     registered: [..] Pair;
 
     buffered_input: Shortcut;
-    
+
     Pair :: struct {
         shortcut: Shortcut;
         action:   T;
@@ -370,11 +370,11 @@ key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, 
         key_map.buffered_input.count += 1;
 
         has_match_candidates := false;
-        
+
         best_shortcut_action := default_of(T);
         best_shortcut_match  := Shortcut_Match.NONE;
         best_shortcut_has_shift_in_last_place := false;
-        
+
         for key_map.registered {
             if shortcut_match_prefix(it.shortcut, key_map.buffered_input) != .NONE {
                 has_match_candidates = true;
@@ -387,10 +387,20 @@ key_map_input :: (key_map: *Key_Map($T), event: Input_Event) -> buffered: bool, 
                 best_shortcut_has_shift_in_last_place = cast(bool, it.shortcut.sequence[it.shortcut.count - 1].modifier_flags & .SHIFT);
             }
         }
-    
+
         if best_shortcut_match != .NONE {
             key_map.buffered_input = {};
-            return false, best_shortcut_action, best_shortcut_has_shift_in_last_place;
+
+            translation_consumed_shift := false;
+            if event.type == .CODEPOINT && event.data != event.data_without_shift {
+                if event.data < 127 && event.data_without_shift < 127 {
+                    translation_consumed_shift = to_lower(cast,trunc(u8, event.data)) != to_lower(cast,trunc(u8, event.data_without_shift));
+                } else {
+                    translation_consumed_shift = true;
+                }
+            }
+
+            return false, best_shortcut_action, best_shortcut_has_shift_in_last_place || translation_consumed_shift;
         } else if has_match_candidates {
             // Because no shortcut should be a prefix of another, and consumed_shift is only important
             // if we have an exact match, we are not handling that right now.  -jt, 19 November 2026

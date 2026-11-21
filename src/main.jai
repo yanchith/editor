@@ -147,6 +147,14 @@ main                              C:\Users\yanchith\workspace\editor\src\main.ja
 } else #if OS == .MACOS {
     #import "POSIX";
     #import "macOS";
+    
+    // :ModifiedAppKitModule
+    //
+    // We needed to expose some additional things from AppKit. For this, we had to copy
+    // the entirety of the Objective_C module tree locally.
+    //
+    // TODO(jt): @Cleanup Try getting Jon or Raphael to accept our changes, so we can delete
+    // our local copy.
     #import "Objective_C";
     #import "Objective_C/AppKit";
 } else {
@@ -818,43 +826,43 @@ main :: () {
                     // control characters outside of the ASCII range we use our own enum.
                     if it.key_code == {
                         // keycodes that are also in ASCII
-                        case .BACKSPACE;            array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.BACKSPACE) });
-                        case .TAB;                  array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.TAB) });
-                        case .LINEFEED;             array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.LINEFEED) });
-                        case .ENTER;                array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.ENTER) });
-                        case .ESCAPE;               array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.ESCAPE) });
+                        case .BACKSPACE;    cp := cast(u32, Editor.Codepoint.BACKSPACE); array_add(*input_events, { .CODEPOINT, flags, modifiers, cp, cp });
+                        case .TAB;          cp := cast(u32, Editor.Codepoint.TAB);       array_add(*input_events, { .CODEPOINT, flags, modifiers, cp, cp });
+                        case .LINEFEED;     cp := cast(u32, Editor.Codepoint.LINEFEED);  array_add(*input_events, { .CODEPOINT, flags, modifiers, cp, cp });
+                        case .ENTER;        cp := cast(u32, Editor.Codepoint.ENTER);     array_add(*input_events, { .CODEPOINT, flags, modifiers, cp, cp });
+                        case .ESCAPE;       cp := cast(u32, Editor.Codepoint.ESCAPE);    array_add(*input_events, { .CODEPOINT, flags, modifiers, cp, cp });
                         // SPACEBAR also gets sent as a text event, so we don't capture it here.
-                        case .DELETE;               array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, Editor.Codepoint.DELETE) });
+                        case .DELETE;       cp := cast(u32, Editor.Codepoint.DELETE);    array_add(*input_events, { .CODEPOINT, flags, modifiers, cp, cp });
 
                         // keycodes that are not in ASCII
-                        case .CTRL;                 array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.CTRL) });
-                        case .ALT;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.ALT) });
-                        case .SHIFT;                array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.SHIFT) });
-                        case .META;                 array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.META) });
+                        case .CTRL;         k := cast(u32, Editor.Key.CTRL);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .ALT;          k := cast(u32, Editor.Key.ALT);   array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .SHIFT;        k := cast(u32, Editor.Key.SHIFT); array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .META;         k := cast(u32, Editor.Key.META);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
 
-                        case .ARROW_UP;             array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.ARROW_UP) });
-                        case .ARROW_DOWN;           array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.ARROW_DOWN) });
-                        case .ARROW_LEFT;           array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.ARROW_LEFT) });
-                        case .ARROW_RIGHT;          array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.ARROW_RIGHT) });
+                        case .ARROW_UP;     k := cast(u32, Editor.Key.ARROW_UP);    array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .ARROW_DOWN;   k := cast(u32, Editor.Key.ARROW_DOWN);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .ARROW_LEFT;   k := cast(u32, Editor.Key.ARROW_LEFT);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .ARROW_RIGHT;  k := cast(u32, Editor.Key.ARROW_RIGHT); array_add(*input_events, { .KEY, flags, modifiers, k, k });
 
-                        case .PAGE_UP;              array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.PAGE_UP) });
-                        case .PAGE_DOWN;            array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.PAGE_DOWN) });
+                        case .PAGE_UP;      k := cast(u32, Editor.Key.PAGE_UP);   array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .PAGE_DOWN;    k := cast(u32, Editor.Key.PAGE_DOWN); array_add(*input_events, { .KEY, flags, modifiers, k, k });
 
-                        case .HOME;                 array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.HOME) });
-                        case .END;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.END) });
+                        case .HOME;         k := cast(u32, Editor.Key.HOME); array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .END;          k := cast(u32, Editor.Key.END);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
 
-                        case .INSERT;               array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.INSERT) });
+                        case .INSERT;       k := cast(u32, Editor.Key.INSERT); array_add(*input_events, { .KEY, flags, modifiers, k, k });
 
-                        case .F1;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F1) });
-                        case .F2;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F2) });
-                        case .F3;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F3) });
-                        case .F4;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F4) });
-                        case .F5;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F5) });
-                        case .F6;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F6) });
-                        case .F7;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F7) });
-                        case .F8;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F8) });
-                        case .F9;                   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F9) });
-                        case .F10;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F10) });
+                        case .F1;           k := cast(u32, Editor.Key.F1);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .F2;           k := cast(u32, Editor.Key.F2);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .F3;           k := cast(u32, Editor.Key.F3);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .F4;           k := cast(u32, Editor.Key.F4);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .F5;           k := cast(u32, Editor.Key.F5);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .F6;           k := cast(u32, Editor.Key.F6);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .F7;           k := cast(u32, Editor.Key.F7);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .F8;           k := cast(u32, Editor.Key.F8);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .F9;           k := cast(u32, Editor.Key.F9);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .F10;          k := cast(u32, Editor.Key.F10); array_add(*input_events, { .KEY, flags, modifiers, k, k });
                         case .F11; {
                             #if OS == .WINDOWS {
                                 if it.key_pressed {
@@ -862,15 +870,17 @@ main :: () {
                                     Window.toggle_fullscreen(window, platform_state.fullscreen, *platform_state.saved_window_info);
                                 }
                             }
-                            array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F11) });
+                            
+                            k := cast(u32, Editor.Key.F11);
+                            array_add(*input_events, { .KEY, flags, modifiers, k, k });
                         }
-                        case .F12;                  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.F12) });
+                        case .F12;                  k := cast(u32, Editor.Key.F12); array_add(*input_events, { .KEY, flags, modifiers, k, k });
 
-                        case .PRINT_SCREEN;         array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.PRINT_SCREEN) });
+                        case .PRINT_SCREEN;         k := cast(u32, Editor.Key.PRINT_SCREEN); array_add(*input_events, { .KEY, flags, modifiers, k, k });
 
-                        case .MOUSE_BUTTON_LEFT;    array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.MB_LEFT) });
-                        case .MOUSE_BUTTON_RIGHT;   array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.MB_RIGHT) });
-                        case .MOUSE_BUTTON_MIDDLE;  array_add(*input_events, { .KEY, flags, modifiers, cast(u32, Editor.Key.MB_MIDDLE) });
+                        case .MOUSE_BUTTON_LEFT;    k := cast(u32, Editor.Key.MB_LEFT);   array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .MOUSE_BUTTON_RIGHT;   k := cast(u32, Editor.Key.MB_RIGHT);  array_add(*input_events, { .KEY, flags, modifiers, k, k });
+                        case .MOUSE_BUTTON_MIDDLE;  k := cast(u32, Editor.Key.MB_MIDDLE); array_add(*input_events, { .KEY, flags, modifiers, k, k });
 
                         case; {
                             #if OS == .WINDOWS {
@@ -878,7 +888,8 @@ main :: () {
                                 // (unless it is SPACEBAR!), so we emit it here. This is a temporary hack.
                                 // We should eventually rewrite the platform layers and do the minimal necessary hacks there.
                                 if it.ctrl_pressed && it.text_input_count == 0 && it.key_code != .SPACEBAR {
-                                    array_add(*input_events, { .CODEPOINT, flags, modifiers, cast(u32, it.key_code) });
+                                    cp := cast(u32, it.key_code);
+                                    array_add(*input_events, { .CODEPOINT, flags, modifiers, cp, cp });
                                 }
                             }
                         }
@@ -895,7 +906,7 @@ main :: () {
                     flags: Editor.Input_Event.Flags;
                     flags |= .PRESSED; // TEXT_INPUT implies key_pressed.
 
-                    array_add(*input_events, { .CODEPOINT, flags, modifiers, it.utf32 });
+                    array_add(*input_events, { .CODEPOINT, flags, modifiers, it.utf32, it.utf32_without_shift });
                 }
             }
         }

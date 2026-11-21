@@ -53,7 +53,7 @@ Watched_Directory_Change :: struct {
     }
 }
 
-#assert size_of(Input_Event) == 8;
+#assert size_of(Input_Event) == 12;
 Input_Event :: struct  {
     type: Type;
     flags: Flags;
@@ -70,10 +70,13 @@ Input_Event :: struct  {
     modifiers: Modifier_Flags;
 
     data: u32;
+    data_without_shift: u32;
 
-    // Overlay instead of tagged union for more control over data data layout.
+    // Overlays instead of tagged union for more control over data data layout.
     #overlay (data) key: Key;
     #overlay (data) codepoint: Codepoint;
+    
+    #overlay (data_without_shift) codepoint_without_shift: Codepoint;
 
     Type :: enum u16 {
         KEY       :: 0;

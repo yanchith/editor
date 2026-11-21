@@ -5,6 +5,13 @@
 
 Gamepad_Lib :: #import "Gamepad";
 
+// :ModifiedInputModule
+user32 :: #library,system "user32";
+
+HKL :: HANDLE;
+GetKeyboardLayout :: (idThread: DWORD) -> HKL #foreign user32;
+ToUnicodeEx       :: (wVirtKey: u32, wScanCode: u32, lpKeyState: *u8, pwszBuff: LPCWSTR, cchBuff: s32, wFlags: u32, dwhkl: HKL) -> s32 #foreign user32;
+
 
 //
 // @Incomplete @Robustness: We should check whichever flags Windows gives us automatically
@@ -93,6 +100,10 @@ MyWindowProc :: (hwnd: HWND, message: u32,
           case WM_SYSKEYDOWN; #through;
           case WM_KEYDOWN;
 
+            // :ModifiedInputModule
+            last_vkey = wParam;
+            last_scancode = cast(u64, (lParam >> 16) & 0x1ff);
+            
             repeat := ((cast (s32) lParam) & 0x40000000) != 0;
             maybe_send_vkey_event(wParam, true, repeat);
 
@@ -121,6 +132,26 @@ MyWindowProc :: (hwnd: HWND, message: u32,
                 event: Event;
                 event.type = .TEXT_INPUT;
                 event.utf32 = xx keycode;
+                
+                // :ModifiedInputModule
+                // Fill in what the char would be if we didn't hold shift.
+                event.utf32_without_shift = xx keycode;
+                
+                scancode := cast(u64, (lParam >> 16) & 0x1ff);
+                if scancode == last_scancode && shift_state {
+                    hkl := GetKeyboardLayout(0);
+                    
+                    ks: [256] u8;
+                    if GetKeyState(VK_CAPITAL) & 1 {
+                        ks[VK_CAPITAL] = 1;
+                    }
+                    
+                    buf: [8] u16;
+                    count := ToUnicodeEx(cast,trunc(u32, last_vkey), cast,trunc(u32, scancode), ks.data, buf.data, 8, 1 << 2, hkl);
+                    if count {
+                        event.utf32_without_shift = buf[0];
+                    }
+                }
 
                 array_add(*events_this_frame, event);
             }
@@ -136,6 +167,26 @@ MyWindowProc :: (hwnd: HWND, message: u32,
                 event.type = .TEXT_INPUT;
                 event.utf32 = xx keycode;
 
+                // :ModifiedInputModule
+                // Fill in what the char would be if we didn't hold shift.
+                event.utf32_without_shift = xx keycode;
+                
+                scancode := cast(u64, (lParam >> 16) & 0x1ff);
+                if scancode == last_scancode && shift_state {
+                    hkl := GetKeyboardLayout(0);
+                    
+                    ks: [256] u8;
+                    if GetKeyState(VK_CAPITAL) & 1 {
+                        ks[VK_CAPITAL] = 1;
+                    }
+                    
+                    buf: [8] u16;
+                    count := ToUnicodeEx(cast,trunc(u32, last_vkey), cast,trunc(u32, scancode), ks.data, buf.data, 8, 1 << 2, hkl);
+                    if count {
+                        event.utf32_without_shift = buf[0];
+                    }
+                }
+                
                 array_add(*events_this_frame, event);
             }
 
@@ -465,6 +516,12 @@ update_window_events :: () {
 the_gamepad_handler: (wide_path: *u16, connect: bool, is_xbox: bool);
 
 #scope_file
+
+// :ModifiedInputModule
+// A hack to be able to tell whether shift was required to get the current character in WM_CHAR/WM_SYSCHAR.
+last_vkey:     u64;
+last_scancode: u64;
+
 shift_state := false;
 ctrl_state  := false;
 alt_state   := false;

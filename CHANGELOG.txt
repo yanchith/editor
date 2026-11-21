@@ -11,9 +11,9 @@ Speed improvements:
 
 Fixes:
 
-- More (most?) movement commands now respect Shift being pressed, causing the command to select text.
-  This is a compatibility thing with other text editors. The preferred way to select stuff is still the
-  start_selecting command.
+- More movement commands now respect Shift being pressed, causing the command to select text.
+  This is just a compatibility behavior for people used to other text editors. The preferred way to
+  select stuff is still the start_selecting command.
 - Fixed a crash when doing delete_backward_word on an empty document.
 - Fixed applying the Caps Lock to events on macOS. Heresy.
 
@@ -21,7 +21,7 @@ Other:
 
 - Add a leading descriptory comment in the the config templates.
 - open_file has been renamed to open_file_or_directory for better discoverability
-- Make the initial window size smaller: 1600x1200. Eventually, this will be configurable.
+- Make the initial window size smaller: 1600x1200. This will be configurable.
 
 alpha 0.0.3
 -----------

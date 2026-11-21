@@ -298,26 +298,32 @@ update_cocoa_window_events :: () {
             case NSEventTypeKeyDown;
                 keycode := NSEvent.keyCode(nsevent);
 
-                // NOTE(jt): We get the characters ignoring modifiers, because we want to receive
-                // e.g. M->, which on macOS would be translated to something else, if we didn't
-                // ignore them.
-                //
-                // We make an exception for CAPSLOCK, so that it works.
-                //
-                // :ModifiedInputModule
                 modifiers := NSEvent.modifierFlags(nsevent);
-
-                characters: *NSString;
-                if modifiers & NSEventModifierFlagCapsLock {
-                    characters = NSEvent.characters(nsevent);
-                } else {
-                    characters = NSEvent.charactersIgnoringModifiers(nsevent);
-                }
 
                 shift_state := (modifiers & NSEventModifierFlagShift) != 0;
                 ctrl_state  := (modifiers & NSEventModifierFlagControl) != 0;
                 alt_state   := (modifiers & NSEventModifierFlagOption) != 0;
                 cmd_state   := (modifiers & NSEventModifierFlagCommand) != 0;
+
+                //
+                // :ModifiedInputModule
+                //
+                // NOTE(jt): We get the characters ignoring modifiers, because we want to receive
+                // e.g. M->, which on macOS would be translated to something else, if we didn't
+                // ignore them.
+                //
+                // We make an exception for CAPSLOCK (by not strippping it), so that it works.
+                //
+                // We use charactersByApplyingModifiers both so we can preserve CAPSLOCK, but also
+                // to get the characters without SHIFT applied, which we need for detecting implicit
+                // shift usage in our keyboard shortcuts.
+                //
+            
+                IGNORE_MODIFIERS:           NSEventModifierFlags : NSEventModifierFlagControl | NSEventModifierFlagOption | NSEventModifierFlagCommand;
+                IGNORE_MODIFIERS_AND_SHIFT: NSEventModifierFlags : IGNORE_MODIFIERS | NSEventModifierFlagShift;
+                
+                characters               := NSEvent.charactersByApplyingModifiers(nsevent, modifiers & ~IGNORE_MODIFIERS);
+                characters_without_shift := NSEvent.charactersByApplyingModifiers(nsevent, modifiers & ~IGNORE_MODIFIERS_AND_SHIFT);
 
                 repeat := NSEvent.isARepeat(nsevent);
 
@@ -338,10 +344,15 @@ update_cocoa_window_events :: () {
                 // @Incomplete: How do we handle diacritics entered via dead keys?
                 // For example for "¨ + a => ä", if we ignore the dead key for ¨ here and then only handle the "a", people won’t be able to assemble the "ä".
                 if characters && NSString.length(characters) {
-                    utf32_data := NSString.dataUsingEncoding(characters, NSUTF32LittleEndianStringEncoding);
+                    utf32_data :=               NSString.dataUsingEncoding(characters, NSUTF32LittleEndianStringEncoding);
+                    utf32_data_without_shift := NSString.dataUsingEncoding(characters_without_shift, NSUTF32LittleEndianStringEncoding);
                     // defer release(utf32_data);
-                    utf32 := cast(*u32) NSData.bytes(utf32_data);
-                    count := NSData.length(utf32_data) / size_of(u32);
+                    // defer release(utf32_data_without_shift);
+                    
+                    utf32               := cast(*u32) NSData.bytes(utf32_data);
+                    utf32_without_shift := cast(*u32) NSData.bytes(utf32_data_without_shift);
+                    count               := NSData.length(utf32_data) / size_of(u32);
+                    count_without_shift := NSData.length(utf32_data_without_shift) / size_of(u32);
 
                     event.text_input_count = xx count;
                     array_add(*events_this_frame, event);
@@ -350,6 +361,9 @@ update_cocoa_window_events :: () {
                         event: Event;
                         event.type = .TEXT_INPUT;
                         event.utf32 = utf32[it];
+                        if it < count_without_shift {
+                            event.utf32_without_shift = utf32_without_shift[it];
+                        }
 
                         // filter out control characters
                         if event.utf32 <= 31   then continue;

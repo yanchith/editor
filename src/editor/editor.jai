@@ -36,7 +36,7 @@ TODO(jt): HMN Beta Week feedback:
 - Missing features: Creating files and directories in directory listers. Renaming files and directories. Moving files and directories.
 - Bug/Missing feature: execute arbitrary bash in compile_*
 - Missing features: compile_project (taking the build command from editor.projectconfig)
-- Highlight all compilation messages. Distinguish between errors and warnings.
+- Highlight all compilation messages. Make this highlighting consistent with what SEARCH does, but also distinguish between errors and warnings.
 - Navigate around compilation messages from the other panel.
 - Bug: Caps lock doesn't work on macOS? !!!
 
@@ -6546,6 +6546,7 @@ Compilation_Link :: struct {
 //   cl:           hello.c(3)
 //
 // TODO(jt): @Bug dotnet build outputs build timing, which matches our <filepath>:<line>:<col> pattern.
+// TODO(jt): Consider checking for presence of the 'error' or 'warning'. Can be used both to choose highlight color and reject false positives.
 find_compilation_link :: (line: string) -> found: bool, Compilation_Link {
     result: Compilation_Link;
     if !line.count {

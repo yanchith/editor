@@ -6,12 +6,17 @@
 //
 // Changes (also search for the tag):
 //
-// On macOS, we make a text event from a key event using NSEvent.charactersIgnoringModifiers instead
-// of NSEvent.characters, because we need to receive the original character before macOS modifies it
-// with Alt.
+// On macOS, we make a text event from a key event using NSEvent.charactersByApplyingModifiers instead
+// of NSEvent.characters, because:
+//   - We need to receive the original character before macOS modifies it with Alt,
+//   - We need to get the character both with Shift applied and not.
 //
 // On Windows, we make sure a text event is even generated, if Alt is pressed by creating it when we
 // receive a WM_SYSCHAR.
+//
+// On both Windows and macOS, we also populate a utf32_without_shift field, which we need for handling
+// keyboard shortcuts. This is not great at all. We should seriously consider dropping the Input module
+// and just mapping the OS level thing against our input layer.
 //
 // For now, also X11 and Android backends are deleted.
 //
@@ -195,6 +200,9 @@ Event :: struct {
     using modifier_flags: Modifier_Flags; // Only set for Event_Type.KEYBOARD.
 
     utf32: u32;  // If TEXT_INPUT.
+    utf32_without_shift: u32; // :ModifiedInputModule
+    // TODO(jt): Add utf32_without_alt as a less hacky way of dealing with the macOS remapping?
+    
     repeat := false;  // If KEYBOARD event.
     text_input_count: u16; // If KEYBOARD event that also generated TEXT_INPUT events, this will tell you how many TEXT_INPUT events after this KEYBOARD event were generated.
 
