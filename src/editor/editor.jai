@@ -8,7 +8,6 @@ TODO(jt): Known serious bugs:
 
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Windows: Renderer stutter when we start animating after a period of inactivity.
-- Compilation link navigation doesn't respect cursor position. It uses its own index.
 - Sticky cursor maybe shouldn't be active if we are selecting? It sometimes causes us to select more than we want to.
 
 TODO(jt): HMN Beta Week feedback:
@@ -36,7 +35,6 @@ TODO(jt): HMN Beta Week feedback:
 - Missing features: Creating files and directories in directory listers. Renaming files and directories. Moving files and directories.
 - Bug/Missing feature: execute arbitrary bash in compile_*. Can we at least support this on Unix? Windows might be tricky.
 - Missing features: compile_project (taking the build command from editor.projectconfig). Once we have this, we can maybe remove compile_in_project_or_directory and just keep compile_in_directory.
-- Highlight all compilation messages. Make this highlighting consistent with what SEARCH does, but also distinguish between errors and warnings.
 - Navigate around compilation messages from the other panel.
 
 TODO(jt): Roadmap:
@@ -402,7 +400,7 @@ Editor :: struct {
 Panel :: struct {
     flags: Flags;
 
-    // Highlights are owned by the panel, but they are usually cleared/added by various minipanel and modals.
+    // Highlights are owned by the panel, but they are usually cleared/added by various minipanel and modal actions.
     // It could be argued that they should also own it, but then the renderer does't have a good access.
     // Let's see about this once we have more experience using this.  -jt, 10 August 2026
     highlights_arena: *Arena;
@@ -535,7 +533,6 @@ Document :: struct {
     // Compilation fields are empty if this is not a .COMPILATION document.
     compilation_args:   string;
     compilation_errors: [..] Compilation_Error;
-    compilation_error_index: s64;
 
     Kind :: enum u32 {
         SCRATCH;
@@ -607,7 +604,6 @@ Listing :: struct {
         DIRECTORY;
         // TODO(jt): Add VIEWS (unified) ... this is basically entitities.
         // TODO(jt): Add SEARCH_RESULTS?
-        // TODO(jt): Add COMPILATION_ERRORS?
     }
 
     Item :: struct {
@@ -2409,7 +2405,7 @@ route_event_to_mini_panel :: (editor: *Editor, event: Input_Event, platform: Pla
     old_item_index := mp.item_index;
 
     buffered, action, consumed_shift := key_map_input(*mp.key_map, event);
-    
+
     shift_selecting := editor.input_state.modifiers & .SHIFT && !consumed_shift;
 
     if action == {
@@ -2591,9 +2587,9 @@ route_event_to_modal_interaction :: (editor: *Editor, event: Input_Event, platfo
 
     cursor_moved   := false;
     buffer_changed := false;
-    
+
     buffered, action, consumed_shift := key_map_input(*mi.key_map, event);
-    
+
     shift_selecting := editor.input_state.modifiers & .SHIFT && !consumed_shift;
 
     if action == {
@@ -3360,7 +3356,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         // You need shift to press those on the US keyboard, but the shortcut
         // doesn't say so. The platform layer should tell us whether shift should
         // be consumed.
-        
+
         case .MOVE_TO_START; {
             loc0 := view.cursors.c0;
             if text_buffer_move_to_start(document.buffer, *view.cursors, shift_selecting || view.selecting) {
@@ -3391,7 +3387,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
             }
-            
+
             if shift_selecting {
                 view.selecting = false;
             }
@@ -3401,7 +3397,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
             }
-            
+
             if shift_selecting {
                 view.selecting = false;
             }
@@ -4168,7 +4164,7 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_START_OF_LINE;
             }
-            
+
             if shift_selecting {
                 view.selecting = false;
             }
@@ -4178,7 +4174,7 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
             if cursor_y_moved {
                 view.flags |= .CLAMP_SCROLL_TO_END_OF_LINE;
             }
-            
+
             if shift_selecting {
                 view.selecting = false;
             }
@@ -4186,11 +4182,21 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
 
         case .MOVE_TO_PREVIOUS_ERROR; {
             if document.compilation_errors.count {
-                document.compilation_error_index = clamp(document.compilation_error_index - 1, 0, document.compilation_errors.count - 1);
-                ce := *document.compilation_errors[document.compilation_error_index];
+                error_index := 0;
+                for document.compilation_errors {
+                    if it.y >= view.cursors.c0.y {
+                        break;
+                    }
+
+                    error_index = it_index;
+                }
+
+                error_index = clamp(error_index, 0, document.compilation_errors.count - 1);
+
+                ce := *document.compilation_errors[error_index];
 
                 view.cursors.c0.x = ce.x0;
-                view.cursors.c1.x = ce.x1;
+                view.cursors.c1.x = ce.x0;
                 view.cursors.c0.y = ce.y;
                 view.cursors.c1.y = ce.y;
 
@@ -4199,12 +4205,21 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
         }
         case .MOVE_TO_NEXT_ERROR; {
             if document.compilation_errors.count {
-                document.compilation_error_index = clamp(document.compilation_error_index + 1, 0, document.compilation_errors.count - 1);
+                error_index := document.compilation_errors.count - 1;
+                for < document.compilation_errors {
+                    if it.y <= view.cursors.c0.y {
+                        break;
+                    }
 
-                ce := *document.compilation_errors[document.compilation_error_index];
+                    error_index = it_index;
+                }
+
+                error_index = clamp(error_index, 0, document.compilation_errors.count - 1);
+
+                ce := *document.compilation_errors[error_index];
 
                 view.cursors.c0.x = ce.x0;
-                view.cursors.c1.x = ce.x1;
+                view.cursors.c1.x = ce.x0;
                 view.cursors.c0.y = ce.y;
                 view.cursors.c1.y = ce.y;
 
@@ -4962,13 +4977,12 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
             viewport_line1 := clamp(cast(s64, ceil(viewport_y1 / cell_h)), 0, document.buffer.line_count - 1);
 
             //
-            // Draw Highlights
+            // Draw highlights
             //
             for panel.highlights {
-                if it.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
+                if it.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip-ahead?
                 if it.y > viewport_line1  break;
 
-                // TODO(jt): @Speed Compute gap buffer indices incrementally as we go through the loop.
                 line_view := text_buffer_make_view_for_line(document.buffer, it.y,, temp);
 
                 x0 := font_compute_position_on_line(editor.font, line_view, it.x0, binary = document.buffer.binary_mode);
@@ -4976,14 +4990,39 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 y0 := cast(f64, it.y) * cell_h;
                 y1 := y0 + cell_h;
 
-                highlight_rect_world: DRect = { x0, y0, x1, y1 };
-                highlight_rect_screen := panel_content_rect.p0 + drect_to_rect(highlight_rect_world - panel.scroll.value);
-                highlight_rect_screen = rect_clamp(highlight_rect_screen, panel_content_rect);
+                rect_world: DRect = { x0, y0, x1, y1 };
+                rect_screen := panel_content_rect.p0 + drect_to_rect(rect_world - panel.scroll.value);
+                rect_screen = rect_clamp(rect_screen, panel_content_rect);
 
                 if it_index == panel.highlight_index {
-                    draw_rect(render_commands, highlight_rect_screen, editor.theme.highlight_color_active);
+                    draw_rect(render_commands, rect_screen, editor.theme.highlight_color_active);
                 } else {
-                    draw_rect(render_commands, highlight_rect_screen, editor.theme.highlight_color);
+                    draw_rect(render_commands, rect_screen, editor.theme.highlight_color);
+                }
+            }
+
+            //
+            // Draw compilation errors
+            //
+            for document.compilation_errors {
+                if it.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip-ahead?
+                if it.y > viewport_line1  break;
+
+                line_view := text_buffer_make_view_for_line(document.buffer, it.y,, temp);
+
+                x0 := font_compute_position_on_line(editor.font, line_view, it.x0, binary = document.buffer.binary_mode);
+                x1 := font_compute_position_on_line(editor.font, line_view, it.x1, binary = document.buffer.binary_mode);
+                y0 := cast(f64, it.y) * cell_h;
+                y1 := y0 + cell_h;
+
+                rect_world: DRect = { x0, y0, x1, y1 };
+                rect_screen := panel_content_rect.p0 + drect_to_rect(rect_world - panel.scroll.value);
+                rect_screen = rect_clamp(rect_screen, panel_content_rect);
+
+                if view.cursors.c0.y == it.y && view.cursors.c0.x >= it.x0 && view.cursors.c0.x <= it.x1 {
+                    draw_rect(render_commands, rect_screen, editor.theme.compilation_error_highlight_color_active);
+                } else {
+                    draw_rect(render_commands, rect_screen, editor.theme.compilation_error_highlight_color);
                 }
             }
 
@@ -5218,7 +5257,7 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
                 {
                     for document.tokens {
                         if it.loc0.y > viewport_line1  break;
-                        if it.loc1.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip ahead for the start instead?
+                        if it.loc1.y < viewport_line0  continue; // TODO(jt): @Speed Binary search or skip-ahead?
                         if it.loc0 == it.loc1          continue; // Empty token.
 
                         r: Font_Style_Range;
@@ -6220,13 +6259,13 @@ strip_whitespace :: (view: *Document_View) -> buffer_changed: bool {
             end_line_index   = document.buffer.line_count - 1;
         }
 
-        line_gb_index := text_buffer_get_gap_buffer_index_for_line(document.buffer, start_line_index);
+        gb_index := text_buffer_get_gap_buffer_index_for_line(document.buffer, start_line_index);
         for start_line_index..end_line_index {
             view.cursors.c0 = { 0, it };
             view.cursors.c1 = { 0, it };
-            trimmed |= text_buffer_trim_line(*document.buffer, *view.cursors, ifx trimmed then .FUSE else .NONE, __line_gb_index = line_gb_index);
+            trimmed |= text_buffer_trim_line(*document.buffer, *view.cursors, ifx trimmed then .FUSE else .NONE, __line_gb_index = gb_index);
 
-            line_gb_index += document.buffer.line_bytes[it];
+            gb_index += document.buffer.line_bytes[it];
         }
 
         view.cursors.c0 = cursor0;
@@ -6396,12 +6435,12 @@ scroll_panel_down_one_screen :: (panel: *Panel, editor: Editor, input: Input, ce
     if panel.view.kind == {
         case .DOCUMENT; {
             view := *panel.view._document;
-            
+
             shift_selecting := editor.input_state.modifiers & .SHIFT && !consumed_shift;
             text_buffer_move_y(view.document.buffer, *view.cursors, delta, shift_selecting || view.selecting);
 
             view.flags |= .CLAMP_SCROLL_TO_CURSOR;
-            
+
             if shift_selecting {
                 view.selecting = false;
             }
@@ -6841,7 +6880,7 @@ If you experience a crash, you can find logs %.
 If you are coming from Emacs, most of the keyboard shortcuts should be familiar.
 Otherwise, there are starter config templates based on other editors.
 To use a template, rename it to 'editor.config'.
-You can find the config %. 
+You can find the config %.
 
 To list available commands and their bound shortcuts, type Alt-x or Ctrl-Shift-p.
 

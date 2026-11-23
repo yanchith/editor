@@ -8,6 +8,8 @@ Theme :: struct {
     selection_color: Vector4;
     highlight_color: Vector4;
     highlight_color_active: Vector4;
+    compilation_error_highlight_color: Vector4;
+    compilation_error_highlight_color_active: Vector4;
     matching_parenthesis_color: Vector4;
 
     modeline_color: Vector4;
@@ -68,6 +70,8 @@ abulafia_theme :: () -> Theme {
     t.selection_color            = cursor_minus_2;
     t.highlight_color            = cursor_minus_1;
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
+    t.compilation_error_highlight_color        = { 1, 0, 0, 0.3 };
+    t.compilation_error_highlight_color_active = { 1, 0, 0, 0.7 };
     t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
     t.modeline_color             = unpack_srgba(0x252525ff);
     t.modeline_color_active      = modeline_color_active;
@@ -115,6 +119,8 @@ naysayer_theme :: () -> Theme {
     t.selection_color            = { 0, 0, 1, 1 };
     t.highlight_color            = cursor_minus_1;
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
+    t.compilation_error_highlight_color        = { 1, 0, 0, 0.3 };
+    t.compilation_error_highlight_color_active = { 1, 0, 0, 0.7 };
     t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
     t.modeline_color             = unpack_srgba(0xc5c5c9ff);
     t.modeline_color_active      = text_color;
@@ -161,6 +167,8 @@ handmade_theme :: () -> Theme {
     t.selection_color            = { 0, 0, 1, 1 };
     t.highlight_color            = cursor_minus_1;
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
+    t.compilation_error_highlight_color        = { 1, 0, 0, 0.3 };
+    t.compilation_error_highlight_color_active = { 1, 0, 0, 0.7 };
     t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
     t.modeline_color             = unpack_srgba(0x252525ff);
     t.modeline_color_active      = modeline_color_active;
@@ -209,6 +217,8 @@ stb_theme :: () -> Theme {
     t.selection_color            = foreground_color;
     t.highlight_color            = highlight_color;
     t.highlight_color_active     = highlight_color_active;
+    t.compilation_error_highlight_color        = { 1, 0, 0, 0.3 };
+    t.compilation_error_highlight_color_active = { 1, 0, 0, 0.7 };
     t.matching_parenthesis_color = { 0, 0, 0, 0 };
     t.modeline_color             = modeline_color;
     t.modeline_color_active      = modeline_color_active;
@@ -256,6 +266,8 @@ zenburn_theme :: () -> Theme {
     t.selection_color            = unpack_srgba(0x2b2b2bff);
     t.highlight_color            = set_alpha(adjust_saturation_and_value(cursor_color, 0.25, 1.2), 0.200);
     t.highlight_color_active     = unpack_srgba(0xd09090c0);
+    t.compilation_error_highlight_color        = { 1, 0, 0, 0.3 };
+    t.compilation_error_highlight_color_active = { 1, 0, 0, 0.7 };
     t.matching_parenthesis_color = unpack_srgba(0x70a0f0ff);
     t.modeline_color             = unpack_srgba(0x2b2b2bff);
     t.modeline_color_active      = unpack_srgba(0x202020ff);
@@ -312,6 +324,8 @@ visual_studio_light_theme :: () -> Theme {
     t.selection_color            = selection_color;
     t.highlight_color            = highlight_color;
     t.highlight_color_active     = highlight_color_active;
+    t.compilation_error_highlight_color        = { 1, 0, 0, 0.3 };
+    t.compilation_error_highlight_color_active = { 1, 0, 0, 0.7 };
     t.matching_parenthesis_color = highlight_color_active;
     t.modeline_color             = modeline_color;
     t.modeline_color_active      = modeline_color_active;

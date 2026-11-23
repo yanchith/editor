@@ -3,7 +3,7 @@
 
 New features:
 
-(nothing yet)
+- Compilation errors now have their (themeable) highlights.
 
 Speed improvements:
 
@@ -16,6 +16,7 @@ Fixes:
   select stuff is still the start_selecting command.
 - Fixed a crash when doing delete_backward_word on an empty document.
 - Fixed applying the Caps Lock to events on macOS. Heresy.
+- Moving around compilation errors now always respects the current cursor position.
 
 Other:
 

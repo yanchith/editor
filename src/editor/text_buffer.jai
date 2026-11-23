@@ -47,8 +47,8 @@ Text_Buffer :: struct {
     // Chunks is a cache of gap buffer indices per a chunk of lines. It is here so text_buffer_get_gap_buffer_index_for_line/location
     // doesn't have to count up the byte index from the start of the document, only from last chunk. Edits invalidate the cache below
     // the edit, and getting a gap buffer index reconstructs it. Doing this means we traverse (parts of) the document ~once per edit,
-    // not many times per frame. With the cache we can navigate around and perform simple edits for very large documents (> 1GB) without
-    // dropping frames.
+    // instead of many times per frame. With the cache we can navigate around and perform simple edits for large documents (> 1GB)
+    // without dropping frames.
     //
     // The chunk cache is behind a pointer, so that we can modify it even if the caller doesn't give us a pointer to the text buffer.
     // This was to prevent changing all the callsites after introducing the cache, but maybe we should have been honest
@@ -68,8 +68,8 @@ Text_Buffer :: struct {
 
     // This is now much we have to count manually when getting the gap buffer index,
     // but it also means less memory used by the cache.
-    CHUNK_LINES_LOG_2 :: 10;
-    CHUNK_LINES       :: 1 << CHUNK_LINES_LOG_2;
+    CHUNK_LINES_LOG2 :: 10;
+    CHUNK_LINES      :: 1 << CHUNK_LINES_LOG2;
 }
 
 Text_Cursors :: struct {
@@ -1961,7 +1961,7 @@ text_buffer_get_gap_buffer_index_for_line :: (buffer: Text_Buffer, line_index: s
 
     ensure_chunk_for_line(buffer, line_index);
 
-    chunk_index := line_index >> buffer.CHUNK_LINES_LOG_2;
+    chunk_index := line_index >> buffer.CHUNK_LINES_LOG2;
     index := buffer.chunks.gb_indices[chunk_index];
 
     // TODO(jt): @Speed SIMD this!
@@ -1985,7 +1985,7 @@ text_buffer_get_gap_buffer_index_for_location :: (buffer: Text_Buffer, loc: Text
 
     ensure_chunk_for_line(buffer, line_index);
 
-    chunk_index := line_index >> buffer.CHUNK_LINES_LOG_2;
+    chunk_index := line_index >> buffer.CHUNK_LINES_LOG2;
     index := buffer.chunks.gb_indices[chunk_index];
 
     // TODO(jt): @Speed SIMD this!
@@ -2488,12 +2488,12 @@ remove_lines :: (buffer: *Text_Buffer, index: s64, count: s64) {
 invalidate_chunk_for_line :: (buffer: Text_Buffer, line_index: s64) {
     // We edited at line_index, so every chunk above the one containing line_index is invalid.
     // The chunk containing the line stays valid.
-    chunk_index := line_index >> buffer.CHUNK_LINES_LOG_2;
+    chunk_index := line_index >> buffer.CHUNK_LINES_LOG2;
     buffer.chunks.gb_indices_highest_valid = min(buffer.chunks.gb_indices_highest_valid, chunk_index);
 }
 
 ensure_chunk_for_line :: (buffer: Text_Buffer, line_index_to_ensure: s64) {
-    chunk_index_to_ensure := line_index_to_ensure >> buffer.CHUNK_LINES_LOG_2;
+    chunk_index_to_ensure := line_index_to_ensure >> buffer.CHUNK_LINES_LOG2;
 
     if buffer.chunks.gb_indices.count <= chunk_index_to_ensure {
         new_count := chunk_index_to_ensure + 1;
