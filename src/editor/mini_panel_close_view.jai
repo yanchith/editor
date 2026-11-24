@@ -56,9 +56,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
         }
 
         for * editor.documents {
-            if it.kind == .SCRATCH {
-                continue;
-            }
+            if it.kind == .SCRATCH   continue;
+            if it.kind == .MESSAGES  continue;
 
             document_name := get_document_name(editor, it); // TODO(jt): @Speed The name deduplication is quadratic!
 

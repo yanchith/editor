@@ -17,8 +17,8 @@ TODO(jt): HMN Beta Week feedback:
 - Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
 - Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Support line wrapping.
-- Warn about conflicting keybinds. Needs *Messages*.
-- Log a user message when unable to find external search tool for search_in_project. Needs *Messages*.
+- Warn about conflicting keybinds. Needs *messages*.
+- Log a user message when unable to find external search tool for search_in_project. Needs *messages*.
 - Consistently visualize that a file is modified in both modeline and view list. Current visualization is confusing to some people.
 - Make "file is modified, are you sure you want to close the view?" modal interaction.
 - Do a confirmation prompt warning about modified files when people try to exit.
@@ -49,7 +49,7 @@ TODO(jt): Roadmap:
 - [X] Find in mini panel
 - [X] Cut/Copy/Paste
 - [X] Undo!
-- [~] Messages ; Still need to do a messages view
+- [X] Messages
 - [X] Modeline
 - [X] Keymap support
 - [X] Find/replace and modal/interactive commands.
@@ -340,7 +340,9 @@ Editor :: struct {
     mini_panel: Mini_Panel;
     modal_interaction: Modal_Interaction;
 
-    messages: [..] string;
+    last_message_data: *u8;
+    last_message_count: s64;
+    last_message_allocated: s64;
     last_message_seen: bool;
 
     is_first_frame: bool;
@@ -537,6 +539,7 @@ Document :: struct {
     Kind :: enum u32 {
         SCRATCH;
         COMPILATION;
+        MESSAGES;
         FILE;
     }
 
@@ -838,7 +841,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     editor.project_directories.allocator               = arena_allocator(editor.perm_arena);
     editor.project_search_ignore_directories.allocator = arena_allocator(editor.perm_arena);
 
-    // Create *scratch* document
+    // Create *scratch*, *messages* and the first panel.
     {
         success, working_directory := platform.get_absolute_path(".",, temp);
         if !success {
@@ -848,15 +851,15 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         canonicalize_path(*working_directory);
 
         scratch_document := find_or_add_document(editor, platform, .SCRATCH, working_directory, "");
-
         text_buffer_insert(*scratch_document.buffer, *scratch_document.cursors_cold, WELCOME, .OMIT);
         text_buffer_move_to(scratch_document.buffer, *scratch_document.cursors_cold, 0, 0, false);
+        update_scopes(scratch_document);
 
-        // Create first panel.
+        messages_document := find_or_add_document(editor, platform, .MESSAGES, working_directory, "");
+        messages_document.flags |= .READONLY_BY_NATURE;
+
         panel := array_add(*editor.panels);
         panel_init_with_document(panel, editor, platform, scratch_document);
-
-        update_scopes(scratch_document);
     }
 
     //
@@ -891,8 +894,6 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
         modal_interaction.userdata_arena = make_arena(editor, platform, .SMALL, "Modal Userdata");
     }
-
-    editor.messages.allocator = arena_allocator(editor.perm_arena);
 
     {
         renderer.create_texture_r8unorm(
@@ -1608,12 +1609,12 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             draw_rect(*render_commands, message_line_x0, message_line_y, window_w, window_h, editor.theme.background_color);
 
-            if editor.messages.count && !editor.last_message_seen {
-                message := editor.messages[editor.messages.count - 1];
+            if editor.last_message_count && !editor.last_message_seen {
+                last_message: string = { editor.last_message_count, editor.last_message_data };
 
                 offset  := DVector2.{ message_line_x0, message_line_y };
                 scissor := Rect.{ message_line_x0, message_line_y, message_line_x1, window_h };
-                _font_layout_and_draw_text(*editor.font, message,
+                _font_layout_and_draw_text(*editor.font, last_message,
                                            *render_commands, *atlas_update_regions,
                                            offset, scissor,
                                            editor.theme.text_color, .REGULAR,
@@ -1978,41 +1979,37 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 }
 
 editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #caller_location) {
-    s := sprint(format_string, ..args,, arena_allocator(editor.perm_arena));
-    array_add(*editor.messages, s);
-    editor.last_message_seen = false;
+    message := tprint(format_string, ..args);
 
-    log(format_string, ..args, loc);
-}
+    if message.count > editor.last_message_allocated {
+        // @Leak, but only a couple of times, before the size warms up.
+        last_message := copy_string(message,, arena_allocator(editor.perm_arena));
 
-// Returns Panel and panel_index only if *scratch* has a currently assigned panel.
-// TODO(jt): Unify this with find_or_add_compilation_document later.
-get_scratch :: (editor: Editor) -> *Document, *Panel, panel_index: s64 {
-    document: *Document;
-    panel: *Panel;
-    panel_index: s64 = -1;
-
-    for * editor.panels {
-        if it.view.kind != .DOCUMENT                    continue;
-        if it.view._document.document.kind != .SCRATCH  continue;
-
-        document = it.view._document.document;
-        panel = it;
-        panel_index = it_index;
-
-        return document, panel, panel_index;
+        editor.last_message_data      = last_message.data;
+        editor.last_message_count     = last_message.count;
+        editor.last_message_allocated = last_message.count;
+    } else {
+        memset(editor.last_message_data, 0, editor.last_message_count);
+        memcpy(editor.last_message_data, message.data, message.count);
     }
 
-    for * editor.documents {
-        if it.kind == .SCRATCH {
-            document = it;
+    editor.last_message_seen = false;
+
+    for editor.documents {
+        if it.kind == .MESSAGES {
+            // Don't mess with the user's cursors, just append at the end.
+            cursors: Text_Cursors;
+            text_buffer_move_to_end(it.buffer, *cursors, false);
+
+            // No need for undo here.
+            text_buffer_insert(*it.buffer, *cursors, message, .OMIT);
+            text_buffer_insert(*it.buffer, *cursors, "\n", .OMIT);
+
             break;
         }
     }
 
-    assert(document != null, "We are missing *scratch*"); // Currently, *scratch* can't be closed, right?!
-
-    return document, panel, panel_index;
+    log(format_string, ..args, loc);
 }
 
 touch_panel :: (panel: *Panel, time: Apollo_Time) {
@@ -2112,7 +2109,7 @@ find_or_add_compilation_document :: (editor: *Editor, platform: Platform, _backi
     return document, panel, panel_index;
 }
 
-// This could be called from any context (panel, document, listing, ...), but we usually 
+// This could be called from any context (panel, document, listing, ...), but we usually
 // call it to hide *compilation*, listings, or other read-only views.
 hide_panel_view :: (editor: Editor, input: Input, panel: *Panel) {
     current_pointer: *void;
@@ -2120,11 +2117,11 @@ hide_panel_view :: (editor: Editor, input: Input, panel: *Panel) {
         case .DOCUMENT;  current_pointer = panel.view._document.document;
         case .LISTING;   current_pointer = panel.view._listing.listing;
     }
-    
+
     switch_to_view_kind: View_Kind;
     switch_to_view_pointer: *void;
     switch_to_view_time_of_last_activation := APOLLO_TIME_INVALID; // The maximum negative time. Anything valid will compare higher.
-    
+
     for * editor.documents {
         if it != current_pointer && it.time_of_last_activation > switch_to_view_time_of_last_activation {
             switch_to_view_kind    = .DOCUMENT;
@@ -2132,7 +2129,7 @@ hide_panel_view :: (editor: Editor, input: Input, panel: *Panel) {
             switch_to_view_time_of_last_activation = it.time_of_last_activation;
         }
     }
-    
+
     for * editor.listings {
         if it != current_pointer && it.time_of_last_activation > switch_to_view_time_of_last_activation {
             switch_to_view_kind    = .LISTING;
@@ -2153,7 +2150,7 @@ hide_panel_view :: (editor: Editor, input: Input, panel: *Panel) {
                 panel_set_listing(panel, editor, listing);
             }
         }
-        
+
         recenter_panel(panel, editor, input, force_center = true, skip_interpolation = true);
     }
 }
@@ -2260,6 +2257,7 @@ get_document_name :: (editor: Editor, document: Document) -> string {
     if #complete document.kind == {
         case .SCRATCH;      return "*scratch*";
         case .COMPILATION;  return "*compilation*";
+        case .MESSAGES;     return "*messages*";
         case .FILE; {
             name_parts := 1;
             name       := String.path_filename(document.backing_file_path);
@@ -5923,6 +5921,7 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
     if #complete kind == {
         case .SCRATCH;      debug_label_name = "*scratch*";
         case .COMPILATION;  debug_label_name = "*compilation*";
+        case .MESSAGES;     debug_label_name = "*messages*";
         case .FILE;         debug_label_name = String.path_filename(backing_file_path);
     }
 
