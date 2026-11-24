@@ -8,12 +8,12 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
 
     success=, version := parse_version(*lexer);
     if !success {
-        editor_log(editor, "Failed to parse version on line %", lexer.line_index + 1);
+        editor_log(editor, "Error: Failed to parse version on line %", lexer.line_index + 1, show = true);
         return false;
     }
 
     if version != CONFIG_VERSION {
-        editor_log(editor, "Invalid config version: % (supported is %)", version, CONFIG_VERSION);
+        editor_log(editor, "Error: Invalid config version: % (supported is %)", version, CONFIG_VERSION, show = true);
         return false;
     }
 
@@ -48,8 +48,9 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
         if String.begins_with(lexer.input, "[") {
             success= , parsed_section := parse_section(*lexer);
             if !success {
-                editor_log(editor, "Failed to parse section on line %", lexer.line_index + 1);
+                editor_log(editor, "Error: Failed to parse section on line %", lexer.line_index + 1, show = true);
                 return false;
+                
             }
 
             if parsed_section == {
@@ -61,7 +62,7 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
                 case "keybinds.mini_panel";         section = .KEYBINDS_MINI_PANEL;
                 case "keybinds.modal_interaction";  section = .KEYBINDS_MODAL_INTERACTION;
                 case; {
-                    editor_log(editor, "Ignoring contents of unknown section '%' on line %", parsed_section, lexer.line_index + 1);
+                    editor_log(editor, "Warning: Ignoring contents of unknown section '%' on line %", parsed_section, lexer.line_index + 1, show = true);
                     section = .UNKNOWN;
                 }
             }
@@ -74,27 +75,27 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
                 case .GLOBAL; {
                     success=, key, value := parse_pair(*lexer);
                     if !success {
-                        editor_log(editor, "Failed to parse key-value pair on line %", lexer.line_index + 1);
+                        editor_log(editor, "Error: Failed to parse key-value pair on line %", lexer.line_index + 1, show = true);
                         return false;
                     }
 
                     if key == {
                         case "theme";                              config_theme = value;
                         case "project_search_ignore_directories";  config_project_search_ignore_directories = value;
-                        case;                                      editor_log(editor, "Ignoring unknown key '%' on line %", key, lexer.line_index + 1);
+                        case;                                      editor_log(editor, "Warning: Ignoring unknown key '%' on line %", key, lexer.line_index + 1, show = true);
                     }
                 }
 
                 case .MACOS; {
                     success=, key, value := parse_pair(*lexer);
                     if !success {
-                        editor_log(editor, "Failed to parse key-value pair on line %", lexer.line_index + 1);
+                        editor_log(editor, "Error: Failed to parse key-value pair on line %", lexer.line_index + 1, show = true);
                         return false;
                     }
 
                     if key == {
                         case "search_path";  config_macos_search_path = value;
-                        case;                editor_log(editor, "Ignoring unknown key '%' on line %", key, lexer.line_index + 1);
+                        case;                editor_log(editor, "Warning: Ignoring unknown key '%' on line %", key, lexer.line_index + 1, show = true);
                     }
                 }
 
@@ -106,13 +107,13 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
                 case .KEYBINDS_MODAL_INTERACTION; {
                     success=, _shortcut, _action := parse_pair(*lexer);
                     if !success {
-                        editor_log(editor, "Failed to parse keybind pair on line %", lexer.line_index + 1);
+                        editor_log(editor, "Error: Failed to parse keybind pair on line %", lexer.line_index + 1, show = true);
                         return false;
                     }
 
                     success=, shortcut := shortcut_parse(_shortcut);
                     if !success {
-                        editor_log(editor, "Failed to parse keyboard shortcut on line %", lexer.line_index + 1);
+                        editor_log(editor, "Error: Failed to parse keyboard shortcut on line %", lexer.line_index + 1, show = true);
                         return false;
                     }
 
@@ -127,7 +128,7 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
                     }
 
                     if !success {
-                        editor_log(editor, "Ignoring unknown keybind action '%' on line %", _action, lexer.line_index + 1);
+                        editor_log(editor, "Warning: Ignoring unknown keybind action '%' on line %", _action, lexer.line_index + 1, show = true);
                     }
                 }
             }
@@ -155,19 +156,26 @@ parse_and_apply_config :: (editor: *Editor, platform: Platform, _input: string) 
     key_map_reset_keeping_memory(*editor.listing_key_map);
     key_map_reset_keeping_memory(*editor.mini_panel.key_map);
     key_map_reset_keeping_memory(*editor.modal_interaction.key_map);
-
-    for config_keybinds_panel        key_map_add(*editor.panel_key_map, it.shortcut, it.action);
-    for config_keybinds_document     key_map_add(*editor.document_key_map, it.shortcut, it.action);
-    for config_keybinds_compilation  key_map_add(*editor.compilation_key_map, it.shortcut, it.action);
-    for config_keybinds_listing      key_map_add(*editor.listing_key_map, it.shortcut, it.action);
-    for config_keybinds_mp           key_map_add(*editor.mini_panel.key_map, it.shortcut, it.action);
-    for config_keybinds_mi           key_map_add(*editor.modal_interaction.key_map, it.shortcut, it.action);
+    
+    RegisterKeybinds :: (label: string, key_map: *Key_Map, keybinds: [] Keybind_Pair) #expand {
+        for keybinds {
+            if !key_map_add(key_map, it.shortcut, it.action) {
+                editor_log(editor, "Warning: Ignoring conflicting % keybind: %", label, shortcut_tprint(it.shortcut), show = true);
+            }
+        }
+    }
+    
+    RegisterKeybinds("panel", *editor.panel_key_map, config_keybinds_panel);
+    RegisterKeybinds("document", *editor.document_key_map, config_keybinds_document);
+    RegisterKeybinds("compilation", *editor.compilation_key_map, config_keybinds_compilation);
+    RegisterKeybinds("listing", *editor.listing_key_map, config_keybinds_listing);
+    RegisterKeybinds("minipanel", *editor.mini_panel.key_map, config_keybinds_mp);
+    RegisterKeybinds("modal interaction", *editor.modal_interaction.key_map, config_keybinds_mi);
 
     return true;
 }
 
-// In case we fail to load a config, this is a minimal set of things people can use to fix the environment.
-// Or they could jus use VS Code.
+// In case we fail to load a config, this is a minimal set of commands people can use to fix the problem.
 apply_emergency_config :: (editor: *Editor) {
     change_theme(editor, "abulafia"); // TODO(jt): Emergency theme.
 

@@ -17,7 +17,6 @@ TODO(jt): HMN Beta Week feedback:
 - Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
 - Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Support line wrapping.
-- Warn about conflicting keybinds. Needs *messages*.
 - Consistently visualize that a file is modified in both modeline and view list. Current visualization is confusing to some people.
 - Make "file is modified, are you sure you want to close the view?" modal interaction.
 - Do a confirmation prompt warning about modified files when people try to exit.
@@ -1977,7 +1976,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     return wants_this_frame, wants_next_frame;
 }
 
-editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #caller_location) {
+editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #caller_location, show := false) {
     message := tprint(format_string, ..args);
 
     if message.count > editor.last_message_allocated {
@@ -1990,24 +1989,39 @@ editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #call
     } else {
         memset(editor.last_message_data, 0, editor.last_message_count);
         memcpy(editor.last_message_data, message.data, message.count);
+        editor.last_message_count = message.count;
     }
 
     editor.last_message_seen = false;
-
-    for editor.documents {
+    
+    messages_document: *Document;
+    for * editor.documents {
         if it.kind == .MESSAGES {
-            // Don't mess with the user's cursors, just append at the end.
-            cursors: Text_Cursors;
-            text_buffer_move_to_end(it.buffer, *cursors, false);
-
-            // No need for undo here.
-            text_buffer_insert(*it.buffer, *cursors, message, .OMIT);
-            text_buffer_insert(*it.buffer, *cursors, "\n", .OMIT);
-
+            messages_document = it;
             break;
         }
     }
-
+    
+    sanity_assert(messages_document != null);
+    if messages_document {
+        // Don't mess with the user's cursors, just append at the end.
+        cursors: Text_Cursors;
+        text_buffer_move_to_end(messages_document.buffer, *cursors, false);
+        
+        // No need for undo here.
+        text_buffer_insert(*messages_document.buffer, *cursors, message, .OMIT);
+        text_buffer_insert(*messages_document.buffer, *cursors, "\n", .OMIT);
+        
+        if show {
+            panel := get_panel_for_inactive_view(editor);
+            
+            sanity_assert(panel != null);
+            if panel {
+                panel_set_document(panel, editor, messages_document);
+            }
+        }
+    }
+    
     log(format_string, ..args, loc);
 }
 
@@ -2402,8 +2416,8 @@ sync_document_with_filesystem :: (editor: *Editor, platform: Platform, input: In
                             }
                         }
 
-                        save_shortcut := shortcut_sprint(key_map_find_shortcut(editor.document_key_map, .SAVE_DOCUMENT),, temp);
-                        reload_shortcut := shortcut_sprint(key_map_find_shortcut(editor.document_key_map, .RELOAD_DOCUMENT),, temp);
+                        save_shortcut := shortcut_tprint(key_map_find_shortcut(editor.document_key_map, .SAVE_DOCUMENT));
+                        reload_shortcut := shortcut_tprint(key_map_find_shortcut(editor.document_key_map, .RELOAD_DOCUMENT));
                         editor_log(editor, "% modified, but file changed on filesystem. % or % to exit read only mode", String.path_filename(document.backing_file_path), save_shortcut, reload_shortcut);
                     } else {
                         cursor_before_reload := document.cursors_cold.c0;

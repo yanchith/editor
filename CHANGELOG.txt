@@ -6,9 +6,10 @@ New features:
 - Compilation errors now have their (themeable) highlights.
 - Directory listings and *compilation* views can now be hidden with the 'hide' command. Depending on the preset,
   this is bound to either <escape> or 'q'.
-- The *messages* document now exists. It contains user-level log messages and warnings. Similar to *scratch*,
-  it is automatically created and can not be closed.
+- The *messages* document now exists. It contains user-level log messages and warnings. It shows automatically,
+  if a new warning or error is logged.
 - We now log external search tool (currently rg) errors to *messages*.
+- We now also report conflicting keybind warnings to *messages*.
 
 Speed improvements:
 

@@ -9,6 +9,25 @@ Shortcut_Key :: struct {
 
 #assert size_of(Shortcut_Key) == 8;
 
+shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key) -> bool {
+    if a.modifier_flags != b.modifier_flags  return false;
+    if a.type           != b.type            return false;
+    
+    if a.type == .CODEPOINT && a.data < 127 && b.data < 127 {
+        ascii_a := cast(u8, a.codepoint);
+        ascii_b := cast(u8, b.codepoint);
+
+        if to_lower(ascii_a) != to_lower(ascii_b) {
+            return false;
+        }
+    } else {
+        if a.data != b.data {
+            return false;
+        }
+    }
+    
+    return true;
+}
 
 // Sometimes we need to press shift to get characters like '<'. This leaves an extraneous shift modifier.
 // We want to successfully match against inputs that pressed shift even if it wasn't explicitly present in the definition,
@@ -26,7 +45,6 @@ shortcut_key_match :: (a: Shortcut_Key, b: Shortcut_Key) -> Shortcut_Match {
 
     if a.type == {
         case .KEY; {
-            // TODO(jt): should we also handle to_lower here?
             if a.key != b.key {
                 return .NONE;
             }
@@ -61,6 +79,20 @@ SHORTCUT_COUNT_MAX :: 8;
 Shortcut :: struct {
     sequence:  [SHORTCUT_COUNT_MAX] Shortcut_Key;
     count:     s64;
+}
+
+shortcut_equals_nocase :: (a: Shortcut, b: Shortcut) -> bool {
+    if a.count != b.count {
+        return false;
+    }
+    
+    for 0..a.count - 1 {
+        if !shortcut_key_equals_nocase(a.sequence[it], b.sequence[it]) {
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 shortcut_match :: (a: Shortcut, b: Shortcut) -> Shortcut_Match {
@@ -275,6 +307,18 @@ shortcut_sprint :: (shortcut: Shortcut) -> string {
     return s;
 }
 
+shortcut_tprint :: (shortcut: Shortcut) -> string {
+    b: String_Builder;
+    b.allocator = temp;
+
+    shortcut_print_to_builder(shortcut, *b);
+
+    s := builder_to_string(*b,, temp);
+
+    return s;
+}
+
+
 // Note that key_map_input needs to return something even if it doesn't match an action. It will
 // return the default value of T when nothing is matched. You can detect that by making sure the
 // default value is not something you'd otherwise want to see, e.g. a .NONE value of an enum.
@@ -311,19 +355,24 @@ key_map_find_shortcut :: (key_map: Key_Map($T), action: T) -> Shortcut {
     return default_of(Shortcut);
 }
 
-key_map_add :: (key_map: *Key_Map($T), shortcut_string: string, action: T) {
+key_map_add :: (key_map: *Key_Map($T), shortcut_string: string, action: T) -> added: bool {
     success, shortcut := shortcut_parse(shortcut_string);
     if success {
-        key_map_add(key_map, shortcut, action);
-    } else {
-        log_error("Failed to parse and register shortcut % -> %", shortcut_string, action);
+        success = key_map_add(key_map, shortcut, action);
     }
+    
+    return success;
 }
 
-// TODO(jt): Validate against one keyboard shortcut being a prefix of another.
-key_map_add :: (key_map: *Key_Map($T), shortcut: Shortcut, action: T) {
+key_map_add :: (key_map: *Key_Map($T), shortcut: Shortcut, action: T) -> added: bool {
     InitAllocators(key_map);
+    
+    for key_map.registered {
+        if shortcut_equals_nocase(it.shortcut, shortcut)  return false;
+    }
+    
     array_add(*key_map.registered, { shortcut, action });
+    return true;
 }
 
 key_map_sprint :: (key_map: Key_Map) -> string {
