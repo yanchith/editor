@@ -2123,7 +2123,7 @@ hide_panel_view :: (editor: Editor, input: Input, panel: *Panel) {
     
     switch_to_view_kind: View_Kind;
     switch_to_view_pointer: *void;
-    switch_to_view_time_of_last_activation: Apollo_Time;
+    switch_to_view_time_of_last_activation := APOLLO_TIME_INVALID; // The maximum negative time. Anything valid will compare higher.
     
     for * editor.documents {
         if it != current_pointer && it.time_of_last_activation > switch_to_view_time_of_last_activation {
@@ -2140,19 +2140,22 @@ hide_panel_view :: (editor: Editor, input: Input, panel: *Panel) {
             switch_to_view_time_of_last_activation = it.time_of_last_activation;
         }
     }
-    
-    if #complete switch_to_view_kind == {
-        case .DOCUMENT; {
-            document: *Document = switch_to_view_pointer;
-            panel_set_document(panel, editor, document);
+
+    sanity_assert(switch_to_view_pointer != null); // At least *scratch* should exist.
+    if switch_to_view_pointer {
+        if #complete switch_to_view_kind == {
+            case .DOCUMENT; {
+                document: *Document = switch_to_view_pointer;
+                panel_set_document(panel, editor, document);
+            }
+            case .LISTING; {
+                listing: *Listing = switch_to_view_pointer;
+                panel_set_listing(panel, editor, listing);
+            }
         }
-        case .LISTING; {
-            listing: *Listing = switch_to_view_pointer;
-            panel_set_listing(panel, editor, listing);
-        }
+        
+        recenter_panel(panel, editor, input, force_center = true, skip_interpolation = true);
     }
-    
-    recenter_panel(panel, editor, input, force_center = true, skip_interpolation = true);
 }
 
 get_panel_for_active_view :: (editor: Editor) -> *Panel, panel_index: s64 {
