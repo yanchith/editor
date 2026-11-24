@@ -126,10 +126,11 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             working_directory := userdata.working_directory;
 
             exit_code, exit_type, output, error := platform.run_in_process(args, working_directory,, temp);
-            if exit_type != .EXITED {
-                // Not good.
-                return;
+            if exit_type == {
+                case .FAILED_TO_LAUNCH;  editor_log(editor, "Error: Search failed to launch: %. Command was: %", error, args); return;
+                case .SIGNALED;          editor_log(editor, "Error: Search signaled: %. Command was: %", error, args); return;
             }
+
             if exit_code != 0 {
                 // It can fail because it didn't find anything. Not necessarily an error.
                 return;

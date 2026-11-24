@@ -18,7 +18,6 @@ TODO(jt): HMN Beta Week feedback:
 - Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Support line wrapping.
 - Warn about conflicting keybinds. Needs *messages*.
-- Log a user message when unable to find external search tool for search_in_project. Needs *messages*.
 - Consistently visualize that a file is modified in both modeline and view list. Current visualization is confusing to some people.
 - Make "file is modified, are you sure you want to close the view?" modal interaction.
 - Do a confirmation prompt warning about modified files when people try to exit.

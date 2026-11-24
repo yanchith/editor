@@ -8,6 +8,7 @@ New features:
   this is bound to either <escape> or 'q'.
 - The *messages* document now exists. It contains user-level log messages and warnings. Similar to *scratch*,
   it is automatically created and can not be closed.
+- We now log external search tool (currently rg) errors to *messages*.
 
 Speed improvements:
 
