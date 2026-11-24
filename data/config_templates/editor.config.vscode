@@ -121,6 +121,7 @@ Ctrl-x                                 = copy
 
 b                                      = refresh
 Ctrl-Shift-b                           = refresh
+<escape>                               = hide
 
 [keybinds.listing]
 
@@ -131,6 +132,7 @@ Ctrl-Shift-b                           = refresh
 
 g                                      = refresh
 Ctrl-r                                 = refresh
+<escape>                               = hide
 
 [keybinds.mini_panel]
 

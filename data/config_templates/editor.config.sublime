@@ -123,6 +123,7 @@ Ctrl-x                                 = copy
 
 b                                      = refresh
 Ctrl-b                                 = refresh
+<escape>                               = hide
 
 [keybinds.listing]
 
@@ -133,6 +134,7 @@ Ctrl-b                                 = refresh
 
 g                                      = refresh
 Ctrl-r                                 = refresh
+<escape>                               = hide
 
 [keybinds.mini_panel]
 

@@ -63,7 +63,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
                 // Select the most recent document, except the one pointed to by the currently active panel.
-                if current_thing != it && it.time_of_last_activation > max_time_of_last_activation {
+                if it != current_thing && it.time_of_last_activation > max_time_of_last_activation {
                     max_time_of_last_activation = it.time_of_last_activation;
                     mini_panel.item_index = mini_panel.items.count;
                 }
@@ -97,7 +97,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
                 // Select the most recent listing, except the one pointed to by the currently active panel.
-                if current_thing != it && it.time_of_last_activation > max_time_of_last_activation {
+                if it != current_thing && it.time_of_last_activation > max_time_of_last_activation {
                     max_time_of_last_activation = it.time_of_last_activation;
                     mini_panel.item_index = mini_panel.items.count;
                 }
@@ -186,7 +186,6 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                 document: *Document = userdata.pointer;
                 panel_set_document(panel, editor, document);
             }
-
             case .LISTING; {
                 listing: *Listing = userdata.pointer;
                 panel_set_listing(panel, editor, listing);

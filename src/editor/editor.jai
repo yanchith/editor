@@ -14,28 +14,27 @@ TODO(jt): HMN Beta Week feedback:
 
 - Make it possible to open in a directory from the command line. This should probably open
   a directory lister on top of the welcome message.
-- Improve message translation part of the platform layer: It should be possible to create
-  keybinds such as C-: (which is C-S-; on the US keyboard) or C-S-à (C-S-z in bepo layout),
-  support AltGr key, etc.
-- C-<space> doesn't work in the bepo layout?
 - Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
 - Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Support line wrapping.
-- Warn about conflicting keybinds. This requires the *Messages* buffer.
+- Warn about conflicting keybinds. Needs *Messages*.
+- Log a user message when unable to find external search tool for search_in_project. Needs *Messages*.
 - Consistently visualize that a file is modified in both modeline and view list. Current visualization is confusing to some people.
 - Make "file is modified, are you sure you want to close the view?" modal interaction.
 - Do a confirmation prompt warning about modified files when people try to exit.
 - Color of modeline vs active modeline and gutter width customizability.
   Maybe let's get all visual tweaks from config? Even themes?
 - Make it possible to change the color of the text line in the minipanel.
-- Add keybinds to close (or hide-swap behind other view) the directory lister and compilation panel.
-- Log a user message when unable to find external search tool for search_in_project.
 - Show a short description of commands in show_commands.
 - Missing features (some of this is already on our roadmap): more point/mark, kill ring, rectangle kill/yank, macros, (project) regexp search/replace, multiple cursors.
 - Missing features: Creating files and directories in directory listers. Renaming files and directories. Moving files and directories.
 - Bug/Missing feature: execute arbitrary bash in compile_*. Can we at least support this on Unix? Windows might be tricky.
 - Missing features: compile_project (taking the build command from editor.projectconfig). Once we have this, we can maybe remove compile_in_project_or_directory and just keep compile_in_directory.
-- Navigate around compilation messages from the other panel.
+- Navigate around compilation messages from the other panel. Maybe we should support "other panel" navigation in general.
+- Improve message translation part of the platform layer: It should be possible to create
+  keybinds such as C-: (which is C-S-; on the US keyboard) or C-S-à (C-S-z in bepo layout),
+  support AltGr key, etc.
+- C-<space> doesn't work in the bepo layout?
 
 TODO(jt): Roadmap:
 
@@ -63,7 +62,7 @@ TODO(jt): Roadmap:
 - [X] Watch opened files for changes on disk
 - [~] Panel tiling ; Needs a few more features? 4-split/N-split, moving split boundaries
 - [X] FreeType subpixel rendering
-- [~] Directory Lister panel ; Needs a few more info like directory size, item type, etc.
+- [~] Directory Lister panel ; Needs a little more info like directory size, item type, etc.
 - [X] *compilation* buffer
 - [X] DIRECTORY_SEARCH
 - [X] SHOW_COMMANDS (M-x)
@@ -100,7 +99,7 @@ TODO(jt): Roadmap:
 
 ... after alpha ...
 
-- [ ] OPEN_FILE_IN_PROJECT and SEARCH_IN_PROJECT should be (both globally and per-project) configurable to ignore paths (e.g. contents of .git, tmp build directories, etc.)
+- [~] OPEN_FILE_IN_PROJECT and SEARCH_IN_PROJECT should be configurable to ignore paths (contents of .git, build directories...) ; still missing per-project config
 - [ ] Nonblocking reading of process data (compilation, open_file_in_project, search_project)
 - [X] C-: or double-click (expand region)
 - [X] Triple click to select line. (expand to line)
@@ -109,7 +108,7 @@ TODO(jt): Roadmap:
 - [X] C-u C-<space> (cursor undo)
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
-- [ ] q to hide compilation or listing
+- [X] q to hide compilation or listing
 - [ ] align: aligns selection on first occurence of string
 - [ ] create_directory modal interaction command (executable from anywhere we have a backing directory)
 - [ ] search_and_replace should preserve capitalization (camelCase, PamelCase, UPPER_CASE, lower_case)
@@ -145,6 +144,7 @@ TODO(jt): Roadmap:
 - [ ] Emacs-like kill ring
 - [ ] Render subtle symbols for whitespace characters (space, tab, cr, lf)
 - [ ] Support for dropping files into the window
+- [ ] OPEN_CONFIG_FILE and OPEN_CONFIG_DIRECTORY commands.
 - [ ] Pretty things: blinking cursor, cursor trail, round corners for cursor&selection, scrollbars...
 - [ ] Flash pasted text
 - [ ] Flash text inserted by undo/redo
@@ -2112,6 +2112,49 @@ find_or_add_compilation_document :: (editor: *Editor, platform: Platform, _backi
     return document, panel, panel_index;
 }
 
+// This could be called from any context (panel, document, listing, ...), but we usually 
+// call it to hide *compilation*, listings, or other read-only views.
+hide_panel_view :: (editor: Editor, input: Input, panel: *Panel) {
+    current_pointer: *void;
+    if #complete panel.view.kind == {
+        case .DOCUMENT;  current_pointer = panel.view._document.document;
+        case .LISTING;   current_pointer = panel.view._listing.listing;
+    }
+    
+    switch_to_view_kind: View_Kind;
+    switch_to_view_pointer: *void;
+    switch_to_view_time_of_last_activation: Apollo_Time;
+    
+    for * editor.documents {
+        if it != current_pointer && it.time_of_last_activation > switch_to_view_time_of_last_activation {
+            switch_to_view_kind    = .DOCUMENT;
+            switch_to_view_pointer = it;
+            switch_to_view_time_of_last_activation = it.time_of_last_activation;
+        }
+    }
+    
+    for * editor.listings {
+        if it != current_pointer && it.time_of_last_activation > switch_to_view_time_of_last_activation {
+            switch_to_view_kind    = .LISTING;
+            switch_to_view_pointer = it;
+            switch_to_view_time_of_last_activation = it.time_of_last_activation;
+        }
+    }
+    
+    if #complete switch_to_view_kind == {
+        case .DOCUMENT; {
+            document: *Document = switch_to_view_pointer;
+            panel_set_document(panel, editor, document);
+        }
+        case .LISTING; {
+            listing: *Listing = switch_to_view_pointer;
+            panel_set_listing(panel, editor, listing);
+        }
+    }
+    
+    recenter_panel(panel, editor, input, force_center = true, skip_interpolation = true);
+}
+
 get_panel_for_active_view :: (editor: Editor) -> *Panel, panel_index: s64 {
     index: s64;
     if #complete editor.active_view == {
@@ -2891,8 +2934,9 @@ Compilation_Action :: enum {
     GO_TO_CURRENT_ERROR;
 
     REFRESH;
+    HIDE;
 
-    DEBUG_BYTE_AT_CURSOR;
+    DEBUG_PRINT_BYTE_AT_CURSOR;
 }
 
 Listing_Action :: enum {
@@ -2910,6 +2954,7 @@ Listing_Action :: enum {
     DELETE_MARKED_ITEMS;
 
     REFRESH;
+    HIDE;
 
     ADD_PROJECT_DIRECTORY;
     REMOVE_PROJECT_DIRECTORY;
@@ -4307,8 +4352,9 @@ execute_compilation_action :: (editor: *Editor, platform: Platform, input: Input
         }
 
         case .REFRESH;  run_compilation(editor, platform, panel);
+        case .HIDE;     hide_panel_view(editor, input, panel);
 
-        case .DEBUG_BYTE_AT_CURSOR; {
+        case .DEBUG_PRINT_BYTE_AT_CURSOR; {
             if text_buffer_can_read_at_location(document.buffer, view.cursors.c0) {
                 byte := text_buffer_get_byte_at_location(document.buffer, view.cursors.c0);
                 editor_log(editor, "Byte at cursor: %", byte);
@@ -4411,6 +4457,7 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
         }
 
         case .REFRESH;  refresh_directory_listing(platform, listing);
+        case .HIDE;     hide_panel_view(editor, input, panel);
 
         case .ADD_PROJECT_DIRECTORY; {
             // TODO(jt): Also guard against one project directory being a prefix of another.
@@ -6851,10 +6898,6 @@ operator== :: (a: Bucket_Locator, b: Bucket_Locator) -> bool {
     return a.bucket_index == b.bucket_index && a.slot_index == b.slot_index;
 }
 
-// TODO(jt): Eventually replace this welcome message with something better:
-// - OPEN_CONFIG_LOCATION command would certainly be helpful
-// - remove disclaimers
-
 WELCOME :: #run -> string {
     #if OS == .WINDOWS {
         LOG_LOCATION    :: "next to the executable";
@@ -6870,6 +6913,7 @@ WELCOME :: #run -> string {
     return sprint(WELCOME_TEMPLATE, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, BUILD_TIMESTAMP, LOG_LOCATION, CONFIG_LOCATION);
 }
 
+// TODO(jt): Eventually remove disclaimers and rephrase.
 WELCOME_TEMPLATE :: #string DONE
 
 Welcome to your text editor! (Version %.%.%, built on %)
