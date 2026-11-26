@@ -9,6 +9,8 @@ TODO(jt): Known serious bugs:
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Windows: Renderer stutter when we start animating after a period of inactivity.
 - Sticky cursor maybe shouldn't be active if we are selecting? It sometimes causes us to select more than we want to.
+- Indenting after 'if wParam {  // We are being activated.' is incorrectly HANGING. Ignore comments.
+
 
 TODO(jt): HMN Beta Week feedback:
 

@@ -21,12 +21,15 @@
 // For now, also X11 and Android backends are deleted.
 //
 
-
-
 // Input handler routines, platform-independent.
 
 #module_parameters()(
-    X11_ENABLE_TOUCH_INPUT := false // :X11TouchInput
+    X11_ENABLE_TOUCH_INPUT := false, // :X11TouchInput
+
+    // Whether to support mouse and keyboard events on console platforms.
+    // They currently have no effect on other platforms.
+    SUPPORT_KEYBOARD       := true,
+    SUPPORT_MOUSE          := true
 );
 
 /*
@@ -170,17 +173,15 @@ Key_Code :: enum u32 {
     //
 }
 
-// Modifier_Flags used to use #place, but I rewrote it to use a union
-// instead .... it is not necessarily clearer though! So I am switching
-// it back for now...
-
 Event :: struct {
-    Modifier_Flags :: union {
+    Modifier_Flags :: struct {
         // Eventually we'd like the *_pressed modifiers to be 1 bit each,
         // but still be nameable as booleans. But for now they're 1 byte each.
         // You can compare them as a u32 using the 'packed' member.
 
-        struct {
+        packed: u32 = 0;
+
+        #overlay(packed) using unpacked: struct {
             // @@ This is confusing. Below key_pressed means the key was just pressed, here _pressed means the key is held down.
             shift_pressed    := false;
             ctrl_pressed     := false;
@@ -188,7 +189,6 @@ Event :: struct {
             cmd_meta_pressed := false; // Cmd on macOS, Meta on Linux
         }
 
-        packed: u32 = 0;
     }
 
     type: Event_Type = Event_Type.UNINITIALIZED;
@@ -225,21 +225,13 @@ Event :: struct {
     window: Window_Type;                  // Only used for WINDOW events
 }
 
-// NOTE(Charles): I'm using WINDOW events to trigger in/out focus and in/out background which are mostly useful for
-// android. I don't know what the original use of WINDOW events was, but they aren't being used atm.
-//
-// @Incomplete: These events are only triggered on Android atm. It would be easy to hook up triggering focus events
-// on desktop, but what should happen with background/foreground? The handling android needs to do when they are
-// triggered wouldn't make sense for a desktop app to be doing if these were triggered when the window was minimizied
-// for example. Maybe then what should happen is the events are called "LOST/GAINED_WINDOW" to make it explicit
-// what is required to happen in response to the event in a platform agnostic way.
 Window_Event_Type :: enum u8 {
     UNINITIALIZED;
 
     GAINED_FOCUS; // We trigger these events in addition to setting input_application_has_focus
     LOST_FOCUS;
 
-    MOVED_TO_BACKGROUND;
+    MOVED_TO_BACKGROUND; // minimized on Windows, background on consoles
     MOVED_TO_FOREGROUND;
 }
 
@@ -336,9 +328,11 @@ input_per_frame_event_and_flag_update :: () {
         }
     }
 
-    mouse_delta_x = 0;
-    mouse_delta_y = 0;
-    mouse_delta_z = 0;
+    #if SUPPORT_MOUSE {
+        mouse_delta_x = 0;
+        mouse_delta_y = 0;
+        mouse_delta_z = 0;
+    }
 }
 
 #scope_module

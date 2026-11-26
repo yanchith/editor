@@ -702,10 +702,10 @@ Window_Delegate :: struct {
                 }
             }
 
-            event: Event;
-            event.type  = .DRAG_AND_DROP_FILES;
+ 	  	    event: Event;
+ 	 	    event.type  = .DRAG_AND_DROP_FILES;
             event.files = files;
-            array_add(*osx_externally_generated_events, event);
+ 	 	    array_add(*osx_externally_generated_events, event);
             return YES;
         }
     } @selector(performDragOperation:)

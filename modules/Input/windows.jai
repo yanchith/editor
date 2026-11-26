@@ -5,6 +5,7 @@
 
 Gamepad_Lib :: #import "Gamepad";
 
+
 // :ModifiedInputModule
 user32 :: #library,system "user32";
 
@@ -63,372 +64,386 @@ get_vk :: (key: Key_Code) -> VK: u64 {
     window_proc_allocator: Allocator;
 };
 
-MyWindowProc :: (hwnd: HWND, message: u32,
-                 wParam: WPARAM, lParam: LPARAM) -> s64 #c_call {
+MyWindowProc :: (hwnd: HWND, message: u32, wParam: WPARAM, lParam: LPARAM) -> s64 #c_call {
     push_context {
         using Key_Code;
 
         if message == {
-          case WM_SYSCOMMAND;
-            return DefWindowProcW(hwnd, message, wParam, lParam);
+            case WM_SYSCOMMAND;
+                return DefWindowProcW(hwnd, message, wParam, lParam);
 
-          case WM_ACTIVATEAPP;
-            if wParam {  // We are being activated.
+            case WM_ACTIVATEAPP;
+                if wParam {  // We are being activated.
 
-                // We do our best to provide the application with reliable key states without brute force sampling every key.
-                // The intended rules are that a key down event will be sent when a key is depressed and will be followed
-                // by zero or more key down events with the repeat flag set as long as the key remains down.  A key up event
-                // will be sent when the key is released.
-                // In practice:
-                // 1. An application will always be notified when it has or gains focus if a key is up.
-                // 2. An application will always be notified when it has focus if a key is down.
-                // 3. An application will *usually* be notified when it gains focus if a key is down.
-                // So the one thing you can't rely on is being notified if a key is pressed while the application is out of
-                // focus and then the application gains focus.  In the rare cases where that doesn't happen, the key will
-                // have to be released and re-pressed for the application to get a key down event.
-                for key_down, vkey: key_down_table {
-                    state := GetAsyncKeyState(cast,trunc(s32) vkey);
-                    if !(state & 0x8000) {
-                        send_key_event(get_key_code(vkey), false);
-                        remove;
-                    }
-                }
-            }
-
-            return DefWindowProcW(hwnd, message, wParam, lParam);
-
-          case WM_SYSKEYDOWN; #through;
-          case WM_KEYDOWN;
-
-            // :ModifiedInputModule
-            last_vkey = wParam;
-            last_scancode = cast(u64, (lParam >> 16) & 0x1ff);
-            
-            repeat := ((cast (s32) lParam) & 0x40000000) != 0;
-            maybe_send_vkey_event(wParam, true, repeat);
-
-          case WM_SYSKEYUP; #through;
-          case WM_KEYUP;
-
-            maybe_send_vkey_event(wParam, false);
-
-          case WM_SYSCHAR;
-            // This is here to prevent beeps when a Alt key combo is pressed. If we don't return 0, windows helpfully emits a beep sound to
-            // indicate the user that the key wasn't handled.
-            //
-            // NOTE(jt): In addition to not forwarding this to DefWindowProc, we generate a text
-            // event, because otherwise we'd have no way of getting Alt+key.
-            //
-            // :ModifiedInputModule
-            //
-            // TODO(jt): @Cleanup Is this a hack? Should this be another event type? In the editor,
-            // we look for Alt being pressed and do not treat this as a text input, but I don't know.
-            keycode := wParam;
-
-            if keycode > 31 {
-                // Control characters generate key codes < 32, but these are redundant
-                // with KEYDOWN events and are also ambiguous (ctrl-m generates 13, but
-                // so does RETURN.)
-                event: Event;
-                event.type = .TEXT_INPUT;
-                event.utf32 = xx keycode;
-                
-                // :ModifiedInputModule
-                // Fill in what the char would be if we didn't hold shift.
-                event.utf32_without_shift = xx keycode;
-                
-                scancode := cast(u64, (lParam >> 16) & 0x1ff);
-                if scancode == last_scancode && shift_state {
-                    hkl := GetKeyboardLayout(0);
-                    
-                    ks: [256] u8;
-                    if GetKeyState(VK_CAPITAL) & 1 {
-                        ks[VK_CAPITAL] = 1;
-                    }
-                    
-                    buf: [8] u16;
-                    count := ToUnicodeEx(cast,trunc(u32, last_vkey), cast,trunc(u32, scancode), ks.data, buf.data, 8, 1 << 2, hkl);
-                    if count {
-                        event.utf32_without_shift = buf[0];
-                    }
-                }
-
-                array_add(*events_this_frame, event);
-            }
-
-          case WM_CHAR;
-            keycode := wParam;
-
-            if keycode > 31 {
-                // Control characters generate key codes < 32, but these are redundant
-                // with KEYDOWN events and are also ambiguous (ctrl-m generates 13, but
-                // so does RETURN.)
-                event: Event;
-                event.type = .TEXT_INPUT;
-                event.utf32 = xx keycode;
-
-                // :ModifiedInputModule
-                // Fill in what the char would be if we didn't hold shift.
-                event.utf32_without_shift = xx keycode;
-                
-                scancode := cast(u64, (lParam >> 16) & 0x1ff);
-                if scancode == last_scancode && shift_state {
-                    hkl := GetKeyboardLayout(0);
-                    
-                    ks: [256] u8;
-                    if GetKeyState(VK_CAPITAL) & 1 {
-                        ks[VK_CAPITAL] = 1;
-                    }
-                    
-                    buf: [8] u16;
-                    count := ToUnicodeEx(cast,trunc(u32, last_vkey), cast,trunc(u32, scancode), ks.data, buf.data, 8, 1 << 2, hkl);
-                    if count {
-                        event.utf32_without_shift = buf[0];
-                    }
-                }
-                
-                array_add(*events_this_frame, event);
-            }
-
-          case WM_SETFOCUS;
-            input_application_has_focus = true;
-          case WM_KILLFOCUS;
-            input_application_has_focus = false;
-          case WM_PAINT;
-            ValidateRect(hwnd, null);
-            return DefWindowProcW(hwnd, message, wParam, lParam);
-
-          case WM_LBUTTONDOWN; #through;
-          case WM_LBUTTONUP;
-            maybe_send_vkey_event(VK_LBUTTON, message == WM_LBUTTONDOWN);
-
-            if message == WM_LBUTTONDOWN SetCapture(hwnd);
-            else ReleaseCapture();
-
-          case WM_RBUTTONDOWN; #through;
-          case WM_RBUTTONUP;
-            maybe_send_vkey_event(VK_RBUTTON, message == WM_RBUTTONDOWN);
-
-         case WM_MBUTTONDOWN; #through;
-         case WM_MBUTTONUP;
-            maybe_send_vkey_event(VK_MBUTTON, message == WM_MBUTTONDOWN);
-
-          case WM_MOUSEMOVE;
-            // We don't have mouse move events yet, but we'll record the delta.
-
-
-            // We use Raw Input for mouse position stuff now.
-/*
-            x := (lParam & 0xffff);
-            y := (lParam >> 16) & 0xffff;
-            mouse_delta_x += x - last_mouse_event_x;
-            mouse_delta_y += y - last_mouse_event_y;
-
-            last_mouse_event_x = x;
-            last_mouse_event_y = y;
-*/
-          case WM_MOUSEWHEEL;
-            event: Event;
-            event.type = .MOUSE_WHEEL;
-            event.typical_wheel_delta = WHEEL_DELTA;
-            event.wheel_delta = xx cast,trunc(s16)(wParam >> 16);
-            array_add(*events_this_frame, event);
-
-            mouse_delta_z += event.wheel_delta;
-
-          case WM_XBUTTONUP; #through;
-          case WM_XBUTTONDOWN;
-            // Handle mouse "thumb" buttons.
-            //
-            // NOTE(Charles): These buttons are typically used for a programs "forward" and "backward" operations. There is also
-            // the WM_APPCOMMAND message that will give us APPCOMMAND_BROWSER_BACKWARD/FORWARD, maybe they are better to use?
-
-            // low/high word of lParam contains the x/y coord of mouse.
-            XBUTTON1 :: 0x0001;
-            XBUTTON2 :: 0x0002;
-
-            // hi has what button was pressed.
-            // lo has flags for whether control, shift, or other mouse buttons are prssed (MK_*), but we already handle modifier keys.
-            double_world := cast,no_check(u32, wParam);
-            hi := (double_world >> 16) & 0xffff;
-            lo := (double_world >>  0) & 0xffff;
-
-            key_down := message == WM_XBUTTONDOWN;
-            if hi == XBUTTON1 {
-                send_key_event(.MOUSE_BUTTON_EXTRA_1, key_down);
-            } else {
-                assert(hi == XBUTTON2, "Unexpected hi word during WM_XBUTTONDOWN message. Expected XBUTTON1/2 but got %. wParam was %", hi, wParam);
-
-                send_key_event(.MOUSE_BUTTON_EXTRA_2, key_down);
-            }
-
-            return 1;
-
-          case WM_CLOSE; #through;
-          case WM_QUIT;
-            event: Event;
-            event.type = .QUIT;
-            array_add(*events_this_frame, event);
-            return DefWindowProcW(hwnd, message, wParam, lParam);
-
-          case WM_INPUT;
-            extra := GetMessageExtraInfo();
-
-            if (extra & 0x82) == 0x82 {
-                // @Hack: Ignore touch input! There is no documentation of this
-                // that I can see. This is just what I needed to do to filter
-                // out fake mouse input generated by WM_TOUCH. I would regard
-                // this as extremely fragile and could-break-at-any-time.
-            } else {
-                process_raw_input(cast(HRAWINPUT)lParam);
-            }
-
-            DefWindowProcW(hwnd, message, wParam, lParam);  // This is required for some reason.    // @@ Why?
-          case WM_SIZE;
-            if wParam == {
-              case SIZE_MAXIMIZED;
-                window_minimized = false;
-                add_resize_record(hwnd);
-              case SIZE_RESTORED;
-                  if window_minimized window_minimized = false;
-                  else add_resize_record(hwnd);
-              case SIZE_MINIMIZED;
-                  window_minimized = true;
-            }
-            return 0;
-          case WM_MOVE;
-            add_move_record(hwnd);
-            return 0;
-          case WM_EXITSIZEMOVE;
-            add_resize_record(hwnd);
-            return 0;
-          case WM_DPICHANGED;
-            y_dpi := (wParam >> 16) & 0xFFFF;
-            x_dpi := (wParam)       & 0xFFFF;
-
-            rect := cast(*RECT) lParam;
-
-            w := rect.right - rect.left;
-            h := rect.bottom - rect.top;
-
-            SetWindowPos(hwnd, HWND_TOPMOST, rect.left, rect.top, w, h, SWP_NOACTIVATE|SWP_NOZORDER);
-            return 0;
-          case WM_DROPFILES;
-            drop := cast(HDROP) wParam;
-            // If "0xFFFFFFFF" as the second parameter: return the count of files dropped.
-            file_paths_count := DragQueryFileW(drop, 0xFFFFFFFF, null, 0);
-            assert(file_paths_count > 0);
-
-            allocator := context.input_handler.window_proc_allocator;
-            if !allocator.proc  allocator = context.default_allocator;
-
-            files: [..] string;
-            files.allocator = allocator;
-            array_reserve(*files, file_paths_count);
-
-            for i: 0..file_paths_count-1 {
-                // If null as the third parameter: return the length of the path, not counting the trailing '\0'.
-                file_name_wide_count := DragQueryFileW(drop, i, null, 0) + 2;
-                assert(file_name_wide_count > 0);
-
-                file_name_wide := cast(*u16) alloc(file_name_wide_count * size_of(u16),, temp);
-                ok := DragQueryFileW(drop, i, file_name_wide, file_name_wide_count);
-                assert(ok > 0); // means success
-
-                file_name := wide_to_utf8(file_name_wide,, allocator);
-                array_add(*files, file_name);
-            }
-
-            DragFinish(drop);
-
-            event: Event;
-            event.type  = .DRAG_AND_DROP_FILES;
-            event.files = files;
-            array_add(*events_this_frame, event);
-            return 0;
-
-          case WM_SETCURSOR;
-            if windows_ignore_setcursor_messages return 0;
-            else return DefWindowProcW(hwnd, message, wParam, lParam);
-
-          // WM_TOUCH is currently used for touch input. There is a newer POINTER api, eg WM_POINTERDOWN that combines
-          // pen, touch, mouse together that might be worth considering in the future.
-          case WM_TOUCH;
-            // There doesn't appear to be a way to know what the max number of points we might get is.
-            touch_points_count := wParam & 0xFFFF;
-            touch_points := NewArray(xx touch_points_count, TOUCHINPUT,, temp);
-
-            touch_input_handle := cast(HTOUCHINPUT) lParam;
-
-            if GetTouchInputInfo(touch_input_handle, xx touch_points.count, touch_points.data, size_of(TOUCHINPUT)) {
-                defer CloseTouchInputHandle(touch_input_handle);
-
-                for touch_points {
-                    // TOUCHINPUT.x/y are in hundredths of a pixel
-                    x := TOUCH_COORD_TO_PIXEL(it.x);
-                    y := TOUCH_COORD_TO_PIXEL(it.y);
-
-                    // Just create events for the "primary" touch for now. Primary is the first to touch, not necessarily
-                    // the last
-                    if it.dwFlags & TOUCHEVENTF_PRIMARY {
-                        if it.dwFlags & TOUCHEVENTF_DOWN {
-                            touch_event: Event;
-                            touch_event.type = .TOUCH;
-                            touch_event.touch_index = 0;
-                            touch_event.touch_type = .PRESSED;
-                            array_add(*events_this_frame, touch_event);
-                        } else if it.dwFlags & TOUCHEVENTF_UP {
-                            touch_event: Event;
-                            touch_event.type = .TOUCH;
-                            touch_event.touch_index = 0;
-                            touch_event.touch_type = .RELEASED;
-                            array_add(*events_this_frame, touch_event);
+                    // We do our best to provide the application with reliable key states without brute force sampling every key.
+                    // The intended rules are that a key down event will be sent when a key is depressed and will be followed
+                    // by zero or more key down events with the repeat flag set as long as the key remains down.  A key up event
+                    // will be sent when the key is released.
+                    // In practice:
+                    // 1. An application will always be notified when it has or gains focus if a key is up.
+                    // 2. An application will always be notified when it has focus if a key is down.
+                    // 3. An application will *usually* be notified when it gains focus if a key is down.
+                    // So the one thing you can't rely on is being notified if a key is pressed while the application is out of
+                    // focus and then the application gains focus.  In the rare cases where that doesn't happen, the key will
+                    // have to be released and re-pressed for the application to get a key down event.
+                    for key_down, vkey: key_down_table {
+                        state := GetAsyncKeyState(cast,trunc(s32) vkey);
+                        if !(state & 0x8000) {
+                            send_key_event(get_key_code(vkey), false);
+                            remove;
                         }
                     }
                 }
 
+                return DefWindowProcW(hwnd, message, wParam, lParam);
+
+            case WM_SYSKEYDOWN; #through;
+            case WM_KEYDOWN;
+
+                // :ModifiedInputModule
+                last_vkey = wParam;
+                last_scancode = cast(u64, (lParam >> 16) & 0x1ff);
+
+                repeat := ((cast (s32) lParam) & 0x40000000) != 0;
+                maybe_send_vkey_event(wParam, true, repeat);
+
+            case WM_SYSKEYUP; #through;
+            case WM_KEYUP;
+
+                maybe_send_vkey_event(wParam, false);
+
+            case WM_SYSCHAR; {
+                // This is here to prevent beeps when a Alt key combo is pressed. If we don't return 0, windows helpfully emits a beep sound to
+                // indicate the user that the key wasn't handled.
+                //
+                // NOTE(jt): In addition to not forwarding this to DefWindowProc, we generate a text
+                // event, because otherwise we'd have no way of getting Alt+key.
+                //
+                // :ModifiedInputModule
+                //
+                // TODO(jt): @Cleanup Is this a hack? Should this be another event type? In the editor,
+                // we look for Alt being pressed and do not treat this as a text input, but I don't know.
+                keycode := wParam;
+                
+                if keycode > 31 {
+                    // Control characters generate key codes < 32, but these are redundant
+                    // with KEYDOWN events and are also ambiguous (ctrl-m generates 13, but
+                    // so does RETURN.)
+                    event: Event;
+                    event.type = .TEXT_INPUT;
+                    event.utf32 = xx keycode;
+                    
+                    // :ModifiedInputModule
+                    // Fill in what the char would be if we didn't hold shift.
+                    event.utf32_without_shift = xx keycode;
+                    
+                    scancode := cast(u64, (lParam >> 16) & 0x1ff);
+                    if scancode == last_scancode && shift_state {
+                        hkl := GetKeyboardLayout(0);
+                        
+                        ks: [256] u8;
+                        if GetKeyState(VK_CAPITAL) & 1 {
+                            ks[VK_CAPITAL] = 1;
+                        }
+                        
+                        buf: [8] u16;
+                        count := ToUnicodeEx(cast,trunc(u32, last_vkey), cast,trunc(u32, scancode), ks.data, buf.data, 8, 1 << 2, hkl);
+                        if count {
+                            event.utf32_without_shift = buf[0];
+                        }
+                    }
+                    
+                    array_add(*events_this_frame, event);
+                }
+            }
+            
+            case WM_CHAR; {
+                keycode := wParam;
+                
+                if keycode > 31 {
+                    // Control characters generate key codes < 32, but these are redundant
+                    // with KEYDOWN events and are also ambiguous (ctrl-m generates 13, but
+                    // so does RETURN.)
+                    event: Event;
+                    event.type = .TEXT_INPUT;
+                    event.utf32 = xx keycode;
+                    
+                    // :ModifiedInputModule
+                    // Fill in what the char would be if we didn't hold shift.
+                    event.utf32_without_shift = xx keycode;
+                    
+                    scancode := cast(u64, (lParam >> 16) & 0x1ff);
+                    if scancode == last_scancode && shift_state {
+                        hkl := GetKeyboardLayout(0);
+                        
+                        ks: [256] u8;
+                        if GetKeyState(VK_CAPITAL) & 1 {
+                            ks[VK_CAPITAL] = 1;
+                        }
+                        
+                        buf: [8] u16;
+                        count := ToUnicodeEx(cast,trunc(u32, last_vkey), cast,trunc(u32, scancode), ks.data, buf.data, 8, 1 << 2, hkl);
+                        if count {
+                            event.utf32_without_shift = buf[0];
+                        }
+                    }
+                    
+                    array_add(*events_this_frame, event);
+                }
+            }
+            
+            case WM_SETFOCUS;
+                input_application_has_focus = true;
+                event: Event;
+                event.type = .WINDOW;
+                event.window = hwnd;
+                event.window_event_type = .GAINED_FOCUS;
+                array_add(*events_this_frame, event);
+            case WM_KILLFOCUS;
+                input_application_has_focus = false;
+                event: Event;
+                event.type = .WINDOW;
+                event.window_event_type = .LOST_FOCUS;
+                event.window = hwnd;
+                array_add(*events_this_frame, event);
+            case WM_PAINT;
+                ValidateRect(hwnd, null);
+                return DefWindowProcW(hwnd, message, wParam, lParam);
+
+            case WM_LBUTTONDOWN; #through;
+            case WM_LBUTTONUP;
+                maybe_send_vkey_event(VK_LBUTTON, message == WM_LBUTTONDOWN);
+
+                if message == WM_LBUTTONDOWN SetCapture(hwnd);
+                else ReleaseCapture();
+
+            case WM_RBUTTONDOWN; #through;
+            case WM_RBUTTONUP;
+                maybe_send_vkey_event(VK_RBUTTON, message == WM_RBUTTONDOWN);
+
+            case WM_MBUTTONDOWN; #through;
+            case WM_MBUTTONUP;
+                maybe_send_vkey_event(VK_MBUTTON, message == WM_MBUTTONDOWN);
+
+            case WM_MOUSEMOVE;
+                // We don't have mouse move events yet, but we'll record the delta.
+
+
+                // We use Raw Input for mouse position stuff now.
+                /*
+                x := (lParam & 0xffff);
+                y := (lParam >> 16) & 0xffff;
+                mouse_delta_x += x - last_mouse_event_x;
+                mouse_delta_y += y - last_mouse_event_y;
+
+                last_mouse_event_x = x;
+                last_mouse_event_y = y;
+                */
+            case WM_MOUSEWHEEL;
+                event: Event;
+                event.type = .MOUSE_WHEEL;
+                event.typical_wheel_delta = WHEEL_DELTA;
+                event.wheel_delta = xx cast,trunc(s16)(wParam >> 16);
+                array_add(*events_this_frame, event);
+
+                mouse_delta_z += event.wheel_delta;
+
+            case WM_XBUTTONUP; #through;
+            case WM_XBUTTONDOWN;
+                // Handle mouse "thumb" buttons.
+                //
+                // NOTE(Charles): These buttons are typically used for a programs "forward" and "backward" operations. There is also
+                // the WM_APPCOMMAND message that will give us APPCOMMAND_BROWSER_BACKWARD/FORWARD, maybe they are better to use?
+
+                // low/high word of lParam contains the x/y coord of mouse.
+                XBUTTON1 :: 0x0001;
+                XBUTTON2 :: 0x0002;
+
+                // hi has what button was pressed.
+                // lo has flags for whether control, shift, or other mouse buttons are prssed (MK_*), but we already handle modifier keys.
+                double_world := cast,no_check(u32, wParam);
+                hi := (double_world >> 16) & 0xffff;
+                lo := (double_world >>  0) & 0xffff;
+
+                key_down := message == WM_XBUTTONDOWN;
+                if hi == XBUTTON1 {
+                    send_key_event(.MOUSE_BUTTON_EXTRA_1, key_down);
+                } else {
+                    assert(hi == XBUTTON2, "Unexpected hi word during WM_XBUTTONDOWN message. Expected XBUTTON1/2 but got %. wParam was %", hi, wParam);
+
+                    send_key_event(.MOUSE_BUTTON_EXTRA_2, key_down);
+                }
+
+                return 1;
+
+            case WM_CLOSE; #through;
+            case WM_QUIT;
+                event: Event;
+                event.type = .QUIT;
+                array_add(*events_this_frame, event);
+                return DefWindowProcW(hwnd, message, wParam, lParam);
+
+            case WM_INPUT;
+                extra := GetMessageExtraInfo();
+
+                if (extra & 0x82) == 0x82 {
+                    // @Hack: Ignore touch input! There is no documentation of this
+                    // that I can see. This is just what I needed to do to filter
+                    // out fake mouse input generated by WM_TOUCH. I would regard
+                    // this as extremely fragile and could-break-at-any-time.
+                } else {
+                    process_raw_input(cast(HRAWINPUT)lParam);
+                }
+
+                DefWindowProcW(hwnd, message, wParam, lParam);  // This is required for some reason.    // @@ Why?
+            case WM_SIZE;
+                if wParam == {
+                    case SIZE_MAXIMIZED;
+                        if window_minimized {
+                            window_minimized = false;
+                            event: Event;
+                            event.type = .WINDOW;
+                            event.window = hwnd;
+                            event.window_event_type = .MOVED_TO_FOREGROUND;
+                            array_add(*events_this_frame, event);
+                        }
+
+                        add_resize_record(hwnd);
+                    case SIZE_RESTORED;
+                        if window_minimized {
+                            window_minimized = false;
+                            event: Event;
+                            event.type = .WINDOW;
+                            event.window = hwnd;
+                            event.window_event_type = .MOVED_TO_FOREGROUND;
+                            array_add(*events_this_frame, event);
+                        } else {
+                            add_resize_record(hwnd);
+                        }
+                    case SIZE_MINIMIZED;
+                        window_minimized = true;
+                        event: Event;
+                        event.type = .WINDOW;
+                        event.window = hwnd;
+                        event.window_event_type = .MOVED_TO_BACKGROUND;
+                        array_add(*events_this_frame, event);
+                }
+                return 0;
+            case WM_MOVE;
+                add_move_record(hwnd);
+                return 0;
+            case WM_EXITSIZEMOVE;
+                add_resize_record(hwnd);
+                return 0;
+            case WM_DPICHANGED;
+                y_dpi := (wParam >> 16) & 0xFFFF;
+                x_dpi := (wParam)       & 0xFFFF;
+
+                rect := cast(*RECT) lParam;
+
+                w := rect.right - rect.left;
+                h := rect.bottom - rect.top;
+
+                SetWindowPos(hwnd, HWND_TOPMOST, rect.left, rect.top, w, h, SWP_NOACTIVATE|SWP_NOZORDER);
+                return 0;
+            case WM_DROPFILES;
+                drop := cast(HDROP) wParam;
+                // If "0xFFFFFFFF" as the second parameter: return the count of files dropped.
+                file_paths_count := DragQueryFileW(drop, 0xFFFFFFFF, null, 0);
+                assert(file_paths_count > 0);
+
+                allocator := context.input_handler.window_proc_allocator;
+                if !allocator.proc  allocator = context.default_allocator;
+
+                files: [..] string;
+                files.allocator = allocator;
+                array_reserve(*files, file_paths_count);
+
+                for i: 0..file_paths_count-1 {
+                    // If null as the third parameter: return the length of the path, not counting the trailing '\0'.
+                    file_name_wide_count := DragQueryFileW(drop, i, null, 0) + 2;
+                    assert(file_name_wide_count > 0);
+
+                    file_name_wide := cast(*u16) alloc(file_name_wide_count * size_of(u16),, temp);
+                    ok := DragQueryFileW(drop, i, file_name_wide, file_name_wide_count);
+                    assert(ok > 0); // means success
+
+                    file_name := wide_to_utf8(file_name_wide,, allocator);
+                    array_add(*files, file_name);
+                }
+
+                DragFinish(drop);
+
+                event: Event;
+                event.type  = .DRAG_AND_DROP_FILES;
+                event.files = files;
+                array_add(*events_this_frame, event);
                 return 0;
 
-            } else {
-                System :: #import "System";
-                code, s := System.get_error_value_and_string();
-                log_error("GetTouchInputInfo() failed with error %: %", code, s);
-            }
+            case WM_SETCURSOR;
+                if windows_ignore_setcursor_messages return 0;
+                else return DefWindowProcW(hwnd, message, wParam, lParam);
 
-            return DefWindowProcW(hwnd, message, wParam, lParam);
+            case WM_POINTERDOWN;   #through;
+            case WM_POINTERUPDATE; #through;
+            case WM_POINTERUP;
+                x := (lParam & 0xffff).(s16);
+                y := ((lParam >> 16) & 0xffff).(s16);
 
+                event: Event;
+                event.type        = .TOUCH;
+                event.touch_index = (wParam & 0xffff).(s32);
+                event.touch_x     = x.(float);
+                event.touch_y     = y.(float);
+            
+                if message == WM_POINTERDOWN {
+                    event.touch_type = .PRESSED;
+                } else if message == WM_POINTERUP {
+                    event.touch_type = .RELEASED;
+                } else {
+                    event.touch_type = .MOVED;
+                }
+            
+                array_add(*events_this_frame, event);
+            
+                return 0;
+  
+            case WM_POINTERCAPTURECHANGED;
+                // Currently we ignore this message. Perhaps we should do something here,
+                // but the documentation is semantic spam.
+                return 0;
 
-          case WM_CREATE;
-            xbox_db := DEV_BROADCAST_DEVICEINTERFACE_W.{
-                 dbcc_size = size_of(DEV_BROADCAST_DEVICEINTERFACE_W),
-                 dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE,
-                 dbcc_classguid = XBOX_GUID,
-            };
+            case WM_CREATE;
+                xbox_db := DEV_BROADCAST_DEVICEINTERFACE_W.{
+                    dbcc_size = size_of(DEV_BROADCAST_DEVICEINTERFACE_W),
+                    dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE,
+                    dbcc_classguid = XBOX_GUID,
+                };
 
-            RegisterDeviceNotificationW(hwnd, *xbox_db, DEVICE_NOTIFY_WINDOW_HANDLE);
+                RegisterDeviceNotificationW(hwnd, *xbox_db, DEVICE_NOTIFY_WINDOW_HANDLE);
 
-            hid_db := DEV_BROADCAST_DEVICEINTERFACE_W.{
-                 dbcc_size = size_of(DEV_BROADCAST_DEVICEINTERFACE_W),
-                 dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE,
-                 dbcc_classguid = GUID_DEVINTERFACE_HID,
-            };
-            RegisterDeviceNotificationW(hwnd, *hid_db, DEVICE_NOTIFY_WINDOW_HANDLE);
+                hid_db := DEV_BROADCAST_DEVICEINTERFACE_W.{
+                    dbcc_size = size_of(DEV_BROADCAST_DEVICEINTERFACE_W),
+                    dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE,
+                    dbcc_classguid = GUID_DEVINTERFACE_HID,
+                };
+                RegisterDeviceNotificationW(hwnd, *hid_db, DEVICE_NOTIFY_WINDOW_HANDLE);
 
-          case WM_DEVICECHANGE;
-            if !the_gamepad_handler return DefWindowProcW(hwnd, message, wParam, lParam);
-            hdr := cast(*DEV_BROADCAST_HDR)lParam;
-            if !hdr || hdr.dbch_devicetype != DBT_DEVTYP_DEVICEINTERFACE return DefWindowProcW(hwnd, message, wParam, lParam);
-            dif := cast(*DEV_BROADCAST_DEVICEINTERFACE_W)hdr;
-            is_xbox := dif.dbcc_classguid == XBOX_GUID;
-            if wParam == {
-                case DBT_DEVICEARRIVAL;        the_gamepad_handler(dif.dbcc_name.data, connect=true,  is_xbox);
-                case DBT_DEVICEREMOVECOMPLETE; the_gamepad_handler(dif.dbcc_name.data, connect=false, is_xbox);
-                case;
-                    return DefWindowProcW(hwnd, message, wParam, lParam);
-            }
+            case WM_DEVICECHANGE;
+                if !the_gamepad_handler return DefWindowProcW(hwnd, message, wParam, lParam);
+                hdr := cast(*DEV_BROADCAST_HDR)lParam;
+                if !hdr || hdr.dbch_devicetype != DBT_DEVTYP_DEVICEINTERFACE return DefWindowProcW(hwnd, message, wParam, lParam);
+                dif := cast(*DEV_BROADCAST_DEVICEINTERFACE_W)hdr;
+                is_xbox := dif.dbcc_classguid == XBOX_GUID;
+                if wParam == {
+                    case DBT_DEVICEARRIVAL;        the_gamepad_handler(dif.dbcc_name.data, connect=true,  is_xbox);
+                    case DBT_DEVICEREMOVECOMPLETE; the_gamepad_handler(dif.dbcc_name.data, connect=false, is_xbox);
+                    case;
+                        return DefWindowProcW(hwnd, message, wParam, lParam);
+                }
 
-          case;
-            return DefWindowProcW(hwnd, message, wParam, lParam);
+            case;
+                return DefWindowProcW(hwnd, message, wParam, lParam);
         }
 
         return 0;
@@ -563,7 +578,7 @@ process_raw_input :: (handle: HRAWINPUT) {
     GetRawInputData(handle, RID_INPUT, null, *dwSize, size_of(RAWINPUTHEADER));
 
     set_array_count(*raw_input_buffer, dwSize);
-    written_bytes := GetRawInputData(handle, RID_INPUT, raw_input_buffer.data, *dwSize, size_of(RAWINPUTHEADER));
+	written_bytes := GetRawInputData(handle, RID_INPUT, raw_input_buffer.data, *dwSize, size_of(RAWINPUTHEADER));
     if written_bytes == 0xffff_ffff return; // Error. Steam Input causes this to happen sometimes.
     assert(written_bytes <= dwSize);        // note that GetRawInputData() is allowed to request a buffer size and then write less bytes than the size
 
