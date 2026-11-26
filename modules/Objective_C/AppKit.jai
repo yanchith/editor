@@ -510,6 +510,16 @@ NSWindow :: struct {
         (cast(func) objc_msgSend)(self, _sel.setFrame_display_, frame, display);
     }
 
+    setFrameOrigin :: (self: *NSWindow, point: NSPoint) {
+        func :: #type (*void, Selector, NSPoint) -> void #c_call;
+        (cast(func) objc_msgSend)(self, _sel.setFrameOrigin_, point);
+    }
+
+    setFrameTopLeftPoint :: (self: *NSWindow, point: NSPoint) {
+        func :: #type (*void, Selector, NSPoint) -> void #c_call;
+        (cast(func) objc_msgSend)(self, _sel.setFrameTopLeftPoint_, point);
+    }
+
     level :: (self: *NSWindow) -> NSWindowLevel {
         return xx objc_msgSend_typed(self, _sel.level);
     }
@@ -541,11 +551,6 @@ NSWindow :: struct {
 
     styleMask :: (self: *NSWindow) -> NSWindowStyleMask {
         return xx objc_msgSend_typed(self, _sel.styleMask);
-    }
-
-    setFrameOrigin :: (self: *NSWindow, pt: NSPoint) {
-        func :: #type (*void, Selector, NSPoint) -> void #c_call;
-        (cast(func) objc_msgSend)(self, _sel.setFrameOrigin_, pt);
     }
 
     setDelegate :: (self: *NSWindow, dg: id) {
@@ -792,10 +797,10 @@ NSView :: struct {
 
     pad: [152 - size_of(NSObject)] u8; // NSView must be 152 bytes
 
-    addSubView :: (self: *NSView, view: *NSView) {
+    addSubview :: (self: *NSView, view: *NSView) {
         func: (*void, Selector, *NSView) -> void #c_call;
         func = xx objc_msgSend;
-        func(self, _sel.addSubView_, view);
+        func(self, _sel.addSubview_, view);
     }
 
     setWantsLayer :: (self: id, yesno: BOOL) {
@@ -1284,6 +1289,33 @@ NSDraggingInfo :: struct {
     }
 }
 
+NSWorkspaceDidLaunchApplicationNotification: NSNotificationName #elsewhere AppKit;
+NSWorkspaceApplicationKey:                   *NSString #elsewhere AppKit;
+
+NSWorkspace :: struct {
+    using #as super: NSObject;
+
+    sharedWorkspace :: () -> *NSWorkspace {
+        return xx objc_msgSend_typed(class(NSWorkspace), _sel.sharedWorkspace);
+    }
+
+    notificationCenter :: (self: *NSWorkspace) -> *NSNotificationCenter {
+        return xx objc_msgSend_typed(self, _sel.notificationCenter);
+    }
+}
+
+NSRunningApplication :: struct {
+    using #as super: NSObject;
+
+    bundleIdentifier :: (self: *NSRunningApplication) -> *NSString {
+        return xx objc_msgSend_typed(self, _sel.bundleIdentifier);
+    }
+
+    localizedName :: (self: *NSRunningApplication) -> *NSString {
+        return xx objc_msgSend_typed(self, _sel.localizedName);
+    }
+}
+
 #scope_module
 
 _sel: struct #type_info_no_size_complaint {
@@ -1316,7 +1348,7 @@ _sel: struct #type_info_no_size_complaint {
     initWithContentRect_styleMask_backing_defer_: Selector;
     initWithContentRect_styleMask_backing_defer_screen_: Selector;
     makeFirstResponder_: Selector;
-    addSubView_: Selector;
+    addSubview_: Selector;
     setWantsLayer_: Selector;
     flushBuffer: Selector;
     setView_: Selector;
@@ -1346,6 +1378,7 @@ _sel: struct #type_info_no_size_complaint {
     frame: Selector;
     setFrame_: Selector;
     setFrame_display_: Selector;
+    setFrameTopLeftPoint_: Selector;
     center: Selector;
     convertRectToBacking_: Selector;
     convertRectFromBacking_: Selector;
@@ -1445,6 +1478,10 @@ _sel: struct #type_info_no_size_complaint {
     registerForDraggedTypes_: Selector;
     draggingSourceOperationMask: Selector;
     draggingPasteboard: Selector;
+    sharedWorkspace: Selector;
+    notificationCenter: Selector;
+    bundleIdentifier: Selector;
+    localizedName: Selector;
 }
 
 #import "Objective_C";

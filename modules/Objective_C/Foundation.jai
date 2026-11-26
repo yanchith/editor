@@ -367,6 +367,14 @@ NSNotification :: struct {
     object :: (self: *NSNotification) -> *NSObject {
         return xx objc_msgSend_typed(self, _sel.object);
     }
+
+    name :: (self: *NSNotification) -> NSNotificationName {
+        return xx objc_msgSend_typed(self, _sel.name);
+    }
+
+    userInfo :: (self: *NSNotification) -> *NSDictionary(id, id) {
+        return xx objc_msgSend_typed(self, _sel.userInfo);
+    }
 }
 
 NSNotificationCenter :: struct {
@@ -380,6 +388,14 @@ NSNotificationCenter :: struct {
     addObserver :: (self: *NSNotificationCenter, observer: id, selector: Selector, name: NSNotificationName, object: id) {
         func :: #type (*void, Selector, id, Selector, NSNotificationName, id) -> void #c_call;
         (cast(func) objc_msgSend)(self, _sel.addObserver_selector_name_object_, observer, selector, name, object);
+    }
+}
+
+NSDistributedNotificationCenter :: struct {
+    using,except(defaultCenter) #as notification_center: NSNotificationCenter;
+
+    defaultCenter :: () -> *NSDistributedNotificationCenter {
+        return xx objc_msgSend_typed(objc_getClass("NSDistributedNotificationCenter"), _sel.defaultCenter);
     }
 }
 
@@ -441,6 +457,11 @@ NSData :: struct {
 
 NSDictionary :: struct (key: Type, value: Type) {
     using #as super: NSObject;
+
+    objectForKey :: (self: *NSDictionary(key, value), aKey: key) -> value {
+        func :: #type (*void, Selector, key) -> value #c_call;
+        return (cast(func) objc_msgSend)(self, _sel.objectForKey_, aKey);
+    }
 }
 
 NSArray :: struct (Object_Type: Type) {
@@ -607,6 +628,8 @@ _sel: struct {
     detachNewThreadSelector_toTarget_withObject_:                     Selector;
     isMultiThreaded:                                                  Selector;
     object:                                                           Selector;
+    name:                                                             Selector;
+    userInfo:                                                         Selector;
     defaultCenter:                                                    Selector;
     addObserver_selector_name_object_:                                Selector;
     URLWithString_:                                                   Selector;
@@ -619,6 +642,7 @@ _sel: struct {
     lastPathComponent:                                                Selector;
     bytes:                                                            Selector;
     length:                                                           Selector;
+    objectForKey_:                                                    Selector;
     arrayWithObject_:                                                 Selector;
     arrayWithObjects_count_:                                          Selector;
     containsObject_:                                                  Selector;
