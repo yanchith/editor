@@ -601,6 +601,9 @@ get_process_result :: (process: *Process, timeout_ms := -1) -> success: bool, Pr
     if WIFSIGNALED(status) {
         result.type = .SIGNALED;
         result.signal = WTERMSIG(status);
+        if result.exit_code == 0 { // Make sure that callers who only check exit code do not think this was a success!
+            result.exit_code = -1;
+        }
         return true, result;
     }
 

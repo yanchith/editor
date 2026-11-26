@@ -17,6 +17,8 @@ If you want to make this editor yours, there's two options:
 
 ## Building from source
 
+The editor is written in Jai, which is not publicly available yet, but hopefully will be soon.
+
 Make a debug build with:
 
 ```
@@ -31,12 +33,10 @@ jai -optimized_debug build.jai - -bundle -no-sanity -no-windows-console
 
 The build file contains information about more options.
 
-Tested on Jai version `0.2.030`.
+Tested on Jai version `0.2.031`.
 
-The code compiles and runs on Windows and macOS (although macOS build isn't signed).
+The code compiles and runs on Windows and macOS (although the macOS build isn't signed).
 Linux support coming soon.
-
-The editor is written in Jai, which is not publicly available yet. Hopefully it will be soon.
 
 ## Temporary limitations
 

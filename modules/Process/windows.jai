@@ -157,8 +157,8 @@ create_process :: (process: *Process, args: .. string, working_directory := "", 
     success := CreateProcessW(null, utf8_to_wide(args_string,, allocator=temp), null, null, cast(BOOL) 1, creation_flags, null, utf8_to_wide(working_directory,, allocator=temp), *startup_info, *process.info);
     if !success {
         error_value, error_string := System.get_error_value_and_string();
-        log_error("While running the command: '%', we were unable to create the process. Error code: %, description: %\n",
-                  get_quoted_command_string(args,, temp), error_value, error_string);
+        log_error("While running the command: '%' in directory '%', we were unable to create the process. Error code: %, description: %\n",
+                  get_quoted_command_string(args,, temp), working_directory, error_value, error_string);
         deinit(process);
         return false;
     }
