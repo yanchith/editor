@@ -1,7 +1,7 @@
 When updating the Jai toolchain, be sure to:
 
-- Re-apply our local hotfixes on top of Jai modules. These are usually one-liner modifications directly in modules/Basic or another core module.
-  I am trying to mail these in so that the team at Thekla fixes these, but they don't always respond.
+- Re-apply our local hotfixes on top of Jai modules in the jai distribution itself. These are usually one-liner modifications directly
+  in modules/Basic or another core module. I am trying to mail these in so that the team at Thekla fixes them, but it sometimes takes time.
 
 - Synchronize our local versions of modules shipping with the compiler with the official ones.
   Usually this means checkin diffs on a per-file basis and either reapplying our changes, or their changes, whichever is quicker.

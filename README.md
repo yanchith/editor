@@ -33,7 +33,7 @@ jai -optimized_debug build.jai - -bundle -no-sanity -no-windows-console
 
 The build file contains information about more options.
 
-Tested on Jai version `0.2.031`.
+Tested on Jai version `0.2.032`.
 
 The code compiles and runs on Windows and macOS (although the macOS build isn't signed).
 Linux support coming soon.

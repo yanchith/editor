@@ -221,9 +221,15 @@ MyWindowProc :: (hwnd: HWND, message: u32, wParam: WPARAM, lParam: LPARAM) -> s6
             case WM_RBUTTONUP;
                 maybe_send_vkey_event(VK_RBUTTON, message == WM_RBUTTONDOWN);
 
+                if message == WM_RBUTTONDOWN SetCapture(hwnd);
+                else ReleaseCapture();
+            
             case WM_MBUTTONDOWN; #through;
             case WM_MBUTTONUP;
                 maybe_send_vkey_event(VK_MBUTTON, message == WM_MBUTTONDOWN);
+
+                if message == WM_MBUTTONDOWN SetCapture(hwnd);
+                else ReleaseCapture();
 
             case WM_MOUSEMOVE;
                 // We don't have mouse move events yet, but we'll record the delta.
@@ -880,41 +886,41 @@ Vk_To_Key_Code :: struct {
 }
 
 vk_to_key_code_array :: Vk_To_Key_Code.[
-    .{ VK_LBUTTON,  MOUSE_BUTTON_LEFT },
-    .{ VK_MBUTTON,  MOUSE_BUTTON_MIDDLE },
-    .{ VK_RBUTTON,  MOUSE_BUTTON_RIGHT },
-    .{ VK_SPACE,    xx 32 },
-    .{ VK_HOME,     HOME },
-    .{ VK_END,      Key_Code.END },
-    .{ VK_PRIOR,    PAGE_UP },
-    .{ VK_NEXT,     PAGE_DOWN },
-    .{ VK_LEFT,     ARROW_LEFT },
-    .{ VK_RIGHT,    ARROW_RIGHT },
-    .{ VK_UP,       ARROW_UP},
-    .{ VK_DOWN,     ARROW_DOWN },
-    .{ VK_MENU,     ALT },
-    .{ VK_SHIFT,    SHIFT },
-    .{ VK_CONTROL,  CTRL },
-    .{ VK_BACK,     BACKSPACE },
-    .{ VK_DELETE,   DELETE },
-    .{ VK_INSERT,   INSERT },
-    .{ VK_ESCAPE,   ESCAPE },
-    .{ VK_RETURN,   ENTER },
-    .{ VK_TAB,      TAB },
-    .{ VK_OEM_1,       xx #char ";"},
-    .{ VK_OEM_2,       xx #char "/"},
-    .{ VK_OEM_3,       xx #char "`"},
-    .{ VK_OEM_4,       xx #char "["},
-    .{ VK_OEM_5,       xx #char "\\"},
-    .{ VK_OEM_6,       xx #char "]"},
-    .{ VK_OEM_7,       xx #char "'"},
-    .{ VK_OEM_PLUS,    xx #char "+" },
-    .{ VK_OEM_MINUS,   xx #char "-"    },
-    .{ VK_OEM_PERIOD,  xx #char "."     },
-    .{ VK_OEM_COMMA,   xx #char ","    },
-    .{ VK_SNAPSHOT,   PRINT_SCREEN },
-    .{ VK_PAUSE,      PAUSE },
-    .{ VK_SCROLL,     SCROLL_LOCK },
+    { VK_LBUTTON,  MOUSE_BUTTON_LEFT },
+    { VK_MBUTTON,  MOUSE_BUTTON_MIDDLE },
+    { VK_RBUTTON,  MOUSE_BUTTON_RIGHT },
+    { VK_SPACE,    xx 32 },
+    { VK_HOME,     HOME },
+    { VK_END,      Key_Code.END },
+    { VK_PRIOR,    PAGE_UP },
+    { VK_NEXT,     PAGE_DOWN },
+    { VK_LEFT,     ARROW_LEFT },
+    { VK_RIGHT,    ARROW_RIGHT },
+    { VK_UP,       ARROW_UP},
+    { VK_DOWN,     ARROW_DOWN },
+    { VK_MENU,     ALT },
+    { VK_SHIFT,    SHIFT },
+    { VK_CONTROL,  CTRL },
+    { VK_BACK,     BACKSPACE },
+    { VK_DELETE,   DELETE },
+    { VK_INSERT,   INSERT },
+    { VK_ESCAPE,   ESCAPE },
+    { VK_RETURN,   ENTER },
+    { VK_TAB,      TAB },
+    { VK_OEM_1,       xx #char ";"},
+    { VK_OEM_2,       xx #char "/"},
+    { VK_OEM_3,       xx #char "`"},
+    { VK_OEM_4,       xx #char "["},
+    { VK_OEM_5,       xx #char "\\"},
+    { VK_OEM_6,       xx #char "]"},
+    { VK_OEM_7,       xx #char "'"},
+    { VK_OEM_PLUS,    xx #char "+"},
+    { VK_OEM_MINUS,   xx #char "-"},
+    { VK_OEM_PERIOD,  xx #char "."},
+    { VK_OEM_COMMA,   xx #char ","},
+    { VK_SNAPSHOT,   PRINT_SCREEN },
+    { VK_PAUSE,      PAUSE },
+    { VK_SCROLL,     SCROLL_LOCK },
 ];
 
 #scope_file;
