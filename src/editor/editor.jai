@@ -107,6 +107,7 @@ TODO(jt): Roadmap:
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
 - [X] q to hide compilation or listing
+- [ ] C-x s save_all_documents
 - [ ] align: aligns selection on first occurence of string
 - [ ] create_directory modal interaction command (executable from anywhere we have a backing directory)
 - [ ] search_and_replace should preserve capitalization (camelCase, PamelCase, UPPER_CASE, lower_case)
@@ -121,6 +122,9 @@ TODO(jt): Roadmap:
 - [X] Cursor flash in mini panel and modal interaction.
 - [X] F11 fullscreen on Windows
 - [X] macOS .app
+
+... arbitrary dividing line ...
+
 - [ ] Linux build
 - [ ] Load System fonts
 - [ ] Multiple Cursors
