@@ -51,7 +51,7 @@ get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Tem
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH;   return "Text to replace: ";
         case .INPUT_TO_REPLACE;  return tprint("Replace '%' with: ", userdata.input_to_search);
-        case .REPLACING;         return tprint("Replacing '%' with '%': (y: replace and next, p: previous, n: next, q: quit)",
+        case .REPLACING;         return tprint("Replacing '%' with '%' (y: replace and next, p: previous, n: next, q: quit)",
                                                userdata.input_to_search,
                                                userdata.input_to_replace);
     }
@@ -81,8 +81,8 @@ init :: (editor: *Editor, platform: Platform, input: Input, params: *void) {
         return;
     }
 
-    userdata := arena_push(mi.userdata_arena, Search_And_Replace_Userdata);
-    userdata.replacing_key_map.allocator = arena_allocator(mi.userdata_arena);
+    userdata := arena_push(mi.arena, Search_And_Replace_Userdata);
+    userdata.replacing_key_map.allocator = arena_allocator(mi.arena);
     key_map_reserve(*userdata.replacing_key_map, 8);
 
     key_map_add(*userdata.replacing_key_map, "y",   .REPLACE);
@@ -127,7 +127,7 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
         case .REPLACING; {
             sanity_assert(panel.highlights.count > 0);
 
-            buffered, action := key_map_input(*userdata.replacing_key_map, event);
+            _, action := key_map_input(*userdata.replacing_key_map, event);
             if action == {
                 case .REPLACE; #through;
                 case .NEXT; {
@@ -253,13 +253,13 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
     userdata: *Search_And_Replace_Userdata = mi.userdata;
     if #complete userdata.state == {
         case .INPUT_TO_SEARCH; {
-            userdata.input_to_search = text_buffer_make_view_for_line(mi.buffer, 0, force_allocate = true,, arena_allocator(mi.userdata_arena));
+            userdata.input_to_search = text_buffer_make_view_for_line(mi.buffer, 0, force_allocate = true,, arena_allocator(mi.arena));
             text_buffer_delete_all(*mi.buffer, *mi.cursors);
 
             userdata.state = .INPUT_TO_REPLACE;
         }
         case .INPUT_TO_REPLACE; {
-            userdata.input_to_replace = text_buffer_make_view_for_line(mi.buffer, 0, force_allocate = true,, arena_allocator(mi.userdata_arena));
+            userdata.input_to_replace = text_buffer_make_view_for_line(mi.buffer, 0, force_allocate = true,, arena_allocator(mi.arena));
             text_buffer_delete_all(*mi.buffer, *mi.cursors);
 
             document := view.document;

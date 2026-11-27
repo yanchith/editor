@@ -25,23 +25,23 @@ Search_Project_Item_Userdata :: struct {
 }
 
 get_action_text :: (editor: *Editor, platform: Platform, input: Input) -> /* Temporary_Storage */ string {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return "";
     }
 
     help_text := "";
 
-    search_text_char_count := mini_panel.buffer.line_chars[0];
+    search_text_char_count := mp.buffer.line_chars[0];
     if search_text_char_count < MIN_SEARCH_TEXT_COUNT {
         help_text = tprint(" (type % more)", MIN_SEARCH_TEXT_COUNT - search_text_char_count);
     }
 
-    userdata: *Search_Project_Userdata = mini_panel.userdata;
+    userdata: *Search_Project_Userdata = mp.userdata;
     is_project := userdata.working_directory_is_project;
 
-    return tprint("%  Search %%: ", temp_right_pad(tprint("%", editor.mini_panel.items.count), 4), ifx is_project then "project" else "directory" ,help_text);
+    return tprint("%  Search %%: ", temp_right_pad(tprint("%", mp.items.count), 4), ifx is_project then "project" else "directory" ,help_text);
 }
 
 can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> bool {
@@ -49,9 +49,9 @@ can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> b
 }
 
 init :: (editor: *Editor, platform: Platform, input: Input) {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return;
     }
 
@@ -62,17 +62,17 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    userdata := arena_push(mini_panel.userdata_arena, Search_Project_Userdata);
-    userdata.working_directory = arena_push_string(mini_panel.userdata_arena, working_directory);
+    userdata := arena_push(mp.arena, Search_Project_Userdata);
+    userdata.working_directory = arena_push_string(mp.arena, working_directory);
     userdata.working_directory_is_project = working_directory_is_project;
 
-    mini_panel.userdata = userdata;
+    mp.userdata = userdata;
 }
 
 update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return;
     }
 
@@ -83,11 +83,11 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
     }
 
     if buffer_changed {
-        array_reset(*mini_panel.items);
-        arena_reset(mini_panel.items_arena);
+        array_reset(*mp.items);
+        arena_reset(mp.items_arena);
 
-        search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
-        search_text_char_count := mini_panel.buffer.line_chars[0];
+        search_text := text_buffer_make_view_for_line(mp.buffer, 0,, temp);
+        search_text_char_count := mp.buffer.line_chars[0];
 
         if search_text_char_count >= MIN_SEARCH_TEXT_COUNT {
             // TODO(jt): Add multiple backends, so people can choose what they usually have
@@ -122,7 +122,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             //     -jt, 6 August 2026
             args := tprint("% % \"%\" ./", RG_BASE_COMMAND, ignore_directories, search_regexp);
 
-            userdata: *Search_Project_Userdata = mini_panel.userdata;
+            userdata: *Search_Project_Userdata = mp.userdata;
             working_directory := userdata.working_directory;
 
             exit_code, exit_type, output, error := platform.run_in_process(args, working_directory,, temp);
@@ -146,7 +146,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 s := "";
                 if line.count {
                     // Assume success and proactively copy to our memory, so that we can run splits on that.
-                    s = arena_push_string(mini_panel.items_arena, line);
+                    s = arena_push_string(mp.items_arena, line);
                 }
 
                 // Already splitting our memory, so canonicalize_path doesn't need to run twice.
@@ -177,13 +177,13 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
                 canonicalize_path(*file_path);
 
-                item := array_add(*mini_panel.items);
+                item := array_add(*mp.items);
                 item.text = s;
                 // TODO(jt): @Incomplete Scan output to find highlights.
                 item.highlight_x0 = 0;
                 item.highlight_x1 = 0;
 
-                userdata := arena_push(mini_panel.items_arena, Search_Project_Item_Userdata);
+                userdata := arena_push(mp.items_arena, Search_Project_Item_Userdata);
                 userdata.file_path = file_path; // Same allocation as s.
                 userdata.line_number = line_number;
                 userdata.column_number = column_number;
@@ -195,15 +195,15 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 }
 
 delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return false;
     }
 
-    gb := mini_panel.buffer.gb;
+    gb := mp.buffer.gb;
     if gb.count {
-        text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursors);
+        text_buffer_delete_backward(*mp.buffer, *mp.cursors);
         return true;
     }
 
@@ -215,19 +215,19 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
 }
 
 confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return false;
     }
 
-    if mini_panel.items.count {
-        assert(mini_panel.item_index >= 0);
+    if mp.items.count {
+        assert(mp.item_index >= 0);
 
-        userdata: *Search_Project_Userdata = mini_panel.userdata;
+        userdata: *Search_Project_Userdata = mp.userdata;
         working_directory := userdata.working_directory;
 
-        item_userdata: *Search_Project_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
+        item_userdata: *Search_Project_Item_Userdata = mp.items[mp.item_index].userdata;
         relative_path := item_userdata.file_path;
 
         file_path := String.path_join(working_directory, relative_path,, temp);

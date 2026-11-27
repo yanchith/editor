@@ -477,14 +477,14 @@ set_project_search_ignore_directories :: (editor: *Editor, _paths: string) {
     
     left = String.trim(left);
     if left.count {
-        array_add(*editor.project_search_ignore_directories, copy_string(left,, arena_allocator(editor.perm_arena)));
+        array_add(*editor.project_search_ignore_directories, copy_string(left,, arena_allocator(editor.arena)));
     }
     
     while found {
         found, left, right = String.split_from_left(right, PATHLIST_SEPARATOR);
         left = String.trim(left);
         if left.count {
-            array_add(*editor.project_search_ignore_directories, copy_string(left,, arena_allocator(editor.perm_arena)));
+            array_add(*editor.project_search_ignore_directories, copy_string(left,, arena_allocator(editor.arena)));
         }
     }
 }

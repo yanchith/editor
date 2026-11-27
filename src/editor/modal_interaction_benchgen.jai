@@ -46,9 +46,9 @@ handle_event :: (editor: *Editor, event: Input_Event, platform: Platform, input:
 }
 
 advance :: (editor: *Editor, platform: Platform, input: Input) {
-    modal_interaction := *editor.modal_interaction;
-    sanity_assert(modal_interaction.open);
-    if !modal_interaction.open {
+    mi := *editor.modal_interaction;
+    sanity_assert(mi.open);
+    if !mi.open {
         return;
     }
 
@@ -62,7 +62,7 @@ advance :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    input_text := text_buffer_make_view_for_line(modal_interaction.buffer, 0,, temp);
+    input_text := text_buffer_make_view_for_line(mi.buffer, 0,, temp);
     gen_size, success := string_to_int(input_text, T = s64);
 
     if !success {

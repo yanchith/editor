@@ -14,10 +14,8 @@ TODO(jt): Known serious bugs:
 
 TODO(jt): HMN Beta Week feedback:
 
-- Consistently visualize that a file is modified in both modeline and view list. Current visualization is confusing to some people.
-- Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
-- Make "file is modified, are you sure you want to close the view?" modal interaction.
 - Do a confirmation prompt warning about modified files when people try to exit.
+- Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Make it possible to open in a directory from the command line. This should probably open
   a directory lister on top of the welcome message.
 - Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
@@ -237,6 +235,7 @@ operator==     :: Math.operator==;
 #load "modal_interaction_go_to_line.jai";
 #load "modal_interaction_compile.jai";
 #load "modal_interaction_benchgen.jai";
+#load "modal_interaction_confirm.jai";
 #load "config.jai";
 
 // TODO(jt): @Cleanup The only user of this is currently our modified Jai_Lexer.
@@ -297,7 +296,7 @@ FONT :: "LiberationMono";
 FONT_SIZE :: 15; // 15 for use, 20 for streaming
 
 Editor :: struct {
-    perm_arena: *Arena;
+    arena: *Arena; // Permanent arena. "Reset" by the OS on shutdown.
 
     arenas: [..] *Arena; // Used for memory debug view.
 
@@ -402,10 +401,11 @@ Editor :: struct {
 Panel :: struct {
     flags: Flags;
 
+    arena: *Arena; // For highlights.
+
     // Highlights are owned by the panel, but they are usually cleared/added by various minipanel and modal actions.
     // It could be argued that they should also own it, but then the renderer does't have a good access.
     // Let's see about this once we have more experience using this.  -jt, 10 August 2026
-    highlights_arena: *Arena;
     highlights: [..] Highlight;
     highlight_index: s64 = -1;
 
@@ -640,12 +640,12 @@ Mini_Panel :: struct {
 
     key_map: Key_Map(Mini_Panel_Action); // Not reset, because all mini panel things basically interact the same.
 
-    items_arena: *Arena;
+    items_arena: *Arena; // Reset when items are refreshed.
     items: [..] Item;
     item_index: s64; // [0, items.count) to select a item, -1 to select the mini panel's buffer (if allowed by the action).
 
-    userdata_arena: *Arena;
-    userdata: *void; // Set this by passing it to open_mini_panel. You can allocate it with userdata_arena.
+    arena: *Arena; // For userdata. Reset on close.
+    userdata: *void;
 
     scroll_y: Interpolation(f64, ROUND = true);
 
@@ -719,7 +719,7 @@ Modal_Interaction :: struct {
 
     buffer: Text_Buffer;
 
-    userdata_arena: *Arena;
+    arena: *Arena; // For userdata and params passed to init. Reset on close.
     userdata: *void;
 
     Flags :: enum_flags u32 {
@@ -753,22 +753,22 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     // Delay attaching debug procs to perm, because the list of arenas itself is going to be in perm.
     // So we add it to the list manually and attach procs after.
-    editor.perm_arena = make_arena(editor, platform, .MEDIUM, "Perm", attach_debug_procs = false);
-    editor.arenas.allocator = arena_allocator(editor.perm_arena);
-    array_add(*editor.arenas, editor.perm_arena);
-    editor.perm_arena.debug_procs = make_arena_debug_procs(editor);
+    editor.arena = make_arena(editor, platform, .MEDIUM, "Perm", attach_debug_procs = false);
+    editor.arenas.allocator = arena_allocator(editor.arena);
+    array_add(*editor.arenas, editor.arena);
+    editor.arena.debug_procs = make_arena_debug_procs(editor);
 
-    editor.debug_frame_profiles = arena_push(editor.perm_arena, Editor.Frame_Profiles);
+    editor.debug_frame_profiles = arena_push(editor.arena, Editor.Frame_Profiles);
     {
         count := profiler_get_zone_count();
         if count {
             for * editor.debug_frame_profiles.entries {
-                it.zones       = arena_push_array(editor.perm_arena, Profiler_Zone, count);
-                it.zone_labels = arena_push_array(editor.perm_arena, string, count);
+                it.zones       = arena_push_array(editor.arena, Profiler_Zone, count);
+                it.zone_labels = arena_push_array(editor.arena, string, count);
             }
         }
     }
-    editor.debug_frame_timeline = arena_push(editor.perm_arena, Editor.Frame_Timeline);
+    editor.debug_frame_timeline = arena_push(editor.arena, Editor.Frame_Timeline);
 
     //
     // Init font
@@ -819,10 +819,10 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         input_state_update_with_event(*editor.input_state, it);
     }
 
-    editor.panel_key_map.allocator       = arena_allocator(editor.perm_arena);
-    editor.document_key_map.allocator    = arena_allocator(editor.perm_arena);
-    editor.compilation_key_map.allocator = arena_allocator(editor.perm_arena);
-    editor.listing_key_map.allocator     = arena_allocator(editor.perm_arena);
+    editor.panel_key_map.allocator       = arena_allocator(editor.arena);
+    editor.document_key_map.allocator    = arena_allocator(editor.arena);
+    editor.compilation_key_map.allocator = arena_allocator(editor.arena);
+    editor.listing_key_map.allocator     = arena_allocator(editor.arena);
 
     key_map_reserve(*editor.panel_key_map, 128);
     key_map_reserve(*editor.document_key_map, 128);
@@ -831,14 +831,14 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
 
     editor.theme = abulafia_theme(); // In case config doesn't load.
 
-    editor.watched_files.allocator = arena_allocator(editor.perm_arena);
+    editor.watched_files.allocator = arena_allocator(editor.arena);
 
-    editor.documents.allocator = arena_allocator(editor.perm_arena);
-    editor.listings.allocator  = arena_allocator(editor.perm_arena);
-    editor.panels.allocator    = arena_allocator(editor.perm_arena);
+    editor.documents.allocator = arena_allocator(editor.arena);
+    editor.listings.allocator  = arena_allocator(editor.arena);
+    editor.panels.allocator    = arena_allocator(editor.arena);
 
-    editor.project_directories.allocator               = arena_allocator(editor.perm_arena);
-    editor.project_search_ignore_directories.allocator = arena_allocator(editor.perm_arena);
+    editor.project_directories.allocator               = arena_allocator(editor.arena);
+    editor.project_search_ignore_directories.allocator = arena_allocator(editor.arena);
 
     // Create *scratch*, *messages* and the first panel.
     {
@@ -867,7 +867,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     {
         mini_panel := *editor.mini_panel;
 
-        mini_panel.key_map.allocator = arena_allocator(editor.perm_arena);
+        mini_panel.key_map.allocator = arena_allocator(editor.arena);
         key_map_reserve(*mini_panel.key_map, 128);
 
         // Mini text buffer gets its own arena, because it survives longer than the items.
@@ -876,7 +876,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
         mini_panel.items_arena = make_arena(editor, platform, .LARGE, "Minipanel Items");
         mini_panel.items.allocator = arena_allocator(mini_panel.items_arena);
 
-        mini_panel.userdata_arena = make_arena(editor, platform, .SMALL, "Minipanel Userdata");
+        mini_panel.arena = make_arena(editor, platform, .SMALL, "Minipanel");
     }
 
     //
@@ -885,13 +885,13 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     {
         modal_interaction := *editor.modal_interaction;
 
-        modal_interaction.key_map.allocator = arena_allocator(editor.perm_arena);
+        modal_interaction.key_map.allocator = arena_allocator(editor.arena);
         key_map_reserve(*editor.modal_interaction.key_map, 128);
 
         // Modal text buffer gets its own arena, because it survives longer than the items.
         text_buffer_init(*modal_interaction.buffer, make_arena(editor, platform, .SMALL, "Modal Buffer"));
 
-        modal_interaction.userdata_arena = make_arena(editor, platform, .SMALL, "Modal Userdata");
+        modal_interaction.arena = make_arena(editor, platform, .SMALL, "Modal");
     }
 
     {
@@ -1979,7 +1979,7 @@ editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #call
 
     if message.count > editor.last_message_allocated {
         // @Leak, but only a couple of times, before the size warms up.
-        last_message := copy_string(message,, arena_allocator(editor.perm_arena));
+        last_message := copy_string(message,, arena_allocator(editor.arena));
 
         editor.last_message_data      = last_message.data;
         editor.last_message_count     = last_message.count;
@@ -4475,7 +4475,7 @@ execute_listing_action :: (editor: *Editor, platform: Platform, input: Input, pa
             // TODO(jt): Also guard against one project directory being a prefix of another.
             if !array_find(editor.project_directories, listing.backing_directory_path) {
                 // TODO(jt): @Leak Not a big problem, but still a leak.
-                project_directory := arena_push_string(editor.perm_arena, listing.backing_directory_path);
+                project_directory := arena_push_string(editor.arena, listing.backing_directory_path);
                 array_add(*editor.project_directories, project_directory);
 
                 editor_log(editor, "Added project directory: %", project_directory);
@@ -5530,6 +5530,8 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
     }
 }
 
+#scope_module
+
 open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mini_Panel_Procs) {
     mp := *editor.mini_panel;
 
@@ -5561,8 +5563,6 @@ open_mini_panel :: (editor: *Editor, platform: Platform, input: Input, procs: Mi
     }
 }
 
-#scope_module
-
 close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     mp := *editor.mini_panel;
     assert(mp.open);
@@ -5581,7 +5581,7 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     arena_reset(mp.items_arena);
     mp.item_index = 0;
 
-    arena_reset(mp.userdata_arena);
+    arena_reset(mp.arena);
     mp.userdata = null;
 
     // Measure time again instead of using the frame's timestamp, because the operation could have taken long,
@@ -5595,8 +5595,7 @@ close_mini_panel :: (editor: *Editor, platform: Platform, input: Input) {
     interpolation_start(*mp.open_t, 1.0, 0.0, time, MINI_PANEL_CLOSE_DURATION);
 }
 
-#scope_file
-
+// It is valid to allocate params with the modal interaction's arena, which is only reset on close.
 open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, procs: Modal_Interaction_Procs, params: *void = null) {
     mi := *editor.modal_interaction;
 
@@ -5617,8 +5616,6 @@ open_modal_interaction :: (editor: *Editor, platform: Platform, input: Input, pr
     interpolation_init(*mi.cursor_color, editor.theme.cursor_color);
 }
 
-#scope_module
-
 close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
     mi := *editor.modal_interaction;
     assert(mi.open);
@@ -5631,7 +5628,7 @@ close_modal_interaction :: (editor: *Editor, platform: Platform, input: Input) {
 
     text_buffer_reset(*mi.buffer);
 
-    arena_reset(mi.userdata_arena);
+    arena_reset(mi.arena);
     mi.userdata = null;
 
     mi.open = false;
@@ -5943,9 +5940,9 @@ find_or_add_document :: (editor: *Editor, platform: Platform, kind: Document.Kin
     }
 
     // TODO(jt): @Leak The sprints below leak into perm.
-    document_arena         := make_arena(editor, platform, .MEDIUM, sprint("% (Doc)", debug_label_name,, arena_allocator(editor.perm_arena)));
-    buffer_arena           := make_arena(editor, platform, .LARGE,  sprint("% (Buffer)", debug_label_name,, arena_allocator(editor.perm_arena)));
-    buffer_edit_text_arena := make_arena(editor, platform, .LARGE,  sprint("% (Edits)", debug_label_name,, arena_allocator(editor.perm_arena)));
+    document_arena         := make_arena(editor, platform, .MEDIUM, sprint("% (Doc)", debug_label_name,, arena_allocator(editor.arena)));
+    buffer_arena           := make_arena(editor, platform, .LARGE,  sprint("% (Buffer)", debug_label_name,, arena_allocator(editor.arena)));
+    buffer_edit_text_arena := make_arena(editor, platform, .LARGE,  sprint("% (Edits)", debug_label_name,, arena_allocator(editor.arena)));
 
     document: Document;
     document.kind = kind;
@@ -6016,7 +6013,7 @@ find_or_add_listing :: (editor: *Editor, platform: Platform, kind: Listing.Kind,
     }
 
     // TODO(jt): @Leak The sprint below leaks into perm.
-    listing_arena := make_arena(editor, platform, .MEDIUM, sprint("% (Listing)", debug_label_name,, arena_allocator(editor.perm_arena)));
+    listing_arena := make_arena(editor, platform, .MEDIUM, sprint("% (Listing)", debug_label_name,, arena_allocator(editor.arena)));
 
     listing: Listing;
     listing.kind = .DIRECTORY;
@@ -6194,8 +6191,9 @@ document_change_lang :: (document: *Document, lang: Document.Lang) {
 // WARNING: At the moment, panels without views (documents/listings) are invalid, so only use this
 // if you know you are going to set the view soon after.
 panel_init :: (panel: *Panel, editor: *Editor, platform: Platform) {
-    panel.highlights_arena = make_arena(editor, platform, .LARGE, "Panel"); // TODO(jt): Better debug_label.
-    panel.highlights.allocator = arena_allocator(panel.highlights_arena);
+    panel.arena = make_arena(editor, platform, .LARGE, "Panel"); // TODO(jt): Better debug_label.
+    
+    panel.highlights.allocator = arena_allocator(panel.arena);
     panel.highlight_index = -1;
 }
 
@@ -6211,7 +6209,7 @@ panel_init_with_listing :: (panel: *Panel, editor: *Editor, platform: Platform, 
 
 // Don't use the panel after calling this!
 panel_deinit :: (panel: *Panel) {
-    arena_deinit(panel.highlights_arena);
+    arena_deinit(panel.arena);
 }
 
 panel_set_document :: (panel: *Panel, editor: Editor, document: *Document) {

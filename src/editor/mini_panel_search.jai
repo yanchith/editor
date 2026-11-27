@@ -32,9 +32,9 @@ can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> b
 }
 
 init :: (editor: *Editor, platform: Platform, input: Input) {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return;
     }
 
@@ -44,7 +44,7 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    userdata := arena_push(mini_panel.userdata_arena, Search_Userdata);
+    userdata := arena_push(mp.arena, Search_Userdata);
 
     if #complete panel.view.kind == {
         case .DOCUMENT; {
@@ -59,15 +59,15 @@ init :: (editor: *Editor, platform: Platform, input: Input) {
         }
     }
 
-    mini_panel.userdata = userdata;
+    mp.userdata = userdata;
 }
 
 update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
     ProfileZone("mini_panel_search_update_proc");
 
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return;
     }
 
@@ -78,13 +78,13 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
     }
 
     if buffer_changed {
-        array_reset(*mini_panel.items);
-        arena_reset(mini_panel.items_arena);
+        array_reset(*mp.items);
+        arena_reset(mp.items_arena);
 
         array_reset_keeping_memory(*panel.highlights);
         panel.highlight_index = -1;
 
-        search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
+        search_text := text_buffer_make_view_for_line(mp.buffer, 0,, temp);
         search_parts, smartcase := line_search_prepare_parts(search_text,, temp);
         search_part1_char_count := ifx search_parts.count then count_utf8_chars(search_parts[0]) else 0;
 
@@ -101,7 +101,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     // up to about 64MB, but this definitely needs to be 100x faster. An easy win would be
                     // fan-out & collect threading, but we should also do SIMD.
                     {
-                        push_allocator(arena_allocator(mini_panel.items_arena)); // So that the one line that crosses the gap survives until the mini panel closes.
+                        push_allocator(arena_allocator(mp.items_arena)); // So that the one line that crosses the gap survives until the mini panel closes.
                         for :text_buffer_context_allocator_lines line_text, line_index: document.buffer {
                             found, found_indices := line_search(line_text, search_parts, smartcase,, temp);
                             if found {
@@ -120,8 +120,8 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                                 highlight.x1 = x1;
                                 highlight.y  = line_index;
 
-                                item_index := mini_panel.items.count;
-                                item := array_add(*mini_panel.items);
+                                item_index := mp.items.count;
+                                item := array_add(*mp.items);
                                 item.text = s;
                                 if document.buffer.binary_mode {
                                     item.flags |= .BINARY;
@@ -131,7 +131,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                                 item.line_number_or_zero = line_index + 1;
                                 item.line_number_padding = SEARCH_LINE_NUMBER_PADDING;
 
-                                item_userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
+                                item_userdata := arena_push(mp.items_arena, Search_Item_Userdata);
                                 item_userdata.x = x0;
                                 item_userdata.y = line_index;
 
@@ -145,11 +145,11 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     }
 
                     if new_item_index == -1 {
-                        new_item_index = mini_panel.items.count - 1;
+                        new_item_index = mp.items.count - 1;
                     }
 
                     if new_item_index != -1 {
-                        mini_panel.item_index = new_item_index;
+                        mp.item_index = new_item_index;
                         panel.highlight_index = new_item_index;
                         selected_item_changed = true;
                     }
@@ -173,7 +173,7 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             found_index := found_indices[0]; // TODO(jt): @Incomplete Highlight all found parts.
 
                             line_number_prefix := temp_right_pad(tprint("%  ", it_index + 1), 4);
-                            s := sprint("%%", line_number_prefix, it.text,, arena_allocator(mini_panel.items_arena));
+                            s := sprint("%%", line_number_prefix, it.text,, arena_allocator(mp.items_arena));
 
                             x0 := found_index;
                             x1 := x0 + search_part1_char_count;
@@ -183,13 +183,13 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                             highlight.x1 = x1;
                             highlight.y  = it_index;
 
-                            item_index := mini_panel.items.count;
-                            item := array_add(*mini_panel.items);
+                            item_index := mp.items.count;
+                            item := array_add(*mp.items);
                             item.text = s;
                             item.highlight_x0 = line_number_prefix.count + x0;
                             item.highlight_x1 = line_number_prefix.count + x1;
 
-                            item_userdata := arena_push(mini_panel.items_arena, Search_Item_Userdata);
+                            item_userdata := arena_push(mp.items_arena, Search_Item_Userdata);
                             item_userdata.x = 0;
                             item_userdata.y = it_index;
 
@@ -202,11 +202,11 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                     }
 
                     if new_item_index == -1 {
-                        new_item_index = mini_panel.items.count - 1;
+                        new_item_index = mp.items.count - 1;
                     }
 
                     if new_item_index != -1 {
-                        mini_panel.item_index = new_item_index;
+                        mp.item_index = new_item_index;
                         panel.highlight_index = new_item_index;
                         selected_item_changed = true;
                     }
@@ -214,17 +214,17 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             }
         }
 
-        mini_panel.item_index = clamp(mini_panel.item_index, 0, mini_panel.items.count - 1);
+        mp.item_index = clamp(mp.item_index, 0, mp.items.count - 1);
     }
 
     if selected_item_changed {
-        panel.highlight_index = mini_panel.item_index;
+        panel.highlight_index = mp.item_index;
 
         // Changing the mini panel buffer OR the selected item can put the index to -1 (in case
         // of search, -1 can only be achieved by changing the buffer), so in general we don't
         // want to assert the index points to the array.
-        if mini_panel.item_index >= 0 {
-            item := *mini_panel.items[mini_panel.item_index];
+        if mp.item_index >= 0 {
+            item := *mp.items[mp.item_index];
 
             item_userdata: *Search_Item_Userdata = item.userdata;
             x := item_userdata.x;
@@ -257,15 +257,15 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 }
 
 delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return false;
     }
 
-    gb := mini_panel.buffer.gb;
+    gb := mp.buffer.gb;
     if gb.count {
-        text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursors);
+        text_buffer_delete_backward(*mp.buffer, *mp.cursors);
         return true;
     }
 
@@ -277,9 +277,9 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
 }
 
 confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return false;
     }
 
@@ -289,9 +289,9 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         return false;
     }
 
-    if mini_panel.items.count {
-        assert(mini_panel.item_index >= 0);
-        item := *mini_panel.items[mini_panel.item_index];
+    if mp.items.count {
+        assert(mp.item_index >= 0);
+        item := *mp.items[mp.item_index];
 
         item_userdata: *Search_Item_Userdata = item.userdata;
         x := item_userdata.x;
@@ -306,7 +306,7 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
                     text_buffer_move_to(document.buffer, *view.cursors, x, y, false);
                     view.flags |= .CLAMP_SCROLL_TO_CURSOR;
 
-                    userdata: *Search_Userdata = editor.mini_panel.userdata;
+                    userdata: *Search_Userdata = mp.userdata;
                     push_cursor_location(view, { userdata.original_x, userdata.original_y });
                     editor_log(editor, "Mark set where search started");
                 }
@@ -333,9 +333,9 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
 }
 
 cancel :: (editor: *Editor, platform: Platform, input: Input) {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return;
     }
 
@@ -345,7 +345,7 @@ cancel :: (editor: *Editor, platform: Platform, input: Input) {
         return;
     }
 
-    userdata: *Search_Userdata = editor.mini_panel.userdata;
+    userdata: *Search_Userdata = mp.userdata;
     x := userdata.original_x;
     y := userdata.original_y;
 

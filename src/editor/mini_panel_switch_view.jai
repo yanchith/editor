@@ -27,9 +27,9 @@ can_select_text_line :: (editor: *Editor, platform: Platform, input: Input) -> b
 init :: (editor: *Editor, platform: Platform, input: Input) {}
 
 update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bool, selected_item_changed: bool) {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return;
     }
 
@@ -40,10 +40,10 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
     }
 
     if buffer_changed {
-        array_reset(*mini_panel.items);
-        arena_reset(mini_panel.items_arena);
+        array_reset(*mp.items);
+        arena_reset(mp.items_arena);
 
-        search_text := text_buffer_make_view_for_line(mini_panel.buffer, 0,, temp);
+        search_text := text_buffer_make_view_for_line(mp.buffer, 0,, temp);
         search_parts, smartcase := line_search_prepare_parts(search_text,, temp);
         search_part1_char_count := ifx search_parts.count then count_utf8_chars(search_parts[0]) else 0;
 
@@ -65,22 +65,22 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 // Select the most recent document, except the one pointed to by the currently active panel.
                 if it != current_thing && it.time_of_last_activation > max_time_of_last_activation {
                     max_time_of_last_activation = it.time_of_last_activation;
-                    mini_panel.item_index = mini_panel.items.count;
+                    mp.item_index = mp.items.count;
                 }
 
                 s := "";
                 if document_name.count {
-                    s = arena_push_string(mini_panel.items_arena, document_name);
+                    s = arena_push_string(mp.items_arena, document_name);
                 }
 
                 x0 := count_utf8_chars(String.slice(document_name, 0, found_index));
 
-                item := array_add(*mini_panel.items);
+                item := array_add(*mp.items);
                 item.text = s;
                 item.highlight_x0 = x0;
                 item.highlight_x1 = x0 + search_part1_char_count;
 
-                userdata := arena_push(mini_panel.items_arena, Switch_View_Item_Userdata);
+                userdata := arena_push(mp.items_arena, Switch_View_Item_Userdata);
                 userdata.kind = .DOCUMENT;
                 userdata.pointer = it;
 
@@ -98,22 +98,22 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
                 // Select the most recent listing, except the one pointed to by the currently active panel.
                 if it != current_thing && it.time_of_last_activation > max_time_of_last_activation {
                     max_time_of_last_activation = it.time_of_last_activation;
-                    mini_panel.item_index = mini_panel.items.count;
+                    mp.item_index = mp.items.count;
                 }
 
                 s := "";
                 if listing_name.count {
-                    s = arena_push_string(mini_panel.items_arena, listing_name);
+                    s = arena_push_string(mp.items_arena, listing_name);
                 }
 
                 x0 := count_utf8_chars(String.slice(listing_name, 0, found_index));
 
-                item := array_add(*mini_panel.items);
+                item := array_add(*mp.items);
                 item.text = s;
                 item.highlight_x0 = x0;
                 item.highlight_x1 = x0 + search_part1_char_count;
 
-                userdata := arena_push(mini_panel.items_arena, Switch_View_Item_Userdata);
+                userdata := arena_push(mp.items_arena, Switch_View_Item_Userdata);
                 userdata.kind = .LISTING;
                 userdata.pointer = it;
 
@@ -121,20 +121,20 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
             }
         }
 
-        mini_panel.item_index = clamp(mini_panel.item_index, 0, mini_panel.items.count - 1);
+        mp.item_index = clamp(mp.item_index, 0, mp.items.count - 1);
     }
 }
 
 delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return false;
     }
 
-    gb := mini_panel.buffer.gb;
+    gb := mp.buffer.gb;
     if gb.count {
-        text_buffer_delete_backward(*mini_panel.buffer, *mini_panel.cursors);
+        text_buffer_delete_backward(*mp.buffer, *mp.cursors);
         return true;
     }
 
@@ -142,20 +142,20 @@ delete_backward :: (editor: *Editor, platform: Platform, input: Input) -> buffer
 }
 
 autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return false;
     }
 
-    if mini_panel.items.count == 1 {
-        text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursors);
-        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, mini_panel.items[0].text);
+    if mp.items.count == 1 {
+        text_buffer_delete_all(*mp.buffer, *mp.cursors);
+        text_buffer_insert(*mp.buffer, *mp.cursors, mp.items[0].text);
 
         return true;
-    } else if mini_panel.items.count > 1 {
-        text_buffer_delete_all(*mini_panel.buffer, *mini_panel.cursors);
-        text_buffer_insert(*mini_panel.buffer, *mini_panel.cursors, mini_panel.items[mini_panel.item_index].text);
+    } else if mp.items.count > 1 {
+        text_buffer_delete_all(*mp.buffer, *mp.cursors);
+        text_buffer_insert(*mp.buffer, *mp.cursors, mp.items[mp.item_index].text);
 
         return true;
     }
@@ -164,9 +164,9 @@ autocomplete :: (editor: *Editor, platform: Platform, input: Input) -> buffer_ch
 }
 
 confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed: bool {
-    mini_panel := *editor.mini_panel;
-    sanity_assert(mini_panel.open);
-    if !mini_panel.open {
+    mp := *editor.mini_panel;
+    sanity_assert(mp.open);
+    if !mp.open {
         return false;
     }
 
@@ -176,10 +176,10 @@ confirm :: (editor: *Editor, platform: Platform, input: Input) -> buffer_changed
         return false;
     }
 
-    if mini_panel.items.count {
-        assert(mini_panel.item_index >= 0);
+    if mp.items.count {
+        assert(mp.item_index >= 0);
 
-        userdata: *Switch_View_Item_Userdata = mini_panel.items[mini_panel.item_index].userdata;
+        userdata: *Switch_View_Item_Userdata = mp.items[mp.item_index].userdata;
         if #complete userdata.kind == {
             case .DOCUMENT; {
                 document: *Document = userdata.pointer;
