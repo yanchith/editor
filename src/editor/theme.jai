@@ -43,7 +43,6 @@ Theme :: struct {
 
     mini_panel_line_color: Vector4;
     mini_panel_item_text_color: Vector4;
-    mini_panel_item_warning_text_color: Vector4;
 
     invert_color_under_selection: bool;
     // TODO(jt): invert_color_under_highlight: bool;
@@ -97,7 +96,6 @@ abulafia_theme :: () -> Theme {
 
     t.mini_panel_line_color      = cursor_minus_2;
     t.mini_panel_item_text_color = text_color;
-    t.mini_panel_item_warning_text_color = unpack_srgba(0xe95410ff);
 
     return t;
 }
@@ -144,7 +142,6 @@ naysayer_theme :: () -> Theme {
 
     t.mini_panel_line_color      = cursor_minus_2;
     t.mini_panel_item_text_color = text_color;
-    t.mini_panel_item_warning_text_color = unpack_srgba(0xe95410ff);
 
     return t;
 }
@@ -194,7 +191,6 @@ handmade_theme :: () -> Theme {
 
     t.mini_panel_line_color      = cursor_minus_2;
     t.mini_panel_item_text_color = text_color;
-    t.mini_panel_item_warning_text_color = unpack_srgba(0xe95410ff);
 
     return t;
 }
@@ -242,7 +238,6 @@ stb_theme :: () -> Theme {
 
     t.mini_panel_line_color      = foreground_color;
     t.mini_panel_item_text_color = foreground_color;
-    t.mini_panel_item_warning_text_color = foreground_color;
 
     t.invert_color_under_selection = true;
     // t.invert_color_under_highlight = true;
@@ -294,7 +289,6 @@ zenburn_theme :: () -> Theme {
 
     t.mini_panel_line_color      = set_alpha(adjust_saturation_and_value(cursor_color, 0.5, 1.2), 0.1);
     t.mini_panel_item_text_color = text_color;
-    t.mini_panel_item_warning_text_color = unpack_srgba(0xecb3b3ff);
 
     return t;
 }
@@ -349,7 +343,6 @@ visual_studio_light_theme :: () -> Theme {
 
     t.mini_panel_line_color      = selection_color;
     t.mini_panel_item_text_color = foreground_color;
-    t.mini_panel_item_warning_text_color = keyword_color;
 
     return t;
 }

@@ -6,22 +6,22 @@ TODO(jt): Known critical bugs:
 
 TODO(jt): Known serious bugs:
 
+- Really long lines (millions of characters) are a performance problem.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Windows: Renderer stutter when we start animating after a period of inactivity.
 - Sticky cursor maybe shouldn't be active if we are selecting? It sometimes causes us to select more than we want to.
 - Indenting after 'if wParam {  // We are being activated.' is incorrectly HANGING. Ignore comments.
 
-
 TODO(jt): HMN Beta Week feedback:
 
+- Consistently visualize that a file is modified in both modeline and view list. Current visualization is confusing to some people.
+- Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
+- Make "file is modified, are you sure you want to close the view?" modal interaction.
+- Do a confirmation prompt warning about modified files when people try to exit.
 - Make it possible to open in a directory from the command line. This should probably open
   a directory lister on top of the welcome message.
 - Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
-- Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Support line wrapping.
-- Consistently visualize that a file is modified in both modeline and view list. Current visualization is confusing to some people.
-- Make "file is modified, are you sure you want to close the view?" modal interaction.
-- Do a confirmation prompt warning about modified files when people try to exit.
 - Color of modeline vs active modeline and gutter width customizability.
   Maybe let's get all visual tweaks from config? Even themes?
 - Make it possible to change the color of the text line in the minipanel.
@@ -661,8 +661,7 @@ Mini_Panel :: struct {
         Flags :: enum_flags u64 {
             NONE :: 0;
 
-            BINARY  :: 0x01;
-            WARNING :: 0x02;
+            BINARY :: 0x01;
         }
 
         line_number_or_zero: s64;
@@ -1514,9 +1513,6 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
                     offset_y: f64 = mp_y + cast(f64, it + 1) * cell_h - mini_viewport_y0;
                     color := editor.theme.mini_panel_item_text_color;
-                    if item.flags & .WARNING {
-                        color = editor.theme.mini_panel_item_warning_text_color;
-                    }
 
                     x0 := mp_x0;
 
@@ -3997,7 +3993,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
                     buffer_changed = true;
                     view.selecting = false;
                 } else {
-                    editor_log(editor, "No line comment defined for language: %", get_document_lang(document));
+                    editor_log(editor, "No line comment defined for %", get_document_lang(document));
                 }
             } else if view.cursors.c0.y == view.cursors.c1.y {
                 // TODO(jt): Add single line block comments (if we have a selection going)
@@ -5405,13 +5401,17 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 document_name := get_document_name(editor, document);
                 document_lang := get_document_lang(document);
+                document_modified := ifx document.flags & .MODIFIED then "*" else "-";
+                document_readonly := ifx document.flags & .READONLY then "%" else "-";
 
-                left_part  := tprint("% %", temp_right_pad(document_lang, 10), document_name);
-                right_part := tprint("%\% L% C%", percent, cursor.y + 1, temp_right_pad(tprint("%", cursor.x + 1), 4));
+                MARGIN :: 2;
+                
+                left_part  := tprint("%%% LF   % %", temp_right_pad("", MARGIN), document_modified, document_readonly, temp_right_pad(document_lang, 10), document_name);
+                //                        CRLF
+                right_part := tprint("%\% L% C%", percent, cursor.y + 1, cursor.x + 1);
 
-                padding := cast(s64, round(panel_w / cell_w)) - count_utf8_chars(left_part) - 10;
-                s := tprint("     % %", left_part, temp_left_pad(right_part, padding));
-
+                padding := cast(s64, floor(panel_w / cell_w)) - 1 /*format spaces*/ - count_utf8_chars(left_part) - MARGIN;
+                s := tprint("% %", left_part, temp_left_pad(right_part, padding));
                 _font_layout_and_draw_text(*editor.font, s,
                                            render_commands, atlas_update_regions,
                                            modeline_offset, modeline_rect,
@@ -5511,11 +5511,13 @@ draw_panel :: (editor: *Editor, input: Input, render_commands: *[..] Render_Comm
 
                 listing_name := get_listing_name(editor, listing);
 
-                left_part  := tprint("Directory  %", listing_name);
-                right_part := tprint("%\% L%    ", percent, item_index + 1);
+                MARGIN :: 2;
+                
+                left_part  := tprint("%        Directory  %", temp_right_pad("", MARGIN), listing_name);
+                right_part := tprint("%\% L%", percent, item_index + 1);
 
-                padding := cast(s64, round(panel_w / cell_w)) - count_utf8_chars(left_part) - 10;
-                s := tprint("     % %", left_part, temp_left_pad(right_part, padding));
+                padding := cast(s64, round(panel_w / cell_w)) - 1 /*format spaces*/ - count_utf8_chars(left_part) - MARGIN;
+                s := tprint("% %", left_part, temp_left_pad(right_part, padding));
 
                 _font_layout_and_draw_text(*editor.font, s,
                                            render_commands, atlas_update_regions,

@@ -80,7 +80,6 @@ update :: (editor: *Editor, platform: Platform, input: Input, buffer_changed: bo
 
                 item := array_add(*mini_panel.items);
                 item.text = s;
-                item.flags = ifx it.flags & .MODIFIED then .WARNING;
                 item.highlight_x0 = x0;
                 item.highlight_x1 = x0 + search_part1_char_count;
 

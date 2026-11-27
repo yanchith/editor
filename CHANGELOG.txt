@@ -10,6 +10,7 @@ New features:
   if a new warning or error is logged.
 - We now log external search tool (currently rg) errors to *messages*.
 - We now also report conflicting keybind warnings to *messages*.
+- Document modified and readonly flags are now displayed in the mode line.
 
 Speed improvements:
 
