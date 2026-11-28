@@ -8,8 +8,8 @@
 # try modifying constants tagged with :Config to get a taste.
 #
 # Keybindings are organized in various sections, depending on what context you are in,
-# e.g. whether you are editing a text file, or seeing a directory listing.
-# This is a little overwhelming on the user side, and I will try to simplify this.
+# e.g. whether you are editing a text file, looking at a directory listing, etc.
+# This is a little overwhelming, and I will try to simplify this.
 #
 # You can reload this config by running the reload_config command.
 #

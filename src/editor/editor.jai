@@ -105,8 +105,9 @@ TODO(jt): Roadmap:
 - [X] C-u C-<space> (cursor undo)
 - [ ] M-q (reflow)
 - [ ] M-u, M-l (upcase/downcase word and move cursor)
-- [X] q to hide compilation or listing
-- [ ] C-x s save_all_documents
+- [X] q to hide *compilation* or directory listing
+- [ ] q to hide *messages* (but we don't have a special event routing for messages and we'd like to not create one)
+- [X] C-x s save_all_documents
 - [ ] align: aligns selection on first occurence of string
 - [ ] create_directory modal interaction command (executable from anywhere we have a backing directory)
 - [ ] search_and_replace should preserve capitalization (camelCase, PamelCase, UPPER_CASE, lower_case)
@@ -2814,6 +2815,8 @@ Panel_Action :: enum {
     COMPILE_IN_DIRECTORY;
 
     // Things below could be in Global_Action, if we ever create it.
+    
+    SAVE_ALL_DOCUMENTS;
 
     FONT_SIZE_INCREASE;
     FONT_SIZE_DECREASE;
@@ -3329,6 +3332,8 @@ execute_panel_action :: (editor: *Editor, platform: Platform, input: Input, pane
         case .COMPILE_IN_PROJECT_OR_DIRECTORY;  open_modal_interaction(editor, platform, input, modal_interaction_compile_procs, cast(*void, Modal_Interaction_Compile_Mode.PROJECT_OR_DIRECTORY));
         case .COMPILE_IN_DIRECTORY;             open_modal_interaction(editor, platform, input, modal_interaction_compile_procs, cast(*void, Modal_Interaction_Compile_Mode.DIRECTORY));
 
+        case .SAVE_ALL_DOCUMENTS;               save_all_documents(editor, platform, input);
+        
         case .FONT_SIZE_INCREASE;               editor.font_size += 1;
         case .FONT_SIZE_DECREASE;               editor.font_size = max(editor.font_size - 1, 1);
         case .FONT_SUBPIXEL_RENDERING_ENABLE;   font_reset_for_options(*editor.font, editor.font.pixel_height, editor.font.line_height_multiplier, true); editor_log(editor, "Subpixel rendering on");
@@ -3513,91 +3518,8 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
             }
         }
 
-        case .SAVE_DOCUMENT; {
-            if document.backing_file_path.count {
-                if !document.backing_file_exists || document.flags & .MODIFIED {
-                    buffer := *document.buffer;
-
-                    if STRIP_WHITESPACE_ON_SAVE {
-                        strip_whitespace(view);
-                    }
-
-                    ensure_directory(editor, platform, document.backing_directory_path);
-
-                    gap_buffer_move_gap_to(*buffer.gb, 0);
-                    contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
-                    success := platform.write_file(document.backing_file_path, contents);
-                    if success {
-                        editor_log(editor, "Saved file %", document.backing_file_path);
-
-                        document.flags &= ~.MODIFIED;
-                        document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
-
-                        interpolation_start(*view.cursor_color,
-                                            editor.theme.cursor_color_hot, editor.theme.cursor_color,
-                                            input.time, CURSOR_FLASH_DURATION);
-
-
-                        if !document.backing_file_exists {
-                            watch_file(editor, platform, input, document.backing_file_path);
-                        }
-
-                        document.backing_file_exists = true;
-                        document.backing_file_time_of_last_save = input.time;
-                        document.backing_file_time_of_last_sync = input.time;
-
-                        // We sync the modification time and size here, but the filesystem may give us
-                        // stale data and our write is not yet visible. If this happens, it will cause
-                        // the polling fallback of the file watcher to reload the and rehash the file.
-                        _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
-                        document.backing_file_last_synced_modification_time = modification_time;
-                        document.backing_file_last_synced_size = size;
-                        document.backing_file_last_synced_hash = hash_text_buffer_contents(document.buffer);
-                    } else {
-                        editor_log(editor, "Failed to write file %", document.backing_file_path);
-                    }
-
-                } else {
-                    editor_log(editor, "(Already saved)");
-                }
-            }
-        }
-        case .RELOAD_DOCUMENT; {
-            if document.backing_file_path {
-                success, file_contents := platform.read_file(document.backing_file_path,, temp);
-                if success {
-                    document.backing_file_exists = true;
-                    document.backing_file_time_of_last_save = input.time;
-                    document.backing_file_time_of_last_sync = input.time;
-
-                    _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
-                    document.backing_file_last_synced_modification_time = modification_time;
-                    document.backing_file_last_synced_size = size;
-                    document.backing_file_last_synced_hash = hash_file_contents(file_contents);
-
-                    original_cursor := view.cursors.c0;
-
-                    view.cursors.c0 = { 0, 0 };
-                    view.cursors.c1 = { 0, 0 };
-                    text_buffer_reset(*document.buffer);
-
-                    text_buffer_insert(*document.buffer, *view.cursors, file_contents, .OMIT);
-                    text_buffer_move_to(document.buffer, *view.cursors, original_cursor, false);
-
-                    document.flags &= ~.MODIFIED;
-                    document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
-
-                    interpolation_start(*view.cursor_color,
-                                        editor.theme.cursor_color_hot, editor.theme.cursor_color,
-                                        input.time, CURSOR_FLASH_DURATION);
-
-                    update_scopes(document);
-                    document_update_tokens(document);
-
-                    editor_log(editor, "Reloaded file: %", document.backing_file_path);
-                }
-            }
-        }
+        case .SAVE_DOCUMENT;    save_document(editor, platform, input, view);
+        case .RELOAD_DOCUMENT;  reload_document(editor, platform, input, view);
 
         // Unlike Emacs, where move-text.el allows doing freeform stuff with selections covering parts of lines,
         // we always operate on multiples of whole lines, since I never used this freeform stuff myself.
@@ -4077,7 +3999,7 @@ execute_document_action :: (editor: *Editor, platform: Platform, input: Input, p
         case .STRIP_WHITESPACE; {
             document.flags |= .MODIFY_ATTEMPT_THIS_FRAME;
             if !(document.flags & .READONLY) {
-                buffer_changed |= strip_whitespace(view);
+                buffer_changed |= strip_whitespace(*document.buffer, *view.cursors);
             }
         }
 
@@ -5756,15 +5678,16 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
             canonicalize_path(*file_absolute_path);
 
             listing, listing_added := find_or_add_listing(editor, platform, .DIRECTORY, file_absolute_path);
-            editor_log(editor, "Opening directory: %", file_absolute_path);
 
             // Refresh regardless of whether we already had the directory listed, so that we show new data.
             // TODO(jt): We should watch changes in the directory and periodically refresh its contents.
             refresh_directory_listing(platform, listing);
 
             panel_set_listing(panel, editor, listing);
+            
+            editor_log(editor, "Opened directory %", file_absolute_path);
         } else {
-            log_error("Failed to get absolute_path for %", file_path);
+            log_error("Failed to get absolute path for %", file_path);
         }
     } else {
         success, file_absolute_path := platform.get_absolute_path(file_path,, temp);
@@ -5777,8 +5700,6 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
             document, document_added := find_or_add_document(editor, platform, .FILE, directory_absolute_path, file_absolute_path);
             if document_added {
                 if file_exists {
-                    editor_log(editor, "Opening file: %", file_absolute_path);
-
                     document.backing_file_exists = true;
                     document.backing_file_time_of_last_sync = input.time;
 
@@ -5801,12 +5722,13 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
                         document_update_tokens(document);
 
                         watch_file(editor, platform, input, document.backing_file_path);
-                        editor_log(editor, "Opened file: %", file_absolute_path);
+                        
+                        editor_log(editor, "Opened %", file_absolute_path);
                     } else {
-                        editor_log(editor, "Failed to open file: %", file_absolute_path);
+                        editor_log(editor, "Failed to open file %", file_absolute_path);
                     }
                 } else {
-                    editor_log(editor, "Opening new file: %", file_absolute_path);
+                    editor_log(editor, "Opening new file %", file_absolute_path);
                 }
             }
 
@@ -5815,6 +5737,165 @@ open_file :: (editor: *Editor, platform: Platform, input: Input, file_path: stri
     }
 
     return panel;
+}
+
+save_document :: (editor: *Editor, platform: Platform, input: Input, view: *Document_View) {
+    document := view.document;
+    
+    if document.backing_file_path.count {
+        if !document.backing_file_exists || document.flags & .MODIFIED {
+            buffer := *document.buffer;
+            
+            if STRIP_WHITESPACE_ON_SAVE {
+                strip_whitespace(buffer, *view.cursors);
+            }
+            
+            ensure_directory(editor, platform, document.backing_directory_path);
+            
+            gap_buffer_move_gap_to(*buffer.gb, 0);
+            contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
+            success := platform.write_file(document.backing_file_path, contents);
+            if success {
+                editor_log(editor, "Saved file %", document.backing_file_path);
+                
+                document.flags &= ~.MODIFIED;
+                document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
+                
+                if document.flags & .READONLY {
+                    interpolation_init(*view.cursor_color, editor.theme.cursor_color_readonly);
+                } else {
+                    interpolation_init(*view.cursor_color, editor.theme.cursor_color);
+                }
+                
+                if !document.backing_file_exists {
+                    watch_file(editor, platform, input, document.backing_file_path);
+                }
+                
+                document.backing_file_exists = true;
+                document.backing_file_time_of_last_save = input.time;
+                document.backing_file_time_of_last_sync = input.time;
+                
+                // We sync the modification time and size here, but the filesystem may give us
+                // stale data and our write is not yet visible. If this happens, it will cause
+                // the polling fallback of the file watcher to reload the and rehash the file.
+                _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+                document.backing_file_last_synced_modification_time = modification_time;
+                document.backing_file_last_synced_size = size;
+                document.backing_file_last_synced_hash = hash_text_buffer_contents(document.buffer);
+            } else {
+                editor_log(editor, "Failed to write file %", document.backing_file_path);
+            }
+            
+        } else {
+            editor_log(editor, "(Already saved)");
+        }
+    }
+}
+
+save_all_documents :: (editor: *Editor, platform: Platform, input: Input) {
+    save_count := 0;
+    for * document: editor.documents {
+        if document.backing_file_path.count {
+            if !document.backing_file_exists || document.flags & .MODIFIED {
+                buffer := *document.buffer;
+                
+                if STRIP_WHITESPACE_ON_SAVE {
+                    strip_whitespace(buffer, *document.cursors_cold);
+                }
+                
+                ensure_directory(editor, platform, document.backing_directory_path);
+                
+                gap_buffer_move_gap_to(*buffer.gb, 0);
+                contents := gap_buffer_make_view(buffer.gb, 0, buffer.gb.count, assert_no_allocations = true);
+                success := platform.write_file(document.backing_file_path, contents);
+                if success {
+                    editor_log(editor, "Saved %", document.backing_file_path);
+                    
+                    document.flags &= ~.MODIFIED;
+                    document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
+                    
+                    if !document.backing_file_exists {
+                        watch_file(editor, platform, input, document.backing_file_path);
+                    }
+                    
+                    document.backing_file_exists = true;
+                    document.backing_file_time_of_last_save = input.time;
+                    document.backing_file_time_of_last_sync = input.time;
+                    
+                    // We sync the modification time and size here, but the filesystem may give us
+                    // stale data and our write is not yet visible. If this happens, it will cause
+                    // the polling fallback of the file watcher to reload the and rehash the file.
+                    _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+                    document.backing_file_last_synced_modification_time = modification_time;
+                    document.backing_file_last_synced_size = size;
+                    document.backing_file_last_synced_hash = hash_text_buffer_contents(document.buffer);
+                    
+                    save_count += 1;
+                } else {
+                    editor_log(editor, "Failed to write file %", document.backing_file_path);
+                }
+            }
+        }
+    }
+    
+    maybe_s :: (count: s64) -> string #expand {
+        return ifx count == 1 then "" else "s";
+    }
+    
+    editor_log(editor, "Saved % file%", save_count, maybe_s(save_count));
+    
+    // Update cursors colors, becuase we just saved everything.
+    for * panel: editor.panels {
+        if panel.view.kind == .DOCUMENT {
+            view := *panel.view._document;
+            document := view.document;
+            
+            if document.flags & .READONLY {
+                interpolation_init(*view.cursor_color, editor.theme.cursor_color_readonly);
+            } else {
+                interpolation_init(*view.cursor_color, editor.theme.cursor_color);
+            }
+        }
+    }
+}
+
+reload_document :: (editor: *Editor, platform: Platform, input: Input, view: *Document_View) {
+    document := view.document;
+    
+    if document.backing_file_path {
+        success, file_contents := platform.read_file(document.backing_file_path,, temp);
+        if success {
+            document.backing_file_exists = true;
+            document.backing_file_time_of_last_save = input.time;
+            document.backing_file_time_of_last_sync = input.time;
+            
+            _, modification_time, size := platform.file_modification_time_and_size(document.backing_file_path);
+            document.backing_file_last_synced_modification_time = modification_time;
+            document.backing_file_last_synced_size = size;
+            document.backing_file_last_synced_hash = hash_file_contents(file_contents);
+            
+            original_cursor := view.cursors.c0;
+            
+            view.cursors.c0 = { 0, 0 };
+            view.cursors.c1 = { 0, 0 };
+            text_buffer_reset(*document.buffer);
+            
+            text_buffer_insert(*document.buffer, *view.cursors, file_contents, .OMIT);
+            text_buffer_move_to(document.buffer, *view.cursors, original_cursor, false);
+            
+            document.flags &= ~.MODIFIED;
+            document.flags &= ~.READONLY_BECAUSE_OF_FILESYSTEM_CONFLICT;
+            
+            interpolation_start(*view.cursor_color,
+                                editor.theme.cursor_color_hot, editor.theme.cursor_color,
+                                input.time, CURSOR_FLASH_DURATION);
+            
+            update_scopes(document);
+            document_update_tokens(document);
+            
+            editor_log(editor, "Reloaded file: %", document.backing_file_path);
+        }
+    }
 }
 
 get_working_directory_for_active_view :: (editor: Editor, search_for_project: bool) -> success: bool, directory: string, directory_is_project: bool {
@@ -5866,8 +5947,6 @@ ensure_directory :: (editor: *Editor, platform: Platform, _path: string) {
     if !String.ends_with(path, "/") {
         path = tprint("%/", path);
     }
-
-    editor_log(editor, "Ensuring directory: %", path);
 
     index := String.find_index_from_left(path, #char "/", 0);
     while index != -1 {
@@ -6311,33 +6390,31 @@ panel_set_listing :: (panel: *Panel, editor: Editor, listing: *Listing) {
     listing.time_of_last_activation = editor.input_state.time;
 }
 
-strip_whitespace :: (view: *Document_View) -> buffer_changed: bool {
-    document := view.document;
-
+strip_whitespace :: (buffer: *Text_Buffer, cursors: *Text_Cursors) -> buffer_changed: bool {
     trimmed := false;
-    if !document.buffer.binary_mode {
-        cursor0 := view.cursors.c0;
-        cursor1 := view.cursors.c1;
+    if !buffer.binary_mode {
+        cursor0 := cursors.c0;
+        cursor1 := cursors.c1;
 
         start_line_index := cursor0.y;
         end_line_index   := cursor1.y;
         if cursor0 == cursor1 {
             start_line_index = 0;
-            end_line_index   = document.buffer.line_count - 1;
+            end_line_index   = buffer.line_count - 1;
         }
 
-        gb_index := text_buffer_get_gap_buffer_index_for_line(document.buffer, start_line_index);
+        gb_index := text_buffer_get_gap_buffer_index_for_line(buffer, start_line_index);
         for start_line_index..end_line_index {
-            view.cursors.c0 = { 0, it };
-            view.cursors.c1 = { 0, it };
-            trimmed |= text_buffer_trim_line(*document.buffer, *view.cursors, ifx trimmed then .FUSE else .NONE, __line_gb_index = gb_index);
+            cursors.c0 = { 0, it };
+            cursors.c1 = { 0, it };
+            trimmed |= text_buffer_trim_line(buffer, cursors, ifx trimmed then .FUSE else .NONE, __line_gb_index = gb_index);
 
-            gb_index += document.buffer.line_bytes[it];
+            gb_index += buffer.line_bytes[it];
         }
 
-        view.cursors.c0 = cursor0;
-        view.cursors.c1 = cursor1;
-        text_buffer_clamp_cursors(document.buffer, *view.cursors);
+        cursors.c0 = cursor0;
+        cursors.c1 = cursor1;
+        text_buffer_clamp_cursors(buffer, cursors);
     }
 
     return trimmed;

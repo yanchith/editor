@@ -12,6 +12,7 @@ New features:
 - We now also report conflicting keybind warnings to *messages*.
 - Document modified and readonly flags are now displayed in the mode line.
 - We now prompt for confirmation when closing a modified file with close_view.
+- All unsaved documents can now be saved with the save_all_documents command.
 
 Speed improvements:
 
