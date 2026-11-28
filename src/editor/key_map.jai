@@ -12,7 +12,7 @@ Shortcut_Key :: struct {
 shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key) -> bool {
     if a.modifier_flags != b.modifier_flags  return false;
     if a.type           != b.type            return false;
-    
+
     if a.type == .CODEPOINT && a.data < 127 && b.data < 127 {
         ascii_a := cast(u8, a.codepoint);
         ascii_b := cast(u8, b.codepoint);
@@ -25,7 +25,7 @@ shortcut_key_equals_nocase :: (a: Shortcut_Key, b: Shortcut_Key) -> bool {
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -85,13 +85,13 @@ shortcut_equals_nocase :: (a: Shortcut, b: Shortcut) -> bool {
     if a.count != b.count {
         return false;
     }
-    
+
     for 0..a.count - 1 {
         if !shortcut_key_equals_nocase(a.sequence[it], b.sequence[it]) {
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -278,11 +278,16 @@ shortcut_print_to_builder :: (shortcut: Shortcut, sb: *String_Builder) {
                     case .DELETE;        append(sb, "<delete>");
 
                     case; {
+                        codepoint := cast(u32, key.codepoint);
+                        if codepoint < 127 {
+                            codepoint = to_lower(cast,trunc(u8, codepoint));
+                        }
+
                         buf: [4] u8;
                         s: string;
                         s.data = buf.data;
 
-                        Unicode.character_utf32_to_utf8(cast(u32, key.codepoint), *s);
+                        Unicode.character_utf32_to_utf8(codepoint, *s);
 
                         append(sb, s);
                     }
@@ -360,17 +365,17 @@ key_map_add :: (key_map: *Key_Map($T), shortcut_string: string, action: T) -> ad
     if success {
         success = key_map_add(key_map, shortcut, action);
     }
-    
+
     return success;
 }
 
 key_map_add :: (key_map: *Key_Map($T), shortcut: Shortcut, action: T) -> added: bool {
     InitAllocators(key_map);
-    
+
     for key_map.registered {
         if shortcut_equals_nocase(it.shortcut, shortcut)  return false;
     }
-    
+
     array_add(*key_map.registered, { shortcut, action });
     return true;
 }

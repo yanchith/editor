@@ -14,7 +14,6 @@ TODO(jt): Known serious bugs:
 TODO(jt): HMN Beta Week feedback:
 
 - Do a confirmation prompt warning about modified files when people try to exit.
-- Show breadcrumbs of currently-typed keyboard shortcut, e.g. show 'C-x' if we are in the middle of typing 'C-x C-f'.
 - Make it possible to open in a directory from the command line. This should probably open
   a directory lister on top of the welcome message.
 - Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
@@ -1609,17 +1608,48 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
             draw_rect(*render_commands, message_line_x0, message_line_y, window_w, window_h, editor.theme.background_color);
 
+            offset  := DVector2.{ message_line_x0, message_line_y };
+            scissor := Rect.{ message_line_x0, message_line_y, message_line_x1, window_h };
+            
             if editor.last_message_count && !editor.last_message_seen {
                 last_message: string = { editor.last_message_count, editor.last_message_data };
-
-                offset  := DVector2.{ message_line_x0, message_line_y };
-                scissor := Rect.{ message_line_x0, message_line_y, message_line_x1, window_h };
                 _font_layout_and_draw_text(*editor.font, last_message,
                                            *render_commands, *atlas_update_regions,
                                            offset, scissor,
                                            editor.theme.text_color, .REGULAR,
                                            .[], .[],
                                            binary = false);
+            } else {
+                // TODO(jt): @Cleanup This is a little ugly. Panel key map takes precedence, and only one of the others
+                // can be active. Maybe we want some kind of layer system, where we have (Global->)Panel->Layer.
+                // Currently document, compilation and listing are all hardcoded layers.
+                buffered_input: Shortcut;
+                if editor.panel_key_map.buffered_input.count {
+                    buffered_input = editor.panel_key_map.buffered_input;
+                } else if editor.document_key_map.buffered_input.count {
+                    buffered_input = editor.document_key_map.buffered_input;
+                } else if editor.compilation_key_map.buffered_input.count {
+                    buffered_input = editor.compilation_key_map.buffered_input;
+                } else if editor.listing_key_map.buffered_input.count {
+                    buffered_input = editor.listing_key_map.buffered_input;
+                }
+                
+                if buffered_input.count {
+                    sb: String_Builder;
+                    sb.allocator = temp;
+                    
+                    shortcut_print_to_builder(buffered_input, *sb);
+                    append(*sb, "-");
+                    
+                    breadcrumbs := builder_to_string(*sb,, temp);
+                    
+                    _font_layout_and_draw_text(*editor.font, breadcrumbs,
+                                               *render_commands, *atlas_update_regions,
+                                               offset, scissor,
+                                               editor.theme.text_color, .REGULAR,
+                                               .[], .[],
+                                               binary = false);
+                }
             }
         }
 
