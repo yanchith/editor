@@ -49,4 +49,6 @@ Platform :: struct {
 
     get_clipboard_text:              () -> string;
     set_clipboard_text:              (text: string);
+    
+    show_confirm_dialog:             (title: string, text: string) -> bool;
 }

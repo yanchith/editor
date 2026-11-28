@@ -13,7 +13,7 @@ TODO(jt): Known serious bugs:
 
 TODO(jt): HMN Beta Week feedback:
 
-- Do a confirmation prompt warning about modified files when people try to exit.
+- Do a confirmation prompt warning about modified files when people try to exit. (Windows done, still need to do macOS)
 - Make it possible to open in a directory from the command line. This should probably open
   a directory lister on top of the welcome message.
 - Allow people to configure the size of the window: maximized/fullscreen/XDIMxYDIM.
@@ -926,7 +926,7 @@ init :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) 
     load_config(editor, platform, input, fall_back_to_emergency_config = true);
 }
 
-update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_this_frame: bool, wants_next_frame: bool {
+update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, input: Input) -> wants_quit: bool, wants_this_frame: bool, wants_next_frame: bool {
     ProfileZone("editor_update_and_render");
 
     mark_frame_timeline_point(editor, platform, input, .START);
@@ -938,6 +938,23 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
     } else {
         // No way to tell delta if we were sleeping.
         dt = 1.0 / input.monitor_refresh_rate;
+    }
+    
+    wants_quit := false;
+    if input.quit {
+        modified := false;
+        for editor.documents {
+            if it.kind != .SCRATCH && it.flags & .MODIFIED {
+                modified = true;
+                break;
+            }
+        }
+        
+        if modified {
+            wants_quit = platform.show_confirm_dialog("Exit?", "Modified documents exist. Exit anyway?");
+        } else {
+            wants_quit = true;
+        }
     }
 
     // :BatterySaver
@@ -2005,7 +2022,7 @@ update_and_render :: (editor: *Editor, platform: Platform, renderer: Renderer, i
 
     editor.is_first_frame = false;
 
-    return wants_this_frame, wants_next_frame;
+    return wants_quit, wants_this_frame, wants_next_frame;
 }
 
 editor_log :: (editor: *Editor, format_string: string, args: ..Any, loc := #caller_location, show := false) {

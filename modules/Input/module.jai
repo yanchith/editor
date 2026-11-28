@@ -14,6 +14,9 @@
 // On Windows, we make sure a text event is even generated, if Alt is pressed by creating it when we
 // receive a WM_SYSCHAR.
 //
+// On Windows, we don't forward WM_CLOSE and WM_QUIT to DefWindowProc, because we sometimes want to show
+// a dialog before quitting. Quitting is now the responsibility of the application.
+//
 // On both Windows and macOS, we also populate a utf32_without_shift field, which we need for handling
 // keyboard shortcuts. This is not great at all. We should seriously consider dropping the Input module
 // and just mapping the OS level thing against our input layer.

@@ -287,7 +287,13 @@ MyWindowProc :: (hwnd: HWND, message: u32, wParam: WPARAM, lParam: LPARAM) -> s6
                 event: Event;
                 event.type = .QUIT;
                 array_add(*events_this_frame, event);
-                return DefWindowProcW(hwnd, message, wParam, lParam);
+                
+                // :ModifiedInputModule
+                // 
+                // NOTE(jt): We sometimes want to display a dialog instead of immediately closing the window,
+                // so we handle this in our own loop.
+                //
+                // return DefWindowProcW(hwnd, message, wParam, lParam);
 
             case WM_INPUT;
                 extra := GetMessageExtraInfo();

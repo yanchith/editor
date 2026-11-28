@@ -356,6 +356,8 @@ main :: () {
     }
 
     window := Window.create_window(1600, 1000, "editor");
+    platform_state.window = window;
+    
     renderer_init(window);
 
     platform: Editor.Platform;
@@ -713,6 +715,17 @@ main :: () {
     platform.set_clipboard_text = (text: string) {
         Clipboard.os_clipboard_set_text(text);
     }
+    
+    platform.show_confirm_dialog = (title: string, text: string) -> bool {
+        #if OS == .WINDOWS {
+            result := MessageBoxW(platform_state.window, utf8_to_wide(text,, temp), utf8_to_wide(title,, temp),
+                                  MB_OKCANCEL | MB_ICONEXCLAMATION | MB_TASKMODAL | MB_SETFOREGROUND | MB_TOPMOST);
+            return result == IDOK;
+        } else #if OS == .MACOS {
+            // TODO(jt): Actually show the confirm dialog.
+            return true;
+        }
+    }
 
     renderer: Editor.Renderer;
     renderer.create_texture_r8unorm    = renderer_create_texture_r8unorm;
@@ -761,6 +774,8 @@ main :: () {
         // input.previous_frame_time_scale got written on the previous frame.
 
         profiler_start_frame("frame");
+        
+        input.quit = false;
 
         time_of_frame_start := current_time_monotonic();
         time_since_program_start := time_of_frame_start - time_of_program_start;
@@ -800,14 +815,14 @@ main :: () {
         for Input.events_this_frame {
             if it.type == {
                 case .QUIT; {
-                    should_run = false;
+                    input.quit = true;
                 }
 
                 // TODO(jt): On macOS at least, we are missing combined accented characters, like 'e -> = é
                 case .KEYBOARD; {
                     #if OS == .WINDOWS {
                         if it.alt_pressed && it.key_code == .F4 {
-                            should_run = false;
+                            input.quit = true;
                             continue;
                         }
                     }
@@ -922,7 +937,10 @@ main :: () {
         input.watched_directory_changes = platform_state.watched_directory_changes;
         input.events = input_events;
 
-        _, wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
+        wants_quit, _, wants_next_frame := Editor.update_and_render(*editor, platform, renderer, input);
+        if wants_quit {
+            should_run = false;
+        }
 
         input.frame_requested_by_editor = wants_next_frame;
 
@@ -988,6 +1006,8 @@ main :: () {
 //
 
 Platform_State :: struct {
+    window: Window.Window_Type;
+    
     #if OS == .WINDOWS {
         fullscreen: bool;
         saved_window_info: Window.Saved_Window_Info; // Used to restore window to previous size after returning from fullscreen.

@@ -3,6 +3,8 @@ Input :: struct {
     log_path:    string;
     config_path: string;
 
+    quit: bool;
+    
     time:  Apollo_Time; // Starts at 0.
     dtime: Apollo_Time;
 

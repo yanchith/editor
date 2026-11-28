@@ -14,6 +14,7 @@ New features:
 - We now prompt for confirmation when closing a modified file with close_view.
 - All unsaved documents can now be saved with the save_all_documents command.
 - We now display a preview of the currently typed keyboard shortcut, if can still match a command.
+- On Windows, we now display a confirmation dialog before quitting, if there are any modified files.
 
 Speed improvements:
 
