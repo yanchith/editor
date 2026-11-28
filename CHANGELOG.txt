@@ -15,7 +15,8 @@ New features:
 
 Speed improvements:
 
-(nothing yet)
+- Fix pathologic performance of indentation scope parsing on long lines, such as minified JS or source maps.
+  This also speeds up the regular usecase.
 
 Fixes:
 

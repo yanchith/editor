@@ -6,7 +6,6 @@ TODO(jt): Known critical bugs:
 
 TODO(jt): Known serious bugs:
 
-- Really long lines (millions of characters) are a performance problem.
 - Indenting large blocks of code (or entire files) takes too long. We need to do some kind of incremental/cooperative thing going.
 - Windows: Renderer stutter when we start animating after a period of inactivity.
 - Sticky cursor maybe shouldn't be active if we are selecting? It sometimes causes us to select more than we want to.

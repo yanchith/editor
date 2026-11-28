@@ -127,10 +127,10 @@ find_indentation_level_for_line :: (document: Document, y: s64) -> s64 {
             level = scope.indentation_level_prefixed;
         }
         sanity_assert(level >= 0);
-        
+
         return level;
     }
-    
+
     // The Y range check is start-exclusive by design: the opening paren belongs to its parent scope.
     scope := find_scope_for_location(document, { 0, y }, y0_inclusive = false);
     if !scope {
@@ -150,7 +150,7 @@ find_indentation_level_for_line :: (document: Document, y: s64) -> s64 {
         while scope.parent_index >= 0 && (scope.loc0.y == y0 || scope.loc1.y == y1) {
             scope = *document.scopes[scope.parent_index];
         }
-        
+
         level = get_level(scope);
     }
 
@@ -199,7 +199,7 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
     // we turn off duplicates here. Alternatively, we could handle this in the runtime code, but that turned out 0.5ms
     // slower on kb_text_shape.h.
     //   -jt, 12 November 2026
-    
+
     if char.count {
         if char == single_line_string  single_line_string = "";
         if char == multi_line_string   multi_line_string = "";
@@ -209,9 +209,9 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
         // We know char != singleline here.
         if single_line_string == multi_line_string  multi_line_string = "";
     }
-    
+
     // We know multiline != char and multiline != singleline here.
-    
+
     return true;
 }
 {
@@ -230,7 +230,13 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
     inside_multi_line_string  := false;
 
     for :text_buffer_temp_lines line_text, line_index: document.buffer {
+        char_index := 0;
+        
         for byte_index: 0..line_text.count - 1 {
+            defer {
+                char_index += cast(s64, is_utf8_char_boundary(line_text[byte_index]));
+            }
+            
             if !inside_char && !inside_single_line_string && !inside_multi_line_string {
                 #if line_comment.count {
                     if inside_block_comment == 0 {
@@ -293,7 +299,7 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                     }
                 }
             }
-            
+
             #if single_line_string.count {
                 if !inside_char && !inside_multi_line_string {
                     if String.begins_with(slice(line_text, byte_index), single_line_string) {
@@ -339,7 +345,7 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                     parent := *document.scopes[parent_index];
 
                     scope: Scope;
-                    scope.loc0.x = count_utf8_chars(String.slice(line_text, 0, byte_index));
+                    scope.loc0.x = char_index;
                     scope.loc0.y = line_index;
 
                     // loc1 is properly set when we find the closing paren, but until then we set it
@@ -396,8 +402,7 @@ _update_scopes :: (document: *Document, indentation_pairs: [] Paren_Pair,
                     scope_index := parent_index;
                     scope := *document.scopes[scope_index];
                     if paren_pair.open == scope.open_paren_char {
-                        // TODO(jt): @Speed Maintain count so we don't have to rescan the line?
-                        scope.loc1.x = count_utf8_chars(String.slice(line_text, 0, byte_index));
+                        scope.loc1.x = char_index;
                         scope.loc1.y = line_index;
 
                         scope.close_paren_char = byte;
